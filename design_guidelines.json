@@ -1,0 +1,102 @@
+{
+  "theme": "Light",
+  "archetype": "4 - Swiss & High-Contrast",
+  "domain": "Admin Panel / CRM",
+  "brand_name": "Creative Mojo",
+  "design_philosophy": {
+    "core_principles": [
+      "Authority and Clarity: Dense, structured grids replacing generic floating cards.",
+      "Functional Beauty: 1px visible borders over soft shadows to define layout.",
+      "Creative Restraint: Brand yellow/lime used explicitly for interaction states and key data highlights, never as a large decorative background.",
+      "Data as Hero: Tables and lists take precedence with strong typographic hierarchy."
+    ],
+    "anti_patterns": [
+      "No Inter, Roboto, or generic sans-serif fonts for headings.",
+      "No purple/blue gradients or generic SaaS aesthetic.",
+      "No soft, muddy drop shadows. Use crisp 1px borders or hard shadows if necessary.",
+      "No fully transparent backgrounds behind text elements."
+    ]
+  },
+  "typography": {
+    "headings_font": "Cabinet Grotesk",
+    "body_font": "Manrope",
+    "scale": {
+      "h1": "text-4xl tracking-tight leading-none sm:text-5xl font-black text-stone-950",
+      "h2": "text-2xl tracking-tight leading-none sm:text-3xl font-bold text-stone-900",
+      "h3": "text-xl font-semibold text-stone-900",
+      "h4": "text-lg font-semibold text-stone-800",
+      "body": "text-sm md:text-base text-stone-700 leading-relaxed",
+      "label": "text-xs font-bold uppercase tracking-[0.2em] text-stone-500",
+      "data_value": "text-base font-medium text-stone-900",
+      "sidebar_link": "text-sm font-semibold text-stone-600 hover:text-stone-950"
+    },
+    "guidelines": "Do not default to generic weights. Use extreme contrast (Black for main titles, Medium for body). Tables should have extremely legible, tabular numerical data formatting where applicable."
+  },
+  "colors": {
+    "background": {
+      "base": "bg-[#F9F9F8]",
+      "surface": "bg-white",
+      "sidebar": "bg-[#F2F2F0]",
+      "table_header": "bg-[#F2F2F0]"
+    },
+    "text": {
+      "primary": "text-stone-950",
+      "secondary": "text-stone-600",
+      "tertiary": "text-stone-400"
+    },
+    "accent": {
+      "primary": "bg-[#D4FF00]",
+      "primary_hover": "hover:bg-[#BDE600]",
+      "primary_text": "text-stone-950",
+      "indicator": "bg-[#D4FF00]"
+    },
+    "borders": {
+      "default": "border-stone-200",
+      "focus": "focus:border-stone-950 focus:ring-1 focus:ring-stone-950",
+      "strong": "border-stone-400"
+    },
+    "status": {
+      "active": "bg-[#D4FF00]/20 text-stone-900 border border-[#D4FF00]/50",
+      "pending": "bg-stone-200 text-stone-700 border border-stone-300",
+      "inactive": "bg-red-50 text-red-700 border border-red-200"
+    }
+  },
+  "layout": {
+    "spacing_scale": "Generous on container padding (p-6, p-8) and tight on data correlation (gap-2, gap-4).",
+    "grid_strategy": "Control Room Grid. Dense, strict. Use border-collapse patterns or 1px grid borders instead of isolated cards.",
+    "components": {
+      "cards": "Flat, rounded-sm, bg-white, 1px solid border-stone-200, no drop shadows.",
+      "tables": "Full width, visible dividing lines (border-b border-stone-200), generous row height, left-aligned standard, right-aligned metrics. Hover state on rows: bg-stone-50.",
+      "sidebar": "Fixed width (260px), flush right border (border-r border-stone-200). Active links get a subtle bg-white and a left border highlight of #D4FF00.",
+      "topbar": "Sticky, glassmorphism or solid white with bottom border (border-b border-stone-200). Height h-16. Minimalist user profile.",
+      "buttons": "Sharp corners (rounded-sm). Primary: bg-[#D4FF00] text-stone-950 hover:bg-[#BDE600] font-bold. Secondary: bg-white border border-stone-200 text-stone-900 hover:bg-stone-50.",
+      "inputs": "Flat, sharp borders, bg-stone-50, focus states use dark borders (border-stone-950) instead of default blue rings."
+    }
+  },
+  "motion": {
+    "hover": "Instant background shifts, crisp technical feel.",
+    "transitions": "transition-colors duration-150 ease-in-out"
+  },
+  "media": {
+    "images": [
+      {
+        "category": "login_background",
+        "url": "https://images.unsplash.com/photo-1703301287688-c9a306ebed99?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTB8MHwxfHNlYXJjaHwyfHxzZW5pb3IlMjBwYWludGluZyUyMGNsYXNzfGVufDB8fHx8MTc3ODY3NzMwNnww&ixlib=rb-4.1.0&q=85",
+        "description": "Group of seniors painting at a table - represents the core mission of Creative Mojo (Creative arts in care homes). Use with a dark or stone overlay to ensure login box readability."
+      }
+    ],
+    "icons_library": "lucide-react"
+  },
+  "testing": {
+    "attribute": "data-testid",
+    "guidelines": "Every interactive element MUST include a specific kebab-case data-testid (e.g., login-submit-button, franchisee-row-[id], sidebar-nav-contacts). This is critical."
+  },
+  "instructions_to_main_agent": [
+    "Build the dashboard using pure Tailwind for layouts to achieve the 'Grid Borders' sharp UI feel. Do not over-rely on pre-baked Shadcn cards if they force overly rounded corners and shadows.",
+    "Implement a standard Layout with Sidebar (left) and Topbar (top right).",
+    "Ensure all fonts (Cabinet Grotesk, Manrope) are loaded properly via CDN or local assets.",
+    "Login page should be a split screen layout: left side image (the senior painting class) with a subtle dark/stone overlay, right side clean minimalist login form.",
+    "The Airtable inspector page should read like a dense developer/database view (minimal styling, maximum data density).",
+    "Franchisee Detail pages should clearly mirror their original structure (photo, contact details, address, status pills, linked contracts list) but elevated with the new E1 typography and 1px geometric grid styling."
+  ]
+}
