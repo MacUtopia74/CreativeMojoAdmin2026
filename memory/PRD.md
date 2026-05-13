@@ -71,6 +71,16 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). B
 - Build WordPress plugin (free, no Zapier) to POST Gravity Form submissions into CRM
 - Provide WordPress plugin ZIP + install/config instructions to user
 
+## Backlog — P1 (Phase 1.5 — GoCardless live mandate status)
+- Read GoCardless API token from `.env` (production)
+- Add `gocardless_mandate_id` field to franchisee model
+- Build `/api/gocardless/mandates/sync` endpoint to auto-link mandates by email
+- Build webhook receiver at `/api/webhooks/gocardless` with signature verification
+- Live status pill on franchisee detail page (Active / Pending / Failed / Cancelled / Not linked)
+- Show last payment date + amount, next scheduled payment, lifetime total
+- Dashboard alert: failed mandates in last 24h
+- Static `Mandate` value from Airtable preserved as fallback until each franchisee is linked
+
 ## Backlog — P1 (Phase 2)
 - WooCommerce REST API + webhook integration for order sync
 - Orders list with filter tabs (Active/Completed/Draft/All)
