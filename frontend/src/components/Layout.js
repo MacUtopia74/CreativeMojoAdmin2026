@@ -6,6 +6,7 @@ import {
   FileText,
   Contact,
   Database,
+  ClipboardList,
   LogOut,
 } from "lucide-react";
 
@@ -15,6 +16,7 @@ const NAV = [
   { to: "/contracts", label: "Contracts", icon: FileText, testid: "nav-contracts" },
   { to: "/contacts", label: "Contacts", icon: Contact, testid: "nav-contacts" },
   { to: "/airtable-inspector", label: "Airtable Inspector", icon: Database, testid: "nav-airtable-inspector" },
+  { to: "/migration-plan", label: "Migration Plan", icon: ClipboardList, testid: "nav-migration-plan" },
 ];
 
 export default function Layout() {

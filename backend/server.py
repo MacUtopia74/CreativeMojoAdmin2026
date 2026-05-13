@@ -331,6 +331,116 @@ async def count_table_records(table_id: str, _: dict = Depends(require_role("adm
 
 
 # ----------------------------------------------------------------------------
+# Migration Decisions (captured by user during Airtable Inspector walkthrough)
+# ----------------------------------------------------------------------------
+DECISION_VALUES = {"undecided", "keep", "rename", "drop", "merge"}
+
+
+class FieldDecisionRequest(BaseModel):
+    table_id: str
+    field_id: str
+    field_name: str
+    decision: str = "undecided"
+    rename_to: Optional[str] = None
+    merge_with: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class TableDecisionRequest(BaseModel):
+    table_id: str
+    table_name: str
+    migrate: Optional[bool] = None
+    notes: Optional[str] = None
+
+
+@api.get("/migration/decisions")
+async def get_decisions(_: dict = Depends(require_role("admin"))):
+    tables = await db.migration_table_decisions.find({}, {"_id": 0}).to_list(1000)
+    fields = await db.migration_field_decisions.find({}, {"_id": 0}).to_list(10000)
+    return {"tables": tables, "fields": fields}
+
+
+@api.post("/migration/decisions/table")
+async def set_table_decision(body: TableDecisionRequest, user: dict = Depends(require_role("admin"))):
+    update = {
+        "table_id": body.table_id,
+        "table_name": body.table_name,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_by": user["email"],
+    }
+    if body.migrate is not None:
+        update["migrate"] = body.migrate
+    if body.notes is not None:
+        update["notes"] = body.notes
+    await db.migration_table_decisions.update_one(
+        {"table_id": body.table_id}, {"$set": update}, upsert=True
+    )
+    return {"ok": True}
+
+
+@api.post("/migration/decisions/field")
+async def set_field_decision(body: FieldDecisionRequest, user: dict = Depends(require_role("admin"))):
+    if body.decision not in DECISION_VALUES:
+        raise HTTPException(status_code=400, detail=f"decision must be one of {sorted(DECISION_VALUES)}")
+    doc = {
+        "table_id": body.table_id,
+        "field_id": body.field_id,
+        "field_name": body.field_name,
+        "decision": body.decision,
+        "rename_to": body.rename_to,
+        "merge_with": body.merge_with,
+        "notes": body.notes,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_by": user["email"],
+    }
+    await db.migration_field_decisions.update_one(
+        {"table_id": body.table_id, "field_id": body.field_id}, {"$set": doc}, upsert=True
+    )
+    return {"ok": True}
+
+
+@api.get("/migration/plan")
+async def migration_plan(_: dict = Depends(require_role("admin"))):
+    """Aggregate summary of all decisions for the Migration Plan page + export."""
+    schema = await list_airtable_tables(_)
+    table_decisions = {td["table_id"]: td for td in await db.migration_table_decisions.find({}, {"_id": 0}).to_list(1000)}
+    field_decisions: dict = {}
+    for fd in await db.migration_field_decisions.find({}, {"_id": 0}).to_list(10000):
+        field_decisions.setdefault(fd["table_id"], {})[fd["field_id"]] = fd
+
+    plan = []
+    totals = {"keep": 0, "rename": 0, "drop": 0, "merge": 0, "undecided": 0}
+    for t in schema["tables"]:
+        td = table_decisions.get(t["id"], {})
+        per_field = []
+        counts = {k: 0 for k in totals}
+        for f in t["fields"]:
+            fd = field_decisions.get(t["id"], {}).get(f["id"], {})
+            decision = fd.get("decision", "undecided")
+            counts[decision] = counts.get(decision, 0) + 1
+            totals[decision] = totals.get(decision, 0) + 1
+            per_field.append({
+                "field_id": f["id"],
+                "field_name": f["name"],
+                "field_type": f["type"],
+                "decision": decision,
+                "rename_to": fd.get("rename_to"),
+                "merge_with": fd.get("merge_with"),
+                "notes": fd.get("notes"),
+            })
+        plan.append({
+            "table_id": t["id"],
+            "table_name": t["name"],
+            "field_count": t["field_count"],
+            "migrate": td.get("migrate"),
+            "notes": td.get("notes"),
+            "counts": counts,
+            "fields": per_field,
+        })
+    return {"totals": totals, "tables": plan}
+
+
+# ----------------------------------------------------------------------------
 # Dashboard
 # ----------------------------------------------------------------------------
 @api.get("/dashboard/stats")
@@ -390,6 +500,49 @@ async def on_startup():
             {"$set": {"password_hash": hash_password(admin_password), "name": admin_name, "role": "admin"}},
         )
         logger.info(f"Updated admin password for {admin_email}")
+
+    # Seed agreed-upon table-level migration decisions (idempotent)
+    presets = {
+        # migrate
+        "Franchisees/Licencees": (True, "Core franchise records — migrate all relevant fields."),
+        "Contracts": (True, "Contract records linked to franchisees."),
+        "Contacts": (True, "Legacy general enquiry archive — migrate and dedupe vs Web Form - Contact."),
+        "Web Form - Contact": (True, "Active franchise enquiry archive — migrate and dedupe vs Contacts."),
+        "DaD Postcode Lookup": (True, "Temporary bridge for find-a-class map until Phase 4 auto-generates lookups."),
+        # skip (agreed)
+        "Snowflakes": (False, "Skip — agreed during scoping."),
+        "Avery All Homes": (False, "Skip — agreed during scoping."),
+        "Avery August 2025 Products": (False, "Skip — agreed during scoping."),
+        "Renewals 2025": (False, "Skip — agreed during scoping."),
+        "Franchise Review Survey 2020": (False, "Skip — historical one-off survey."),
+        "Finance Questionnaire Nov 2022": (False, "Skip — historical one-off survey."),
+        "DaD Shop Orders": (False, "Defer — review during Phase 2 (Orders)."),
+        "Shapes, DBS & Other Orders": (False, "Defer — review during Phase 2 (Orders)."),
+        "FSH Home List Lookup": (False, "Defer — review during Phase 4 (Territory map)."),
+    }
+    # Fetch table IDs from cache or by calling airtable
+    if AIRTABLE_PAT and AIRTABLE_BASE_ID:
+        try:
+            data = await airtable_get(f"/meta/bases/{AIRTABLE_BASE_ID}/tables")
+            for t in data.get("tables", []):
+                preset = presets.get(t["name"])
+                if not preset:
+                    continue
+                migrate, note = preset
+                existing = await db.migration_table_decisions.find_one({"table_id": t["id"]})
+                if existing:
+                    continue  # don't overwrite user changes
+                await db.migration_table_decisions.insert_one({
+                    "table_id": t["id"],
+                    "table_name": t["name"],
+                    "migrate": migrate,
+                    "notes": note,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "updated_by": "system:seed",
+                })
+            logger.info("Seeded preset migration decisions")
+        except Exception as e:
+            logger.warning(f"Could not seed migration presets: {e}")
 
 
 @app.on_event("shutdown")

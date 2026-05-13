@@ -1,6 +1,6 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import api from "@/lib/api";
-import { Database, AlertCircle, ChevronRight, RefreshCw } from "lucide-react";
+import { Database, AlertCircle, ChevronRight, RefreshCw, Check, X, Edit3, Combine, HelpCircle, Save } from "lucide-react";
 
 function PageHeader({ subtitle, title, right }) {
   return (
@@ -26,6 +26,16 @@ function fieldTypeColor(type) {
   return "bg-stone-100 text-stone-700";
 }
 
+const DECISION_OPTS = [
+  { value: "undecided", label: "Undecided", icon: HelpCircle, color: "text-stone-500", bg: "bg-stone-50" },
+  { value: "keep", label: "Keep", icon: Check, color: "text-emerald-700", bg: "bg-emerald-50" },
+  { value: "rename", label: "Rename", icon: Edit3, color: "text-blue-700", bg: "bg-blue-50" },
+  { value: "merge", label: "Merge", icon: Combine, color: "text-purple-700", bg: "bg-purple-50" },
+  { value: "drop", label: "Drop", icon: X, color: "text-red-700", bg: "bg-red-50" },
+];
+
+const DECISION_MAP = Object.fromEntries(DECISION_OPTS.map((d) => [d.value, d]));
+
 function renderFieldValue(value) {
   if (value === null || value === undefined) return <span className="text-stone-400">—</span>;
   if (typeof value === "string") return value.length > 80 ? value.slice(0, 80) + "…" : value;
@@ -44,6 +54,45 @@ function renderFieldValue(value) {
   return String(value);
 }
 
+// ---- Inline editors ----
+function DecisionSelect({ value, onChange, testid }) {
+  const opt = DECISION_MAP[value] || DECISION_MAP.undecided;
+  const Icon = opt.icon;
+  return (
+    <div className={`inline-flex items-center gap-1.5 px-1 ${opt.bg}`}>
+      <Icon className={`w-3 h-3 ${opt.color} shrink-0`} />
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        data-testid={testid}
+        className={`bg-transparent text-xs font-bold uppercase tracking-wider ${opt.color} border-0 focus:outline-none focus:ring-0 py-1.5 pr-1 cursor-pointer`}
+      >
+        {DECISION_OPTS.map((o) => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function TextField({ value, onChange, placeholder, testid }) {
+  const [v, setV] = useState(value || "");
+  const ref = useRef(null);
+  useEffect(() => setV(value || ""), [value]);
+  return (
+    <input
+      ref={ref}
+      type="text"
+      value={v}
+      onChange={(e) => setV(e.target.value)}
+      onBlur={() => v !== (value || "") && onChange(v)}
+      placeholder={placeholder}
+      data-testid={testid}
+      className="w-full px-2 py-1 text-xs font-mono bg-white border border-stone-200 focus:outline-none focus:border-stone-900"
+    />
+  );
+}
+
 export default function AirtableInspectorPage() {
   const [tables, setTables] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -54,21 +103,42 @@ export default function AirtableInspectorPage() {
   const [count, setCount] = useState(null);
   const [countLoading, setCountLoading] = useState(false);
 
+  // Decisions state: { tableDecisions: {table_id: {migrate, notes}}, fieldDecisions: {table_id: {field_id: {...}}} }
+  const [tableDecisions, setTableDecisions] = useState({});
+  const [fieldDecisions, setFieldDecisions] = useState({});
+  const [savingFlash, setSavingFlash] = useState(false);
+
+  const loadDecisions = useCallback(async () => {
+    try {
+      const { data } = await api.get("/migration/decisions");
+      const td = {};
+      (data.tables || []).forEach((t) => (td[t.table_id] = t));
+      setTableDecisions(td);
+      const fd = {};
+      (data.fields || []).forEach((f) => {
+        fd[f.table_id] = fd[f.table_id] || {};
+        fd[f.table_id][f.field_id] = f;
+      });
+      setFieldDecisions(fd);
+    } catch (e) {
+      /* noop */
+    }
+  }, []);
+
   useEffect(() => {
     (async () => {
       setLoading(true);
-      setError("");
       try {
-        const { data } = await api.get("/airtable/tables");
-        setTables(data.tables || []);
-        if (data.tables?.length) setSelectedId(data.tables[0].id);
+        const [schemaRes] = await Promise.all([api.get("/airtable/tables"), loadDecisions()]);
+        setTables(schemaRes.data.tables || []);
+        if (schemaRes.data.tables?.length) setSelectedId(schemaRes.data.tables[0].id);
       } catch (e) {
         setError("Could not load Airtable schema. Check the PAT in backend/.env.");
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [loadDecisions]);
 
   const selected = useMemo(() => tables.find((t) => t.id === selectedId), [tables, selectedId]);
 
@@ -102,14 +172,80 @@ export default function AirtableInspectorPage() {
     }
   };
 
+  const flashSaved = () => {
+    setSavingFlash(true);
+    setTimeout(() => setSavingFlash(false), 800);
+  };
+
+  const updateTableDecision = async (patch) => {
+    if (!selected) return;
+    const prev = tableDecisions[selected.id] || {};
+    const next = { ...prev, ...patch };
+    setTableDecisions({ ...tableDecisions, [selected.id]: next });
+    try {
+      await api.post("/migration/decisions/table", {
+        table_id: selected.id,
+        table_name: selected.name,
+        ...patch,
+      });
+      flashSaved();
+    } catch (e) {
+      /* noop - keep optimistic update */
+    }
+  };
+
+  const updateFieldDecision = async (field, patch) => {
+    if (!selected) return;
+    const existing = fieldDecisions[selected.id]?.[field.id] || {};
+    const next = { ...existing, ...patch, field_name: field.name };
+    setFieldDecisions({
+      ...fieldDecisions,
+      [selected.id]: { ...(fieldDecisions[selected.id] || {}), [field.id]: next },
+    });
+    try {
+      await api.post("/migration/decisions/field", {
+        table_id: selected.id,
+        field_id: field.id,
+        field_name: field.name,
+        decision: next.decision || "undecided",
+        rename_to: next.rename_to ?? null,
+        merge_with: next.merge_with ?? null,
+        notes: next.notes ?? null,
+      });
+      flashSaved();
+    } catch (e) {
+      /* noop */
+    }
+  };
+
+  // Summary counts for the selected table
+  const summary = useMemo(() => {
+    if (!selected) return null;
+    const counts = { keep: 0, rename: 0, drop: 0, merge: 0, undecided: 0 };
+    selected.fields.forEach((f) => {
+      const d = fieldDecisions[selected.id]?.[f.id]?.decision || "undecided";
+      counts[d] = (counts[d] || 0) + 1;
+    });
+    return counts;
+  }, [selected, fieldDecisions]);
+
+  const currentTableDecision = selected ? (tableDecisions[selected.id] || {}) : {};
+
   return (
     <div className="min-h-screen">
       <PageHeader
         subtitle="Phase 1 — Schema"
         title="Airtable Inspector"
         right={
-          <div className="flex items-center gap-2">
-            <div className="text-xs text-stone-500 font-mono">base · {tables.length} tables</div>
+          <div className="flex items-center gap-3">
+            {savingFlash && (
+              <div className="flex items-center gap-1.5 text-xs text-emerald-700 font-bold uppercase tracking-wider">
+                <Save className="w-3 h-3" /> Saved
+              </div>
+            )}
+            <a href="/migration-plan" data-testid="goto-plan" className="text-xs font-bold uppercase tracking-wider text-stone-700 hover:text-stone-950">
+              View Migration Plan →
+            </a>
           </div>
         }
       />
@@ -129,25 +265,30 @@ export default function AirtableInspectorPage() {
             <div className="px-5 py-4 border-b border-stone-200">
               <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Tables</div>
             </div>
-            {tables.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setSelectedId(t.id)}
-                data-testid={`table-item-${t.id}`}
-                className={`w-full text-left px-5 py-3 border-b border-stone-100 transition-colors flex items-center gap-2 ${
-                  selectedId === t.id ? "bg-[#D4FF00]/15 border-l-2 border-l-[#D4FF00]" : "hover:bg-stone-50 border-l-2 border-l-transparent"
-                }`}
-              >
-                <Database className="w-3.5 h-3.5 text-stone-500 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold text-stone-950 truncate">{t.name}</div>
-                  <div className="text-[11px] text-stone-500 font-mono">
-                    {t.field_count} fields · {t.view_count} views
+            {tables.map((t) => {
+              const td = tableDecisions[t.id];
+              const indicator = td?.migrate === true ? "bg-emerald-500" : td?.migrate === false ? "bg-red-400" : "bg-stone-300";
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => setSelectedId(t.id)}
+                  data-testid={`table-item-${t.id}`}
+                  className={`w-full text-left px-5 py-3 border-b border-stone-100 transition-colors flex items-center gap-2 ${
+                    selectedId === t.id ? "bg-[#D4FF00]/15 border-l-2 border-l-[#D4FF00]" : "hover:bg-stone-50 border-l-2 border-l-transparent"
+                  }`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${indicator} shrink-0`} title={td?.migrate === true ? "Migrate" : td?.migrate === false ? "Skip" : "Undecided"} />
+                  <Database className="w-3.5 h-3.5 text-stone-500 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-stone-950 truncate">{t.name}</div>
+                    <div className="text-[11px] text-stone-500 font-mono">
+                      {t.field_count} fields · {t.view_count} views
+                    </div>
                   </div>
-                </div>
-                <ChevronRight className={`w-3.5 h-3.5 text-stone-400 transition-transform ${selectedId === t.id ? "translate-x-0.5 text-stone-700" : ""}`} />
-              </button>
-            ))}
+                  <ChevronRight className={`w-3.5 h-3.5 text-stone-400 ${selectedId === t.id ? "translate-x-0.5 text-stone-700" : ""}`} />
+                </button>
+              );
+            })}
           </div>
 
           {/* Detail */}
@@ -156,13 +297,13 @@ export default function AirtableInspectorPage() {
               <div className="p-8 space-y-8">
                 <div>
                   <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Table</div>
-                  <div className="flex items-baseline gap-4 mt-1">
+                  <div className="flex items-baseline gap-4 mt-1 flex-wrap">
                     <h2 className="font-display font-black text-3xl text-stone-950 tracking-tight" data-testid="selected-table-name">
                       {selected.name}
                     </h2>
                     <span className="font-mono text-xs text-stone-500">{selected.id}</span>
                   </div>
-                  <div className="flex items-center gap-4 mt-3 text-sm">
+                  <div className="flex items-center gap-4 mt-3 text-sm flex-wrap">
                     <span className="text-stone-700"><strong>{selected.field_count}</strong> fields</span>
                     <span className="text-stone-700"><strong>{selected.view_count}</strong> views</span>
                     <button
@@ -177,34 +318,114 @@ export default function AirtableInspectorPage() {
                   </div>
                 </div>
 
-                {/* Fields */}
+                {/* Table-level decision */}
+                <div className="bg-white border border-stone-200" data-testid="table-decision-card">
+                  <div className="px-5 py-3 border-b border-stone-200 flex items-center justify-between">
+                    <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Migration Decision (Table)</div>
+                  </div>
+                  <div className="p-5 space-y-4">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <button
+                        onClick={() => updateTableDecision({ migrate: true })}
+                        data-testid="table-decision-migrate"
+                        className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border transition-colors ${
+                          currentTableDecision.migrate === true
+                            ? "bg-emerald-600 text-white border-emerald-600"
+                            : "bg-white text-stone-900 border-stone-300 hover:bg-emerald-50"
+                        }`}
+                      >
+                        <Check className="w-3.5 h-3.5 inline mr-1.5" /> Migrate this table
+                      </button>
+                      <button
+                        onClick={() => updateTableDecision({ migrate: false })}
+                        data-testid="table-decision-skip"
+                        className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border transition-colors ${
+                          currentTableDecision.migrate === false
+                            ? "bg-red-600 text-white border-red-600"
+                            : "bg-white text-stone-900 border-stone-300 hover:bg-red-50"
+                        }`}
+                      >
+                        <X className="w-3.5 h-3.5 inline mr-1.5" /> Skip this table
+                      </button>
+                      {summary && (
+                        <div className="text-xs text-stone-600 ml-auto flex items-center gap-3 flex-wrap">
+                          {Object.entries(summary).filter(([, v]) => v > 0).map(([k, v]) => {
+                            const opt = DECISION_MAP[k];
+                            return (
+                              <span key={k} className={`px-2 py-0.5 ${opt.bg} ${opt.color} font-bold text-[10px] uppercase tracking-wider`}>
+                                {v} {opt.label}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <label className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Notes (optional)</label>
+                      <TextField
+                        value={currentTableDecision.notes}
+                        onChange={(v) => updateTableDecision({ notes: v })}
+                        placeholder="e.g. 'Migrate but rename Mojo Email to work_email'"
+                        testid="table-notes-input"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Fields with decisions */}
                 <div>
                   <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-3">
-                    All Fields ({selected.fields.length})
+                    Fields ({selected.fields.length}) — Decide per field
                   </div>
                   <div className="bg-white border border-stone-200 overflow-hidden" data-testid="fields-table">
                     <table className="w-full">
                       <thead className="bg-[#F2F2F0] border-b border-stone-200">
                         <tr>
-                          <th className="text-left px-4 py-2.5 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-10">#</th>
-                          <th className="text-left px-4 py-2.5 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Field Name</th>
-                          <th className="text-left px-4 py-2.5 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-44">Type</th>
-                          <th className="text-left px-4 py-2.5 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-40">Field ID</th>
+                          <th className="text-left px-3 py-2.5 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-10">#</th>
+                          <th className="text-left px-3 py-2.5 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Field</th>
+                          <th className="text-left px-3 py-2.5 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-32">Type</th>
+                          <th className="text-left px-3 py-2.5 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-40">Decision</th>
+                          <th className="text-left px-3 py-2.5 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-56">Rename to / Merge with</th>
+                          <th className="text-left px-3 py-2.5 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Notes</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {selected.fields.map((f, i) => (
-                          <tr key={f.id} className="border-b border-stone-100 hover:bg-stone-50 transition-colors">
-                            <td className="px-4 py-2.5 text-xs text-stone-400 font-mono">{i + 1}</td>
-                            <td className="px-4 py-2.5 text-sm font-semibold text-stone-950">{f.name}</td>
-                            <td className="px-4 py-2.5">
-                              <span className={`inline-block px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${fieldTypeColor(f.type)}`}>
-                                {f.type}
-                              </span>
-                            </td>
-                            <td className="px-4 py-2.5 text-xs font-mono text-stone-500">{f.id}</td>
-                          </tr>
-                        ))}
+                        {selected.fields.map((f, i) => {
+                          const fd = fieldDecisions[selected.id]?.[f.id] || {};
+                          const decision = fd.decision || "undecided";
+                          return (
+                            <tr key={f.id} className="border-b border-stone-100 hover:bg-stone-50/50 transition-colors" data-testid={`field-row-${f.id}`}>
+                              <td className="px-3 py-2 text-xs text-stone-400 font-mono align-middle">{i + 1}</td>
+                              <td className="px-3 py-2 text-sm font-semibold text-stone-950 align-middle">
+                                {f.name}
+                                <div className="text-[10px] text-stone-400 font-mono mt-0.5">{f.id}</div>
+                              </td>
+                              <td className="px-3 py-2 align-middle">
+                                <span className={`inline-block px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${fieldTypeColor(f.type)}`}>
+                                  {f.type}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 align-middle">
+                                <DecisionSelect
+                                  value={decision}
+                                  onChange={(v) => updateFieldDecision(f, { decision: v })}
+                                  testid={`field-decision-${f.id}`}
+                                />
+                              </td>
+                              <td className="px-3 py-2 align-middle">
+                                {decision === "rename" && (
+                                  <TextField value={fd.rename_to} onChange={(v) => updateFieldDecision(f, { rename_to: v })} placeholder="new_field_name" testid={`field-rename-${f.id}`} />
+                                )}
+                                {decision === "merge" && (
+                                  <TextField value={fd.merge_with} onChange={(v) => updateFieldDecision(f, { merge_with: v })} placeholder="merge into…" testid={`field-merge-${f.id}`} />
+                                )}
+                              </td>
+                              <td className="px-3 py-2 align-middle">
+                                <TextField value={fd.notes} onChange={(v) => updateFieldDecision(f, { notes: v })} placeholder="optional note" testid={`field-notes-${f.id}`} />
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -213,12 +434,10 @@ export default function AirtableInspectorPage() {
                 {/* Sample records */}
                 <div>
                   <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-3">
-                    Sample Records (first 10)
+                    Sample Records (first 10) — for reference
                   </div>
                   {recordsLoading ? (
-                    <div className="bg-white border border-stone-200 p-8 text-center text-stone-500 text-sm font-mono uppercase tracking-widest">
-                      Loading records…
-                    </div>
+                    <div className="bg-white border border-stone-200 p-8 text-center text-stone-500 text-sm font-mono uppercase tracking-widest">Loading records…</div>
                   ) : records.length === 0 ? (
                     <div className="bg-white border border-stone-200 p-8 text-center text-stone-500 text-sm">No records</div>
                   ) : (
@@ -228,9 +447,7 @@ export default function AirtableInspectorPage() {
                           <tr>
                             <th className="text-left px-3 py-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 sticky left-0 bg-[#F2F2F0]">Record ID</th>
                             {selected.fields.slice(0, 8).map((f) => (
-                              <th key={f.id} className="text-left px-3 py-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 whitespace-nowrap">
-                                {f.name}
-                              </th>
+                              <th key={f.id} className="text-left px-3 py-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 whitespace-nowrap">{f.name}</th>
                             ))}
                           </tr>
                         </thead>

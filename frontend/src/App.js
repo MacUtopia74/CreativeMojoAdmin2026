@@ -6,6 +6,7 @@ import Layout from "@/components/Layout";
 import LoginPage from "@/pages/LoginPage";
 import DashboardPage from "@/pages/DashboardPage";
 import AirtableInspectorPage from "@/pages/AirtableInspectorPage";
+import MigrationPlanPage from "@/pages/MigrationPlanPage";
 import PlaceholderPage from "@/pages/PlaceholderPage";
 
 export default function App() {
@@ -24,6 +25,7 @@ export default function App() {
             >
               <Route path="/" element={<DashboardPage />} />
               <Route path="/airtable-inspector" element={<AirtableInspectorPage />} />
+              <Route path="/migration-plan" element={<MigrationPlanPage />} />
               <Route
                 path="/franchisees"
                 element={
