@@ -22,7 +22,7 @@
   --border: 24 6% 90%;
   --input: 24 6% 90%;
   --ring: 0 0% 9%;
-  --radius: 0.25rem;
+  --radius: 1rem;
 }
 
 html, body, input, select, textarea, button {
@@ -37,7 +37,6 @@ html, body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Headings + display + previously-mono classes now all use Nunito Sans, varied by weight */
 .font-display {
   font-family: 'Nunito Sans', sans-serif;
   letter-spacing: -0.02em;
@@ -46,13 +45,70 @@ html, body {
 
 .font-mono {
   font-family: 'Nunito Sans', sans-serif;
-  font-feature-settings: "tnum" 1; /* tabular numerals for alignment, while staying proportional */
+  font-feature-settings: "tnum" 1;
   letter-spacing: 0;
 }
 
+/* Soft card styling — applied globally to all panels/tables via these utility classes */
+.card {
+  background: white;
+  border: 1px solid rgb(231 229 228 / 0.8);
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+}
+
+.card-flush {
+  background: white;
+  border: 1px solid rgb(231 229 228 / 0.8);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+}
+
+.input-soft {
+  background: rgb(250 250 249);
+  border: 1px solid rgb(231 229 228);
+  border-radius: 10px;
+}
+.input-soft:focus { outline: none; border-color: rgb(12 10 9); box-shadow: 0 0 0 2px rgba(12,10,9,0.04); }
+
+.btn-primary {
+  background: rgb(12 10 9);
+  color: white;
+  border-radius: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-size: 11px;
+  transition: background-color 0.15s;
+}
+.btn-primary:hover { background: rgb(41 37 36); }
+.btn-primary:disabled { opacity: 0.5; }
+
+.btn-accent {
+  background: #D4FF00;
+  color: rgb(12 10 9);
+  border-radius: 10px;
+  font-weight: 700;
+}
+.btn-accent:hover { background: #BDE600; }
+
+.btn-ghost {
+  background: white;
+  color: rgb(41 37 36);
+  border: 1px solid rgb(214 211 209);
+  border-radius: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-size: 11px;
+}
+.btn-ghost:hover { background: rgb(245 245 244); }
+
+/* Override default border-radius:0 from scrollbar style */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: #F2F2F0; }
-::-webkit-scrollbar-thumb { background: #d6d3d1; border-radius: 0; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d6d3d1; border-radius: 8px; }
 ::-webkit-scrollbar-thumb:hover { background: #a8a29e; }
 
 ::selection { background: #D4FF00; color: #0c0a09; }

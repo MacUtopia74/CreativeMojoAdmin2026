@@ -734,6 +734,7 @@ async def list_contacts(
     source: Optional[str] = None,
     pipeline_status: Optional[str] = None,
     in_pipeline: Optional[bool] = None,
+    tab: Optional[str] = None,  # 'pipeline' | 'franchise' | 'general'
     search: Optional[str] = None,
     limit: int = Query(500, le=2000),
     _: dict = Depends(require_role("admin")),
@@ -741,39 +742,47 @@ async def list_contacts(
     """Combines legacy contacts + web form contacts under one query."""
     q_legacy = {}
     q_web = {}
-    if source:
-        if source == "legacy_general_enquiry":
-            q_web = None
-        elif source == "franchise_enquiry":
+    # Tab shorthand
+    if tab == "pipeline":
+        q_legacy = None
+        q_web["in_pipeline"] = True
+    elif tab == "franchise":
+        # Franchise/Licence enquiries that are NOT in the sales pipeline
+        q_legacy = None
+        q_web["$and"] = [
+            {"source": {"$in": ["franchise_enquiry", "licence_enquiry"]}},
+            {"$or": [{"in_pipeline": {"$ne": True}}, {"in_pipeline": {"$exists": False}}]},
+        ]
+    elif tab == "general":
+        # General + legacy contacts that are NOT in the sales pipeline
+        q_legacy = {}  # all legacy
+        q_web["$and"] = [
+            {"source": "general_enquiry"},
+            {"$or": [{"in_pipeline": {"$ne": True}}, {"in_pipeline": {"$exists": False}}]},
+        ]
+    else:
+        if source:
+            if source == "legacy_general_enquiry":
+                q_web = None
+            elif source in ("franchise_enquiry", "licence_enquiry", "general_enquiry"):
+                q_legacy = None
+                q_web["source"] = source
+        if in_pipeline is True:
             q_legacy = None
-            q_web["source"] = "franchise_enquiry"
-        elif source == "licence_enquiry":
-            q_legacy = None
-            q_web["source"] = "licence_enquiry"
-        elif source == "general_enquiry":
-            q_legacy = None
-            q_web["source"] = "general_enquiry"
-    if in_pipeline is True:
-        q_legacy = None  # legacy is never in pipeline by default
-        if q_web is not None:
-            q_web["in_pipeline"] = True
-    elif in_pipeline is False:
-        if q_web is not None:
-            q_web["$or"] = [{"in_pipeline": {"$ne": True}}, {"in_pipeline": {"$exists": False}}]
+            if q_web is not None:
+                q_web["in_pipeline"] = True
+        elif in_pipeline is False:
+            if q_web is not None:
+                q_web["$or"] = [{"in_pipeline": {"$ne": True}}, {"in_pipeline": {"$exists": False}}]
     if pipeline_status:
         if q_legacy is not None: q_legacy["pipeline_status"] = pipeline_status
         if q_web is not None: q_web["pipeline_status"] = pipeline_status
     if search:
         rx = {"$regex": search, "$options": "i"}
-        sf = [{"first_name": rx}, {"last_name": rx}, {"email": rx}, {"postcode": rx}, {"city": rx}]
         if q_legacy is not None:
-            existing = q_legacy.pop("$or", None)
-            q_legacy["$and"] = [{"$or": sf}] + ([{"$or": existing}] if existing else [])
+            q_legacy.setdefault("$and", []).append({"$or": [{"first_name": rx}, {"last_name": rx}, {"email": rx}, {"postcode": rx}, {"city": rx}]})
         if q_web is not None:
-            wf = [{"first_name": rx}, {"last_name": rx}, {"postcode": rx}, {"city": rx},
-                  {"establishment_name": rx}, {"telephone": rx}, {"email": rx}]
-            existing = q_web.pop("$or", None)
-            q_web["$and"] = [{"$or": wf}] + ([{"$or": existing}] if existing else [])
+            q_web.setdefault("$and", []).append({"$or": [{"first_name": rx}, {"last_name": rx}, {"postcode": rx}, {"city": rx}, {"establishment_name": rx}, {"telephone": rx}, {"email": rx}]})
 
     items = []
     if q_legacy is not None:

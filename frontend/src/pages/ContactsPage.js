@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import api from "@/lib/api";
-import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2 } from "lucide-react";
+import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase } from "lucide-react";
 
 const STAGES = [
   { key: "new", label: "New", color: "bg-stone-100 text-stone-700 border-stone-300", barColor: "bg-stone-400" },
@@ -13,10 +13,15 @@ const STAGES = [
 
 const STAGE_MAP = Object.fromEntries(STAGES.map((s) => [s.key, s]));
 
+const TABS = [
+  { key: "pipeline", label: "Sales Pipeline", hint: "Potential franchisees being actively worked", icon: Briefcase },
+  { key: "franchise", label: "Franchise Contacts", hint: "Franchise & licence enquiries not in the pipeline", icon: Users },
+  { key: "general", label: "General Contacts", hint: "General enquiries & legacy contacts", icon: Users },
+];
+
 function daysSince(dateStr) {
   if (!dateStr) return null;
-  const d = new Date(dateStr);
-  if (isNaN(d)) return null;
+  const d = new Date(dateStr); if (isNaN(d)) return null;
   return Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24));
 }
 function daysLabel(d) {
@@ -29,30 +34,24 @@ function daysLabel(d) {
 }
 function StageBadge({ status }) {
   const s = STAGE_MAP[status];
-  if (!s) return <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-stone-100 text-stone-500 border border-stone-200">{status || "—"}</span>;
-  return <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border ${s.color}`}>{s.label}</span>;
+  if (!s) return <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-stone-100 text-stone-500 border border-stone-200 rounded-full">{status || "—"}</span>;
+  return <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-full ${s.color}`}>{s.label}</span>;
 }
-
 function sourceLabel(s) {
-  return ({
-    franchise_enquiry: "Franchise",
-    licence_enquiry: "Licence",
-    general_enquiry: "General",
-    legacy_general_enquiry: "Legacy",
-  }[s] || s || "Other");
+  return ({ franchise_enquiry: "Franchise", licence_enquiry: "Licence", general_enquiry: "General", legacy_general_enquiry: "Legacy" }[s] || s || "Other");
 }
 
-function ContactDrawer({ contact, mode, onClose, onStageChange, onPromote, onDemote, onDelete }) {
+function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, onDelete }) {
   const [busy, setBusy] = useState(false);
   if (!contact) return null;
   const isInPipeline = !!contact.in_pipeline;
   const dateAdded = contact.date || contact.date_added;
   const sinceCreated = daysSince(dateAdded);
+  const isFranchiseEnq = ["franchise_enquiry", "licence_enquiry"].includes(contact.source);
 
   const confirmDelete = async () => {
     if (!window.confirm("Permanently delete this contact? This cannot be undone.")) return;
-    setBusy(true);
-    try { await onDelete(contact.id); } finally { setBusy(false); }
+    setBusy(true); try { await onDelete(contact.id); } finally { setBusy(false); }
   };
 
   return (
@@ -61,14 +60,14 @@ function ContactDrawer({ contact, mode, onClose, onStageChange, onPromote, onDem
       <aside className="w-full max-w-xl bg-white border-l border-stone-200 overflow-y-auto shadow-2xl">
         <div className="px-6 py-4 border-b border-stone-200 flex items-center justify-between sticky top-0 bg-white z-10">
           <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">
-            {isInPipeline ? "Enquiry · Sales Pipeline" : "Contact"}
+            {isInPipeline ? "Sales Pipeline" : isFranchiseEnq ? "Franchise Contact" : "General Contact"}
           </div>
           <div className="flex items-center gap-1">
             <button onClick={confirmDelete} disabled={busy} data-testid="drawer-delete"
-              className="px-2 py-1 text-xs font-bold uppercase tracking-wider text-red-700 hover:bg-red-50 flex items-center gap-1 disabled:opacity-50">
+              className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-red-700 hover:bg-red-50 rounded-lg flex items-center gap-1 disabled:opacity-50">
               <Trash2 className="w-3.5 h-3.5" /> Delete
             </button>
-            <button onClick={onClose} data-testid="drawer-close" className="p-1 text-stone-500 hover:text-stone-950">
+            <button onClick={onClose} data-testid="drawer-close" className="p-2 text-stone-500 hover:text-stone-950 rounded-lg hover:bg-stone-100">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -81,76 +80,71 @@ function ContactDrawer({ contact, mode, onClose, onStageChange, onPromote, onDem
             {contact.establishment_name && <div className="text-base text-stone-600 mt-1">{contact.establishment_name}</div>}
             <div className="flex items-center gap-2 flex-wrap mt-3">
               {isInPipeline && <StageBadge status={contact.pipeline_status} />}
-              <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-stone-100 text-stone-700 border border-stone-200">
+              <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-stone-100 text-stone-700 border border-stone-200 rounded-full">
                 {sourceLabel(contact.source)}
               </span>
               {contact.potential && /yes|hot|high/i.test(String(contact.potential)) && (
-                <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[#D4FF00]/20 border border-[#D4FF00]/60 text-stone-900">Hot Lead</span>
+                <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[#D4FF00]/20 border border-[#D4FF00]/60 text-stone-900 rounded-full">Hot Lead</span>
               )}
             </div>
           </div>
 
-          {/* Pipeline controls */}
           {isInPipeline ? (
             <div>
               <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-2">Move to stage</div>
               <div className="grid grid-cols-3 gap-2">
                 {STAGES.map((s) => (
                   <button key={s.key} onClick={() => onStageChange(contact.id, s.key)} data-testid={`drawer-stage-${s.key}`}
-                    className={`px-3 py-2 text-xs font-bold uppercase tracking-wider border transition-colors ${
+                    className={`px-3 py-2 text-xs font-bold uppercase tracking-wider border rounded-lg transition-colors ${
                       contact.pipeline_status === s.key ? `${s.color} border-current` : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"
                     }`}>{s.label}</button>
                 ))}
               </div>
               <button onClick={() => onDemote(contact.id)} data-testid="drawer-demote"
-                className="mt-3 px-3 py-2 text-xs font-bold uppercase tracking-wider border border-stone-300 bg-white text-stone-700 hover:bg-stone-50 flex items-center gap-1.5">
+                className="mt-3 px-4 py-2 text-xs font-bold uppercase tracking-wider border border-stone-300 bg-white text-stone-700 hover:bg-stone-50 rounded-lg flex items-center gap-1.5">
                 <ArrowDownCircle className="w-3.5 h-3.5" /> Remove from sales pipeline
               </button>
+              <div className="text-xs text-stone-500 mt-1.5">
+                Will return to <strong>{isFranchiseEnq ? "Franchise Contacts" : "General Contacts"}</strong> based on their source.
+              </div>
             </div>
           ) : (
-            <div className="p-4 bg-stone-50 border border-stone-200">
+            <div className="p-4 bg-stone-50 border border-stone-200 rounded-xl">
               <div className="text-sm font-semibold text-stone-900 mb-1">Not in the sales pipeline</div>
-              <div className="text-xs text-stone-600 mb-3">This is a general contact. Promote them to the sales pipeline to track them as a potential franchise lead.</div>
+              <div className="text-xs text-stone-600 mb-3">
+                Currently in <strong>{isFranchiseEnq ? "Franchise Contacts" : "General Contacts"}</strong>.
+                Promote them to actively work them as a potential franchisee.
+              </div>
               <button onClick={() => onPromote(contact.id)} data-testid="drawer-promote"
-                className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-[#D4FF00] text-stone-950 hover:bg-[#BDE600] flex items-center gap-1.5">
+                className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-[#D4FF00] text-stone-950 hover:bg-[#BDE600] rounded-lg flex items-center gap-1.5">
                 <ArrowUpCircle className="w-3.5 h-3.5" /> Promote to sales pipeline
               </button>
             </div>
           )}
 
-          {/* Contact info */}
-          <div className="bg-stone-50 border border-stone-200 p-4 space-y-3 text-sm">
+          <div className="bg-stone-50 border border-stone-200 p-4 space-y-3 text-sm rounded-xl">
             {(contact.email || contact.email_raw) && (
-              <div className="flex items-start gap-2">
-                <Mail className="w-3.5 h-3.5 text-stone-400 mt-1" />
-                <a href={`mailto:${contact.email || contact.email_raw}`} className="text-stone-900 hover:underline">{contact.email || contact.email_raw}</a>
-              </div>
+              <div className="flex items-start gap-2"><Mail className="w-3.5 h-3.5 text-stone-400 mt-1" />
+                <a href={`mailto:${contact.email || contact.email_raw}`} className="text-stone-900 hover:underline">{contact.email || contact.email_raw}</a></div>
             )}
             {(contact.telephone || contact.mobile_phone) && (
-              <div className="flex items-start gap-2">
-                <Phone className="w-3.5 h-3.5 text-stone-400 mt-1" />
-                <span className="text-stone-900">{contact.telephone || contact.mobile_phone}</span>
-              </div>
+              <div className="flex items-start gap-2"><Phone className="w-3.5 h-3.5 text-stone-400 mt-1" />
+                <span className="text-stone-900">{contact.telephone || contact.mobile_phone}</span></div>
             )}
             {(contact.address_street || contact.city || contact.postcode) && (
-              <div className="flex items-start gap-2">
-                <MapPin className="w-3.5 h-3.5 text-stone-400 mt-1" />
-                <span className="text-stone-900">{[contact.address_street, contact.city, contact.county, contact.postcode].filter(Boolean).join(", ")}</span>
-              </div>
+              <div className="flex items-start gap-2"><MapPin className="w-3.5 h-3.5 text-stone-400 mt-1" />
+                <span className="text-stone-900">{[contact.address_street, contact.city, contact.county, contact.postcode].filter(Boolean).join(", ")}</span></div>
             )}
             {dateAdded && (
-              <div className="flex items-start gap-2">
-                <Calendar className="w-3.5 h-3.5 text-stone-400 mt-1" />
-                <span className="text-stone-900">{String(dateAdded).slice(0, 10)} <span className="text-stone-500">· {sinceCreated} days ago</span></span>
-              </div>
+              <div className="flex items-start gap-2"><Calendar className="w-3.5 h-3.5 text-stone-400 mt-1" />
+                <span className="text-stone-900">{String(dateAdded).slice(0, 10)} <span className="text-stone-500">· {sinceCreated} days ago</span></span></div>
             )}
           </div>
 
-          {/* Sales metadata (only for pipeline items) */}
           {isInPipeline && (
             <div>
               <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-2">Sales Notes</div>
-              <div className="bg-white border border-stone-200 divide-y divide-stone-100 text-sm">
+              <div className="bg-white border border-stone-200 divide-y divide-stone-100 text-sm rounded-xl overflow-hidden">
                 {[
                   ["Response Sent", contact.response_sent], ["Email Opened", contact.email_opened],
                   ["Potential", contact.potential], ["Price Tier", contact.price_tier],
@@ -169,7 +163,7 @@ function ContactDrawer({ contact, mode, onClose, onStageChange, onPromote, onDem
           {(contact.why_contacting || contact.message) && (
             <div>
               <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-2">Original Enquiry</div>
-              <div className="bg-stone-50 border border-stone-200 p-4 text-sm text-stone-800 leading-relaxed whitespace-pre-wrap">
+              <div className="bg-stone-50 border border-stone-200 p-4 text-sm text-stone-800 leading-relaxed whitespace-pre-wrap rounded-xl">
                 {contact.why_contacting && <div className="font-semibold mb-1">{contact.why_contacting}</div>}
                 {contact.message}
               </div>
@@ -179,7 +173,7 @@ function ContactDrawer({ contact, mode, onClose, onStageChange, onPromote, onDem
           {contact.notes && (
             <div>
               <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-2">Internal Notes</div>
-              <div className="bg-amber-50 border border-amber-200 p-4 text-sm text-stone-800 leading-relaxed whitespace-pre-wrap">{contact.notes}</div>
+              <div className="bg-amber-50 border border-amber-200 p-4 text-sm text-stone-800 leading-relaxed whitespace-pre-wrap rounded-xl">{contact.notes}</div>
             </div>
           )}
         </div>
@@ -189,9 +183,8 @@ function ContactDrawer({ contact, mode, onClose, onStageChange, onPromote, onDem
 }
 
 export default function ContactsPage() {
-  // mode = "pipeline" | "contacts"
-  const [mode, setMode] = useState("pipeline");
-  const [view, setView] = useState("pipeline"); // for pipeline mode: pipeline (kanban) or list
+  const [tab, setTab] = useState("pipeline");
+  const [view, setView] = useState("pipeline");
   const [stageFilter, setStageFilter] = useState("");
   const [search, setSearch] = useState("");
   const [data, setData] = useState({ items: [], total: 0 });
@@ -202,13 +195,8 @@ export default function ContactsPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const params = { search: search || undefined, limit: 2000 };
-      if (mode === "pipeline") {
-        params.in_pipeline = true;
-        if (stageFilter) params.pipeline_status = stageFilter;
-      } else {
-        params.in_pipeline = false;
-      }
+      const params = { tab, search: search || undefined, limit: 2000 };
+      if (tab === "pipeline" && stageFilter) params.pipeline_status = stageFilter;
       const { data } = await api.get("/contacts", { params });
       setData(data);
     } catch (e) { setError("Could not load contacts."); }
@@ -219,7 +207,7 @@ export default function ContactsPage() {
     const t = setTimeout(load, search ? 250 : 0);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, stageFilter, search]);
+  }, [tab, stageFilter, search]);
 
   const updateStage = async (contactId, newStage) => {
     try {
@@ -230,20 +218,14 @@ export default function ContactsPage() {
   };
 
   const promote = async (contactId) => {
-    try {
-      await api.patch(`/contacts/${contactId}/promote`);
-      setSelected(null);
-      load();
-    } catch (e) { setError("Could not promote contact."); }
+    try { await api.patch(`/contacts/${contactId}/promote`); setSelected(null); load(); }
+    catch (e) { setError("Could not promote contact."); }
   };
 
-  const demote = async (contactId) => {
-    if (!window.confirm("Remove this contact from the sales pipeline? They'll move to General Contacts.")) return;
-    try {
-      await api.patch(`/contacts/${contactId}/demote`);
-      setSelected(null);
-      load();
-    } catch (e) { setError("Could not remove from pipeline."); }
+  const demote = async (contactId, target) => {
+    if (!window.confirm(`Remove from sales pipeline and return to ${target === "franchise" ? "Franchise Contacts" : "General Contacts"}?`)) return;
+    try { await api.patch(`/contacts/${contactId}/demote`); setSelected(null); load(); }
+    catch (e) { setError("Could not demote contact."); }
   };
 
   const remove = async (contactId) => {
@@ -269,19 +251,20 @@ export default function ContactsPage() {
     return s;
   }, [data.items, grouped]);
 
+  const currentTab = TABS.find((t) => t.key === tab);
+  const isPipeline = tab === "pipeline";
+
   return (
     <div className="min-h-screen">
       <div className="h-16 border-b border-stone-200 bg-white flex items-center px-8 sticky top-0 z-10" data-testid="topbar">
         <div className="flex items-baseline gap-3 flex-1">
           <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">CRM</div>
-          <h1 className="font-display text-xl text-stone-950">
-            {mode === "pipeline" ? "Sales Pipeline" : "Contacts"}
-          </h1>
+          <h1 className="font-display text-xl text-stone-950">{currentTab?.label}</h1>
           <span className="text-xs text-stone-500">{data.total.toLocaleString()} records</span>
         </div>
         <div className="flex items-center gap-3">
-          {mode === "pipeline" && (
-            <div className="flex border border-stone-300">
+          {isPipeline && (
+            <div className="flex border border-stone-300 rounded-lg overflow-hidden">
               <button onClick={() => setView("list")} data-testid="view-list" className={`px-3 py-2 text-xs font-bold uppercase tracking-wider transition-colors flex items-center gap-1.5 ${view === "list" ? "bg-stone-950 text-white" : "bg-white text-stone-700 hover:bg-stone-50"}`}>
                 <LayoutList className="w-3 h-3" /> List
               </button>
@@ -294,43 +277,43 @@ export default function ContactsPage() {
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
             <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="contact-search"
               placeholder="Search…"
-              className="pl-9 pr-3 py-2 w-56 bg-stone-50 border border-stone-300 text-sm focus:outline-none focus:border-stone-900" />
+              className="pl-9 pr-3 py-2 w-56 bg-stone-50 border border-stone-300 text-sm focus:outline-none focus:border-stone-900 rounded-lg" />
           </div>
         </div>
       </div>
 
-      {/* Mode tabs */}
       <div className="px-8 pt-6">
-        <div className="flex border-b border-stone-200 -mb-px" data-testid="mode-tabs">
-          {[
-            { key: "pipeline", label: "Sales Pipeline", hint: "Franchise & licence enquiries" },
-            { key: "contacts", label: "Contacts", hint: "General enquiries & legacy" },
-          ].map((tab) => {
-            const active = mode === tab.key;
+        <div className="flex gap-1 -mb-px" data-testid="mode-tabs">
+          {TABS.map((t) => {
+            const active = tab === t.key;
+            const Icon = t.icon;
             return (
-              <button key={tab.key} onClick={() => { setMode(tab.key); setStageFilter(""); }} data-testid={`mode-${tab.key}`}
-                className={`px-5 py-3 text-sm font-bold transition-colors border-b-2 ${
-                  active ? "border-stone-950 text-stone-950" : "border-transparent text-stone-500 hover:text-stone-900"
+              <button key={t.key} onClick={() => { setTab(t.key); setStageFilter(""); }} data-testid={`mode-${t.key}`}
+                className={`px-5 py-3 text-sm font-bold transition-colors rounded-t-xl flex items-start gap-2 ${
+                  active ? "bg-white text-stone-950 border border-stone-200 border-b-white" : "text-stone-500 hover:text-stone-900 hover:bg-stone-100/50"
                 }`}>
-                {tab.label}
-                <div className={`text-[10px] font-normal mt-0.5 ${active ? "text-stone-600" : "text-stone-400"}`}>{tab.hint}</div>
+                <Icon className="w-4 h-4 mt-0.5" />
+                <span className="text-left">
+                  {t.label}
+                  <div className={`text-[10px] font-normal mt-0.5 ${active ? "text-stone-600" : "text-stone-400"}`}>{t.hint}</div>
+                </span>
               </button>
             );
           })}
         </div>
+        <div className="border-b border-stone-200" />
       </div>
 
-      {/* Pipeline summary bar — pipeline mode only */}
-      {mode === "pipeline" && !loading && data.items.length > 0 && (
+      {isPipeline && !loading && data.items.length > 0 && (
         <div className="px-8 pt-6">
-          <div className="grid grid-cols-2 lg:grid-cols-7 gap-px bg-stone-200 border border-stone-200" data-testid="pipeline-summary">
-            <button onClick={() => setStageFilter("")} className={`bg-white p-4 text-left hover:bg-stone-50 ${stageFilter === "" ? "ring-2 ring-stone-950 ring-inset" : ""}`}>
+          <div className="grid grid-cols-2 lg:grid-cols-7 gap-3" data-testid="pipeline-summary">
+            <button onClick={() => setStageFilter("")} className={`bg-white border border-stone-200 rounded-2xl p-4 text-left hover:border-stone-400 transition-colors ${stageFilter === "" ? "ring-2 ring-stone-950" : ""}`}>
               <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Total</div>
               <div className="font-display text-2xl text-stone-950">{stats.total.toLocaleString()}</div>
             </button>
             {STAGES.map((s) => (
               <button key={s.key} onClick={() => setStageFilter(s.key === stageFilter ? "" : s.key)} data-testid={`stat-${s.key}`}
-                className={`bg-white p-4 text-left hover:bg-stone-50 ${stageFilter === s.key ? "ring-2 ring-stone-950 ring-inset" : ""}`}>
+                className={`bg-white border border-stone-200 rounded-2xl p-4 text-left hover:border-stone-400 transition-colors ${stageFilter === s.key ? "ring-2 ring-stone-950" : ""}`}>
                 <div className="flex items-center gap-1.5">
                   <div className={`w-1.5 h-1.5 rounded-full ${s.barColor}`} />
                   <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">{s.label}</div>
@@ -343,33 +326,32 @@ export default function ContactsPage() {
       )}
 
       <div className="p-8 pt-6">
-        {error && <div className="mb-4 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-center gap-2"><AlertCircle className="w-4 h-4" />{error}</div>}
+        {error && <div className="mb-4 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-center gap-2 rounded-xl"><AlertCircle className="w-4 h-4" />{error}</div>}
         {loading ? (
           <div className="text-center text-stone-500 text-sm uppercase tracking-widest p-12 flex items-center justify-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>
-        ) : mode === "pipeline" && view === "pipeline" ? (
-          /* Kanban */
+        ) : isPipeline && view === "pipeline" ? (
           <div className="grid grid-cols-2 lg:grid-cols-6 gap-3" data-testid="pipeline-board">
             {STAGES.map((stage) => {
               const items = grouped[stage.key] || [];
               return (
-                <div key={stage.key} className="bg-white border border-stone-200" data-testid={`pipeline-column-${stage.key}`}>
+                <div key={stage.key} className="bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid={`pipeline-column-${stage.key}`}>
                   <div className={`px-3 py-2.5 border-b border-stone-200 ${stage.color.split(" ")[0]}`}>
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-900">{stage.label}</span>
                       <span className="text-xs text-stone-700 font-bold">{items.length}</span>
                     </div>
                   </div>
-                  <div className="p-2 space-y-1.5 max-h-[calc(100vh-18rem)] overflow-y-auto">
+                  <div className="p-2 space-y-1.5 max-h-[calc(100vh-22rem)] overflow-y-auto">
                     {items.slice(0, 100).map((c) => {
                       const age = daysSince(c.date || c.date_added);
                       const isHot = c.potential && /yes|hot|high/i.test(String(c.potential));
                       return (
                         <div key={c.id} onClick={() => setSelected(c)}
-                          className={`bg-white border p-2.5 hover:border-stone-500 cursor-pointer text-xs ${isHot ? "border-[#D4FF00]" : "border-stone-200"}`}
+                          className={`bg-white border rounded-xl p-2.5 hover:border-stone-500 cursor-pointer text-xs ${isHot ? "border-[#D4FF00]" : "border-stone-200"}`}
                           data-testid={`pipeline-card-${c.id}`}>
                           <div className="flex items-start justify-between gap-2">
                             <div className="font-semibold text-stone-950 truncate flex-1">{[c.first_name, c.last_name].filter(Boolean).join(" ") || "Unnamed"}</div>
-                            {isHot && <span className="text-[9px] font-bold uppercase tracking-wider bg-[#D4FF00] text-stone-950 px-1">Hot</span>}
+                            {isHot && <span className="text-[9px] font-bold uppercase tracking-wider bg-[#D4FF00] text-stone-950 px-1 rounded">Hot</span>}
                           </div>
                           {c.establishment_name && <div className="text-stone-600 truncate mt-0.5">{c.establishment_name}</div>}
                           <div className="flex items-center justify-between mt-1.5 text-[10px]">
@@ -387,8 +369,7 @@ export default function ContactsPage() {
             })}
           </div>
         ) : (
-          /* List view (used by both Pipeline-list and Contacts mode) */
-          <div className="bg-white border border-stone-200 overflow-hidden" data-testid="contacts-table">
+          <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid="contacts-table">
             <table className="w-full">
               <thead className="bg-[#F2F2F0] border-b border-stone-200">
                 <tr>
@@ -397,15 +378,15 @@ export default function ContactsPage() {
                   <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Contact</th>
                   <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-32">Location</th>
                   <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-28">Source</th>
-                  {mode === "pipeline" && <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-32">Stage</th>}
-                  <th className="text-right px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-24">Actions</th>
+                  {isPipeline && <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-32">Stage</th>}
+                  <th className="text-right px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-28">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {data.items.length === 0 ? (
-                  <tr><td colSpan={mode === "pipeline" ? 7 : 6} className="px-3 py-10 text-center text-sm text-stone-500">No {mode === "pipeline" ? "enquiries" : "contacts"}.</td></tr>
+                  <tr><td colSpan={isPipeline ? 7 : 6} className="px-3 py-10 text-center text-sm text-stone-500">No records.</td></tr>
                 ) : data.items.slice(0, 500).map((c) => (
-                  <tr key={c.id} onClick={() => setSelected(c)} className="border-b border-stone-100 hover:bg-stone-50 cursor-pointer" data-testid={`contact-row-${c.id}`}>
+                  <tr key={c.id} onClick={() => setSelected(c)} className="border-b border-stone-100 last:border-0 hover:bg-stone-50 cursor-pointer" data-testid={`contact-row-${c.id}`}>
                     <td className="px-3 py-2 text-xs text-stone-500">{(c.date || c.date_added) ? String(c.date || c.date_added).slice(0, 10) : "—"}</td>
                     <td className="px-3 py-2">
                       <div className="text-sm text-stone-950 font-semibold">{[c.first_name, c.last_name].filter(Boolean).join(" ") || "(no name)"}</div>
@@ -417,9 +398,9 @@ export default function ContactsPage() {
                     </td>
                     <td className="px-3 py-2 text-xs text-stone-700">{[c.city, c.postcode].filter(Boolean).join(" · ") || "—"}</td>
                     <td className="px-3 py-2 text-xs text-stone-700">{sourceLabel(c.source)}</td>
-                    {mode === "pipeline" && <td className="px-3 py-2"><StageBadge status={c.pipeline_status} /></td>}
+                    {isPipeline && <td className="px-3 py-2"><StageBadge status={c.pipeline_status} /></td>}
                     <td className="px-3 py-2 text-right">
-                      {mode === "contacts" ? (
+                      {!isPipeline ? (
                         <button onClick={(e) => { e.stopPropagation(); promote(c.id); }} data-testid={`row-promote-${c.id}`}
                           className="text-xs font-bold uppercase tracking-wider text-emerald-700 hover:text-emerald-900 flex items-center gap-1 ml-auto">
                           <ArrowUpCircle className="w-3 h-3" /> Promote
@@ -439,8 +420,10 @@ export default function ContactsPage() {
         )}
       </div>
 
-      <ContactDrawer contact={selected} mode={mode} onClose={() => setSelected(null)}
-        onStageChange={updateStage} onPromote={promote} onDemote={demote} onDelete={remove} />
+      <ContactDrawer contact={selected} onClose={() => setSelected(null)}
+        onStageChange={updateStage} onPromote={promote}
+        onDemote={(id) => demote(id, selected?.source?.includes("franchise") || selected?.source?.includes("licence") ? "franchise" : "general")}
+        onDelete={remove} />
     </div>
   );
 }
