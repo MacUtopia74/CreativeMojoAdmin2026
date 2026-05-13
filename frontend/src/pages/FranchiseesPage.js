@@ -158,9 +158,9 @@ export default function FranchiseesPage() {
                     <tr key={f.id} className="border-b border-stone-100 hover:bg-stone-50 transition-colors" data-testid={`franchisee-row-${f.id}`}>
                       <td className="px-3 py-2">
                         {photo ? (
-                          <img src={photo} alt="" className="w-9 h-9 object-cover" />
+                          <img src={photo} alt="" className="w-11 h-11 object-cover" />
                         ) : (
-                          <div className="w-9 h-9 bg-stone-100 flex items-center justify-center text-[10px] font-bold text-stone-400">
+                          <div className="w-11 h-11 bg-stone-100 flex items-center justify-center text-xs font-bold text-stone-400">
                             {(f.first_name?.[0] || "?") + (f.last_name?.[0] || "")}
                           </div>
                         )}

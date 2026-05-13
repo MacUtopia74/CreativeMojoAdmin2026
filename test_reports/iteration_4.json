@@ -1,0 +1,45 @@
+{
+  "summary": "Phase 1 WordPress plugin intake + UX iteration tested end-to-end. Backend: 53/53 pytest tests pass (40 pre-existing regression + 13 new intake tests covering token auth, form_id→source mapping for 1/17/32/unknown, fuzzy/case-insensitive field mapping, persistence, GET /intake/config, /intake/recent ordering and admin-only, /intake/download-plugin zip validation). Frontend (Playwright on public URL): Sidebar 'Form Intake' nav item correctly positioned between Enquiries and Airtable Inspector; /form-intake page renders all 10 testids (panel-intro/credentials/install/recent, endpoint-url-input, intake-token-input, copy-endpoint, copy-token, toggle-token-visibility, download-plugin-button); 3 form-mapping cards present; endpoint URL populated with /api/intake/gravity-forms; token initially masked (type=password) → toggle reveals correct token value (type=text); 6-step install guide; recent submissions table renders rows from backend tests; plugin download returns 4501-byte zip with correct content-type and Content-Disposition; Franchisees thumbnails verified as w-11 h-11 (44px) — no w-9/h-9 found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/intake/config", "issue": "endpoint_url is built from FRONTEND_URL env var, not from request host. Works because preview ingress routes /api to backend, but if the admin UI is ever served from a different host than the WordPress endpoint, the value will be wrong. Consider using request.url.scheme + host or making it a separate INTAKE_PUBLIC_URL env."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase1_intake.py",
+    "/app/test_reports/pytest/phase1_intake.xml",
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_phase1_crm.py",
+    "/app/backend/tests/test_phase1_ux.py"
+  ],
+  "action_items": [
+    "(Optional, low priority) Document endpoint_url source in /api/intake/config so admins know it follows FRONTEND_URL, or compute from request host for robustness.",
+    "(Cosmetic, carried over from iter 3) Add data-testid='panel-status' to franchisee hero card."
+  ],
+  "critical_code_review_comments": [
+    "server.py is now ~939 lines — well over the 700-line guideline. Strongly recommend splitting into auth.py, airtable.py, intake.py, dashboard.py, crm.py modules.",
+    "_pick() fuzzy matcher uses substring containment ('c_lower in k or k in c_lower') which is order-dependent on dict iteration and can cause unintended matches (e.g. 'Email' candidate could partially match 'Mobile Email Address' if such a field existed). Consider exact-match first pass over ALL candidates before falling back to substring.",
+    "/api/intake/download-plugin reads plugin files synchronously inside an async handler — fine for tiny files but should ideally use aiofiles or run_in_executor.",
+    "INTAKE_TOKEN is checked but no rate-limiting or replay protection on /api/intake/gravity-forms; consider light per-IP throttling and an idempotency check on gravity_entry_id to prevent duplicate inserts on retry.",
+    "Carried over: /api/contacts capped at limit=2000 with no skip; anniversaries N+1 lookups; dashboard could use asyncio.gather."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase1_intake.py (new — 13 tests)"
+  ],
+  "success_rate": {
+    "backend": "100% (53/53 — 13 new intake tests + 40 regression: backend_test 17, test_phase1_crm 16, test_phase1_ux 7; migration runner test deselected to avoid 60s reload)",
+    "frontend": "100% on all critical flows for this iteration"
+  },
+  "test_credentials": "admin@creativemojo.co.uk / CreativeMojo2026! (from /app/memory/test_credentials.md); INTAKE_TOKEN=cm_intake_8f4a3c8b9e2d7f1a5c8b9e2d7f1a5c8b",
+  "seed_data_creation": "Created 6 web_form_contacts records with gravity_entry_id starting 'TEST-' during intake tests. Cleanup teardown in test_phase1_intake.py removes them (deletes any gravity_entry_id ~/^TEST-/). After the final test run the cleanup ran, so no residual TEST_ data should remain.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend test suite is now 4 files: backend_test.py (17), test_phase1_crm.py (16+2 deselected), test_phase1_ux.py (7), test_phase1_intake.py (13) — 53 total run. INTAKE_TOKEN env var must be present in /app/backend/.env. Intake endpoint is at /api/intake/gravity-forms and is the ONLY intake endpoint that does NOT require admin cookies — it auths via X-Intake-Token header. /api/intake/config, /api/intake/recent, /api/intake/download-plugin all require admin auth. Frontend testids for FormIntakePage: nav-form-intake, panel-intro, panel-credentials, panel-install, panel-recent, endpoint-url-input, intake-token-input, copy-endpoint, copy-token, toggle-token-visibility, download-plugin-button, recent-table. Default token input type=password; toggle-token-visibility switches to text. Franchisees thumbnails confirmed at w-11 h-11.",
+  "rca of the issue": "No bugs found. All requested behaviour is implemented correctly."
+}

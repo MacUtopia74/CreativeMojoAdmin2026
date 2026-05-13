@@ -7,6 +7,7 @@ import {
   Contact,
   Database,
   ClipboardList,
+  Inbox,
   LogOut,
 } from "lucide-react";
 
@@ -14,7 +15,8 @@ const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, testid: "nav-dashboard" },
   { to: "/franchisees", label: "Franchisees", icon: Users, testid: "nav-franchisees" },
   { to: "/contracts", label: "Contracts", icon: FileText, testid: "nav-contracts" },
-  { to: "/contacts", label: "Contacts", icon: Contact, testid: "nav-contacts" },
+  { to: "/contacts", label: "Enquiries", icon: Contact, testid: "nav-contacts" },
+  { to: "/form-intake", label: "Form Intake", icon: Inbox, testid: "nav-form-intake" },
   { to: "/airtable-inspector", label: "Airtable Inspector", icon: Database, testid: "nav-airtable-inspector" },
   { to: "/migration-plan", label: "Migration Plan", icon: ClipboardList, testid: "nav-migration-plan" },
 ];

@@ -11,6 +11,7 @@ import FranchiseesPage from "@/pages/FranchiseesPage";
 import FranchiseeDetailPage from "@/pages/FranchiseeDetailPage";
 import ContractsPage from "@/pages/ContractsPage";
 import ContactsPage from "@/pages/ContactsPage";
+import FormIntakePage from "@/pages/FormIntakePage";
 
 export default function App() {
   return (
@@ -31,6 +32,7 @@ export default function App() {
               <Route path="/franchisees/:id" element={<FranchiseeDetailPage />} />
               <Route path="/contracts" element={<ContractsPage />} />
               <Route path="/contacts" element={<ContactsPage />} />
+              <Route path="/form-intake" element={<FormIntakePage />} />
               <Route path="/airtable-inspector" element={<AirtableInspectorPage />} />
               <Route path="/migration-plan" element={<MigrationPlanPage />} />
             </Route>

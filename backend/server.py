@@ -29,6 +29,7 @@ REFRESH_TOKEN_DAYS = 7
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 AIRTABLE_PAT = os.environ.get("AIRTABLE_PAT", "")
 AIRTABLE_BASE_ID = os.environ.get("AIRTABLE_BASE_ID", "")
+INTAKE_TOKEN = os.environ.get("INTAKE_TOKEN", "")
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
@@ -438,6 +439,133 @@ async def migration_plan(_: dict = Depends(require_role("admin"))):
             "fields": per_field,
         })
     return {"totals": totals, "tables": plan}
+
+
+# ----------------------------------------------------------------------------
+# Form Intake (Gravity Forms via WordPress plugin)
+# ----------------------------------------------------------------------------
+FORM_ID_TO_SOURCE = {
+    1: "general_enquiry",       # general contact form
+    17: "franchise_enquiry",    # franchise enquiry form
+    32: "licence_enquiry",      # licence enquiry form
+}
+
+
+def _pick(fields_by_label: dict, *candidates: str) -> Optional[str]:
+    """Find a field value by trying multiple label variants (case-insensitive, partial match)."""
+    if not fields_by_label:
+        return None
+    lower_map = {k.lower(): v for k, v in fields_by_label.items() if v not in (None, "")}
+    for c in candidates:
+        c_lower = c.lower()
+        if c_lower in lower_map:
+            return lower_map[c_lower]
+        # Partial match
+        for k, v in lower_map.items():
+            if c_lower in k or k in c_lower:
+                return v
+    return None
+
+
+class GravityFormsIntake(BaseModel):
+    form_id: int
+    form_title: Optional[str] = None
+    entry_id: Optional[str] = None
+    date: Optional[str] = None
+    fields: dict  # label → value
+    raw: Optional[dict] = None
+
+
+@api.post("/intake/gravity-forms")
+async def gravity_forms_intake(payload: GravityFormsIntake, request: Request):
+    # Authenticate via X-Intake-Token header
+    token = request.headers.get("X-Intake-Token") or request.headers.get("x-intake-token")
+    if not INTAKE_TOKEN or token != INTAKE_TOKEN:
+        raise HTTPException(status_code=401, detail="Invalid or missing intake token")
+
+    source = FORM_ID_TO_SOURCE.get(payload.form_id, f"form_{payload.form_id}")
+    f = payload.fields or {}
+
+    doc = {
+        "id": str(uuid.uuid4()),
+        "airtable_id": None,
+        "source": source,
+        "form_id": payload.form_id,
+        "form_title": payload.form_title,
+        "gravity_entry_id": payload.entry_id,
+        "date": payload.date or datetime.now(timezone.utc).isoformat(),
+        "first_name": _pick(f, "First Name", "first_name", "fname", "First"),
+        "last_name": _pick(f, "Last Name", "last_name", "lname", "Last", "Surname"),
+        "email": _pick(f, "Email", "Email Address", "email", "email_address"),
+        "telephone": _pick(f, "Telephone", "Phone", "Telephone Number", "Mobile", "Phone Number"),
+        "mobile_phone": _pick(f, "Mobile", "Mobile Phone", "Mobile Number"),
+        "establishment_name": _pick(f, "Name of establishment", "Establishment", "Company", "Organisation"),
+        "address_street": _pick(f, "1st Line of Address", "Address", "Street"),
+        "city": _pick(f, "City/Town", "City", "Town"),
+        "county": _pick(f, "County", "Region"),
+        "postcode": _pick(f, "Postcode", "Postal Code", "Zip"),
+        "why_contacting": _pick(f, "Why you are contacting us", "Subject", "Reason"),
+        "message": _pick(f, "Your Message", "Message", "Comments", "Notes"),
+        "country_tag": _pick(f, "Country"),
+        "raw_fields": f,
+        "pipeline_status": "new",
+        "received_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.web_form_contacts.insert_one(doc)
+    logger.info(f"Intake: form_id={payload.form_id} source={source} entry={payload.entry_id} from {request.client.host if request.client else '?'}")
+    return {"ok": True, "id": doc["id"], "source": source}
+
+
+@api.get("/intake/config")
+async def intake_config(_: dict = Depends(require_role("admin"))):
+    """Returns the intake endpoint URL + token for the WordPress plugin setup."""
+    backend_url = FRONTEND_URL  # same host
+    return {
+        "endpoint_url": f"{backend_url}/api/intake/gravity-forms",
+        "intake_token": INTAKE_TOKEN,
+        "form_mapping": [
+            {"form_id": 1, "name": "Contact Form (General)", "source_tag": "general_enquiry"},
+            {"form_id": 17, "name": "Franchise Enquiry Contact Form", "source_tag": "franchise_enquiry"},
+            {"form_id": 32, "name": "Licence Enquiry Contact Form", "source_tag": "licence_enquiry"},
+        ],
+    }
+
+
+@api.get("/intake/recent")
+async def intake_recent(limit: int = Query(20, le=100), _: dict = Depends(require_role("admin"))):
+    """Returns the most recent web-form submissions for the setup/health page."""
+    items = await db.web_form_contacts.find(
+        {"form_id": {"$exists": True}}, {"_id": 0},
+    ).sort("received_at", -1).limit(limit).to_list(limit)
+    return {"items": items, "count": len(items)}
+
+
+@api.get("/intake/download-plugin")
+async def download_plugin(_: dict = Depends(require_role("admin"))):
+    """Build the WordPress plugin zip on-the-fly and return it."""
+    import io, zipfile
+    from fastapi.responses import StreamingResponse
+
+    plugin_dir = "creative-mojo-intake"
+    php_path = "/app/wordpress-plugin/creative-mojo-intake/creative-mojo-intake.php"
+    readme_path = "/app/wordpress-plugin/creative-mojo-intake/readme.txt"
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for src, name in [(php_path, f"{plugin_dir}/creative-mojo-intake.php"), (readme_path, f"{plugin_dir}/readme.txt")]:
+            try:
+                with open(src) as fh:
+                    zf.writestr(name, fh.read())
+            except FileNotFoundError:
+                raise HTTPException(status_code=500, detail=f"Plugin file missing: {src}")
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": "attachment; filename=creative-mojo-intake.zip"},
+    )
 
 
 # ----------------------------------------------------------------------------
