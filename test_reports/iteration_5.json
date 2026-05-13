@@ -1,0 +1,50 @@
+{
+  "summary": "Phase 1 iteration: in_pipeline flag + Promote/Demote/Delete on contacts + 'Sales & Contacts' UI tabs + franchisee thumbs w-14 verified end-to-end. Backend: created /app/backend/tests/test_phase1_pipeline.py with 19 new tests — all 19 PASS. Full regression: 71/72 passing (1 pre-existing flaky brute-force lockout test unrelated to this iteration's changes). New tests cover startup backfill (1674 in_pipeline=true), form_id→in_pipeline mapping (1→false, 17/32→true), /api/contacts filters (in_pipeline true/false, source=general_enquiry/licence_enquiry, no-filter union), PATCH /promote (web + legacy paths, 404, promoted_from_legacy=true with _source_collection=web_form_contacts post-move), PATCH /demote (success + 404), DELETE on web/legacy/missing, and implicit promote behaviour on PATCH /pipeline. Frontend Playwright (public URL): /contacts page shows mode-tabs with 'Sales Pipeline' (default) + 'Contacts'; default loads pipeline-summary tiles + stat-{stage}; Contacts tab hides summary, shows 500 row-promote-{id} buttons; clicking a row opens contact-drawer with drawer-delete (top right); non-pipeline drawer correctly shows drawer-promote and no drawer-demote; pipeline drawer correctly shows 6 drawer-stage-* buttons + drawer-demote and no drawer-promote; sidebar nav label is 'Sales & Contacts'; Franchisees thumbnails confirmed at w-14 h-14 (27 instances, 0 w-11, 0 w-9).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/migration/run", "issue": "Migration re-imports web_form_contacts WITHOUT setting in_pipeline=true. After a manual /api/migration/run, the in_pipeline flag is missing on all 1674 records, so the Sales Pipeline tab and ?in_pipeline=true filter return empty until the backend is restarted (startup-only backfill repopulates the flag). Fix: in migration.py around line 234 (coll_name == 'web_form_contacts' branch) also set doc['in_pipeline'] = True so this initialises in the same insert."},
+      {"endpoint": "POST /api/auth/login (TestBruteForceLockout)", "issue": "Pre-existing flaky test — 6th attempt sometimes returns 401 instead of 429. Reproducible across separate test runs in this session. Not caused by this iteration's changes. Likely the rate-limit counter is reset between connections or backend restart wipes in-memory lock state; consider reviewing the lockout key/cache durability."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase1_pipeline.py",
+    "/app/test_reports/pytest/phase1_pipeline.xml",
+    "/app/test_reports/pytest/full_suite.xml",
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_phase1_crm.py",
+    "/app/backend/tests/test_phase1_intake.py",
+    "/app/backend/tests/test_phase1_ux.py"
+  ],
+  "action_items": [
+    "(Recommended) In /app/backend/migration.py around line 234, set doc['in_pipeline'] = True (and doc['pipeline_status'] = 'new'/derived) inside the web_form_contacts branch so that /api/migration/run alone fully initialises pipeline state without requiring backend restart for the startup backfill to repopulate the flag.",
+    "(Optional, pre-existing) Investigate flaky brute-force lockout test — confirm whether rate-limit state should survive backend restart or whether the test should be skipped when prior state is unknown.",
+    "(Carried over) server.py is now ~1031 lines — well past the 700-line guideline; please split into focused modules.",
+    "(Carried over) Consider per-IP throttling and idempotency on /api/intake/gravity-forms (entry_id de-dup)."
+  ],
+  "critical_code_review_comments": [
+    "migration.py does not propagate the new in_pipeline boolean — see action item above. This is a real correctness bug for the 'Re-run Migration' admin button.",
+    "promote_contact for legacy uses find_one then insert + delete — not atomic. If insert succeeds and delete fails (or vice-versa) the record could be duplicated or lost. Wrap in a transaction or use a single update with $rename-style move, or at least delete-then-insert with try/except rollback.",
+    "DELETE /api/contacts/{id} silently tries both collections — fine, but consider returning which collection was hit for observability/audit.",
+    "ContactsPage.js (~447 lines) bundles drawer + list + kanban + summary tiles + mode tabs. Worth splitting into ContactDrawer.js, PipelineSummary.js, ContactsListTab.js for maintainability.",
+    "Backfill in startup matches by form_id OR source; that's good but the third update_many (line 962-967) sets in_pipeline=True on ALL pre-migration records with no flag — which is correct for Airtable-imported web_form_contacts but would also flip a hypothetical form_id=1 record that somehow lacks form_id metadata. Low risk today."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase1_pipeline.py (NEW — 19 tests with module-scoped data-restore teardown that calls /api/migration/run)"
+  ],
+  "success_rate": {
+    "backend": "71/72 = 98.6% (only pre-existing flaky brute-force lockout fails; 19/19 new pipeline tests pass; full suite covers 72 tests with 2 deselected (TestMigrationRun) to keep startup backfill intact)",
+    "frontend": "100% — all 8 required UI assertions pass (nav label, mode tabs, default pipeline-summary, Contacts hides summary, row-promote buttons, contact-drawer, drawer-delete, drawer-promote/demote conditional, drawer-stage-* buttons, w-14 thumbnails)"
+  },
+  "test_credentials": "admin@creativemojo.co.uk / CreativeMojo2026! (from /app/memory/test_credentials.md); INTAKE_TOKEN=cm_intake_8f4a3c8b9e2d7f1a5c8b9e2d7f1a5c8b",
+  "seed_data_creation": "test_phase1_pipeline.py creates 4 web_form_contacts records with gravity_entry_id starting 'TEST-pipe-' (one per form_id 1/17/32 + one for implicit-promote test). Module-scoped teardown deletes them and ALSO re-runs /api/migration/run to restore legacy/web_form counts after promote_legacy/delete_legacy mutations. After the final test run, all data is back to 5958 legacy + 1674 web_form (verified via dashboard stats).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend test suite is now 5 files: backend_test.py (17), test_phase1_crm.py (16 + 2 deselected TestMigrationRun), test_phase1_intake.py (13), test_phase1_pipeline.py (19), test_phase1_ux.py (7) = 72 total. Run with: `python -m pytest backend/tests/ --deselect backend/tests/test_phase1_crm.py::TestMigrationRun` and REACT_APP_BACKEND_URL must be exported. test_phase1_pipeline.py has a module-scoped autouse fixture that re-runs /api/migration/run after the module so downstream UX/dashboard count tests still see 5958+1674. IMPORTANT: if a future testing agent runs /api/migration/run manually they must restart the backend to re-trigger the startup in_pipeline backfill (this is the bug flagged in backend_issues.minor[0]). Frontend testids verified: nav-contacts (label 'Sales & Contacts'), mode-tabs, mode-pipeline, mode-contacts, pipeline-summary, stat-{stage}, row-promote-{id}, contact-drawer, drawer-close, drawer-delete, drawer-stage-{stage}, drawer-demote, drawer-promote. Default mode=pipeline. Non-pipeline contact drawers show promote (yellow), pipeline ones show stage buttons + demote.",
+  "rca of the issue": "No bug fix requested in this iteration; one regression-class bug discovered: /api/migration/run does not initialise in_pipeline=True on imported web_form_contacts (only the startup hook does), so 'Re-Run Migration' admin button silently empties the Sales Pipeline until a backend restart. Mitigation: add `doc['in_pipeline'] = True` in /app/backend/migration.py inside the `web_form_contacts` branch (around line 234), alongside the existing pipeline_status assignment. Reproduction: POST /api/migration/run → GET /api/contacts?in_pipeline=true → returns 0 items until supervisor restart of backend."
+}

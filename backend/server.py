@@ -450,6 +450,9 @@ FORM_ID_TO_SOURCE = {
     32: "licence_enquiry",      # licence enquiry form
 }
 
+# Form IDs that should go into the active sales pipeline by default
+FORM_IDS_IN_PIPELINE = {17, 32}
+
 
 def _pick(fields_by_label: dict, *candidates: str) -> Optional[str]:
     """Find a field value by trying multiple label variants (case-insensitive, partial match)."""
@@ -486,6 +489,8 @@ async def gravity_forms_intake(payload: GravityFormsIntake, request: Request):
     source = FORM_ID_TO_SOURCE.get(payload.form_id, f"form_{payload.form_id}")
     f = payload.fields or {}
 
+    in_pipeline = payload.form_id in FORM_IDS_IN_PIPELINE
+
     doc = {
         "id": str(uuid.uuid4()),
         "airtable_id": None,
@@ -508,7 +513,8 @@ async def gravity_forms_intake(payload: GravityFormsIntake, request: Request):
         "message": _pick(f, "Your Message", "Message", "Comments", "Notes"),
         "country_tag": _pick(f, "Country"),
         "raw_fields": f,
-        "pipeline_status": "new",
+        "in_pipeline": in_pipeline,
+        "pipeline_status": "new" if in_pipeline else None,
         "received_at": datetime.now(timezone.utc).isoformat(),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -727,6 +733,7 @@ async def get_contract(contract_id: str, _: dict = Depends(require_role("admin")
 async def list_contacts(
     source: Optional[str] = None,
     pipeline_status: Optional[str] = None,
+    in_pipeline: Optional[bool] = None,
     search: Optional[str] = None,
     limit: int = Query(500, le=2000),
     _: dict = Depends(require_role("admin")),
@@ -736,19 +743,37 @@ async def list_contacts(
     q_web = {}
     if source:
         if source == "legacy_general_enquiry":
-            q_web = None  # exclude
+            q_web = None
         elif source == "franchise_enquiry":
             q_legacy = None
+            q_web["source"] = "franchise_enquiry"
+        elif source == "licence_enquiry":
+            q_legacy = None
+            q_web["source"] = "licence_enquiry"
+        elif source == "general_enquiry":
+            q_legacy = None
+            q_web["source"] = "general_enquiry"
+    if in_pipeline is True:
+        q_legacy = None  # legacy is never in pipeline by default
+        if q_web is not None:
+            q_web["in_pipeline"] = True
+    elif in_pipeline is False:
+        if q_web is not None:
+            q_web["$or"] = [{"in_pipeline": {"$ne": True}}, {"in_pipeline": {"$exists": False}}]
     if pipeline_status:
         if q_legacy is not None: q_legacy["pipeline_status"] = pipeline_status
         if q_web is not None: q_web["pipeline_status"] = pipeline_status
     if search:
         rx = {"$regex": search, "$options": "i"}
         sf = [{"first_name": rx}, {"last_name": rx}, {"email": rx}, {"postcode": rx}, {"city": rx}]
-        if q_legacy is not None: q_legacy["$or"] = sf
+        if q_legacy is not None:
+            existing = q_legacy.pop("$or", None)
+            q_legacy["$and"] = [{"$or": sf}] + ([{"$or": existing}] if existing else [])
         if q_web is not None:
-            q_web["$or"] = [{"first_name": rx}, {"last_name": rx}, {"postcode": rx}, {"city": rx},
-                            {"establishment_name": rx}, {"telephone": rx}]
+            wf = [{"first_name": rx}, {"last_name": rx}, {"postcode": rx}, {"city": rx},
+                  {"establishment_name": rx}, {"telephone": rx}, {"email": rx}]
+            existing = q_web.pop("$or", None)
+            q_web["$and"] = [{"$or": wf}] + ([{"$or": existing}] if existing else [])
 
     items = []
     if q_legacy is not None:
@@ -757,7 +782,6 @@ async def list_contacts(
     if q_web is not None:
         web = await db.web_form_contacts.find(q_web, {"_id": 0}).limit(limit).to_list(limit)
         items.extend(web)
-    # Sort by date desc (handling missing dates)
     items.sort(key=lambda x: x.get("date") or x.get("date_added") or "", reverse=True)
     return {"items": items[:limit], "total": len(items)}
 
@@ -785,10 +809,9 @@ PIPELINE_STAGES = ["new", "contacted", "qualified", "demo_booked", "converted", 
 async def update_pipeline(contact_id: str, body: PipelineUpdateRequest, _: dict = Depends(require_role("admin"))):
     if body.pipeline_status not in PIPELINE_STAGES:
         raise HTTPException(status_code=400, detail=f"Status must be one of {PIPELINE_STAGES}")
-    # Try web form first (most likely target for pipeline updates), then legacy
     r = await db.web_form_contacts.update_one(
         {"id": contact_id},
-        {"$set": {"pipeline_status": body.pipeline_status, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        {"$set": {"pipeline_status": body.pipeline_status, "in_pipeline": True, "updated_at": datetime.now(timezone.utc).isoformat()}},
     )
     if r.matched_count == 0:
         r = await db.contacts.update_one(
@@ -798,6 +821,53 @@ async def update_pipeline(contact_id: str, body: PipelineUpdateRequest, _: dict 
     if r.matched_count == 0:
         raise HTTPException(status_code=404, detail="Contact not found")
     return {"ok": True, "pipeline_status": body.pipeline_status}
+
+
+@api.patch("/contacts/{contact_id}/promote")
+async def promote_contact(contact_id: str, _: dict = Depends(require_role("admin"))):
+    """Move a general contact into the active sales pipeline."""
+    now = datetime.now(timezone.utc).isoformat()
+    # Try web_form_contacts first (general enquiries from form 1)
+    r = await db.web_form_contacts.update_one(
+        {"id": contact_id},
+        {"$set": {"in_pipeline": True, "pipeline_status": "new", "updated_at": now}},
+    )
+    if r.matched_count == 0:
+        # Legacy contact: copy into web_form_contacts so it shows up in the pipeline
+        legacy = await db.contacts.find_one({"id": contact_id}, {"_id": 0})
+        if not legacy:
+            raise HTTPException(status_code=404, detail="Contact not found")
+        legacy["in_pipeline"] = True
+        legacy["pipeline_status"] = "new"
+        legacy["promoted_from_legacy"] = True
+        legacy["updated_at"] = now
+        await db.web_form_contacts.insert_one(legacy)
+        await db.contacts.delete_one({"id": contact_id})
+    return {"ok": True, "in_pipeline": True, "pipeline_status": "new"}
+
+
+@api.patch("/contacts/{contact_id}/demote")
+async def demote_contact(contact_id: str, _: dict = Depends(require_role("admin"))):
+    """Remove a contact from the active sales pipeline."""
+    now = datetime.now(timezone.utc).isoformat()
+    r = await db.web_form_contacts.update_one(
+        {"id": contact_id},
+        {"$set": {"in_pipeline": False, "pipeline_status": None, "updated_at": now}},
+    )
+    if r.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    return {"ok": True, "in_pipeline": False}
+
+
+@api.delete("/contacts/{contact_id}")
+async def delete_contact(contact_id: str, _: dict = Depends(require_role("admin"))):
+    """Permanently delete a contact from either collection."""
+    r = await db.web_form_contacts.delete_one({"id": contact_id})
+    if r.deleted_count == 0:
+        r = await db.contacts.delete_one({"id": contact_id})
+    if r.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    return {"ok": True}
 
 
 # ----------------------------------------------------------------------------
@@ -875,7 +945,29 @@ async def on_startup():
         )
         logger.info(f"Updated admin password for {admin_email}")
 
-    # Seed agreed-upon table-level migration decisions (idempotent)
+    # Backfill in_pipeline flag on existing web_form_contacts
+    # Franchise (17) + Licence (32) → in_pipeline = True (sales pipeline)
+    # General (1) and others → in_pipeline = False (just contacts)
+    try:
+        # Franchise + licence enquiries → in pipeline
+        await db.web_form_contacts.update_many(
+            {"$or": [{"form_id": {"$in": [17, 32]}}, {"source": {"$in": ["franchise_enquiry", "licence_enquiry"]}}], "in_pipeline": {"$exists": False}},
+            {"$set": {"in_pipeline": True}},
+        )
+        # General enquiries → not in pipeline
+        await db.web_form_contacts.update_many(
+            {"$or": [{"form_id": 1}, {"source": "general_enquiry"}], "in_pipeline": {"$exists": False}},
+            {"$set": {"in_pipeline": False, "pipeline_status": None}},
+        )
+        # Pre-migration records (from Airtable web_form_contacts) — default to in_pipeline=True
+        # because they came from the existing franchise enquiry form historically
+        await db.web_form_contacts.update_many(
+            {"in_pipeline": {"$exists": False}},
+            {"$set": {"in_pipeline": True}},
+        )
+        logger.info("Backfilled in_pipeline flag on contacts")
+    except Exception as e:
+        logger.warning(f"in_pipeline backfill failed: {e}")
     presets = {
         # migrate
         "Franchisees/Licencees": (True, "Core franchise records — migrate all relevant fields."),
