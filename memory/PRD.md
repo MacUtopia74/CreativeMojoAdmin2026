@@ -29,28 +29,29 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
 
 ## What's Implemented (2026-05-13)
 
-### Phase 1 — Iteration 1
-- Admin auth (bcrypt + JWT httpOnly cookies + brute-force protection)
-- Airtable Inspector (browse all 14 tables, view fields with type badges, count records, sample 10 rows)
-
-### Phase 1 — Iteration 2 (Migration + CRM)
-- **MIGRATION COMPLETE:** Airtable → MongoDB
-  - 88 franchisees
-  - 134 contracts (linked back to franchisees)
-  - 5,958 legacy contacts (tagged `legacy_general_enquiry`)
-  - 1,674 web form contacts (tagged `franchise_enquiry`)
-  - 2,470 territory postcodes (linked to franchisees)
-- Decision-capture workflow: per-table migrate/skip + per-field keep/drop/rename/merge with optional notes. Decisions persist in MongoDB. Migration Plan page exports JSON or Markdown.
-- 78 fields kept, 1 renamed (1st Anniversary Date → anniversary_reminder), 1 merged (Contacts dedup), 120 dropped.
-- **Franchisees:** list page (sortable, searchable) + detail page (photo, contact details, address, tags, linked contracts, full territory postcode list)
-- **Contracts:** list page (134 records, linked to franchisees, search by name/email, status badges)
-- **Contacts:** list page with source filter (Franchise enquiries vs Legacy general) + **simple sales pipeline kanban view** (Phase 1.6 — 6 columns: New / Contacted / Qualified / Demo Booked / Converted / Lost) with one-click stage changes
-- **Anniversary reminders:** /api/anniversaries/today returns franchisees with contract anniversaries falling today — scaffolded for automated emails (Phase 1.5b)
-- **Dashboard:** real KPIs (88/134/7,632/2,470), Run Migration button (idempotent), anniversaries today card, phase build status
+### Phase 1 — Iteration 6 (2026-05-13)
+- **Franchisee photo caching**: Airtable signed photo URLs expire ~2hrs after issue, so migration now downloads each photo to `/app/backend/uploads/franchisees/<id>.<ext>` and rewrites `photos[0].url` to `/api/uploads/franchisees/<id>.<ext>`. FastAPI mounts the uploads directory as static under `/api/uploads`. New `POST /api/franchisees/refresh-photos` endpoint re-fetches Airtable attachment URLs without a full migration (useful when URLs expire between runs).
+- **Contact Move (per-row + bulk)**: new endpoints `POST /api/contacts/{id}/move` and `POST /api/contacts/bulk-move` accept `{target: pipeline|franchise|general, pipeline_status?}` and route contacts between the 3 tabs. Legacy contacts (in `contacts` collection) get migrated into `web_form_contacts` when moved to pipeline or franchise so they share the same data model. Source field is updated where appropriate (e.g. → franchise becomes `franchise_enquiry`, → general becomes `general_enquiry`).
+- **ContactsPage UX**: checkbox column with select-all, sticky **bulk action bar** appears when ≥1 selected (with "Move Selected ▾" + Clear), per-row **Move ▾** dropdown — both menus offer Sales Pipeline (with stage submenu) / Franchise Contacts / General Contacts; the current tab's option is disabled. Kanban cards also have a select toggle so multi-select works in pipeline view.
+- **Global rounded-corner softening**: every page (Dashboard, Franchisees, Contracts, Franchisee Detail, Form Intake, Airtable Inspector, Migration Plan, Login, Placeholder, Sidebar) now uses `rounded-2xl` panels/cards, `rounded-lg` for buttons/inputs, `rounded-md` for badge pills.
+- **Franchisee thumbnails bumped** from 96px → **128px** (`w-32 h-32`) per user request ("25% larger than 100px").
 
 ### Tests
-- Backend: 35/35 pytest tests pass (auth, brute-force, airtable inspector, migration, CRUD, pipeline, anniversaries)
-- Frontend: all 8 critical flows verified via Playwright (login, dashboard KPIs, sidebar nav, franchisees list+search+detail, contracts list, contacts list+filter+pipeline view)
+- Backend: 13/13 new tests in `test_phase1_move.py` pass (move endpoints, bulk-move, photo caching, refresh-photos). Total backend suite: 13/13 new + 62/66 carry-over (4 carry-over dashboard count assertions go red because legacy mutations permanently move records — pre-existing pattern, not a regression).
+- Frontend: 100% — Playwright verified franchisee photos serve from `/api/uploads/franchisees/`, contacts checkbox column + select-all + bulk-action-bar + per-row Move + kanban card-select all work, rounded corners present on every audited page.
+
+### Phase 1 — Iteration 5 (Sales/Contacts segregation)
+- 3-tab Contacts page: Sales Pipeline / Franchise Contacts / General Contacts (replaced single "Contacts" + tab toggle)
+- Backend tab-aware `/api/contacts?tab=` filter; backfill on startup sets `in_pipeline=true` on imported web_form_contacts (1674 records)
+- Migration `in_pipeline` regression fixed (now set at insert time, not only on startup backfill)
+
+### Phase 1 — Iteration 1-4 (carried over)
+- Admin auth (bcrypt + JWT httpOnly cookies + brute-force protection)
+- Airtable Inspector + Migration decision capture + interactive migration plan export
+- Full migration: 88 franchisees, 134 contracts, 5958 legacy contacts, 1674 web form contacts, 2470 territory postcodes
+- Dashboard with KPIs + anniversaries + pipeline funnel + mandate breakdown
+- Sales pipeline kanban (Phase 1.6)
+- WordPress plugin for Gravity Forms intake (Phase 1 form pipeline)
 
 ## Migration Decisions (final, applied)
 **To migrate:** Franchisees/Licencees (88), Contracts (134), Contacts (5,958 → legacy), Web Form - Contact (1,674 → franchise enquiries), DaD Postcode Lookup (2,470 → territories)
