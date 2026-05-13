@@ -1,0 +1,52 @@
+{
+  "summary": "Phase 1.6 CRM end-to-end testing complete. All 35 backend pytest tests pass (17 existing + 18 new CRM tests). Frontend verified via Playwright: login, dashboard with real migrated counts (88/134/7,632/2,470), 6-item sidebar, franchisees list+search+detail (Claire Henshall has 3 contracts and ~93 territories), 134 contracts list, contacts list (500 visible) with source filter, pipeline view with 6 columns and 175 cards rendered. POST /api/migration/run is idempotent and returns correct counts. PATCH /api/contacts/{id}/pipeline validates stages and 404s correctly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/contacts (no source filter, large limit)", "issue": "Sort-by-date in Python after fetching both collections is O(N log N) and the legacy collection has 5958 rows — calling /contacts?limit=2000 with no source filter is fine but with no pagination at all there is no way to access pages beyond the in-memory cap (2000)."},
+      {"endpoint": "GET /api/contacts", "issue": "When pipeline_status filter is supplied without a source filter, both collections are queried and items are merged in memory. There's no pagination metadata (total reflects only what fits in the cap)."},
+      {"endpoint": "GET /api/anniversaries/today", "issue": "Docstring says 'next 7 days' but implementation only matches today's MM-DD. Behaviour is consistent with the test ('should not error even if empty') but rename docstring or extend to 7-day window."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Franchisee detail header", "issues": ["[data-testid=franchisee-detail-name] for Claire Henshall renders the organisation ('Creative Mojo Greater West London') rather than the person's name. Consider showing both 'Claire Henshall' as the primary heading and organisation as subtitle, since the testing brief expects 'photo, name, organisation'."]},
+      {"screen": "Contacts pipeline view", "issues": ["NEW column shows 925 cards — large columns can become very long without virtualisation. Acceptable for Phase 1 but worth noting for performance once data grows."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase1_crm.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml",
+    "/app/test_reports/pytest/phase1_crm.xml"
+  ],
+  "action_items": [
+    "(Optional) Show person name in franchisee detail heading, not just organisation",
+    "(Optional) Add pagination (skip/limit + total) to /api/contacts so large legacy archive can be browsed beyond the in-memory cap",
+    "(Optional) Update anniversaries docstring to match 'today-only' behaviour or extend to 7-day window"
+  ],
+  "critical_code_review_comments": [
+    "server.py is now ~775 lines — past the 700-line threshold. Consider splitting into modules: auth.py, airtable.py, dashboard.py, crm.py, anniversaries.py. The migration logic is already extracted into migration.py which is good.",
+    "Two `from typing import ... List, Dict, Any` and `import asyncio` in migration.py are unused — minor cleanup.",
+    "list_contracts attaches franchisee info per-item but the projection `{_id:0, id:1, organisation:1, first_name:1, last_name:1}` works correctly. Consider a small in-memory cache if this becomes hot.",
+    "/api/contacts merges two collections in Python after independently capping each at `limit`. The merged result is then sorted and re-truncated. With limit=2000 and 5958 legacy rows this means the last ~4000 legacy contacts are unreachable via any query. Add proper skip/limit pagination.",
+    "Anniversaries endpoint does N+1 franchisee lookups inside the loop (one per matching contract). Pre-fetch franchisees by `{id: {$in: [...]}}` after collecting matches.",
+    "Pipeline status update tries web_form_contacts first then contacts. This is fine but logging which collection was hit would help debugging."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase1_crm.py (new — 18 tests)",
+    "/app/backend/tests/backend_test.py (updated TestDashboard expected counts to real migrated values)"
+  ],
+  "success_rate": {
+    "backend": "100% (35/35)",
+    "frontend": "100% (all 8 critical flows verified — login, dashboard KPIs, sidebar nav, franchisees list, franchisees search+detail, contracts list, contacts list+source filter, contacts pipeline board with 6 columns)"
+  },
+  "test_credentials": "admin@creativemojo.co.uk / CreativeMojo2026! (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None — migrated data already present. Pipeline update test toggles one franchise_enquiry contact's status from new→contacted; this is harmless and reversible.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend suite is split into two files: backend_test.py (auth+airtable+dashboard, 17 tests) and test_phase1_crm.py (migration+franchisees+contracts+contacts+territories+anniversaries, 18 tests). Run with: REACT_APP_BACKEND_URL=<url> pytest backend/tests/ -v. The migration_run test takes ~15-25s (calls Airtable). Brute-force test uses unique fake email per run so it does not lock the real admin. Frontend testids confirmed working: kpi-franchisees/contracts/contacts/territories, run-migration-button, anniversaries-card, franchisee-row-{id}, franchisee-link-{id}, franchisee-detail-name, franchisee-contracts, franchisee-territories, contract-row-{id}, contact-row-{id}, contact-source, view-list, view-pipeline, pipeline-board, pipeline-column-{stage}, pipeline-card-{id}, pipeline-select-{id}. Note the login redirects to '/' (not '/dashboard') — wait for the kpi-franchisees element instead of URL pattern.",
+  "rca of the issue": "No bugs to RCA — all features functional. Only enhancement opportunities listed above."
+}

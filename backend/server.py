@@ -445,12 +445,16 @@ async def migration_plan(_: dict = Depends(require_role("admin"))):
 # ----------------------------------------------------------------------------
 @api.get("/dashboard/stats")
 async def dashboard_stats(_: dict = Depends(require_role("admin"))):
-    # Phase 1 placeholder - returns user count + airtable summary
     user_count = await db.users.count_documents({})
-    # Try to fetch airtable summary
+    franchisees = await db.franchisees.count_documents({})
+    contracts = await db.contracts.count_documents({})
+    contacts = await db.contacts.count_documents({})
+    web_form_contacts = await db.web_form_contacts.count_documents({})
+    territories = await db.territories.count_documents({})
+    last_migration = await db.migration_runs.find_one({}, sort=[("run_at", -1)])
     airtable_summary = None
     try:
-        data = await list_airtable_tables(_)  # reuse handler
+        data = await list_airtable_tables(_)
         airtable_summary = {
             "tables": len(data["tables"]),
             "total_fields": sum(t["field_count"] for t in data["tables"]),
@@ -459,11 +463,217 @@ async def dashboard_stats(_: dict = Depends(require_role("admin"))):
         logger.warning(f"Could not fetch airtable summary: {e}")
     return {
         "users": user_count,
-        "franchisees_migrated": 0,
-        "contracts_migrated": 0,
-        "contacts_migrated": 0,
+        "franchisees_migrated": franchisees,
+        "contracts_migrated": contracts,
+        "contacts_migrated": contacts + web_form_contacts,
+        "territories_migrated": territories,
         "airtable": airtable_summary,
+        "last_migration": last_migration.get("run_at") if last_migration else None,
     }
+
+
+# ----------------------------------------------------------------------------
+# Migration runner endpoint
+# ----------------------------------------------------------------------------
+from migration import run_migration  # noqa: E402
+
+
+@api.post("/migration/run")
+async def migration_run(user: dict = Depends(require_role("admin"))):
+    if not AIRTABLE_PAT or not AIRTABLE_BASE_ID:
+        raise HTTPException(status_code=503, detail="Airtable credentials not configured")
+    try:
+        counts = await run_migration(db, AIRTABLE_PAT, AIRTABLE_BASE_ID, user["email"])
+        return {"ok": True, "counts": counts}
+    except Exception as e:
+        logger.exception("Migration failed")
+        raise HTTPException(status_code=500, detail=f"Migration failed: {e}")
+
+
+# ----------------------------------------------------------------------------
+# CRM — Franchisees
+# ----------------------------------------------------------------------------
+@api.get("/franchisees")
+async def list_franchisees(
+    search: Optional[str] = None,
+    sort_by: str = "franchise_number",
+    sort_dir: int = 1,
+    limit: int = Query(200, le=500),
+    _: dict = Depends(require_role("admin")),
+):
+    q = {}
+    if search:
+        rx = {"$regex": search, "$options": "i"}
+        q = {"$or": [{"organisation": rx}, {"first_name": rx}, {"last_name": rx},
+                     {"mojo_email": rx}, {"franchise_number": rx}, {"city": rx}, {"postcode": rx}]}
+    items = await db.franchisees.find(q, {"_id": 0}).sort(sort_by, sort_dir).limit(limit).to_list(limit)
+    return {"items": items, "total": await db.franchisees.count_documents(q)}
+
+
+@api.get("/franchisees/{franchisee_id}")
+async def get_franchisee(franchisee_id: str, _: dict = Depends(require_role("admin"))):
+    f = await db.franchisees.find_one({"id": franchisee_id}, {"_id": 0})
+    if not f:
+        raise HTTPException(status_code=404, detail="Franchisee not found")
+    contracts = await db.contracts.find({"franchisee_id": franchisee_id}, {"_id": 0}).to_list(100)
+    territories = await db.territories.find({"franchisee_id": franchisee_id}, {"_id": 0}).to_list(2000)
+    enquiries = await db.web_form_contacts.find({"franchisee_id": franchisee_id}, {"_id": 0}).to_list(100)
+    return {"franchisee": f, "contracts": contracts, "territories": territories, "enquiries": enquiries}
+
+
+# ----------------------------------------------------------------------------
+# CRM — Contracts
+# ----------------------------------------------------------------------------
+@api.get("/contracts")
+async def list_contracts(
+    search: Optional[str] = None,
+    franchisee_id: Optional[str] = None,
+    limit: int = Query(500, le=1000),
+    _: dict = Depends(require_role("admin")),
+):
+    q = {}
+    if franchisee_id:
+        q["franchisee_id"] = franchisee_id
+    if search:
+        rx = {"$regex": search, "$options": "i"}
+        q["$or"] = [{"first_name_rollup": rx}, {"last_name_rollup": rx}, {"email_rollup": rx}]
+    items = await db.contracts.find(q, {"_id": 0}).sort("ref", -1).limit(limit).to_list(limit)
+    # attach franchisee organisation for display
+    fids = list({c.get("franchisee_id") for c in items if c.get("franchisee_id")})
+    franchisees = {f["id"]: f for f in await db.franchisees.find({"id": {"$in": fids}}, {"_id": 0, "id": 1, "organisation": 1, "first_name": 1, "last_name": 1}).to_list(1000)}
+    for c in items:
+        f = franchisees.get(c.get("franchisee_id"))
+        c["franchisee"] = f if f else None
+    return {"items": items, "total": await db.contracts.count_documents(q)}
+
+
+@api.get("/contracts/{contract_id}")
+async def get_contract(contract_id: str, _: dict = Depends(require_role("admin"))):
+    c = await db.contracts.find_one({"id": contract_id}, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Contract not found")
+    f = await db.franchisees.find_one({"id": c.get("franchisee_id")}, {"_id": 0}) if c.get("franchisee_id") else None
+    return {"contract": c, "franchisee": f}
+
+
+# ----------------------------------------------------------------------------
+# CRM — Contacts (unified, with pipeline)
+# ----------------------------------------------------------------------------
+@api.get("/contacts")
+async def list_contacts(
+    source: Optional[str] = None,
+    pipeline_status: Optional[str] = None,
+    search: Optional[str] = None,
+    limit: int = Query(500, le=2000),
+    _: dict = Depends(require_role("admin")),
+):
+    """Combines legacy contacts + web form contacts under one query."""
+    q_legacy = {}
+    q_web = {}
+    if source:
+        if source == "legacy_general_enquiry":
+            q_web = None  # exclude
+        elif source == "franchise_enquiry":
+            q_legacy = None
+    if pipeline_status:
+        if q_legacy is not None: q_legacy["pipeline_status"] = pipeline_status
+        if q_web is not None: q_web["pipeline_status"] = pipeline_status
+    if search:
+        rx = {"$regex": search, "$options": "i"}
+        sf = [{"first_name": rx}, {"last_name": rx}, {"email": rx}, {"postcode": rx}, {"city": rx}]
+        if q_legacy is not None: q_legacy["$or"] = sf
+        if q_web is not None:
+            q_web["$or"] = [{"first_name": rx}, {"last_name": rx}, {"postcode": rx}, {"city": rx},
+                            {"establishment_name": rx}, {"telephone": rx}]
+
+    items = []
+    if q_legacy is not None:
+        legacy = await db.contacts.find(q_legacy, {"_id": 0}).limit(limit).to_list(limit)
+        items.extend(legacy)
+    if q_web is not None:
+        web = await db.web_form_contacts.find(q_web, {"_id": 0}).limit(limit).to_list(limit)
+        items.extend(web)
+    # Sort by date desc (handling missing dates)
+    items.sort(key=lambda x: x.get("date") or x.get("date_added") or "", reverse=True)
+    return {"items": items[:limit], "total": len(items)}
+
+
+@api.get("/contacts/{contact_id}")
+async def get_contact(contact_id: str, _: dict = Depends(require_role("admin"))):
+    c = await db.contacts.find_one({"id": contact_id}, {"_id": 0})
+    src = "contacts"
+    if not c:
+        c = await db.web_form_contacts.find_one({"id": contact_id}, {"_id": 0})
+        src = "web_form_contacts"
+    if not c:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    return {"contact": c, "_source_collection": src}
+
+
+class PipelineUpdateRequest(BaseModel):
+    pipeline_status: str
+
+
+PIPELINE_STAGES = ["new", "contacted", "qualified", "demo_booked", "converted", "lost", "archive"]
+
+
+@api.patch("/contacts/{contact_id}/pipeline")
+async def update_pipeline(contact_id: str, body: PipelineUpdateRequest, _: dict = Depends(require_role("admin"))):
+    if body.pipeline_status not in PIPELINE_STAGES:
+        raise HTTPException(status_code=400, detail=f"Status must be one of {PIPELINE_STAGES}")
+    # Try web form first (most likely target for pipeline updates), then legacy
+    r = await db.web_form_contacts.update_one(
+        {"id": contact_id},
+        {"$set": {"pipeline_status": body.pipeline_status, "updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    if r.matched_count == 0:
+        r = await db.contacts.update_one(
+            {"id": contact_id},
+            {"$set": {"pipeline_status": body.pipeline_status, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        )
+    if r.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    return {"ok": True, "pipeline_status": body.pipeline_status}
+
+
+# ----------------------------------------------------------------------------
+# CRM — Territories
+# ----------------------------------------------------------------------------
+@api.get("/territories")
+async def list_territories(franchisee_id: Optional[str] = None, _: dict = Depends(require_role("admin"))):
+    q = {}
+    if franchisee_id:
+        q["franchisee_id"] = franchisee_id
+    items = await db.territories.find(q, {"_id": 0}).to_list(5000)
+    return {"items": items, "total": len(items)}
+
+
+# ----------------------------------------------------------------------------
+# Anniversary Reminders (Phase 1 scaffold)
+# ----------------------------------------------------------------------------
+@api.get("/anniversaries/today")
+async def anniversaries_today(_: dict = Depends(require_role("admin"))):
+    """Returns contracts whose anniversary falls in the next 7 days."""
+    now = datetime.now(timezone.utc)
+    today_mmdd = now.strftime("%m-%d")
+    contracts = await db.contracts.find(
+        {"anniversary_reminder": {"$exists": True, "$ne": None}, "cancelled_early": {"$ne": True}},
+        {"_id": 0},
+    ).to_list(2000)
+    upcoming = []
+    for c in contracts:
+        anniv = c.get("anniversary_reminder")
+        if not anniv:
+            continue
+        try:
+            # Anniversary is stored as a date string like "2026-05-13"
+            mmdd = str(anniv)[5:10]
+            if mmdd == today_mmdd:
+                f = await db.franchisees.find_one({"id": c.get("franchisee_id")}, {"_id": 0, "first_name": 1, "last_name": 1, "organisation": 1, "mojo_email": 1, "id": 1})
+                upcoming.append({"contract": c, "franchisee": f})
+        except Exception:
+            continue
+    return {"today": today_mmdd, "count": len(upcoming), "anniversaries": upcoming}
 
 
 @api.get("/health")

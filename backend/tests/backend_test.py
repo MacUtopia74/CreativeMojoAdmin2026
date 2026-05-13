@@ -157,9 +157,10 @@ class TestDashboard:
         assert r.status_code == 200, r.text
         data = r.json()
         assert data["users"] >= 1
-        assert data["franchisees_migrated"] == 0
-        assert data["contracts_migrated"] == 0
-        assert data["contacts_migrated"] == 0
+        # Phase 1.6: migration has been run, counts should match expected values
+        assert data["franchisees_migrated"] == 88
+        assert data["contracts_migrated"] == 134
+        assert data["contacts_migrated"] == 7632
         # Airtable summary should be populated
         at = data.get("airtable")
         assert at is not None, "Airtable summary missing"

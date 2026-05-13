@@ -7,7 +7,10 @@ import LoginPage from "@/pages/LoginPage";
 import DashboardPage from "@/pages/DashboardPage";
 import AirtableInspectorPage from "@/pages/AirtableInspectorPage";
 import MigrationPlanPage from "@/pages/MigrationPlanPage";
-import PlaceholderPage from "@/pages/PlaceholderPage";
+import FranchiseesPage from "@/pages/FranchiseesPage";
+import FranchiseeDetailPage from "@/pages/FranchiseeDetailPage";
+import ContractsPage from "@/pages/ContractsPage";
+import ContactsPage from "@/pages/ContactsPage";
 
 export default function App() {
   return (
@@ -24,38 +27,12 @@ export default function App() {
               }
             >
               <Route path="/" element={<DashboardPage />} />
+              <Route path="/franchisees" element={<FranchiseesPage />} />
+              <Route path="/franchisees/:id" element={<FranchiseeDetailPage />} />
+              <Route path="/contracts" element={<ContractsPage />} />
+              <Route path="/contacts" element={<ContactsPage />} />
               <Route path="/airtable-inspector" element={<AirtableInspectorPage />} />
               <Route path="/migration-plan" element={<MigrationPlanPage />} />
-              <Route
-                path="/franchisees"
-                element={
-                  <PlaceholderPage
-                    title="Franchisees"
-                    subtitle="Franchisees Directory"
-                    description="Once schema decisions are agreed in the Airtable Inspector, your 88 franchisees will be migrated here with full detail pages mirroring your current Airtable layout — photo, contact details, address, status, contract number and linked contracts."
-                  />
-                }
-              />
-              <Route
-                path="/contracts"
-                element={
-                  <PlaceholderPage
-                    title="Contracts"
-                    subtitle="Contract Records"
-                    description="All 134 contracts from Airtable will be migrated here once we agree the schema. Each will link back to its associated franchisee."
-                  />
-                }
-              />
-              <Route
-                path="/contacts"
-                element={
-                  <PlaceholderPage
-                    title="Contacts"
-                    subtitle="Unified Contact Records"
-                    description="After the schema walkthrough we'll merge the legacy Contacts table (5,958), the active Web Form - Contact table (1,674), and live submissions from the three Gravity Forms — deduplicated and tagged by source."
-                  />
-                }
-              />
             </Route>
           </Routes>
         </BrowserRouter>
