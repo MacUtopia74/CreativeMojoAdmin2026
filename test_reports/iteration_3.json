@@ -1,0 +1,48 @@
+{
+  "summary": "Phase 1.7 UX polish iteration tested end-to-end. Backend: 40/40 pytest tests pass (auth, brute-force, MongoDB invariants, Airtable inspector, dashboard, migration, franchisees, contracts, contacts, territories, anniversaries, plus 7 new tests for extended dashboard fields). Frontend (Playwright on public URL): Nunito Sans applied site-wide (0 monospace elements), dashboard 4 panels all present with funnel/anniversaries/mandates/recent-enquiries, Franchisees segment tabs filter correctly (Active=27, Ex=59, Worldwide=1, All=88), Claire Henshall detail page shows hero card with photo + FRANCHISEE/£3K tags + 3 quick-stat tiles (Contracts 3, Territory 93, Mandate) + 4 panels (contact, address, contracts, territory), Contacts page defaults to pipeline view with 7 summary stat tiles all working, pipeline board renders 208 cards, contact drawer opens with all 6 stage buttons, PATCH /api/contacts/{id}/pipeline updates stage from drawer, drawer close works, list view renders 500 rows and clicking a row also opens the drawer, source filter present.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/dashboard/stats", "issue": "recent_enquiries items return first_name + last_name as separate keys; spec requested a single 'name' field. Frontend currently composes it client-side which works, but the API contract deviates from the spec."},
+      {"endpoint": "GET /api/dashboard/stats", "issue": "recent_enquiries item projection requests 'establishment_name' and 'potential' but those fields are absent on at least the most recent record (Maria Nicolaou), so they don't appear in the response. Consider returning explicit null defaults for these so the frontend can render the layout without conditional checks."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Franchisee detail (Claire Henshall)", "issues": ["Hero card (photo + FRANCHISEE tag + £3K fee tag + Contracts/Territory/Mandate quick stats) is missing data-testid='panel-status'. The visual layout is correct and matches the spec — only the test hook is missing. The other 4 panels (panel-contact, panel-address, panel-contracts, panel-territory) all have correct data-testids."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase1_ux.py",
+    "/app/backend/tests/test_phase1_crm.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/phase1_ux_full.xml",
+    "/app/test_reports/pytest/phase1_ux.xml"
+  ],
+  "action_items": [
+    "(Cosmetic) Add data-testid='panel-status' to the franchisee hero card in FranchiseeDetailPage so automated tests can target it",
+    "(Optional, low priority) Compose 'name' field server-side in /api/dashboard/stats recent_enquiries (or document the first_name/last_name shape in the spec) for API/spec alignment",
+    "(Optional) Ensure establishment_name and potential are always present (even as null) in recent_enquiries projection"
+  ],
+  "critical_code_review_comments": [
+    "server.py is now ~811 lines — still over the 700-line guideline. Recommend splitting into auth.py, airtable.py, dashboard.py, crm.py, anniversaries.py.",
+    "Dashboard endpoint runs 7 separate count_documents calls + 2 aggregations + 1 find + 1 Airtable call sequentially. Could be parallelised with asyncio.gather() for snappier dashboard load.",
+    "/api/contacts pagination still capped at limit=2000 with no skip — last ~4000 legacy contacts unreachable (carried over from iteration 2).",
+    "Anniversaries N+1 lookups also still present (carried over from iteration 2)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase1_ux.py (new — 7 tests covering extended dashboard fields)"
+  ],
+  "success_rate": {
+    "backend": "100% (40/40 — auth 7, mongo 2, dashboard 9 including 7 new UX tests, airtable 4, brute-force 1, franchisees 4, contracts 2, contacts 6, territories 2, anniversaries 1, migration 2 deselected to avoid 60s reload)",
+    "frontend": "100% on critical flows. All segment tabs counts match spec, all dashboard panels render, contacts pipeline + drawer + stage change works, fonts converted to Nunito Sans with 0 monospace elements remaining"
+  },
+  "test_credentials": "admin@creativemojo.co.uk / CreativeMojo2026! (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None. Test toggles one franchise_enquiry contact's pipeline_status (harmless, reversible).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend test suite is now 3 files: backend_test.py (17), test_phase1_crm.py (18), test_phase1_ux.py (7) — 42 total, 40 run by default (migration test deselected). Frontend testids working: kpi-franchisees, segment-{active|ex|licencee|all}, franchisees-table, franchisee-search, franchisee-row-{id}, franchisee-link-{id}, franchisee-detail-name, panel-{contact|address|contracts|territory|funnel|anniversaries|mandates|recent-enquiries}, pipeline-summary, stat-{stage}, pipeline-board, pipeline-card-{id}, contact-drawer, drawer-close, drawer-stage-{stage}, view-list, view-pipeline, contact-source. NOT yet present: panel-status (franchisee hero card). To navigate to franchisee detail in tests, click franchisee-link-{id} (not franchisee-row-{id} — the row itself isn't clickable for navigation). Default Contacts view is 'pipeline' not 'list'. Stage buttons emit PATCH /api/contacts/{id}/pipeline and update immediately.",
+  "rca of the issue": "No bugs. Only one cosmetic test-hook omission (panel-status data-testid) and two minor API/spec deviations in recent_enquiries shape — none of these block functionality, the UI renders correctly in all cases."
+}

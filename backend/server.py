@@ -447,11 +447,40 @@ async def migration_plan(_: dict = Depends(require_role("admin"))):
 async def dashboard_stats(_: dict = Depends(require_role("admin"))):
     user_count = await db.users.count_documents({})
     franchisees = await db.franchisees.count_documents({})
+    active_franchisees = await db.franchisees.count_documents({"tags": "Franchisee"})
+    ex_franchisees = await db.franchisees.count_documents({"tags": "EX-Franchisee"})
     contracts = await db.contracts.count_documents({})
+    active_contracts = await db.contracts.count_documents({"cancelled_early": {"$ne": True}})
     contacts = await db.contacts.count_documents({})
     web_form_contacts = await db.web_form_contacts.count_documents({})
     territories = await db.territories.count_documents({})
     last_migration = await db.migration_runs.find_one({}, sort=[("run_at", -1)])
+
+    # Mandate breakdown across active franchisees only
+    mandate_pipeline = [
+        {"$match": {"tags": "Franchisee"}},
+        {"$group": {"_id": "$mandate", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+    ]
+    mandate_breakdown = await db.franchisees.aggregate(mandate_pipeline).to_list(20)
+    mandate_breakdown = [
+        {"value": (m["_id"] if isinstance(m["_id"], str) else (m["_id"][0] if isinstance(m["_id"], list) and m["_id"] else None)) or "Not set", "count": m["count"]}
+        for m in mandate_breakdown
+    ]
+
+    # Pipeline funnel (web form contacts only — active sales pipeline)
+    funnel_pipeline = [
+        {"$group": {"_id": "$pipeline_status", "count": {"$sum": 1}}},
+    ]
+    funnel_raw = await db.web_form_contacts.aggregate(funnel_pipeline).to_list(20)
+    funnel = {f["_id"] or "new": f["count"] for f in funnel_raw}
+
+    # Recent enquiries (last 5 by date)
+    recent_enquiries = await db.web_form_contacts.find(
+        {}, {"_id": 0, "id": 1, "first_name": 1, "last_name": 1, "establishment_name": 1,
+             "postcode": 1, "date": 1, "pipeline_status": 1, "potential": 1},
+    ).sort("date", -1).limit(5).to_list(5)
+
     airtable_summary = None
     try:
         data = await list_airtable_tables(_)
@@ -464,9 +493,16 @@ async def dashboard_stats(_: dict = Depends(require_role("admin"))):
     return {
         "users": user_count,
         "franchisees_migrated": franchisees,
+        "active_franchisees": active_franchisees,
+        "ex_franchisees": ex_franchisees,
         "contracts_migrated": contracts,
+        "active_contracts": active_contracts,
         "contacts_migrated": contacts + web_form_contacts,
+        "web_form_contacts": web_form_contacts,
         "territories_migrated": territories,
+        "mandate_breakdown": mandate_breakdown,
+        "pipeline_funnel": funnel,
+        "recent_enquiries": recent_enquiries,
         "airtable": airtable_summary,
         "last_migration": last_migration.get("run_at") if last_migration else None,
     }
