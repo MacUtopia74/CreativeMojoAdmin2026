@@ -233,6 +233,7 @@ async def run_migration(db, airtable_pat: str, airtable_base_id: str, run_by_ema
                 doc["pipeline_status"] = "archive"  # legacy data
             elif coll_name == "web_form_contacts":
                 doc["source"] = "franchise_enquiry"
+                doc["in_pipeline"] = True  # imported Airtable web-form records are franchise enquiries
                 # Default pipeline status based on existing fields
                 doc["pipeline_status"] = "new"
                 if doc.get("response_sent") and str(doc["response_sent"]).lower() not in ("no", "false", ""):
