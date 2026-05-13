@@ -1,0 +1,46 @@
+{
+  "summary": "Phase 1 iteration: franchisee photo caching (/api/uploads StaticFiles + refresh-photos), contact Move (per-row & bulk) between Sales Pipeline / Franchise / General tabs, w-32 thumbnails, global rounded-corner softening. Backend: created /app/backend/tests/test_phase1_move.py with 13 new tests — 13/13 PASS. Frontend: Playwright on public URL verified franchisees thumbnails (26/26 imgs use /api/uploads/franchisees/, 27 w-32 h-32 elements), contacts checkbox column (select-all + 500 row select-<id>), bulk-action-bar appears on selection, bulk-move-trigger opens 3-option menu with current-tab option disabled, per-row row-move-<id> dropdown identical behaviour, kanban card-select-<id> (208 cards) surfaces bulk-action-bar, rounded-2xl/xl/lg present on every audited page (Dashboard, Franchisees, Contracts, Contacts, Form Intake, Airtable Inspector, Migration Plan).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/contacts/{id}/move (legacy → pipeline / franchise)", "issue": "Non-atomic delete+insert in _move_one_contact: legacy doc is read, inserted into web_form_contacts, then deleted from contacts. If the second step fails the record is duplicated; if the first fails after success of read+insert detection but before delete, dup may persist. Wrap in transaction or use a single $rename-aware migration pattern. Same pattern as the previously-flagged promote_legacy."},
+      {"endpoint": "POST /api/contacts/move + bulk-move (legacy mutations)", "issue": "Pre-existing pattern — tests that move legacy contacts cannot fully restore them without /api/migration/run. After this suite runs, dashboard.contacts_migrated is off by ~1 (7631 vs 7632). Not a regression from this iteration; downstream test files (backend_test.py, test_phase1_crm.py, test_phase1_ux.py) hard-assert 7632 so they go red until migration is re-run. Same caveat as flagged in iteration 5 report."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase1_move.py",
+    "/app/test_reports/pytest/phase1_move.xml"
+  ],
+  "action_items": [
+    "(Recommended) Wrap legacy-move (in _move_one_contact for target=pipeline and target=franchise) in a try/except to roll back the inserted web_form_contacts doc if the contacts.delete_one fails — same advice as iteration 5 for promote_legacy.",
+    "(Carried over) server.py now ~1200 lines; please split into focused modules (auth, contacts, franchisees, migration, intake).",
+    "(Carried over) ContactsPage.js grew with Move/bulk logic; consider extracting MoveMenu + bulk-action-bar into their own components.",
+    "(Carried over) /api/migration/run still does not seed in_pipeline=True on web_form_contacts at insert time — relies on startup backfill. Already flagged.",
+    "(Optional) /api/franchisees/refresh-photos hits Airtable + downloads up to ~86 photos; consider returning 202 + async job for very large catalogs (currently takes ~6-10s)."
+  ],
+  "critical_code_review_comments": [
+    "_move_one_contact non-atomic for legacy moves (see action item). Today: low risk because mongo single-doc ops are reliable, but worth wrapping.",
+    "POST /api/contacts/bulk-move iterates with awaits sequentially — for N=100+ ids this is N round-trips. Consider asyncio.gather or a bulk_write per target collection for performance.",
+    "The static mount uses `app.mount(\"/api/uploads\", StaticFiles(...))` AFTER the api router include — correct, but document that uploads filenames are public (only the file id is needed); since photos are images of franchisees this is essentially equivalent to the previous Airtable signed URLs, but worth noting in security review.",
+    "MoveMenu mouseLeave-to-close + nested submenu (showStages) sometimes closes when the user moves to the submenu — works in this iteration but is fragile; consider explicit close-on-outside-click instead.",
+    "Sources are reassigned silently on move (web→franchise rewrites source to franchise_enquiry only if it wasn't already franchise/licence_enquiry — good). For move-to-general from a legacy contact, source stays at legacy_general_enquiry (the contact never leaves the contacts collection). This is consistent with the requirement but worth surfacing in the UI tooltip so admins know."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase1_move.py (NEW — 13 tests, no migration run, in-place cleanup)"
+  ],
+  "success_rate": {
+    "backend": "13/13 new move/photos tests pass (100%). Regression: 62/66 other tests pass — 4 dashboard count assertions go red because legacy mutations in this and existing suites permanently move 1-2 legacy records to web_form_contacts (pre-existing pattern, not a new regression).",
+    "frontend": "100% — all 7 required UI assertions pass (franchisee thumbnails w-32 h-32 + /api/uploads URLs, contacts checkbox column, select-all, bulk-action-bar, bulk-move 3-option menu with disabled current-tab, per-row row-move dropdown, kanban card-select). Rounded corners present on every page audited."
+  },
+  "test_credentials": "admin@creativemojo.co.uk / CreativeMojo2026!; INTAKE_TOKEN=cm_intake_8f4a3c8b9e2d7f1a5c8b9e2d7f1a5c8b",
+  "seed_data_creation": "test_phase1_move.py creates web_form_contacts via /api/intake/gravity-forms with entry_id prefix TEST-move-<suffix>-<uuid> and deletes them in finally blocks. Legacy mutations (move legacy→pipeline_qualified, bulk-move) intentionally do NOT call /api/migration/run to avoid disrupting other suites.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend test suite is now 6 files: backend_test.py, test_phase1_crm.py (deselect TestMigrationRun), test_phase1_intake.py, test_phase1_pipeline.py, test_phase1_ux.py, test_phase1_move.py = 85 tests total. Run with `python -m pytest backend/tests/ --deselect backend/tests/test_phase1_crm.py::TestMigrationRun` and REACT_APP_BACKEND_URL exported. Note the count-assertions in backend_test.py:163, test_phase1_crm.py:50, test_phase1_ux.py:43 and :93 will drift by 1-2 records every time test_phase1_move.py and test_phase1_pipeline.py run (they delete/move legacy contacts). To fully restore counts, run /api/migration/run between regression runs. New testids verified: select-all, select-<id>, bulk-action-bar, bulk-clear, bulk-move-trigger, bulk-move-pipeline, bulk-move-franchise, bulk-move-general, bulk-move-stage-<key>, row-move-<id>-trigger, row-move-<id>-{pipeline|franchise|general}, row-move-<id>-stage-<key>, card-select-<id>. mode tabs now: mode-pipeline, mode-franchise, mode-general (was: mode-pipeline, mode-contacts in iteration 5). view-pipeline / view-list view toggle in topbar is only rendered when mode=pipeline.",
+  "rca of the issue": "No bug fix requested in this iteration; both new features (refresh-photos + local /api/uploads + contact move per-row & bulk) are implemented correctly and pass all functional + integration tests. The only carry-over concern from iteration 5 (non-atomic legacy migration in promote_legacy / _move_one_contact) remains unfixed. Mitigation: wrap the legacy-move steps inside a try/except that rolls back the inserted web_form_contacts doc on a contacts.delete_one failure, OR upgrade to a MongoDB transaction across both collections."
+}

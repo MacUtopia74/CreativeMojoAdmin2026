@@ -4,15 +4,23 @@ Handles Airtable → MongoDB migration plus CRUD endpoints for migrated data.
 """
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
+from pathlib import Path
 import os
 import uuid
 import logging
 import asyncio
+import mimetypes
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 logger = logging.getLogger("creative-mojo-admin.crm")
+
+# Local storage for franchisee photos (Airtable URLs expire after ~2hrs)
+UPLOADS_DIR = Path(os.environ.get("UPLOADS_DIR", "/app/backend/uploads"))
+FRANCHISEE_PHOTOS_DIR = UPLOADS_DIR / "franchisees"
+FRANCHISEE_PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
+PUBLIC_PHOTO_PREFIX = "/api/uploads/franchisees"
 
 # ============================================================================
 # Field mapping definitions (Airtable name → MongoDB field name)
@@ -182,6 +190,61 @@ async def _fetch_all_records(base_id: str, table_id: str, token: str) -> List[di
 
 
 # ============================================================================
+# Photo downloader — caches Airtable attachment URLs locally so they don't expire
+# ============================================================================
+def _photo_extension(content_type: Optional[str], filename: Optional[str]) -> str:
+    """Pick a sensible file extension."""
+    if filename and "." in filename:
+        ext = filename.rsplit(".", 1)[1].lower()
+        if ext in ("jpg", "jpeg", "png", "webp", "gif", "heic", "heif"):
+            return "jpg" if ext == "jpeg" else ext
+    if content_type:
+        guess = mimetypes.guess_extension(content_type.split(";")[0].strip())
+        if guess:
+            return guess.lstrip(".").lower()
+    return "jpg"
+
+
+async def _download_franchisee_photos(franchisees: List[dict]) -> Dict[str, int]:
+    """For each franchisee with a remote Airtable photo URL, download it to local storage
+    and rewrite photos[0].url to a public /api/uploads path.
+    Returns counters."""
+    downloaded = 0
+    failed = 0
+    skipped = 0
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        for f in franchisees:
+            photos = f.get("photos") or []
+            if not photos or not isinstance(photos, list):
+                continue
+            primary = photos[0]
+            url = primary.get("url") if isinstance(primary, dict) else None
+            if not url:
+                continue
+            # If already a local path, skip
+            if url.startswith(PUBLIC_PHOTO_PREFIX) or url.startswith("/api/"):
+                skipped += 1
+                continue
+            try:
+                r = await client.get(url)
+                if r.status_code >= 400:
+                    failed += 1
+                    continue
+                ext = _photo_extension(r.headers.get("content-type"), primary.get("filename"))
+                fname = f"{f['id']}.{ext}"
+                fpath = FRANCHISEE_PHOTOS_DIR / fname
+                fpath.write_bytes(r.content)
+                # Rewrite URL to local public path
+                photos[0]["url"] = f"{PUBLIC_PHOTO_PREFIX}/{fname}"
+                photos[0]["original_url"] = url
+                downloaded += 1
+            except Exception as e:
+                logger.warning(f"Could not download photo for franchisee {f.get('id')}: {e}")
+                failed += 1
+    return {"downloaded": downloaded, "failed": failed, "skipped": skipped}
+
+
+# ============================================================================
 # Migration runner
 # ============================================================================
 async def run_migration(db, airtable_pat: str, airtable_base_id: str, run_by_email: str) -> dict:
@@ -253,6 +316,15 @@ async def run_migration(db, airtable_pat: str, airtable_base_id: str, run_by_ema
     # Pass 2: resolve links
     # Franchisees → contract_ids + territory_ids
     franchisees = await db.franchisees.find({}, {"_id": 0}).to_list(10000)
+
+    # Pass 1.5: download franchisee photos to local storage (Airtable URLs expire ~2hrs)
+    photo_stats = await _download_franchisee_photos(franchisees)
+    for f in franchisees:
+        if f.get("photos"):
+            await db.franchisees.update_one({"id": f["id"]}, {"$set": {"photos": f["photos"]}})
+    logger.info(f"Photos downloaded: {photo_stats}")
+    counts["photos_downloaded"] = photo_stats.get("downloaded", 0)
+
     for f in franchisees:
         contract_ids = [airtable_id_to_uuid["contracts"].get(aid) for aid in (f.get("_contract_airtable_ids") or [])]
         territory_ids = [airtable_id_to_uuid["territories"].get(aid) for aid in (f.get("_territory_airtable_ids") or [])]

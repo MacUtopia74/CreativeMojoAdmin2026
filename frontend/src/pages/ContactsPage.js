@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import api from "@/lib/api";
-import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase } from "lucide-react";
+import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, CheckSquare, Square } from "lucide-react";
 
 const STAGES = [
   { key: "new", label: "New", color: "bg-stone-100 text-stone-700 border-stone-300", barColor: "bg-stone-400" },
@@ -39,6 +39,64 @@ function StageBadge({ status }) {
 }
 function sourceLabel(s) {
   return ({ franchise_enquiry: "Franchise", licence_enquiry: "Licence", general_enquiry: "General", legacy_general_enquiry: "Legacy" }[s] || s || "Other");
+}
+
+// Compact "Move to…" dropdown used both on rows (compact) and the bulk action bar
+function MoveMenu({ onMove, label = "Move", testid, currentTab, count }) {
+  const [open, setOpen] = useState(false);
+  const [showStages, setShowStages] = useState(false);
+  const close = () => { setOpen(false); setShowStages(false); };
+  return (
+    <div className="relative inline-block" onMouseLeave={close} data-testid={testid}>
+      <button onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); setShowStages(false); }}
+        className="px-2.5 py-1 text-xs font-bold uppercase tracking-wider bg-white border border-stone-300 text-stone-800 hover:bg-stone-50 rounded-lg flex items-center gap-1"
+        data-testid={`${testid}-trigger`}>
+        <ArrowRightLeft className="w-3 h-3" /> {label}{count != null && count > 0 ? ` (${count})` : ""}
+        <ChevronDown className="w-3 h-3" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-50 w-60 bg-white border border-stone-200 rounded-xl shadow-lg overflow-hidden text-sm text-stone-900">
+          {!showStages ? (
+            <>
+              <button onClick={(e) => { e.stopPropagation(); setShowStages(true); }} data-testid={`${testid}-pipeline`}
+                disabled={currentTab === "pipeline"}
+                className="w-full text-left px-3 py-2 hover:bg-stone-50 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-between">
+                <span className="flex items-center gap-2"><Briefcase className="w-3.5 h-3.5 text-stone-500" /> Sales Pipeline</span>
+                <ChevronDown className="w-3 h-3 -rotate-90 text-stone-400" />
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); onMove("franchise"); close(); }} data-testid={`${testid}-franchise`}
+                disabled={currentTab === "franchise"}
+                className="w-full text-left px-3 py-2 hover:bg-stone-50 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2">
+                <Users className="w-3.5 h-3.5 text-stone-500" /> Franchise Contacts
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); onMove("general"); close(); }} data-testid={`${testid}-general`}
+                disabled={currentTab === "general"}
+                className="w-full text-left px-3 py-2 hover:bg-stone-50 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2">
+                <Users className="w-3.5 h-3.5 text-stone-500" /> General Contacts
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="px-3 py-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 bg-stone-50 border-b border-stone-200">
+                Move to pipeline stage
+              </div>
+              {STAGES.map((s) => (
+                <button key={s.key} onClick={(e) => { e.stopPropagation(); onMove("pipeline", s.key); close(); }}
+                  data-testid={`${testid}-stage-${s.key}`}
+                  className="w-full text-left px-3 py-2 hover:bg-stone-50 flex items-center gap-2">
+                  <span className={`w-1.5 h-1.5 rounded-full ${s.barColor}`} />
+                  {s.label}
+                </button>
+              ))}
+              <button onClick={(e) => { e.stopPropagation(); setShowStages(false); }} className="w-full text-left px-3 py-2 hover:bg-stone-50 text-stone-500 border-t border-stone-100 text-xs">
+                ← Back
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, onDelete }) {
@@ -191,6 +249,16 @@ export default function ContactsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState(null);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+
+  const clearSelection = () => setSelectedIds(new Set());
+  const toggleSelect = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   const load = async () => {
     setLoading(true);
@@ -208,6 +276,29 @@ export default function ContactsPage() {
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, stageFilter, search]);
+
+  // Reset selection whenever the tab/filter changes
+  useEffect(() => { clearSelection(); }, [tab, stageFilter]);
+
+  const moveContact = async (contactId, target, pipeline_status) => {
+    try {
+      await api.post(`/contacts/${contactId}/move`, { target, pipeline_status });
+      setSelected(null);
+      setData((d) => ({ ...d, items: d.items.filter((c) => c.id !== contactId) }));
+      setSelectedIds((prev) => { const n = new Set(prev); n.delete(contactId); return n; });
+    } catch (e) { setError("Could not move contact."); }
+  };
+
+  const bulkMove = async (target, pipeline_status) => {
+    const ids = Array.from(selectedIds);
+    if (!ids.length) return;
+    if (!window.confirm(`Move ${ids.length} contact${ids.length === 1 ? "" : "s"} to ${target === "pipeline" ? "Sales Pipeline" : target === "franchise" ? "Franchise Contacts" : "General Contacts"}?`)) return;
+    try {
+      await api.post(`/contacts/bulk-move`, { ids, target, pipeline_status });
+      setData((d) => ({ ...d, items: d.items.filter((c) => !selectedIds.has(c.id)) }));
+      clearSelection();
+    } catch (e) { setError("Could not move contacts."); }
+  };
 
   const updateStage = async (contactId, newStage) => {
     try {
@@ -304,6 +395,24 @@ export default function ContactsPage() {
         <div className="border-b border-stone-200" />
       </div>
 
+      {/* Bulk action bar — appears when one or more contacts selected */}
+      {selectedIds.size > 0 && (
+        <div className="px-8 pt-4">
+          <div className="bg-stone-950 text-white rounded-2xl px-5 py-3 flex items-center gap-4 shadow-lg" data-testid="bulk-action-bar">
+            <div className="flex items-center gap-2">
+              <CheckSquare className="w-4 h-4 text-[#D4FF00]" />
+              <span className="text-sm font-bold tabular-nums">{selectedIds.size} selected</span>
+            </div>
+            <div className="flex-1" />
+            <MoveMenu onMove={bulkMove} label="Move selected" testid="bulk-move" currentTab={tab} count={selectedIds.size} />
+            <button onClick={clearSelection} data-testid="bulk-clear"
+              className="px-3 py-1 text-xs font-bold uppercase tracking-wider bg-white/10 hover:bg-white/20 text-white rounded-lg flex items-center gap-1">
+              <X className="w-3 h-3" /> Clear
+            </button>
+          </div>
+        </div>
+      )}
+
       {isPipeline && !loading && data.items.length > 0 && (
         <div className="px-8 pt-6">
           <div className="grid grid-cols-2 lg:grid-cols-7 gap-3" data-testid="pipeline-summary">
@@ -345,16 +454,20 @@ export default function ContactsPage() {
                     {items.slice(0, 100).map((c) => {
                       const age = daysSince(c.date || c.date_added);
                       const isHot = c.potential && /yes|hot|high/i.test(String(c.potential));
+                      const checked = selectedIds.has(c.id);
                       return (
                         <div key={c.id} onClick={() => setSelected(c)}
-                          className={`bg-white border rounded-xl p-2.5 hover:border-stone-500 cursor-pointer text-xs ${isHot ? "border-[#D4FF00]" : "border-stone-200"}`}
+                          className={`bg-white border rounded-xl p-2.5 hover:border-stone-500 cursor-pointer text-xs ${isHot ? "border-[#D4FF00]" : "border-stone-200"} ${checked ? "ring-2 ring-stone-950" : ""}`}
                           data-testid={`pipeline-card-${c.id}`}>
                           <div className="flex items-start justify-between gap-2">
+                            <button onClick={(e) => { e.stopPropagation(); toggleSelect(c.id); }} data-testid={`card-select-${c.id}`} className="shrink-0 text-stone-400 hover:text-stone-950">
+                              {checked ? <CheckSquare className="w-3.5 h-3.5 text-stone-950" /> : <Square className="w-3.5 h-3.5" />}
+                            </button>
                             <div className="font-semibold text-stone-950 truncate flex-1">{[c.first_name, c.last_name].filter(Boolean).join(" ") || "Unnamed"}</div>
                             {isHot && <span className="text-[9px] font-bold uppercase tracking-wider bg-[#D4FF00] text-stone-950 px-1 rounded">Hot</span>}
                           </div>
-                          {c.establishment_name && <div className="text-stone-600 truncate mt-0.5">{c.establishment_name}</div>}
-                          <div className="flex items-center justify-between mt-1.5 text-[10px]">
+                          {c.establishment_name && <div className="text-stone-600 truncate mt-0.5 pl-5">{c.establishment_name}</div>}
+                          <div className="flex items-center justify-between mt-1.5 text-[10px] pl-5">
                             <div className="text-stone-500">{c.postcode || ""}</div>
                             <div className="text-stone-400">{daysLabel(age)}</div>
                           </div>
@@ -373,20 +486,38 @@ export default function ContactsPage() {
             <table className="w-full">
               <thead className="bg-[#F2F2F0] border-b border-stone-200">
                 <tr>
+                  <th className="px-3 py-3 w-10">
+                    <button onClick={(e) => {
+                      e.stopPropagation();
+                      const visibleIds = data.items.slice(0, 500).map((c) => c.id);
+                      const allSelected = visibleIds.every((id) => selectedIds.has(id));
+                      setSelectedIds(allSelected ? new Set() : new Set(visibleIds));
+                    }} data-testid="select-all" className="text-stone-500 hover:text-stone-900">
+                      {data.items.length > 0 && data.items.slice(0, 500).every((c) => selectedIds.has(c.id)) ?
+                        <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                    </button>
+                  </th>
                   <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-24">Date</th>
                   <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Name / Establishment</th>
                   <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Contact</th>
                   <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-32">Location</th>
                   <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-28">Source</th>
                   {isPipeline && <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-32">Stage</th>}
-                  <th className="text-right px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-28">Actions</th>
+                  <th className="text-right px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-32">Move</th>
                 </tr>
               </thead>
               <tbody>
                 {data.items.length === 0 ? (
-                  <tr><td colSpan={isPipeline ? 7 : 6} className="px-3 py-10 text-center text-sm text-stone-500">No records.</td></tr>
-                ) : data.items.slice(0, 500).map((c) => (
-                  <tr key={c.id} onClick={() => setSelected(c)} className="border-b border-stone-100 last:border-0 hover:bg-stone-50 cursor-pointer" data-testid={`contact-row-${c.id}`}>
+                  <tr><td colSpan={isPipeline ? 8 : 7} className="px-3 py-10 text-center text-sm text-stone-500">No records.</td></tr>
+                ) : data.items.slice(0, 500).map((c) => {
+                  const checked = selectedIds.has(c.id);
+                  return (
+                  <tr key={c.id} onClick={() => setSelected(c)} className={`border-b border-stone-100 last:border-0 hover:bg-stone-50 cursor-pointer ${checked ? "bg-[#D4FF00]/5" : ""}`} data-testid={`contact-row-${c.id}`}>
+                    <td className="px-3 py-2" onClick={(e) => { e.stopPropagation(); toggleSelect(c.id); }}>
+                      <button data-testid={`select-${c.id}`} className="text-stone-500 hover:text-stone-900">
+                        {checked ? <CheckSquare className="w-4 h-4 text-stone-950" /> : <Square className="w-4 h-4" />}
+                      </button>
+                    </td>
                     <td className="px-3 py-2 text-xs text-stone-500">{(c.date || c.date_added) ? String(c.date || c.date_added).slice(0, 10) : "—"}</td>
                     <td className="px-3 py-2">
                       <div className="text-sm text-stone-950 font-semibold">{[c.first_name, c.last_name].filter(Boolean).join(" ") || "(no name)"}</div>
@@ -399,18 +530,12 @@ export default function ContactsPage() {
                     <td className="px-3 py-2 text-xs text-stone-700">{[c.city, c.postcode].filter(Boolean).join(" · ") || "—"}</td>
                     <td className="px-3 py-2 text-xs text-stone-700">{sourceLabel(c.source)}</td>
                     {isPipeline && <td className="px-3 py-2"><StageBadge status={c.pipeline_status} /></td>}
-                    <td className="px-3 py-2 text-right">
-                      {!isPipeline ? (
-                        <button onClick={(e) => { e.stopPropagation(); promote(c.id); }} data-testid={`row-promote-${c.id}`}
-                          className="text-xs font-bold uppercase tracking-wider text-emerald-700 hover:text-emerald-900 flex items-center gap-1 ml-auto">
-                          <ArrowUpCircle className="w-3 h-3" /> Promote
-                        </button>
-                      ) : (
-                        <span className="text-xs text-stone-400">{daysLabel(daysSince(c.date || c.date_added))}</span>
-                      )}
+                    <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
+                      <MoveMenu onMove={(target, stage) => moveContact(c.id, target, stage)} label="Move" testid={`row-move-${c.id}`} currentTab={tab} />
                     </td>
                   </tr>
-                ))}
+                );
+                })}
               </tbody>
             </table>
             {data.items.length > 500 && (

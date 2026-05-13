@@ -660,6 +660,39 @@ async def migration_run(user: dict = Depends(require_role("admin"))):
         raise HTTPException(status_code=500, detail=f"Migration failed: {e}")
 
 
+@api.post("/franchisees/refresh-photos")
+async def refresh_franchisee_photos(user: dict = Depends(require_role("admin"))):
+    """Re-fetch the original Airtable URLs for any franchisees whose photos failed to download
+    and download them now. Useful when migration ran when Airtable URLs had already expired."""
+    if not AIRTABLE_PAT or not AIRTABLE_BASE_ID:
+        raise HTTPException(status_code=503, detail="Airtable credentials not configured")
+    from migration import _fetch_all_records, _extract_attachment_urls, _download_franchisee_photos
+    # Find the franchisees table id from saved decisions
+    td = await db.migration_table_decisions.find_one({"table_name": "Franchisees/Licencees"}, {"_id": 0})
+    if not td or not td.get("table_id"):
+        raise HTTPException(status_code=404, detail="Franchisees table id not found in migration decisions")
+    # Pull fresh attachment URLs from Airtable
+    records = await _fetch_all_records(AIRTABLE_BASE_ID, td["table_id"], AIRTABLE_PAT)
+    at_id_to_photos = {}
+    for rec in records:
+        photos = _extract_attachment_urls(rec.get("fields", {}).get("Upload"))
+        if photos:
+            at_id_to_photos[rec["id"]] = photos
+    # Build a list of franchisees with refreshed remote URLs
+    franchisees = await db.franchisees.find({}, {"_id": 0}).to_list(10000)
+    updated = []
+    for f in franchisees:
+        photos = at_id_to_photos.get(f.get("airtable_id"))
+        if photos:
+            f["photos"] = photos
+            updated.append(f)
+    stats = await _download_franchisee_photos(updated)
+    for f in updated:
+        if f.get("photos"):
+            await db.franchisees.update_one({"id": f["id"]}, {"$set": {"photos": f["photos"]}})
+    return {"ok": True, "stats": stats, "refreshed": len(updated)}
+
+
 # ----------------------------------------------------------------------------
 # CRM — Franchisees
 # ----------------------------------------------------------------------------
@@ -880,6 +913,133 @@ async def delete_contact(contact_id: str, _: dict = Depends(require_role("admin"
 
 
 # ----------------------------------------------------------------------------
+# Contact Move (flexible between tabs + bulk move)
+# ----------------------------------------------------------------------------
+MOVE_TARGETS = ("pipeline", "franchise", "general")
+
+
+class ContactMoveRequest(BaseModel):
+    target: str  # "pipeline" | "franchise" | "general"
+    pipeline_status: Optional[str] = None  # only used when target == "pipeline"
+
+
+class ContactBulkMoveRequest(BaseModel):
+    ids: List[str]
+    target: str
+    pipeline_status: Optional[str] = None
+
+
+async def _move_one_contact(contact_id: str, target: str, pipeline_status: Optional[str]) -> Optional[str]:
+    """Move a single contact to one of: pipeline / franchise / general.
+    Legacy `contacts` records get migrated into `web_form_contacts` when moved to
+    pipeline or franchise so they share the same data model.
+    Returns the resulting collection name, or None if not found."""
+    now = datetime.now(timezone.utc).isoformat()
+
+    if target == "pipeline":
+        stage = pipeline_status if pipeline_status in PIPELINE_STAGES else "new"
+        # web_form_contacts: just flip flags
+        r = await db.web_form_contacts.update_one(
+            {"id": contact_id},
+            {"$set": {"in_pipeline": True, "pipeline_status": stage, "updated_at": now}},
+        )
+        if r.matched_count:
+            return "web_form_contacts"
+        # legacy: migrate over
+        legacy = await db.contacts.find_one({"id": contact_id}, {"_id": 0})
+        if not legacy:
+            return None
+        legacy.update({
+            "in_pipeline": True,
+            "pipeline_status": stage,
+            "promoted_from_legacy": True,
+            "source": legacy.get("source") or "legacy_general_enquiry",
+            "updated_at": now,
+        })
+        await db.web_form_contacts.insert_one(legacy)
+        await db.contacts.delete_one({"id": contact_id})
+        return "web_form_contacts"
+
+    if target == "franchise":
+        # In web_form_contacts: source must be franchise_enquiry or licence_enquiry
+        existing = await db.web_form_contacts.find_one({"id": contact_id}, {"_id": 0, "source": 1})
+        if existing:
+            new_source = existing.get("source")
+            if new_source not in ("franchise_enquiry", "licence_enquiry"):
+                new_source = "franchise_enquiry"
+            await db.web_form_contacts.update_one(
+                {"id": contact_id},
+                {"$set": {"in_pipeline": False, "pipeline_status": None,
+                          "source": new_source, "updated_at": now}},
+            )
+            return "web_form_contacts"
+        legacy = await db.contacts.find_one({"id": contact_id}, {"_id": 0})
+        if not legacy:
+            return None
+        legacy.update({
+            "in_pipeline": False,
+            "pipeline_status": None,
+            "source": "franchise_enquiry",
+            "promoted_from_legacy": True,
+            "updated_at": now,
+        })
+        await db.web_form_contacts.insert_one(legacy)
+        await db.contacts.delete_one({"id": contact_id})
+        return "web_form_contacts"
+
+    if target == "general":
+        # In web_form_contacts: source becomes general_enquiry, leaves pipeline
+        r = await db.web_form_contacts.update_one(
+            {"id": contact_id},
+            {"$set": {"in_pipeline": False, "pipeline_status": None,
+                      "source": "general_enquiry", "updated_at": now}},
+        )
+        if r.matched_count:
+            return "web_form_contacts"
+        # legacy stays in contacts collection — just touch updated_at
+        r = await db.contacts.update_one(
+            {"id": contact_id},
+            {"$set": {"in_pipeline": False, "pipeline_status": None, "updated_at": now}},
+        )
+        if r.matched_count:
+            return "contacts"
+        return None
+
+    return None
+
+
+@api.post("/contacts/{contact_id}/move")
+async def move_contact(contact_id: str, body: ContactMoveRequest, _: dict = Depends(require_role("admin"))):
+    if body.target not in MOVE_TARGETS:
+        raise HTTPException(status_code=400, detail=f"target must be one of {MOVE_TARGETS}")
+    if body.target == "pipeline" and body.pipeline_status and body.pipeline_status not in PIPELINE_STAGES:
+        raise HTTPException(status_code=400, detail=f"pipeline_status must be one of {PIPELINE_STAGES}")
+    coll = await _move_one_contact(contact_id, body.target, body.pipeline_status)
+    if not coll:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    return {"ok": True, "target": body.target, "collection": coll}
+
+
+@api.post("/contacts/bulk-move")
+async def bulk_move_contacts(body: ContactBulkMoveRequest, _: dict = Depends(require_role("admin"))):
+    if body.target not in MOVE_TARGETS:
+        raise HTTPException(status_code=400, detail=f"target must be one of {MOVE_TARGETS}")
+    if body.target == "pipeline" and body.pipeline_status and body.pipeline_status not in PIPELINE_STAGES:
+        raise HTTPException(status_code=400, detail=f"pipeline_status must be one of {PIPELINE_STAGES}")
+    if not body.ids:
+        return {"ok": True, "moved": 0, "not_found": 0}
+    moved = 0
+    not_found = 0
+    for cid in body.ids:
+        coll = await _move_one_contact(cid, body.target, body.pipeline_status)
+        if coll:
+            moved += 1
+        else:
+            not_found += 1
+    return {"ok": True, "moved": moved, "not_found": not_found}
+
+
+# ----------------------------------------------------------------------------
 # CRM — Territories
 # ----------------------------------------------------------------------------
 @api.get("/territories")
@@ -1029,6 +1189,13 @@ async def on_shutdown():
 # Wire up
 # ----------------------------------------------------------------------------
 app.include_router(api)
+
+# Serve cached franchisee photos (downloaded from Airtable at migration time so they
+# don't expire). Mounted under /api/uploads so it's reachable through the ingress.
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+from migration import UPLOADS_DIR  # noqa: E402
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/api/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
 
 app.add_middleware(
     CORSMiddleware,
