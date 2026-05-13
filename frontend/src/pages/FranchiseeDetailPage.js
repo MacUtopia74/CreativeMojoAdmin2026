@@ -5,7 +5,7 @@ import { ArrowLeft, MapPin, Mail, Phone, Calendar, Globe, Facebook, AlertCircle,
 
 function Panel({ icon: Icon, title, action, children, testid }) {
   return (
-    <div className="bg-white border border-stone-200" data-testid={testid}>
+    <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid={testid}>
       <div className="px-5 py-3 border-b border-stone-200 flex items-center justify-between">
         <div className="flex items-center gap-2">
           {Icon && <Icon className="w-3.5 h-3.5 text-stone-500" />}
@@ -48,7 +48,7 @@ export default function FranchiseeDetailPage() {
   if (loading) return <div className="min-h-screen flex items-center justify-center text-stone-500 text-sm uppercase tracking-widest">Loading…</div>;
   if (error || !data) return (
     <div className="p-12">
-      <div className="border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-center gap-2 max-w-lg">
+      <div className="border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-center gap-2 max-w-lg rounded-xl">
         <AlertCircle className="w-4 h-4" /> {error || "Not found"}
       </div>
       <Link to="/franchisees" className="inline-flex items-center gap-2 mt-4 text-sm text-stone-700 hover:text-stone-950">
@@ -87,17 +87,17 @@ export default function FranchiseeDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr_auto] gap-6 items-start">
           <div>
             {photo ? (
-              <img src={photo} alt={fullName} className="w-full aspect-square object-cover border border-stone-200" />
+              <img src={photo} alt={fullName} className="w-full aspect-square object-cover border border-stone-200 rounded-2xl" />
             ) : (
-              <div className="w-full aspect-square bg-stone-100 border border-stone-200 flex items-center justify-center text-5xl font-display text-stone-400">
+              <div className="w-full aspect-square bg-stone-100 border border-stone-200 flex items-center justify-center text-5xl font-display text-stone-400 rounded-2xl">
                 {(f.first_name?.[0] || "?") + (f.last_name?.[0] || "")}
               </div>
             )}
           </div>
           <div className="space-y-3">
             <div className="flex items-center gap-2 flex-wrap">
-              {statusTag && <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border ${statusColor}`}>{statusTag}</span>}
-              {feeTag && <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[#D4FF00]/15 border border-[#D4FF00]/60 text-stone-900">{feeTag}</span>}
+              {statusTag && <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-md ${statusColor}`}>{statusTag}</span>}
+              {feeTag && <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[#D4FF00]/15 border border-[#D4FF00]/60 text-stone-900 rounded-md">{feeTag}</span>}
               <span className="text-xs text-stone-500">Franchise #{f.franchise_number}</span>
             </div>
             <div>
@@ -110,12 +110,12 @@ export default function FranchiseeDetailPage() {
             </div>
             {otherTags.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
-                {otherTags.map((t) => <span key={t} className="px-2 py-0.5 bg-stone-100 text-xs text-stone-700">{t}</span>)}
+                {otherTags.map((t) => <span key={t} className="px-2 py-0.5 bg-stone-100 text-xs text-stone-700 rounded-md">{t}</span>)}
               </div>
             )}
           </div>
           {/* Quick stats */}
-          <div className="grid grid-cols-3 gap-px bg-stone-200 border border-stone-200 lg:min-w-[420px]">
+          <div className="grid grid-cols-3 gap-px bg-stone-200 border border-stone-200 lg:min-w-[420px] rounded-2xl overflow-hidden">
             <div className="bg-white p-4">
               <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Contracts</div>
               <div className="font-display text-2xl text-stone-950 mt-1">{contracts.length}</div>
@@ -216,8 +216,8 @@ export default function FranchiseeDetailPage() {
                     </td>
                     <td className="px-3 py-2">
                       {c.cancelled_early
-                        ? <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-red-50 text-red-700 border border-red-200">Cancelled</span>
-                        : <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">{c.staying_leaving || "Active"}</span>}
+                        ? <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-red-50 text-red-700 border border-red-200 rounded-md">Cancelled</span>
+                        : <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md">{c.staying_leaving || "Active"}</span>}
                     </td>
                   </tr>
                 ))}
@@ -233,7 +233,7 @@ export default function FranchiseeDetailPage() {
           ) : (
             <div className="flex flex-wrap gap-1.5" data-testid="franchisee-territories">
               {territories.map((t) => (
-                <span key={t.id} className="px-2 py-0.5 bg-stone-100 text-xs text-stone-800 tabular-nums">{t.postcode}</span>
+                <span key={t.id} className="px-2 py-0.5 bg-stone-100 text-xs text-stone-800 tabular-nums rounded-md">{t.postcode}</span>
               ))}
             </div>
           )}

@@ -33,16 +33,16 @@ export default function ContractsPage() {
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
           <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="contract-search"
             placeholder="Search name or email…"
-            className="pl-10 pr-4 py-2 w-72 bg-stone-50 border border-stone-300 text-sm focus:outline-none focus:border-stone-900" />
+            className="pl-10 pr-4 py-2 w-72 bg-stone-50 border border-stone-300 text-sm focus:outline-none focus:border-stone-900 rounded-lg" />
         </div>
       </div>
 
       <div className="p-8">
-        {error && <div className="mb-4 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-center gap-2"><AlertCircle className="w-4 h-4" />{error}</div>}
+        {error && <div className="mb-4 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-center gap-2 rounded-xl"><AlertCircle className="w-4 h-4" />{error}</div>}
         {loading ? (
           <div className="text-center text-stone-500 text-sm font-mono uppercase tracking-widest p-12">Loading…</div>
         ) : (
-          <div className="bg-white border border-stone-200 overflow-hidden" data-testid="contracts-table">
+          <div className="bg-white border border-stone-200 overflow-hidden rounded-2xl" data-testid="contracts-table">
             <table className="w-full">
               <thead className="bg-[#F2F2F0] border-b border-stone-200">
                 <tr>
@@ -79,8 +79,8 @@ export default function ContractsPage() {
                     </td>
                     <td className="px-3 py-2">
                       {c.cancelled_early
-                        ? <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-red-50 text-red-700 border border-red-200">Cancelled</span>
-                        : <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">{c.staying_leaving || "Active"}</span>}
+                        ? <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-red-50 text-red-700 border border-red-200 rounded-md">Cancelled</span>
+                        : <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md">{c.staying_leaving || "Active"}</span>}
                     </td>
                   </tr>
                 ))}

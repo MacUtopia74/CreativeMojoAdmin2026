@@ -59,7 +59,7 @@ function DecisionSelect({ value, onChange, testid }) {
   const opt = DECISION_MAP[value] || DECISION_MAP.undecided;
   const Icon = opt.icon;
   return (
-    <div className={`inline-flex items-center gap-1.5 px-1 ${opt.bg}`}>
+    <div className={`inline-flex items-center gap-1.5 px-1 rounded-md ${opt.bg}`}>
       <Icon className={`w-3 h-3 ${opt.color} shrink-0`} />
       <select
         value={value}
@@ -88,7 +88,7 @@ function TextField({ value, onChange, placeholder, testid }) {
       onBlur={() => v !== (value || "") && onChange(v)}
       placeholder={placeholder}
       data-testid={testid}
-      className="w-full px-2 py-1 text-xs font-mono bg-white border border-stone-200 focus:outline-none focus:border-stone-900"
+      className="w-full px-2 py-1 text-xs font-mono bg-white border border-stone-200 focus:outline-none focus:border-stone-900 rounded-md"
     />
   );
 }
@@ -255,7 +255,7 @@ export default function AirtableInspectorPage() {
           Loading schema…
         </div>
       ) : error ? (
-        <div className="m-8 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-center gap-2" data-testid="inspector-error">
+        <div className="m-8 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-center gap-2 rounded-xl" data-testid="inspector-error">
           <AlertCircle className="w-4 h-4" /> {error}
         </div>
       ) : (
@@ -310,7 +310,7 @@ export default function AirtableInspectorPage() {
                       onClick={fetchCount}
                       disabled={countLoading}
                       data-testid="fetch-count-button"
-                      className="px-3 py-1 border border-stone-300 bg-white text-xs font-bold uppercase tracking-wider hover:bg-stone-50 disabled:opacity-50 flex items-center gap-1.5"
+                      className="px-3 py-1 border border-stone-300 bg-white text-xs font-bold uppercase tracking-wider hover:bg-stone-50 disabled:opacity-50 flex items-center gap-1.5 rounded-lg"
                     >
                       <RefreshCw className={`w-3 h-3 ${countLoading ? "animate-spin" : ""}`} />
                       {countLoading ? "Counting…" : count != null ? `${count.toLocaleString()} records` : "Count records"}
@@ -319,7 +319,7 @@ export default function AirtableInspectorPage() {
                 </div>
 
                 {/* Table-level decision */}
-                <div className="bg-white border border-stone-200" data-testid="table-decision-card">
+                <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid="table-decision-card">
                   <div className="px-5 py-3 border-b border-stone-200 flex items-center justify-between">
                     <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Migration Decision (Table)</div>
                   </div>
@@ -328,7 +328,7 @@ export default function AirtableInspectorPage() {
                       <button
                         onClick={() => updateTableDecision({ migrate: true })}
                         data-testid="table-decision-migrate"
-                        className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border transition-colors ${
+                        className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border transition-colors rounded-lg ${
                           currentTableDecision.migrate === true
                             ? "bg-emerald-600 text-white border-emerald-600"
                             : "bg-white text-stone-900 border-stone-300 hover:bg-emerald-50"
@@ -339,7 +339,7 @@ export default function AirtableInspectorPage() {
                       <button
                         onClick={() => updateTableDecision({ migrate: false })}
                         data-testid="table-decision-skip"
-                        className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border transition-colors ${
+                        className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border transition-colors rounded-lg ${
                           currentTableDecision.migrate === false
                             ? "bg-red-600 text-white border-red-600"
                             : "bg-white text-stone-900 border-stone-300 hover:bg-red-50"
@@ -352,7 +352,7 @@ export default function AirtableInspectorPage() {
                           {Object.entries(summary).filter(([, v]) => v > 0).map(([k, v]) => {
                             const opt = DECISION_MAP[k];
                             return (
-                              <span key={k} className={`px-2 py-0.5 ${opt.bg} ${opt.color} font-bold text-[10px] uppercase tracking-wider`}>
+                              <span key={k} className={`px-2 py-0.5 ${opt.bg} ${opt.color} font-bold text-[10px] uppercase tracking-wider rounded-md`}>
                                 {v} {opt.label}
                               </span>
                             );
@@ -377,7 +377,7 @@ export default function AirtableInspectorPage() {
                   <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-3">
                     Fields ({selected.fields.length}) — Decide per field
                   </div>
-                  <div className="bg-white border border-stone-200 overflow-hidden" data-testid="fields-table">
+                  <div className="bg-white border border-stone-200 overflow-hidden rounded-2xl" data-testid="fields-table">
                     <table className="w-full">
                       <thead className="bg-[#F2F2F0] border-b border-stone-200">
                         <tr>
@@ -401,7 +401,7 @@ export default function AirtableInspectorPage() {
                                 <div className="text-[10px] text-stone-400 font-mono mt-0.5">{f.id}</div>
                               </td>
                               <td className="px-3 py-2 align-middle">
-                                <span className={`inline-block px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${fieldTypeColor(f.type)}`}>
+                                <span className={`inline-block px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md ${fieldTypeColor(f.type)}`}>
                                   {f.type}
                                 </span>
                               </td>
@@ -437,11 +437,11 @@ export default function AirtableInspectorPage() {
                     Sample Records (first 10) — for reference
                   </div>
                   {recordsLoading ? (
-                    <div className="bg-white border border-stone-200 p-8 text-center text-stone-500 text-sm font-mono uppercase tracking-widest">Loading records…</div>
+                    <div className="bg-white border border-stone-200 p-8 text-center text-stone-500 text-sm font-mono uppercase tracking-widest rounded-2xl">Loading records…</div>
                   ) : records.length === 0 ? (
-                    <div className="bg-white border border-stone-200 p-8 text-center text-stone-500 text-sm">No records</div>
+                    <div className="bg-white border border-stone-200 p-8 text-center text-stone-500 text-sm rounded-2xl">No records</div>
                   ) : (
-                    <div className="bg-white border border-stone-200 overflow-x-auto" data-testid="sample-records-table">
+                    <div className="bg-white border border-stone-200 overflow-x-auto rounded-2xl" data-testid="sample-records-table">
                       <table className="w-full">
                         <thead className="bg-[#F2F2F0] border-b border-stone-200">
                           <tr>

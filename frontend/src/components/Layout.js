@@ -36,7 +36,7 @@ export default function Layout() {
       <aside className="w-[260px] shrink-0 bg-[#F2F2F0] border-r border-stone-200 flex flex-col" data-testid="sidebar">
         <div className="px-6 py-7 border-b border-stone-200">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-[#D4FF00] flex items-center justify-center">
+            <div className="w-7 h-7 bg-[#D4FF00] flex items-center justify-center rounded-lg">
               <span className="font-display font-black text-stone-950 text-sm">M</span>
             </div>
             <div className="font-display font-black text-lg tracking-tight text-stone-950">Creative Mojo</div>
@@ -74,7 +74,7 @@ export default function Layout() {
           <button
             onClick={handleLogout}
             data-testid="logout-button"
-            className="w-full flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wider border border-stone-300 bg-white text-stone-900 hover:bg-stone-50 transition-colors"
+            className="w-full flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wider border border-stone-300 bg-white text-stone-900 hover:bg-stone-50 transition-colors rounded-lg"
           >
             <LogOut className="w-3.5 h-3.5" /> Logout
           </button>

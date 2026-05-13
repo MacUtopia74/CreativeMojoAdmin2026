@@ -37,7 +37,7 @@ export default function LoginPage() {
         <div className="absolute inset-0 bg-gradient-to-br from-stone-950/70 via-stone-900/40 to-stone-900/70" />
         <div className="relative h-full flex flex-col justify-between p-12 text-white">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-[#D4FF00] flex items-center justify-center">
+            <div className="w-8 h-8 bg-[#D4FF00] flex items-center justify-center rounded-lg">
               <span className="font-display font-black text-stone-950">M</span>
             </div>
             <span className="font-display font-black text-xl tracking-tight">Creative Mojo</span>
@@ -58,7 +58,7 @@ export default function LoginPage() {
       <div className="flex-1 flex items-center justify-center p-8 bg-[#F9F9F8]">
         <div className="w-full max-w-md">
           <div className="lg:hidden flex items-center gap-2 mb-12">
-            <div className="w-7 h-7 bg-[#D4FF00] flex items-center justify-center">
+            <div className="w-7 h-7 bg-[#D4FF00] flex items-center justify-center rounded-lg">
               <span className="font-display font-black text-stone-950 text-sm">M</span>
             </div>
             <div className="font-display font-black text-lg tracking-tight">Creative Mojo</div>
@@ -85,7 +85,7 @@ export default function LoginPage() {
                 data-testid="login-email-input"
                 required
                 autoFocus
-                className="w-full px-4 py-3 bg-white border border-stone-300 text-stone-950 text-sm font-medium focus:outline-none focus:border-stone-950 focus:ring-1 focus:ring-stone-950 transition-colors"
+                className="w-full px-4 py-3 bg-white border border-stone-300 text-stone-950 text-sm font-medium focus:outline-none focus:border-stone-950 focus:ring-1 focus:ring-stone-950 transition-colors rounded-xl"
                 placeholder="you@creativemojo.co.uk"
               />
             </div>
@@ -101,13 +101,13 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 data-testid="login-password-input"
                 required
-                className="w-full px-4 py-3 bg-white border border-stone-300 text-stone-950 text-sm font-medium focus:outline-none focus:border-stone-950 focus:ring-1 focus:ring-stone-950 transition-colors"
+                className="w-full px-4 py-3 bg-white border border-stone-300 text-stone-950 text-sm font-medium focus:outline-none focus:border-stone-950 focus:ring-1 focus:ring-stone-950 transition-colors rounded-xl"
                 placeholder="••••••••"
               />
             </div>
 
             {error && (
-              <div data-testid="login-error" className="px-4 py-3 border border-red-200 bg-red-50 text-sm text-red-800">
+              <div data-testid="login-error" className="px-4 py-3 border border-red-200 bg-red-50 text-sm text-red-800 rounded-xl">
                 {error}
               </div>
             )}
@@ -116,7 +116,7 @@ export default function LoginPage() {
               type="submit"
               disabled={submitting}
               data-testid="login-submit-button"
-              className="w-full flex items-center justify-center gap-2 px-6 py-3.5 bg-[#D4FF00] hover:bg-[#BDE600] text-stone-950 font-bold text-sm uppercase tracking-wider transition-colors disabled:opacity-50"
+              className="w-full flex items-center justify-center gap-2 px-6 py-3.5 bg-[#D4FF00] hover:bg-[#BDE600] text-stone-950 font-bold text-sm uppercase tracking-wider transition-colors disabled:opacity-50 rounded-xl"
             >
               {submitting ? "Signing in…" : "Sign in"}
               {!submitting && <ArrowRight className="w-4 h-4" />}

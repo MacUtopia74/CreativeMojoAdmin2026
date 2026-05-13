@@ -92,10 +92,10 @@ export default function MigrationPlanPage() {
           <h1 className="font-display font-black text-xl text-stone-950 tracking-tight">Migration Plan</h1>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={downloadMarkdown} data-testid="download-md" className="px-3 py-2 text-xs font-bold uppercase tracking-wider border border-stone-300 bg-white hover:bg-stone-50 flex items-center gap-1.5">
+          <button onClick={downloadMarkdown} data-testid="download-md" className="px-3 py-2 text-xs font-bold uppercase tracking-wider border border-stone-300 bg-white hover:bg-stone-50 flex items-center gap-1.5 rounded-lg">
             <Download className="w-3.5 h-3.5" /> Markdown
           </button>
-          <button onClick={downloadJson} data-testid="download-json" className="px-3 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 flex items-center gap-1.5">
+          <button onClick={downloadJson} data-testid="download-json" className="px-3 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 flex items-center gap-1.5 rounded-lg">
             <Download className="w-3.5 h-3.5" /> JSON
           </button>
         </div>
@@ -103,7 +103,7 @@ export default function MigrationPlanPage() {
 
       <div className="p-8 space-y-8">
         {error && (
-          <div className="border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-center gap-2">
+          <div className="border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-center gap-2 rounded-xl">
             <AlertCircle className="w-4 h-4" /> {error}
           </div>
         )}
@@ -114,7 +114,7 @@ export default function MigrationPlanPage() {
             {/* Totals */}
             <div>
               <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-3">Field Decision Totals (across all tables)</div>
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-stone-200 border border-stone-200">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-stone-200 border border-stone-200 rounded-2xl overflow-hidden">
                 <StatTile label="Keep" value={plan.totals.keep} decision="keep" />
                 <StatTile label="Rename" value={plan.totals.rename} decision="rename" />
                 <StatTile label="Merge" value={plan.totals.merge} decision="merge" />
@@ -126,7 +126,7 @@ export default function MigrationPlanPage() {
             {/* Per-table list */}
             <div>
               <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-3">Per-Table Breakdown</div>
-              <div className="bg-white border border-stone-200 divide-y divide-stone-200">
+              <div className="bg-white border border-stone-200 divide-y divide-stone-200 rounded-2xl overflow-hidden">
                 {plan.tables.map((t) => {
                   const status = t.migrate === true ? "Migrate" : t.migrate === false ? "Skip" : "Undecided";
                   const statusColor = t.migrate === true ? "bg-emerald-600 text-white" : t.migrate === false ? "bg-stone-300 text-stone-700" : "bg-amber-100 text-amber-800";
@@ -134,13 +134,13 @@ export default function MigrationPlanPage() {
                     <div key={t.table_id} className="p-5 hover:bg-stone-50/50 transition-colors" data-testid={`plan-table-${t.table_id}`}>
                       <div className="flex items-center justify-between flex-wrap gap-3">
                         <div className="flex items-center gap-3">
-                          <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${statusColor}`}>{status}</span>
+                          <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md ${statusColor}`}>{status}</span>
                           <div className="font-display font-bold text-lg text-stone-950">{t.table_name}</div>
                           <div className="text-xs text-stone-500 font-mono">{t.field_count} fields</div>
                         </div>
                         <div className="flex gap-2 flex-wrap">
                           {Object.entries(t.counts).filter(([, v]) => v > 0).map(([k, v]) => (
-                            <span key={k} className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${COLORS[k]}`}>{v} {k}</span>
+                            <span key={k} className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md ${COLORS[k]}`}>{v} {k}</span>
                           ))}
                         </div>
                       </div>

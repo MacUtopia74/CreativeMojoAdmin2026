@@ -94,7 +94,7 @@ export default function FranchiseesPage() {
             onChange={(e) => setSearch(e.target.value)}
             data-testid="franchisee-search"
             placeholder="Search name, org, email, postcode…"
-            className="pl-10 pr-4 py-2 w-80 bg-stone-50 border border-stone-300 text-sm focus:outline-none focus:border-stone-900"
+            className="pl-10 pr-4 py-2 w-80 bg-stone-50 border border-stone-300 text-sm focus:outline-none focus:border-stone-900 rounded-lg"
           />
         </div>
       </div>
@@ -117,7 +117,7 @@ export default function FranchiseesPage() {
                 }`}
               >
                 {s.label}
-                <span className={`ml-2 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                <span className={`ml-2 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md ${
                   active ? "bg-[#D4FF00] text-stone-950" : "bg-stone-100 text-stone-600"
                 }`}>{count}</span>
               </button>
@@ -128,14 +128,14 @@ export default function FranchiseesPage() {
 
       <div className="p-8 pt-6">
         {error && (
-          <div className="mb-4 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-center gap-2">
+          <div className="mb-4 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-center gap-2 rounded-xl">
             <AlertCircle className="w-4 h-4" /> {error}
           </div>
         )}
         {loading ? (
           <div className="text-center text-stone-500 text-sm uppercase tracking-widest p-12" data-testid="franchisees-loading">Loading…</div>
         ) : (
-          <div className="bg-white border border-stone-200 overflow-hidden" data-testid="franchisees-table">
+          <div className="bg-white border border-stone-200 overflow-hidden rounded-2xl" data-testid="franchisees-table">
             <table className="w-full">
               <thead className="bg-[#F2F2F0] border-b border-stone-200">
                 <tr>
@@ -158,9 +158,9 @@ export default function FranchiseesPage() {
                     <tr key={f.id} className="border-b border-stone-100 hover:bg-stone-50 transition-colors" data-testid={`franchisee-row-${f.id}`}>
                       <td className="px-3 py-2">
                         {photo ? (
-                          <img src={photo} alt="" className="w-24 h-24 object-cover rounded-2xl" />
+                          <img src={photo} alt="" className="w-32 h-32 object-cover rounded-2xl" />
                         ) : (
-                          <div className="w-24 h-24 bg-stone-100 rounded-2xl flex items-center justify-center text-2xl font-bold text-stone-400">
+                          <div className="w-32 h-32 bg-stone-100 rounded-2xl flex items-center justify-center text-3xl font-bold text-stone-400">
                             {(f.first_name?.[0] || "?") + (f.last_name?.[0] || "")}
                           </div>
                         )}
@@ -177,7 +177,7 @@ export default function FranchiseesPage() {
                       <td className="px-3 py-2 text-xs text-stone-500">{f.date_added ? String(f.date_added).slice(0, 10) : "—"}</td>
                       <td className="px-3 py-2">
                         {f.mandate ? (
-                          <span className="inline-block px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[#D4FF00]/20 border border-[#D4FF00]/60 text-stone-900">
+                          <span className="inline-block px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[#D4FF00]/20 border border-[#D4FF00]/60 text-stone-900 rounded-md">
                             {Array.isArray(f.mandate) ? f.mandate[0] : f.mandate}
                           </span>
                         ) : <span className="text-stone-300 text-xs">—</span>}

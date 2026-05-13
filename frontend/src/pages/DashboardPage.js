@@ -23,15 +23,15 @@ function KPI({ label, value, hint, to, testid }) {
     </>
   );
   return to ? (
-    <Link to={to} className="bg-white border border-stone-200 p-6 block hover:bg-stone-50 transition-colors" data-testid={testid}>{inner}</Link>
+    <Link to={to} className="bg-white border border-stone-200 p-6 block hover:bg-stone-50 transition-colors rounded-2xl" data-testid={testid}>{inner}</Link>
   ) : (
-    <div className="bg-white border border-stone-200 p-6" data-testid={testid}>{inner}</div>
+    <div className="bg-white border border-stone-200 p-6 rounded-2xl" data-testid={testid}>{inner}</div>
   );
 }
 
 function Panel({ icon: Icon, title, action, children, testid }) {
   return (
-    <div className="bg-white border border-stone-200" data-testid={testid}>
+    <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid={testid}>
       <div className="px-5 py-3 border-b border-stone-200 flex items-center justify-between">
         <div className="flex items-center gap-2">
           {Icon && <Icon className="w-3.5 h-3.5 text-stone-500" />}
@@ -100,16 +100,16 @@ export default function DashboardPage() {
         </div>
         {lastMigrated && <span className="text-xs text-stone-500 mr-3">Last migrated · {lastMigrated}</span>}
         <button onClick={runMigration} disabled={migrating} data-testid="run-migration-button"
-          className="px-4 py-2 bg-stone-950 text-white text-xs font-bold uppercase tracking-wider hover:bg-stone-800 transition-colors disabled:opacity-50 flex items-center gap-2">
+          className="px-4 py-2 bg-stone-950 text-white text-xs font-bold uppercase tracking-wider hover:bg-stone-800 transition-colors disabled:opacity-50 flex items-center gap-2 rounded-lg">
           <RefreshCw className={`w-3.5 h-3.5 ${migrating ? "animate-spin" : ""}`} />
           {migrating ? "Migrating…" : (hasData ? "Re-run migration" : "Run migration")}
         </button>
       </div>
 
       <div className="p-8 space-y-6 max-w-[1500px]">
-        {error && <div className="border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-center gap-2"><AlertCircle className="w-4 h-4" /> {error}</div>}
+        {error && <div className="border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-center gap-2 rounded-xl"><AlertCircle className="w-4 h-4" /> {error}</div>}
         {migrateResult && (
-          <div className={`border px-4 py-3 text-sm ${migrateResult.ok ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-200 bg-red-50 text-red-800"}`}>
+          <div className={`border px-4 py-3 text-sm rounded-xl ${migrateResult.ok ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-200 bg-red-50 text-red-800"}`}>
             {migrateResult.ok ? (
               <><strong>Migration complete.</strong> <span className="ml-2">{Object.entries(migrateResult.counts).map(([k, v]) => `${k}: ${v.toLocaleString()}`).join(" · ")}</span></>
             ) : <><strong>Migration failed:</strong> {migrateResult.error}</>}
@@ -117,7 +117,7 @@ export default function DashboardPage() {
         )}
 
         {/* KPIs */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-stone-200 border border-stone-200">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" data-testid="dashboard-kpis">
           <KPI label="Active Franchisees" value={stats?.active_franchisees} hint={`of ${stats?.franchisees_migrated || 0} total`} to="/franchisees" testid="kpi-franchisees" />
           <KPI label="Active Contracts" value={stats?.active_contracts} hint={`of ${stats?.contracts_migrated || 0} total`} to="/contracts" testid="kpi-contracts" />
           <KPI label="Enquiries" value={stats?.web_form_contacts} hint={`${conversionRate}% converted lifetime`} to="/contacts" testid="kpi-contacts" />
@@ -137,7 +137,7 @@ export default function DashboardPage() {
               return (
                 <div key={s.key} className="flex items-center gap-3">
                   <div className="w-32 text-xs font-semibold text-stone-700">{s.label}</div>
-                  <div className="flex-1 h-6 bg-stone-100 relative">
+                  <div className="flex-1 h-6 bg-stone-100 relative rounded-md overflow-hidden">
                     <div className={`h-full ${s.color} transition-all`} style={{ width: `${pct}%` }} />
                     <span className="absolute inset-0 flex items-center pl-2 text-xs font-bold text-stone-900 tabular-nums">{count.toLocaleString()}</span>
                   </div>
@@ -182,7 +182,7 @@ export default function DashboardPage() {
                   return (
                     <div key={m.value} className="flex items-center gap-3 text-sm">
                       <div className="flex-1 truncate font-semibold text-stone-900">{m.value || "(blank)"}</div>
-                      <div className="w-20 h-2 bg-stone-100">
+                      <div className="w-20 h-2 bg-stone-100 rounded-full overflow-hidden">
                         <div className="h-full bg-[#D4FF00]" style={{ width: `${pct}%` }} />
                       </div>
                       <div className="w-10 text-right text-xs text-stone-700 tabular-nums font-bold">{m.count}</div>
