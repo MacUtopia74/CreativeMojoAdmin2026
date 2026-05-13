@@ -54,7 +54,10 @@ export default function FranchiseeDetailPage() {
         </Link>
         <div className="ml-6 flex items-baseline gap-3">
           <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">{f.franchise_number || "—"}</div>
-          <h1 className="font-display font-black text-xl text-stone-950 tracking-tight" data-testid="franchisee-detail-name">{f.organisation}</h1>
+          <h1 className="font-display font-black text-xl text-stone-950 tracking-tight" data-testid="franchisee-detail-name">{fullName || f.organisation || "—"}</h1>
+          {fullName && f.organisation && (
+            <span className="text-sm text-stone-500">· {f.organisation}</span>
+          )}
         </div>
       </div>
 
