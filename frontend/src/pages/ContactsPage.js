@@ -761,7 +761,7 @@ export default function ContactsPage() {
         }}
         onDelete={remove} />
       <AddContactModal open={addOpen} onClose={() => setAddOpen(false)}
-        defaultTarget={tab === "pipeline" ? "pipeline" : tab}
+        defaultTarget={tab === "pipeline" ? "franchise" : tab}
         onCreated={(_c, target) => {
           // Jump to the tab the contact landed in so the user sees it immediately
           if (target && target !== tab) setTab(target);

@@ -29,6 +29,15 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
 
 ## What's Implemented (2026-05-14)
 
+### Phase 1 — Iteration 8 (2026-05-14)
+- **Smarter contact search** — multi-token AND, OR across fields, with relevance ranking. Searching "Penny Davies" now returns Penny Davies (exact full-name match) first, then anyone else with both tokens present, then partial matches. Single-token search returns all rows containing that token (e.g. "Davies" → 6 Davies-surnamed records). Regex special chars are escaped so "J.K." is safe. Case-insensitive.
+- **POST /api/contacts** — admin can manually create a contact in any tab (target: pipeline/franchise/licence/general, with optional pipeline_status). Source mapped from target. Email auto-lowercased, postcode auto-uppercased. Stamped with `manually_added_by`.
+- **Add Contact UI** — button at top-right of /contacts opens a modal with 4-target selector (Franchise / Licence / General / Sales Pipeline), pipeline-stage dropdown (only when target=pipeline), full contact fields + referral_source dropdown + notes. After save the page jumps to the destination tab. Defaults to the current tab (or Franchise when on Pipeline).
+
+### Tests (iteration 8)
+- Backend: 16/16 new tests in `test_phase1_search_addcontact.py` pass (search ranking, regex safety, case insensitivity; create contact for all 4 targets, validation, postcode/email normalisation, auth required).
+- Frontend: 10/10 — Playwright verified search ordering, modal target buttons + pipeline stage reveal, validation, full create-flow with tab jump.
+
 ### Phase 1 — Iteration 7 (2026-05-14)
 - **Licence Contacts tab** — new 4th tab in /contacts: Sales Pipeline / Franchise Contacts / Licence Contacts / General Contacts. Backend `/api/contacts?tab=licence` filter returns only source=licence_enquiry NOT in pipeline. franchise tab is now strictly source=franchise_enquiry (licence records no longer mixed in).
 - **Move target='licence'** added to /contacts/{id}/move + /contacts/bulk-move so contacts can be reassigned between franchise/licence/general tabs and the pipeline freely.
