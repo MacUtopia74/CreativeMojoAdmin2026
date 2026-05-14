@@ -41,6 +41,15 @@ const REFERRAL_ICONS = {
   Other:     HelpCircle,
 };
 
+function formatDate(value) {
+  if (!value) return "—";
+  // Accept "YYYY-MM-DD" or full ISO "YYYY-MM-DD HH:MM:SS" / "YYYY-MM-DDTHH:MM:SSZ"
+  const s = String(value);
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  return s.slice(0, 10);
+}
+
 function daysSince(dateStr) {
   if (!dateStr) return null;
   const d = new Date(dateStr); if (isNaN(d)) return null;
@@ -643,7 +652,7 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
                 <span>
                   Added manually by <strong>{contact.manually_added_by}</strong>
                   {contact.created_at && (
-                    <> on <strong>{new Date(contact.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</strong></>
+                    <> on <strong>{new Date(contact.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" })}</strong></>
                   )}
                 </span>
               </div>
@@ -1088,8 +1097,8 @@ export default function ContactsPage() {
                         <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
                     </button>
                   </th>
-                  <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-24">Date</th>
                   <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Name / Establishment</th>
+                  <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-32">Date</th>
                   <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Contact</th>
                   <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-32">Location</th>
                   <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-28">Source</th>
@@ -1110,18 +1119,18 @@ export default function ContactsPage() {
                         {checked ? <CheckSquare className="w-4 h-4 text-stone-950" /> : <Square className="w-4 h-4" />}
                       </button>
                     </td>
-                    <td className="px-3 py-2 text-xs text-stone-500">
-                      <div className="flex items-center gap-1.5">
-                        <span>{(c.date || c.date_added) ? String(c.date || c.date_added).slice(0, 10) : "—"}</span>
-                        {isPipeline && <AgeBadge days={age} />}
-                      </div>
-                    </td>
                     <td className="px-3 py-2">
                       <div className="text-sm text-stone-950 font-semibold flex items-center gap-1.5">
                         {[c.first_name, c.last_name].filter(Boolean).join(" ") || "(no name)"}
                         <ManualBadge addedBy={c.manually_added_by} />
                       </div>
                       {c.establishment_name && <div className="text-xs text-stone-600">{c.establishment_name}</div>}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-stone-500">
+                      <div className="flex items-center gap-1.5 tabular-nums">
+                        <span>{formatDate(c.date || c.date_added)}</span>
+                        {isPipeline && <AgeBadge days={age} />}
+                      </div>
                     </td>
                     <td className="px-3 py-2 text-xs text-stone-600">
                       <div>{c.email || c.email_raw || "—"}</div>

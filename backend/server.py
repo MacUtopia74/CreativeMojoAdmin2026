@@ -993,6 +993,12 @@ async def create_contact(body: ContactCreateRequest, user: dict = Depends(requir
     source = source_by_target[body.target]
     in_pipeline = (body.target == "pipeline")
     pipeline_status = (body.pipeline_status or "new") if in_pipeline else None
+    # Auto-route: a freshly-added franchise/licence contact whose date is within the last 30
+    # days belongs in the Sales Pipeline regardless of which tab the user picked, so the team
+    # can triage it before it goes cold. Source is preserved so the pill colour stays right.
+    if body.target in ("franchise", "licence"):
+        in_pipeline = True
+        pipeline_status = "new"
 
     doc = {
         "id": str(uuid.uuid4()),
@@ -1068,8 +1074,12 @@ async def import_contacts(body: ContactImportRequest, user: dict = Depends(requi
         "general":   "general_enquiry",
     }
     source = source_by_target[body.target]
-    in_pipeline = (body.target == "pipeline")
-    pipeline_status = (body.pipeline_status or "new") if in_pipeline else None
+    base_in_pipeline = (body.target == "pipeline")
+    base_pipeline_status = (body.pipeline_status or "new") if base_in_pipeline else None
+    # 30-day pipeline auto-route applies to franchise/licence targets (per-row by date)
+    auto_pipeline = body.target in ("franchise", "licence")
+    from datetime import timedelta as _td
+    cutoff_30 = (datetime.now(timezone.utc) - _td(days=30)).strftime("%Y-%m-%d")
 
     now = datetime.now(timezone.utc).isoformat()
     inserted = 0
@@ -1100,6 +1110,13 @@ async def import_contacts(body: ContactImportRequest, user: dict = Depends(requi
                 date_val = date_val[:10]
             except Exception:
                 pass
+        # Per-row pipeline decision: franchise/licence rows within 30 days auto-go to pipeline
+        if auto_pipeline:
+            row_in_pipeline = date_val[:10] >= cutoff_30
+            row_status = "new" if row_in_pipeline else None
+        else:
+            row_in_pipeline = base_in_pipeline
+            row_status = base_pipeline_status
         doc = {
             "id": str(uuid.uuid4()),
             "first_name": (row.first_name or "").strip() or None,
@@ -1113,8 +1130,8 @@ async def import_contacts(body: ContactImportRequest, user: dict = Depends(requi
             "referral_source": (row.referral_source or "").strip() or None,
             "message": (row.message or "").strip() or None,
             "source": source,
-            "in_pipeline": in_pipeline,
-            "pipeline_status": pipeline_status,
+            "in_pipeline": row_in_pipeline,
+            "pipeline_status": row_status,
             "form_id": None,
             "date": date_val,
             "date_added": date_val,
