@@ -29,6 +29,14 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
 
 ## What's Implemented (2026-05-14)
 
+### Phase 1 — Iteration 11 (2026-05-14)
+- **Airtable email backfill** — 1,661 web_form_contacts records had their `email` field populated with Airtable record IDs (e.g. `recBMgji6M3w1YxlF`) because the Airtable "Email" field is a `multipleRecordLinks` → Contacts table. Built a one-off backfill that resolved every linked record to its real email. Updated migration.py: a pre-Pass-1 step now builds `contacts_email_lookup` and resolves email_raw → email automatically on every future migration.
+- **Red "Reply" button on Pipeline "New" cards** — every kanban card whose stage is "new" AND has an email shows a red Reply button (#E2462A) positioned between the source pill and the age badge. Click → opens default mail client via `mailto:` with To/Subject/Body pre-filled AND auto-advances `pipeline_status` from "new" → "contacted". Drawer also has a red Reply button (any stage with email).
+
+### Tests (iteration 11)
+- Backend: 5/5 pass. All 10 'New' pipeline contacts have valid emails matching `/^[^@]+@[^@]+\.[^@]+$/`. Email backfill survives roundtrip.
+- Frontend: 100% — exactly 10 reply buttons rendered on Pipeline "New" cards with correct styling (#E2462A bg, white text, Send icon), drawer Reply button visible on stages-with-email. Click → stage auto-advanced new → contacted; card moves between columns.
+
 ### Phase 1 — Iteration 10 (2026-05-14)
 - **30-day pipeline freshness rule** — one-time DB sweep: 9 recent franchise/licence enquiries moved INTO pipeline as "New"; 304 stale "New" records moved OUT to Franchise Contacts. Migration.py updated with the same logic. Records already advanced past "new" (contacted/qualified/etc) stay regardless of age.
 - **WP form routing** — `FORM_IDS_IN_PIPELINE = {17, 32}` (Franchise + Licence forms). New submissions land in Sales Pipeline as "New" immediately.
