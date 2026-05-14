@@ -1,0 +1,48 @@
+{
+  "summary": "Phase 1.7 — convert-to-franchisee + sidebar cleanup + rewritten FranchiseeDetailPage all tested. Backend: 9/9 pytest passes (test_iter15_convert.py) covering franchise→franchisee, licence→licencee, contact-marking, 409 idempotency, GET no _id leak, PATCH uppercase/lowercase + updated_at/updated_by, 404 on missing, dashboard funnel intact, regression for /move /pipeline /promote /demote /bulk-move. Frontend (Playwright on live preview URL): (1) sidebar has 6 expected items, NO /contracts link or 'Contracts' text; (2) Sally Hare drawer (licence_enquiry) showed drawer-convert-section with label 'CONVERT TO LICENCEE'; (3) clicked convert → confirm accepted → POST /convert-to-franchisee → navigated to /franchisees/{newId}; (4) FranchiseeDetailPage rendered franchisee-detail-name='Sally Hare', tag 'Converted from enquiry', panel-contracts ('No contracts on file'), panel-contact, panel-address, panel-map (with 'Live Mapbox territory map arrives in Phase 4'), panel-notes; (5) inline-edit: edit-first_name was ABSENT before clicking edit-franchisee, PRESENT after; modified first_name→'SallyEdited' + postcode 'n1 9gu', clicked save-edit → reloaded with 'SallyEdited Hare' and postcode 'N1 9GU' (uppercased); (6) cancel-edit correctly discarded 'ShouldBeDiscarded'; (7) re-opened drawer for converted Sally → drawer-convert hidden, drawer-view-franchisee shown with text 'VIEW RECORD', section emerald-tinted, clicking it navigated to correct /franchisees/{id}; (8) Sally's contact moved to pipeline-column-converted on kanban; (9) 2nd POST /convert-to-franchisee returned 409 'Contact already converted'; (10) drawer date '14/05/2026' (DD/MM/YYYY) verified.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "DELETE /api/franchisees/{id}", "issue": "Endpoint does NOT exist (returns 405 Method Not Allowed). Makes test-data cleanup awkward — testers must drop straight into mongo. Recommend adding DELETE handler (admin-only) for parity with create/patch."},
+      {"endpoint": "POST /api/contacts/{id}/convert-to-franchisee", "issue": "When building notes the raw ISO datetime from contact.date is embedded verbatim ('Original enquiry date: 2026-05-14 07:58:46') — violates the 'DD/MM/YYYY globally' rule of Phase 1.7. Should run through a DD/MM/YYYY formatter before concatenating into notes_lines (server.py line 847)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "FranchiseeDetailPage > panel-notes", "issues": ["Date inside auto-generated notes still shows ISO 2026-05-14 07:58:46 instead of DD/MM/YYYY (root cause is backend concatenation, see backend minor issue)."]},
+      {"screen": "FranchiseeDetailPage > panel-address", "issues": ["'DATE ADDED' field renders an em-dash because no field is populated yet on the new converted record — minor; consider hiding the field when empty OR populating from created_at."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter15_convert.py",
+    "/app/test_reports/pytest/iter15_results.xml"
+  ],
+  "action_items": [
+    "[OPTIONAL] Add DELETE /api/franchisees/{id} (admin-only) so test fixtures don't need direct mongo access.",
+    "[OPTIONAL] Format the 'Original enquiry date' value with DD/MM/YYYY when building auto-notes in convert_contact_to_franchisee (server.py:847).",
+    "[OPTIONAL] In panel-address, either hide 'DATE ADDED' when empty or populate from franchisee.created_at."
+  ],
+  "critical_code_review_comments": [
+    "convert_contact_to_franchisee (server.py:823) — function is 60+ lines; only minor concern. Good: handles both web_form_contacts and contacts collections; correctly returns 409 on second call; pops _id from response.",
+    "convert_contact_to_franchisee does not lowercase email or uppercase postcode at insert-time — relies on POST /api/contacts having pre-cleaned them. Consider applying the same normalisation as PATCH /franchisees so directly-inserted data is also clean.",
+    "ContactsPage.js drawer convert handler depends on parent's onConvert returning the new franchisee id for navigation. Spec verified to work; just observe coupling.",
+    "FranchiseeDetailPage 'cancel-edit' relies on local draft state being thrown away — verified empirically. Good pattern.",
+    "No DELETE endpoint for franchisees means orphan records from testing accumulate (found 20 leftover TEST_/Updated franchisees from previous iterations, cleaned via direct mongo).",
+    "ContactsPage.js still ~1300 lines — past the 700-line threshold (carried over from iter14 review)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter15_convert.py (new)"
+  ],
+  "success_rate": {
+    "backend": "100% — 9/9 pytest pass (test_iter15_convert.py)",
+    "frontend": "100% — all 12 spec scenarios verified (sidebar, drawer label, convert flow, navigation, detail page panels, inline edit save, cancel discard, already-converted view, kanban column, 409 idempotency, DD/MM/YYYY)"
+  },
+  "test_credentials": "admin@creativemojo.co.uk / CreativeMojo2026!",
+  "seed_data_creation": "Test runs created 4 TEST_ franchise contacts + 4 corresponding franchisees during pytest, plus 1 Sally Hare conversion during frontend test. All cleaned at end via direct mongo: db.franchisees.delete_many({first_name:/^TEST/}) and delete_many({first_name:'Updated', last_name:'Name'}) — 20 records removed total (16 from this run + 4 from prior iterations that lacked cleanup). Sally Hare contact restored: first_name=Sally, pipeline_status=contacted, converted_to_franchisee_id=None, in_pipeline=True. Final pipeline count = 25.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter15 spec — all acceptance criteria PASS. Key endpoints under test: POST /api/contacts/{id}/convert-to-franchisee (server.py:823, returns {ok,record_type,franchisee}; 409 on 2nd call); PATCH /api/franchisees/{id} (server.py:798, uppercases postcode + lowercases email + sets updated_by/updated_at). Frontend testids confirmed live: drawer-convert-section, drawer-convert, drawer-view-franchisee, franchisee-detail-name, panel-contracts, panel-contact, panel-address, panel-map, panel-notes, edit-franchisee, edit-first_name/last_name/organisation/email/postcode/city/telephone/mobile_phone/notes, save-edit, cancel-edit, pipeline-column-converted. Backend gap: no DELETE /api/franchisees/{id} (returns 405) — cleanup must use mongo. POST /api/contacts with target='pipeline' always forces source='franchise_enquiry' regardless of source body field (use target='licence' to seed a licence_enquiry contact). Pipeline state at end-of-run: 25 contacts, Sally Hare back in 'contacted'.",
+  "rca of the issue": "N/A — no defects. Two minor cosmetic/cleanup recommendations: (a) raw ISO date leaks into auto-generated notes from convert (server.py:847 should use a DD/MM/YYYY formatter); (b) DELETE /api/franchisees endpoint is missing — only PATCH/GET exist."
+}

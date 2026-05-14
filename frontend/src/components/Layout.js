@@ -3,7 +3,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   LayoutDashboard,
   Users,
-  FileText,
   Contact,
   Database,
   ClipboardList,
@@ -14,7 +13,6 @@ import {
 const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, testid: "nav-dashboard" },
   { to: "/franchisees", label: "Franchisees", icon: Users, testid: "nav-franchisees" },
-  { to: "/contracts", label: "Contracts", icon: FileText, testid: "nav-contracts" },
   { to: "/contacts", label: "Sales & Contacts", icon: Contact, testid: "nav-contacts" },
   { to: "/form-intake", label: "Form Intake", icon: Inbox, testid: "nav-form-intake" },
   { to: "/airtable-inspector", label: "Airtable Inspector", icon: Database, testid: "nav-airtable-inspector" },

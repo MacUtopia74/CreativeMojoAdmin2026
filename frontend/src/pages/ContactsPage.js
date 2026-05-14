@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import api from "@/lib/api";
-import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus, Plus, Sparkles, Upload, FileText, CheckCircle2, Send } from "lucide-react";
+import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus, Plus, Sparkles, Upload, FileText, CheckCircle2, Send, Award } from "lucide-react";
 
 const STAGES = [
   { key: "new", label: "New", color: "bg-stone-100 text-stone-700 border-stone-300", barColor: "bg-stone-400" },
@@ -586,8 +587,9 @@ function MoveMenu({ onMove, label = "Move", testid, currentTab, count }) {
   );
 }
 
-function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, onDelete, onReply }) {
+function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, onDelete, onReply, onConvert }) {
   const [busy, setBusy] = useState(false);
+  const [converting, setConverting] = useState(false);
   if (!contact) return null;
   const isInPipeline = !!contact.in_pipeline;
   const dateAdded = contact.date || contact.date_added;
@@ -595,6 +597,8 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
   const isFranchiseEnq = contact.source === "franchise_enquiry";
   const isLicenceEnq = contact.source === "licence_enquiry";
   const homeTabLabel = isLicenceEnq ? "Licence Contacts" : isFranchiseEnq ? "Franchise Contacts" : "General Contacts";
+  const convertLabel = isLicenceEnq ? "Convert to Licencee" : "Convert to Franchisee";
+  const alreadyConverted = !!contact.converted_to_franchisee_id;
 
   const confirmDelete = async () => {
     if (!window.confirm("Permanently delete this contact? This cannot be undone.")) return;
@@ -660,6 +664,44 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
                 </span>
               </div>
             )}
+          </div>
+
+          {/* Convert to Franchisee/Licencee — 1-click promotion to operational record */}
+          <div className={`p-4 border rounded-xl ${alreadyConverted ? "bg-emerald-50 border-emerald-200" : "bg-gradient-to-br from-[#D4FF00]/10 to-stone-50 border-stone-300"}`} data-testid="drawer-convert-section">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-stone-950 flex items-center gap-1.5">
+                  <Award className={`w-4 h-4 ${alreadyConverted ? "text-emerald-700" : "text-stone-700"}`} />
+                  {alreadyConverted ? "Already converted" : convertLabel}
+                </div>
+                <div className="text-xs text-stone-600 mt-1">
+                  {alreadyConverted
+                    ? <>This contact has been converted to a {contact.converted_to_record_type === "licencee" ? "Licencee" : "Franchisee"} record.</>
+                    : <>Create a {isLicenceEnq ? "Licencee" : "Franchisee"} record from this enquiry. Their details &amp; original message will copy over.</>}
+                </div>
+              </div>
+              {alreadyConverted ? (
+                <button
+                  onClick={() => onConvert(contact, true)}
+                  data-testid="drawer-view-franchisee"
+                  className="shrink-0 px-3 py-2 text-xs font-bold uppercase tracking-wider bg-white text-emerald-800 border border-emerald-300 hover:bg-emerald-100 rounded-lg flex items-center gap-1.5">
+                  <ArrowRightLeft className="w-3.5 h-3.5" /> View record
+                </button>
+              ) : (
+                <button
+                  onClick={async () => {
+                    if (!window.confirm(`${convertLabel} for ${[contact.first_name, contact.last_name].filter(Boolean).join(" ") || "this contact"}?`)) return;
+                    setConverting(true);
+                    try { await onConvert(contact, false); }
+                    finally { setConverting(false); }
+                  }}
+                  disabled={converting}
+                  data-testid="drawer-convert"
+                  className="shrink-0 px-4 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-lg flex items-center gap-1.5 disabled:opacity-50">
+                  <Award className="w-3.5 h-3.5" /> {converting ? "Converting…" : convertLabel}
+                </button>
+              )}
+            </div>
           </div>
 
           {isInPipeline ? (
@@ -756,6 +798,7 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
 }
 
 export default function ContactsPage() {
+  const navigate = useNavigate();
   const [tab, setTab] = useState("pipeline");
   const [view, setView] = useState("pipeline");
   const [stageFilter, setStageFilter] = useState("");
@@ -914,6 +957,33 @@ export default function ContactsPage() {
       setSelected(null);
       setData((d) => ({ ...d, items: d.items.filter((c) => c.id !== contactId) }));
     } catch (e) { setError("Could not delete contact."); }
+  };
+
+  // Phase 1.7 — One-click Convert to Franchisee/Licencee
+  const convertContact = async (contact, viewOnly) => {
+    // If already converted, just navigate
+    if (viewOnly || contact.converted_to_franchisee_id) {
+      const fid = contact.converted_to_franchisee_id;
+      if (fid) navigate(`/franchisees/${fid}`);
+      return;
+    }
+    try {
+      const { data: res } = await api.post(`/contacts/${contact.id}/convert-to-franchisee`);
+      const fid = res?.franchisee?.id;
+      // Update the contact in-place to reflect "converted" status
+      setData((d) => ({
+        ...d,
+        items: d.items.map((c) => c.id === contact.id
+          ? { ...c, in_pipeline: true, pipeline_status: "converted",
+              converted_to_franchisee_id: fid, converted_to_record_type: res.record_type }
+          : c),
+      }));
+      setSelected(null);
+      if (fid) navigate(`/franchisees/${fid}`);
+    } catch (e) {
+      const msg = e?.response?.data?.detail || "Could not convert contact.";
+      setError(typeof msg === "string" ? msg : "Could not convert contact.");
+    }
   };
 
   const grouped = useMemo(() => {
@@ -1222,7 +1292,8 @@ export default function ContactsPage() {
           return moveContact(id, target);
         }}
         onDelete={remove}
-        onReply={replyByEmail} />
+        onReply={replyByEmail}
+        onConvert={convertContact} />
       <AddContactModal open={addOpen} onClose={() => setAddOpen(false)}
         defaultTarget={tab === "pipeline" ? "franchise" : tab}
         onCreated={(_c, target) => {
