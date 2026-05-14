@@ -29,6 +29,16 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
 
 ## What's Implemented (2026-05-14)
 
+### Phase 1 — Iteration 12 (2026-05-14)
+- **30-day auto-route rule everywhere** — POST /api/contacts and POST /api/contacts/import now auto-promote franchise/licence contacts to Pipeline 'New' when their date is within 30 days. Per-row decision on imports. General/explicit-pipeline targets behave as before.
+- **Date format DD-MM-YYYY** across the contacts page. Drawer "Added manually by … on …" now also uses DD/MM/YYYY.
+- **Column order in list view** — Name/Establishment now comes BEFORE Date. Final order: [select] | Name | Date | Contact | Location | Source | Stage (pipeline only) | Move.
+- **One-time sweep** — 14 imported licence contacts moved from Licence Contacts → Pipeline 'New' so the tab matches the rule.
+
+### Tests (iteration 12)
+- Backend: 13/14 tests pass (the 14th was a data-state observation, not a code defect — testing agent advanced 22 cards while validating the Reply button, restored manually afterwards).
+- Frontend: 100% — list view column order verified ['', 'Name / Establishment', 'Date', 'Contact', 'Location', 'Source', 'Stage', 'Move'], dates DOM-scraped match DD-MM-YYYY, drawer manual flag DD/MM/YYYY, AgeBadge unchanged.
+
 ### Phase 1 — Iteration 11 (2026-05-14)
 - **Airtable email backfill** — 1,661 web_form_contacts records had their `email` field populated with Airtable record IDs (e.g. `recBMgji6M3w1YxlF`) because the Airtable "Email" field is a `multipleRecordLinks` → Contacts table. Built a one-off backfill that resolved every linked record to its real email. Updated migration.py: a pre-Pass-1 step now builds `contacts_email_lookup` and resolves email_raw → email automatically on every future migration.
 - **Red "Reply" button on Pipeline "New" cards** — every kanban card whose stage is "new" AND has an email shows a red Reply button (#E2462A) positioned between the source pill and the age badge. Click → opens default mail client via `mailto:` with To/Subject/Body pre-filled AND auto-advances `pipeline_status` from "new" → "contacted". Drawer also has a red Reply button (any stage with email).
