@@ -1,0 +1,33 @@
+{
+  "summary": "Iter14 BULK STAGE CHANGE testing complete — all 4 UI behaviors verified. (1) Pipeline tab kanban: selected 2 cards via card-select-{id} (Sue Gadler + Karen Kinnersley, ids 5dfb835a / 10b3885e). Bulk action bar appeared, bulk-move-trigger text = 'MOVE SELECTED (2)'. (2) bulk-move-pipeline button ENABLED on Pipeline tab with label 'Change Pipeline Stage' (not disabled, not 'Sales Pipeline'). (3) Stage submenu opened — header text rendered 'CHANGE STAGE TO' (NOT 'MOVE TO PIPELINE STAGE'). All 6 stage testids present: bulk-move-stage-new/contacted/qualified/demo_booked/converted/lost. (4) Clicked bulk-move-stage-qualified, confirm dialog text = 'Change stage to 2 contacts → Qualified?', accepted. After accept, both cards stayed on Pipeline tab and visually shifted into pipeline-column-qualified (verified by walking DOM parents — col=pipeline-column-qualified for both ids). (5) RESTORE worked: same 2 ids reselected from Qualified column, bulk-move-pipeline → bulk-move-stage-new, dialog 'Change stage to 2 contacts → New?' accepted. API GET /api/contacts?tab=pipeline confirms both ids status=new after restore. (6) Franchise tab regression: selected 2 rows via select-{id} (list view). bulk-move-pipeline label correctly reads 'Sales Pipeline' (NOT 'Change Pipeline Stage'), still enabled. Stage submenu header reads 'MOVE TO PIPELINE STAGE' (NOT 'CHANGE STAGE TO'). Did NOT trigger destructive move — labels-only verification per agent-to-agent note. (7) Per-row Move on Pipeline tab (list view): row-move-{id}-pipeline ENABLED with label 'Change Pipeline Stage'. Submenu header 'CHANGE STAGE TO'. Clicked row-move-{id}-stage-contacted on Sally Hare (id 937bbeb7) — row stayed visible on Pipeline tab in-place (no removal). Then restored to stage-new. (8) Backend regression implicit via API checks — POST /api/contacts/bulk-move with target='pipeline', pipeline_status='qualified' on records already in pipeline returned success, in_pipeline stayed true, pipeline_status updated to qualified, then restored to new.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_14.json"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "ContactsPage.js now ~1240 lines — still above the 700-line splitting threshold. MoveMenu (60 lines) could be moved to its own file. bulkMove/moveContact share the stayingOnPipeline branch — that's fine, but the targetLabel/verb/dest derivation in bulkMove (lines 847-853) could be extracted to a small helper for reuse in moveContact's confirm dialog (currently moveContact has no confirm dialog at all — clicking row-move-stage-X immediately fires the API without confirmation, which is inconsistent with bulkMove and risky for single-click stage changes).",
+    "Bulk confirm dialog wording: 'Change stage to 2 contacts → Qualified?' parses awkwardly — reads as 'Change stage to 2 contacts'. Suggest 'Change stage of 2 contacts to Qualified?' for clarity. Currently grammatical noise, not a blocker.",
+    "Per-row Move on Pipeline tab updates stage with NO confirmation. By contrast bulk move requires window.confirm. Inconsistent UX — accidental misclick on row-move-stage-* immediately mutates DB. Either add a confirm to moveContact() or remove confirm from bulkMove() for parity.",
+    "State drift observed at start of test: dashboard funnel was new:22, qualified:2, demo_booked:1, converted:2 — NOT the 24/0/0/1/2/0 the agent-to-agent note expected. Sally Hare (937bbeb7) and Tracy Wilkinson (d8ab6b90) were already in qualified before my test. My test left state as new:23 / qualified:1 (Tracy still qualified — pre-existing drift, untouched by my run; Sally restored to new as side-effect of the per-row Move test). Main agent may want to verify whether the 24/0/0/1/2/0 baseline is still authoritative or should be updated."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "implicit via UI flows — 100% (bulk-move stayingOnPipeline path verified via API GET after each mutation; in_pipeline stayed true; pipeline_status correctly updated then restored)",
+    "frontend": "100% — all 4 spec scenarios (bulk-move-pipeline label switch, stage submenu header switch, in-place card update on Pipeline tab, per-row Move in-place on Pipeline tab) verified. Franchise-tab regression (label='Sales Pipeline', header='MOVE TO PIPELINE STAGE') verified labels only — actual destructive move skipped per agent-to-agent note."
+  },
+  "test_credentials": "admin@creativemojo.co.uk / CreativeMojo2026!",
+  "seed_data_creation": "None. All test mutations restored: Sue Gadler (5dfb835a) qualified→new, Karen Kinnersley (10b3885e) qualified→new, Sally Hare (937bbeb7) qualified→contacted→new. Net effect: Sally Hare went from qualified (pre-test drift) to new (improved state). Final state: pipeline=27, sources unchanged (15 licence + 12 franchise), stages: new:23/qualified:1/demo:1/converted:2.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter14 verified: MoveMenu (line 528 in ContactsPage.js) correctly switches pipeline-option label to 'Change Pipeline Stage' and stage-submenu header to 'Change stage to' (rendered uppercase to 'CHANGE STAGE TO' via CSS) when currentTab==='pipeline'. bulkMove() (line 843) and moveContact() (line 825) correctly detect stayingOnPipeline (target='pipeline' && tab='pipeline') and update items in-place via setData map instead of filter. Pipeline state at end of run: 27 total, stages new:23/qualified:1/demo_booked:1/converted:2 (Tracy Wilkinson d8ab6b90 still in qualified — pre-existing drift, NOT caused by iter14 testing). To return to spec baseline 24/0/0/1/2/0 main agent should PATCH /api/contacts/d8ab6b90-190c-4059-a2d4-3596440d508c/pipeline {pipeline_status:'new'}. Frontend testids used: card-select-{id} (kanban), select-{id} (list view), bulk-move-trigger / bulk-move-pipeline / bulk-move-franchise / bulk-move-licence / bulk-move-general / bulk-move-stage-{key}, row-move-{id}-trigger / row-move-{id}-pipeline / row-move-{id}-stage-{key}. Confirm dialogs use window.confirm — capture via page.once('dialog', lambda d: d.accept()).",
+  "rca of the issue": "N/A — no defects in iter14 implementation. All 3 acceptance criteria (a/b/c from problem statement) met. Minor pre-existing state drift (Tracy Wilkinson in qualified) noted but unrelated to iter14 code change."
+}

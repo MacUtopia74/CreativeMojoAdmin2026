@@ -542,9 +542,8 @@ function MoveMenu({ onMove, label = "Move", testid, currentTab, count }) {
           {!showStages ? (
             <>
               <button onClick={(e) => { e.stopPropagation(); setShowStages(true); }} data-testid={`${testid}-pipeline`}
-                disabled={currentTab === "pipeline"}
-                className="w-full text-left px-3 py-2 hover:bg-stone-50 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-between">
-                <span className="flex items-center gap-2"><Briefcase className="w-3.5 h-3.5 text-stone-500" /> Sales Pipeline</span>
+                className="w-full text-left px-3 py-2 hover:bg-stone-50 flex items-center justify-between">
+                <span className="flex items-center gap-2"><Briefcase className="w-3.5 h-3.5 text-stone-500" /> {currentTab === "pipeline" ? "Change Pipeline Stage" : "Sales Pipeline"}</span>
                 <ChevronDown className="w-3 h-3 -rotate-90 text-stone-400" />
               </button>
               <button onClick={(e) => { e.stopPropagation(); onMove("franchise"); close(); }} data-testid={`${testid}-franchise`}
@@ -566,7 +565,7 @@ function MoveMenu({ onMove, label = "Move", testid, currentTab, count }) {
           ) : (
             <>
               <div className="px-3 py-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 bg-stone-50 border-b border-stone-200">
-                Move to pipeline stage
+                {currentTab === "pipeline" ? "Change stage to" : "Move to pipeline stage"}
               </div>
               {STAGES.map((s) => (
                 <button key={s.key} onClick={(e) => { e.stopPropagation(); onMove("pipeline", s.key); close(); }}
@@ -826,8 +825,17 @@ export default function ContactsPage() {
   const moveContact = async (contactId, target, pipeline_status) => {
     try {
       await api.post(`/contacts/${contactId}/move`, { target, pipeline_status });
-      setSelected(null);
-      setData((d) => ({ ...d, items: d.items.filter((c) => c.id !== contactId) }));
+      const stayingOnPipeline = target === "pipeline" && tab === "pipeline";
+      if (stayingOnPipeline) {
+        // Just changing stage — keep the row visible, update in place
+        setData((d) => ({ ...d, items: d.items.map((c) => c.id === contactId
+          ? { ...c, in_pipeline: true, pipeline_status: pipeline_status || "new" }
+          : c) }));
+        setSelected((sel) => sel && sel.id === contactId ? { ...sel, in_pipeline: true, pipeline_status: pipeline_status || "new" } : sel);
+      } else {
+        setSelected(null);
+        setData((d) => ({ ...d, items: d.items.filter((c) => c.id !== contactId) }));
+      }
       setSelectedIds((prev) => { const n = new Set(prev); n.delete(contactId); return n; });
     } catch (e) { setError("Could not move contact."); }
   };
@@ -835,10 +843,26 @@ export default function ContactsPage() {
   const bulkMove = async (target, pipeline_status) => {
     const ids = Array.from(selectedIds);
     if (!ids.length) return;
-    if (!window.confirm(`Move ${ids.length} contact${ids.length === 1 ? "" : "s"} to ${target === "pipeline" ? "Sales Pipeline" : target === "franchise" ? "Franchise Contacts" : "General Contacts"}?`)) return;
+    const stayingOnPipeline = target === "pipeline" && tab === "pipeline";
+    const targetLabel = target === "pipeline" ? "Sales Pipeline"
+                      : target === "franchise" ? "Franchise Contacts"
+                      : target === "licence"   ? "Licence Contacts"
+                      : "General Contacts";
+    const stageLabel = pipeline_status ? (STAGE_MAP[pipeline_status]?.label || pipeline_status) : null;
+    const verb = stayingOnPipeline ? "Change stage to" : "Move";
+    const dest = stayingOnPipeline ? stageLabel : (stageLabel ? `${targetLabel} (${stageLabel})` : targetLabel);
+    if (!window.confirm(`${verb} ${ids.length} contact${ids.length === 1 ? "" : "s"} → ${dest}?`)) return;
     try {
       await api.post(`/contacts/bulk-move`, { ids, target, pipeline_status });
-      setData((d) => ({ ...d, items: d.items.filter((c) => !selectedIds.has(c.id)) }));
+      if (stayingOnPipeline) {
+        // Records stay on this tab — just update their stage in-place
+        setData((d) => ({ ...d, items: d.items.map((c) => selectedIds.has(c.id)
+          ? { ...c, in_pipeline: true, pipeline_status: pipeline_status || "new" }
+          : c) }));
+      } else {
+        // Records leave the current tab — remove them from the visible list
+        setData((d) => ({ ...d, items: d.items.filter((c) => !selectedIds.has(c.id)) }));
+      }
       clearSelection();
     } catch (e) { setError("Could not move contacts."); }
   };
