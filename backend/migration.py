@@ -271,6 +271,21 @@ async def run_migration(db, airtable_pat: str, airtable_base_id: str, run_by_ema
     airtable_id_to_uuid: Dict[str, Dict[str, str]] = {coll: {} for _, coll in required.values()}
 
     # Pass 1: fetch + insert (without resolving links)
+    # We also build a lookup map of linked-record-id → email address for the Contacts table
+    # so we can resolve the multipleRecordLinks "Email" field on web_form_contacts.
+    contacts_email_lookup: Dict[str, str] = {}
+    contacts_td = by_name.get("Contacts")
+    if contacts_td and contacts_td.get("table_id"):
+        try:
+            cs = await _fetch_all_records(airtable_base_id, contacts_td["table_id"], airtable_pat)
+            for crec in cs:
+                em = crec.get("fields", {}).get("Email Address")
+                if em:
+                    contacts_email_lookup[crec["id"]] = str(em).strip().lower()
+            logger.info(f"Built Airtable Contacts email lookup: {len(contacts_email_lookup)} addresses")
+        except Exception as e:
+            logger.warning(f"Could not preload Contacts email lookup: {e}")
+
     for table_name, (field_map, coll_name) in required.items():
         td = by_name.get(table_name)
         if not td or not td.get("migrate"):
@@ -296,6 +311,16 @@ async def run_migration(db, airtable_pat: str, airtable_base_id: str, run_by_ema
                 doc["pipeline_status"] = "archive"  # legacy data
             elif coll_name == "web_form_contacts":
                 doc["source"] = "franchise_enquiry"
+                # The Airtable "Email" field is multipleRecordLinks → Contacts table.
+                # Resolve the linked record id(s) to the actual email address.
+                raw = doc.get("email_raw")
+                if raw:
+                    rec_id = raw if isinstance(raw, str) else (raw[0] if isinstance(raw, list) and raw else None)
+                    if isinstance(rec_id, str) and rec_id.startswith("rec"):
+                        real = contacts_email_lookup.get(rec_id)
+                        if real:
+                            doc["email"] = real
+                            doc["email_linked_record"] = rec_id
                 # Pipeline placement rule:
                 #   • Recent (≤ 30 days) franchise/licence enquiries → Pipeline as "New" so the
                 #     sales team triages them.

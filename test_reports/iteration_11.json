@@ -1,0 +1,37 @@
+{
+  "summary": "Iter11 testing complete. Both fixes verified end-to-end. (1) AIRTABLE EMAIL BACKFILL: All 10 pipeline 'new' contacts have real emails (verified via /api/contacts?tab=pipeline&pipeline_status=new&limit=20) — every email matches /^[^@]+@[^@]+\\.[^@]+$/, no recXXX IDs remain. Verified across full pipeline tab (13 records) — zero bogus emails. Sample 5: Sally Hare→sallyhare6119@gmail.com, Maria Nicolaou→mariamichael1977@hotmail.co.uk, Lynette Buss→nettebus@outlook.com, Candice Baratta→candi.baratta@gmail.com, Sarah Lee→chesters_sl@hotmail.com. (2) RED REPLY BUTTON ON KANBAN: Exactly 10 reply buttons rendered on Sales Pipeline (one per NEW card, IDs match each contact). Styling confirmed: background rgb(226,70,42) = #E2462A red, color rgb(255,255,255) white, inner text 'REPLY', SVG Send icon present. Hot Lead cards (Sarah Barber/Monica Diodato) in Demo Booked/Converted columns correctly do NOT show reply buttons (only NEW stage gets them). (3) REPLY CLICK BEHAVIOUR: Clicked reply-{Sally id} → pipeline_status auto-advanced from 'new'→'contacted' (verified via GET /api/contacts/{id} → 'contacted'). After page reload, Sally's card moved from NEW column to CONTACTED column (reply-{id} button gone from NEW). (4) DRAWER REPLY: Opening drawer on Sally (non-new, 'contacted' stage) shows red drawer-reply button (bg #E2462A). Verified also on Sarah Barber (Demo Booked stage with email sarahbarber623@gmail.com) — drawer-reply present whenever contact has email regardless of stage. (5) MAILTO CAPTURE LIMITATION: JS trap on window.location.href setter could not be installed (Chromium throws 'Cannot redefine property: location' / 'Cannot redefine property: href' — window.location is non-configurable for security). HOWEVER mailto: IS fired by the handler — proven indirectly because pipeline_status update fires AFTER window.location.href=mailto in the same function (ContactsPage.js:850-854); since status changed to 'contacted', the mailto assignment must have executed. Source-code review confirms mailto string is built as `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent('Re: Your enquiry to Creative Mojo')}&body=...` — recipient encoded (sally's @ becomes %40, functionally equivalent for mail clients). (6) CLEANUP: Sally Hare PATCHed back to pipeline_status='new' at end of test run — verified state restored. (7) BACKEND PYTEST: 5/5 passed in test_iter11_email_backfill.py.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter11_email_backfill.py",
+    "/app/test_reports/pytest/iter11_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "ContactsPage.js replyByEmail() uses encodeURIComponent(to) which percent-encodes the @ in the email (sally@gmail.com → sally%40gmail.com). Most mail clients accept this but RFC 6068 recommends not encoding the local-part/domain. Cosmetic — functionally OK. If a strict spec match is desired (raw email in to: position), drop the encodeURIComponent on `to` and only encode the local-part if needed.",
+    "ContactsPage.js is now ~1172 lines (passed the 700-line splitting threshold from prior iterations). Reply button + ContactDrawer + ImportCsvModal could each be extracted into their own files for maintainability.",
+    "replyByEmail() calls updateStage() optimistically without awaiting — fine for UX (mailto fires immediately) but if the PATCH fails the UI shows 'contacted' optimistically while server is still 'new'. Consider catching the rejection and reverting local state, or showing a transient error toast. Currently updateStage swallows errors silently except for setError().",
+    "Reply button gating: card-level reply only shows for pipeline_status==='new' && c.email (line 1053). Drawer reply shows when contact.email && onReply prop passed (line 605). Both correct per spec — verified missing-email contact would not render either button.",
+    "Backend GET /api/contacts/{id} returns {contact: {...}} wrapper, while list endpoint returns {items: [...]}. Inconsistent shape — minor API ergonomics nit. Tests had to defensively unwrap."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter11_email_backfill.py (NEW — 5 tests, automatic Sally state restore in finally block)"
+  ],
+  "success_rate": {
+    "backend": "5/5 (100%)",
+    "frontend": "100% — every advertised iter11 acceptance criterion verified except mailto string capture which is browser-security-limited (functional behaviour proven indirectly)"
+  },
+  "test_credentials": "admin@creativemojo.co.uk / CreativeMojo2026!",
+  "seed_data_creation": "No seed data created. All tests operate on the live pipeline records; the only mutation is Sally Hare's pipeline_status which is captured at test start and restored to its starting value ('new') in a finally block. After full test run Sally remains in 'new' (verified).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter11 features (1661-record email backfill + red Reply button on 'new' kanban cards + drawer-reply) all verified working. test_iter11_email_backfill.py is idempotent and safe to re-run — Sally Hare's state is captured/restored in fixture teardown. To capture mailto: in Playwright, do NOT try to redefine window.location.href (Chromium blocks this). Instead, verify the side-effect (pipeline_status PATCH from 'new'→'contacted') which only fires after the mailto assignment in ContactsPage.js. Pipeline has 13 active records, 10 in 'new'. Sally Hare id=937bbeb7-6571-474e-a3c2-0237235cdba3, email=sallyhare6119@gmail.com, current state=new. DO NOT run /api/migration/run.",
+  "rca of the issue": "n/a — no functional defects found in iter11. The only test-tooling limitation (mailto JS trap) is a browser security feature, not a product bug."
+}

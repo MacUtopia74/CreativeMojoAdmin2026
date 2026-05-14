@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import api from "@/lib/api";
-import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus, Plus, Sparkles, Upload, FileText, CheckCircle2 } from "lucide-react";
+import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus, Plus, Sparkles, Upload, FileText, CheckCircle2, Send } from "lucide-react";
 
 const STAGES = [
   { key: "new", label: "New", color: "bg-stone-100 text-stone-700 border-stone-300", barColor: "bg-stone-400" },
@@ -578,7 +578,7 @@ function MoveMenu({ onMove, label = "Move", testid, currentTab, count }) {
   );
 }
 
-function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, onDelete }) {
+function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, onDelete, onReply }) {
   const [busy, setBusy] = useState(false);
   if (!contact) return null;
   const isInPipeline = !!contact.in_pipeline;
@@ -602,6 +602,12 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
             {isInPipeline ? "Sales Pipeline" : homeTabLabel}
           </div>
           <div className="flex items-center gap-1">
+            {contact.email && onReply && (
+              <button onClick={() => onReply(contact)} data-testid="drawer-reply"
+                className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider bg-[#E2462A] hover:bg-[#C73B22] text-white rounded-lg flex items-center gap-1">
+                <Send className="w-3.5 h-3.5" /> Reply
+              </button>
+            )}
             <button onClick={confirmDelete} disabled={busy} data-testid="drawer-delete"
               className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-red-700 hover:bg-red-50 rounded-lg flex items-center gap-1 disabled:opacity-50">
               <Trash2 className="w-3.5 h-3.5" /> Delete
@@ -830,6 +836,24 @@ export default function ContactsPage() {
     } catch (e) { /* noop */ }
   };
 
+  const replyByEmail = (contact) => {
+    const to = contact.email;
+    if (!to) {
+      setError("This contact has no email address on file.");
+      return;
+    }
+    const name = [contact.first_name, contact.last_name].filter(Boolean).join(" ") || "there";
+    const subject = `Re: Your enquiry to Creative Mojo`;
+    const greeting = contact.first_name ? `Hi ${contact.first_name},` : `Hi ${name},`;
+    const body = `${greeting}\n\nThanks for getting in touch with Creative Mojo.\n\n`;
+    const mailto = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.location.href = mailto;
+    // Auto-advance to "Contacted" if currently "new" — no roundtrip wait
+    if (contact.pipeline_status === "new") {
+      updateStage(contact.id, "contacted");
+    }
+  };
+
   const promote = async (contactId) => {
     try { await api.patch(`/contacts/${contactId}/promote`); setSelected(null); load(); }
     catch (e) { setError("Could not promote contact."); }
@@ -1018,12 +1042,24 @@ export default function ContactsPage() {
                             {isHot && <span className="text-[9px] font-bold uppercase tracking-wider bg-[#D4FF00] text-stone-950 px-1 rounded">Hot</span>}
                           </div>
                           {c.establishment_name && <div className="text-stone-600 truncate mt-0.5 pl-5">{c.establishment_name}</div>}
-                          <div className="flex items-center justify-between mt-1.5 text-[10px] pl-5">
-                            <div className="flex items-center gap-1.5">
+                          <div className="flex items-center justify-between mt-1.5 text-[10px] pl-5 gap-2">
+                            <div className="flex items-center gap-1.5 min-w-0">
                               <span className={`px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider border ${srcStyle.pill}`}>{srcStyle.label}</span>
-                              <span className="text-stone-500">{c.postcode || ""}</span>
+                              {c.postcode && (
+                                <span className="text-stone-500 truncate hidden xl:inline" title={c.postcode}>{c.postcode}</span>
+                              )}
                             </div>
-                            <AgeBadge days={age} />
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {c.pipeline_status === "new" && c.email && (
+                                <button onClick={(e) => { e.stopPropagation(); replyByEmail(c); }}
+                                  data-testid={`reply-${c.id}`}
+                                  title={`Send reply to ${c.email}`}
+                                  className="px-2 py-0.5 rounded-md bg-[#E2462A] hover:bg-[#C73B22] text-white text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 shadow-sm">
+                                  <Send className="w-2.5 h-2.5" /> Reply
+                                </button>
+                              )}
+                              <AgeBadge days={age} />
+                            </div>
                           </div>
                         </div>
                       );
@@ -1116,7 +1152,8 @@ export default function ContactsPage() {
           const target = src === "licence_enquiry" ? "licence" : src === "franchise_enquiry" ? "franchise" : "general";
           return moveContact(id, target);
         }}
-        onDelete={remove} />
+        onDelete={remove}
+        onReply={replyByEmail} />
       <AddContactModal open={addOpen} onClose={() => setAddOpen(false)}
         defaultTarget={tab === "pipeline" ? "franchise" : tab}
         onCreated={(_c, target) => {
