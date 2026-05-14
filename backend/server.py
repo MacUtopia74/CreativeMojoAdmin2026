@@ -473,6 +473,51 @@ def _pick(fields_by_label: dict, *candidates: str) -> Optional[str]:
     return None
 
 
+# Known "Where did you hear about Creative Mojo?" answer values. Gravity Forms can either
+# send the answer in a single labelled field, OR (for radio/checkbox groups) it can spread
+# each option into its own top-level key whose value equals the selected label.
+REFERRAL_CANONICAL = {
+    "instagram": "Instagram",
+    "facebook":  "Facebook",
+    "twitter":   "X",
+    "x":         "X",
+    "tiktok":    "TikTok",
+    "google":    "Google",
+    "friend":    "Friend",
+    "word of mouth": "Word of Mouth",
+    "other":     "Other",
+}
+
+
+def _detect_referral_source(fields_by_label: dict) -> Optional[str]:
+    """Try a single labelled field first, then fall back to scanning the spread keys."""
+    if not fields_by_label:
+        return None
+    # 1) Single labelled question (preferred)
+    labelled = _pick(
+        fields_by_label,
+        "Where did you hear about Creative Mojo",
+        "Where did you hear about us",
+        "How did you hear about us",
+        "Referral Source",
+        "How did you find us",
+    )
+    if labelled and isinstance(labelled, str):
+        key = labelled.strip().lower()
+        return REFERRAL_CANONICAL.get(key, labelled.strip())
+    # 2) Spread-key form (Gravity Forms radio: key == value == selected option label)
+    for k, v in fields_by_label.items():
+        if not k or v in (None, "", False):
+            continue
+        # Skip duplicate "<label> Name" companion keys GF emits
+        if k.endswith(" Name"):
+            continue
+        canonical = REFERRAL_CANONICAL.get(k.strip().lower())
+        if canonical and isinstance(v, str) and v.strip().lower() == k.strip().lower():
+            return canonical
+    return None
+
+
 class GravityFormsIntake(BaseModel):
     form_id: int
     form_title: Optional[str] = None
@@ -515,6 +560,7 @@ async def gravity_forms_intake(payload: GravityFormsIntake, request: Request):
         "why_contacting": _pick(f, "Why you are contacting us", "Subject", "Reason"),
         "message": _pick(f, "Your Message", "Message", "Comments", "Notes"),
         "country_tag": _pick(f, "Country"),
+        "referral_source": _detect_referral_source(f),
         "raw_fields": f,
         "in_pipeline": in_pipeline,
         "pipeline_status": "new" if in_pipeline else None,
@@ -770,7 +816,7 @@ async def list_contacts(
     source: Optional[str] = None,
     pipeline_status: Optional[str] = None,
     in_pipeline: Optional[bool] = None,
-    tab: Optional[str] = None,  # 'pipeline' | 'franchise' | 'general'
+    tab: Optional[str] = None,  # 'pipeline' | 'franchise' | 'licence' | 'general'
     search: Optional[str] = None,
     limit: int = Query(500, le=2000),
     _: dict = Depends(require_role("admin")),
@@ -783,10 +829,17 @@ async def list_contacts(
         q_legacy = None
         q_web["in_pipeline"] = True
     elif tab == "franchise":
-        # Franchise/Licence enquiries that are NOT in the sales pipeline
+        # Franchise enquiries that are NOT in the sales pipeline
         q_legacy = None
         q_web["$and"] = [
-            {"source": {"$in": ["franchise_enquiry", "licence_enquiry"]}},
+            {"source": "franchise_enquiry"},
+            {"$or": [{"in_pipeline": {"$ne": True}}, {"in_pipeline": {"$exists": False}}]},
+        ]
+    elif tab == "licence":
+        # Licence enquiries that are NOT in the sales pipeline
+        q_legacy = None
+        q_web["$and"] = [
+            {"source": "licence_enquiry"},
             {"$or": [{"in_pipeline": {"$ne": True}}, {"in_pipeline": {"$exists": False}}]},
         ]
     elif tab == "general":
@@ -918,11 +971,11 @@ async def delete_contact(contact_id: str, _: dict = Depends(require_role("admin"
 # ----------------------------------------------------------------------------
 # Contact Move (flexible between tabs + bulk move)
 # ----------------------------------------------------------------------------
-MOVE_TARGETS = ("pipeline", "franchise", "general")
+MOVE_TARGETS = ("pipeline", "franchise", "licence", "general")
 
 
 class ContactMoveRequest(BaseModel):
-    target: str  # "pipeline" | "franchise" | "general"
+    target: str  # "pipeline" | "franchise" | "licence" | "general"
     pipeline_status: Optional[str] = None  # only used when target == "pipeline"
 
 
@@ -963,17 +1016,15 @@ async def _move_one_contact(contact_id: str, target: str, pipeline_status: Optio
         await db.contacts.delete_one({"id": contact_id})
         return "web_form_contacts"
 
-    if target == "franchise":
-        # In web_form_contacts: source must be franchise_enquiry or licence_enquiry
-        existing = await db.web_form_contacts.find_one({"id": contact_id}, {"_id": 0, "source": 1})
+    if target in ("franchise", "licence"):
+        target_source = "licence_enquiry" if target == "licence" else "franchise_enquiry"
+        # In web_form_contacts: set source to franchise/licence + leave the pipeline
+        existing = await db.web_form_contacts.find_one({"id": contact_id}, {"_id": 0})
         if existing:
-            new_source = existing.get("source")
-            if new_source not in ("franchise_enquiry", "licence_enquiry"):
-                new_source = "franchise_enquiry"
             await db.web_form_contacts.update_one(
                 {"id": contact_id},
                 {"$set": {"in_pipeline": False, "pipeline_status": None,
-                          "source": new_source, "updated_at": now}},
+                          "source": target_source, "updated_at": now}},
             )
             return "web_form_contacts"
         legacy = await db.contacts.find_one({"id": contact_id}, {"_id": 0})
@@ -982,7 +1033,7 @@ async def _move_one_contact(contact_id: str, target: str, pipeline_status: Optio
         legacy.update({
             "in_pipeline": False,
             "pipeline_status": None,
-            "source": "franchise_enquiry",
+            "source": target_source,
             "promoted_from_legacy": True,
             "updated_at": now,
         })

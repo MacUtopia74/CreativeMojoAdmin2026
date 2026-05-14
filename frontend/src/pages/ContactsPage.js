@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import api from "@/lib/api";
-import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, CheckSquare, Square } from "lucide-react";
+import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus } from "lucide-react";
 
 const STAGES = [
   { key: "new", label: "New", color: "bg-stone-100 text-stone-700 border-stone-300", barColor: "bg-stone-400" },
@@ -14,10 +14,32 @@ const STAGES = [
 const STAGE_MAP = Object.fromEntries(STAGES.map((s) => [s.key, s]));
 
 const TABS = [
-  { key: "pipeline", label: "Sales Pipeline", hint: "Potential franchisees being actively worked", icon: Briefcase },
-  { key: "franchise", label: "Franchise Contacts", hint: "Franchise & licence enquiries not in the pipeline", icon: Users },
+  { key: "pipeline", label: "Sales Pipeline", hint: "Leads being actively worked", icon: Briefcase },
+  { key: "franchise", label: "Franchise Contacts", hint: "Franchise enquiries not in the pipeline", icon: Users, accent: "stone" },
+  { key: "licence", label: "Licence Contacts", hint: "Licence enquiries not in the pipeline", icon: UserPlus, accent: "indigo" },
   { key: "general", label: "General Contacts", hint: "General enquiries & legacy contacts", icon: Users },
 ];
+
+// Visual differentiation for franchise vs licence enquiries throughout the app.
+// Used in pipeline kanban cards (border colour), list view source pills, and the drawer.
+const SOURCE_STYLE = {
+  franchise_enquiry:        { label: "Franchise", pill: "bg-stone-100 text-stone-800 border-stone-300", barColor: "bg-stone-500", border: "border-l-4 border-l-stone-500" },
+  licence_enquiry:          { label: "Licence",   pill: "bg-indigo-50 text-indigo-800 border-indigo-300", barColor: "bg-indigo-500", border: "border-l-4 border-l-indigo-500" },
+  general_enquiry:          { label: "General",   pill: "bg-stone-100 text-stone-700 border-stone-200", barColor: "bg-stone-400", border: "" },
+  legacy_general_enquiry:   { label: "Legacy",    pill: "bg-stone-100 text-stone-500 border-stone-200", barColor: "bg-stone-300", border: "" },
+};
+
+const REFERRAL_ICONS = {
+  Instagram: Instagram,
+  Facebook:  Facebook,
+  X:         Twitter,
+  Twitter:   Twitter,
+  TikTok:    Globe,
+  Google:    Globe,
+  Friend:    Users,
+  "Word of Mouth": Users,
+  Other:     HelpCircle,
+};
 
 function daysSince(dateStr) {
   if (!dateStr) return null;
@@ -38,7 +60,26 @@ function StageBadge({ status }) {
   return <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-full ${s.color}`}>{s.label}</span>;
 }
 function sourceLabel(s) {
-  return ({ franchise_enquiry: "Franchise", licence_enquiry: "Licence", general_enquiry: "General", legacy_general_enquiry: "Legacy" }[s] || s || "Other");
+  return (SOURCE_STYLE[s]?.label) || s || "Other";
+}
+
+function SourcePill({ source }) {
+  const sty = SOURCE_STYLE[source] || SOURCE_STYLE.general_enquiry;
+  return (
+    <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-md ${sty.pill}`}>
+      {sty.label}
+    </span>
+  );
+}
+
+function ReferralBadge({ source }) {
+  if (!source) return null;
+  const Icon = REFERRAL_ICONS[source] || HelpCircle;
+  return (
+    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 text-[11px] font-semibold bg-stone-100 text-stone-800 border border-stone-200 rounded-md">
+      <Icon className="w-3 h-3" /> {source}
+    </span>
+  );
 }
 
 // Compact "Move to…" dropdown used both on rows (compact) and the bulk action bar
@@ -68,6 +109,11 @@ function MoveMenu({ onMove, label = "Move", testid, currentTab, count }) {
                 disabled={currentTab === "franchise"}
                 className="w-full text-left px-3 py-2 hover:bg-stone-50 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2">
                 <Users className="w-3.5 h-3.5 text-stone-500" /> Franchise Contacts
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); onMove("licence"); close(); }} data-testid={`${testid}-licence`}
+                disabled={currentTab === "licence"}
+                className="w-full text-left px-3 py-2 hover:bg-stone-50 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2">
+                <UserPlus className="w-3.5 h-3.5 text-indigo-500" /> Licence Contacts
               </button>
               <button onClick={(e) => { e.stopPropagation(); onMove("general"); close(); }} data-testid={`${testid}-general`}
                 disabled={currentTab === "general"}
@@ -105,7 +151,9 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
   const isInPipeline = !!contact.in_pipeline;
   const dateAdded = contact.date || contact.date_added;
   const sinceCreated = daysSince(dateAdded);
-  const isFranchiseEnq = ["franchise_enquiry", "licence_enquiry"].includes(contact.source);
+  const isFranchiseEnq = contact.source === "franchise_enquiry";
+  const isLicenceEnq = contact.source === "licence_enquiry";
+  const homeTabLabel = isLicenceEnq ? "Licence Contacts" : isFranchiseEnq ? "Franchise Contacts" : "General Contacts";
 
   const confirmDelete = async () => {
     if (!window.confirm("Permanently delete this contact? This cannot be undone.")) return;
@@ -118,7 +166,7 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
       <aside className="w-full max-w-xl bg-white border-l border-stone-200 overflow-y-auto shadow-2xl">
         <div className="px-6 py-4 border-b border-stone-200 flex items-center justify-between sticky top-0 bg-white z-10">
           <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">
-            {isInPipeline ? "Sales Pipeline" : isFranchiseEnq ? "Franchise Contact" : "General Contact"}
+            {isInPipeline ? "Sales Pipeline" : homeTabLabel}
           </div>
           <div className="flex items-center gap-1">
             <button onClick={confirmDelete} disabled={busy} data-testid="drawer-delete"
@@ -138,13 +186,17 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
             {contact.establishment_name && <div className="text-base text-stone-600 mt-1">{contact.establishment_name}</div>}
             <div className="flex items-center gap-2 flex-wrap mt-3">
               {isInPipeline && <StageBadge status={contact.pipeline_status} />}
-              <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-stone-100 text-stone-700 border border-stone-200 rounded-full">
-                {sourceLabel(contact.source)}
-              </span>
+              <SourcePill source={contact.source} />
+              {contact.referral_source && <ReferralBadge source={contact.referral_source} />}
               {contact.potential && /yes|hot|high/i.test(String(contact.potential)) && (
                 <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[#D4FF00]/20 border border-[#D4FF00]/60 text-stone-900 rounded-full">Hot Lead</span>
               )}
             </div>
+            {contact.referral_source && (
+              <div className="text-xs text-stone-500 mt-2">
+                Heard about Creative Mojo via <strong>{contact.referral_source}</strong>
+              </div>
+            )}
           </div>
 
           {isInPipeline ? (
@@ -163,14 +215,14 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
                 <ArrowDownCircle className="w-3.5 h-3.5" /> Remove from sales pipeline
               </button>
               <div className="text-xs text-stone-500 mt-1.5">
-                Will return to <strong>{isFranchiseEnq ? "Franchise Contacts" : "General Contacts"}</strong> based on their source.
+                Will return to <strong>{homeTabLabel}</strong> based on their source.
               </div>
             </div>
           ) : (
             <div className="p-4 bg-stone-50 border border-stone-200 rounded-xl">
               <div className="text-sm font-semibold text-stone-900 mb-1">Not in the sales pipeline</div>
               <div className="text-xs text-stone-600 mb-3">
-                Currently in <strong>{isFranchiseEnq ? "Franchise Contacts" : "General Contacts"}</strong>.
+                Currently in <strong>{homeTabLabel}</strong>.
                 Promote them to actively work them as a potential franchisee.
               </div>
               <button onClick={() => onPromote(contact.id)} data-testid="drawer-promote"
@@ -455,9 +507,10 @@ export default function ContactsPage() {
                       const age = daysSince(c.date || c.date_added);
                       const isHot = c.potential && /yes|hot|high/i.test(String(c.potential));
                       const checked = selectedIds.has(c.id);
+                      const srcStyle = SOURCE_STYLE[c.source] || SOURCE_STYLE.general_enquiry;
                       return (
                         <div key={c.id} onClick={() => setSelected(c)}
-                          className={`bg-white border rounded-xl p-2.5 hover:border-stone-500 cursor-pointer text-xs ${isHot ? "border-[#D4FF00]" : "border-stone-200"} ${checked ? "ring-2 ring-stone-950" : ""}`}
+                          className={`bg-white border rounded-xl p-2.5 hover:border-stone-500 cursor-pointer text-xs ${isHot ? "border-[#D4FF00]" : "border-stone-200"} ${srcStyle.border} ${checked ? "ring-2 ring-stone-950" : ""}`}
                           data-testid={`pipeline-card-${c.id}`}>
                           <div className="flex items-start justify-between gap-2">
                             <button onClick={(e) => { e.stopPropagation(); toggleSelect(c.id); }} data-testid={`card-select-${c.id}`} className="shrink-0 text-stone-400 hover:text-stone-950">
@@ -468,7 +521,10 @@ export default function ContactsPage() {
                           </div>
                           {c.establishment_name && <div className="text-stone-600 truncate mt-0.5 pl-5">{c.establishment_name}</div>}
                           <div className="flex items-center justify-between mt-1.5 text-[10px] pl-5">
-                            <div className="text-stone-500">{c.postcode || ""}</div>
+                            <div className="flex items-center gap-1.5">
+                              <span className={`px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider border ${srcStyle.pill}`}>{srcStyle.label}</span>
+                              <span className="text-stone-500">{c.postcode || ""}</span>
+                            </div>
                             <div className="text-stone-400">{daysLabel(age)}</div>
                           </div>
                         </div>
@@ -528,7 +584,7 @@ export default function ContactsPage() {
                       <div className="text-stone-400">{c.telephone || c.mobile_phone || ""}</div>
                     </td>
                     <td className="px-3 py-2 text-xs text-stone-700">{[c.city, c.postcode].filter(Boolean).join(" · ") || "—"}</td>
-                    <td className="px-3 py-2 text-xs text-stone-700">{sourceLabel(c.source)}</td>
+                    <td className="px-3 py-2 text-xs text-stone-700"><SourcePill source={c.source} /></td>
                     {isPipeline && <td className="px-3 py-2"><StageBadge status={c.pipeline_status} /></td>}
                     <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
                       <MoveMenu onMove={(target, stage) => moveContact(c.id, target, stage)} label="Move" testid={`row-move-${c.id}`} currentTab={tab} />
@@ -547,7 +603,11 @@ export default function ContactsPage() {
 
       <ContactDrawer contact={selected} onClose={() => setSelected(null)}
         onStageChange={updateStage} onPromote={promote}
-        onDemote={(id) => demote(id, selected?.source?.includes("franchise") || selected?.source?.includes("licence") ? "franchise" : "general")}
+        onDemote={(id) => {
+          const src = selected?.source;
+          const target = src === "licence_enquiry" ? "licence" : src === "franchise_enquiry" ? "franchise" : "general";
+          return moveContact(id, target);
+        }}
         onDelete={remove} />
     </div>
   );
