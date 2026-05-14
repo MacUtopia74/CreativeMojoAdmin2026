@@ -306,7 +306,8 @@ export default function FranchiseesPage() {
                   <th onClick={headerClick("franchise_number")} className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 cursor-pointer hover:bg-stone-200/50 w-16">No. <SortArrow col="franchise_number" /></th>
                   <th onClick={headerClick("organisation")} className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 cursor-pointer hover:bg-stone-200/50 w-64">Organisation <SortArrow col="organisation" /></th>
                   <th onClick={headerClick("last_name")} className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 cursor-pointer hover:bg-stone-200/50 w-40">Name <SortArrow col="last_name" /></th>
-                  <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Mojo Email</th>
+                  <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-64">Mojo Email</th>
+                  <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-36">Mobile</th>
                   <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-24">Postcode</th>
                   <th onClick={headerClick("date_added")} className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 cursor-pointer hover:bg-stone-200/50 w-28">Added <SortArrow col="date_added" /></th>
                   <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-28">Mandate</th>
@@ -314,7 +315,7 @@ export default function FranchiseesPage() {
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={8} className="px-3 py-10 text-center text-sm text-stone-500">No franchisees in this view.</td></tr>
+                  <tr><td colSpan={9} className="px-3 py-10 text-center text-sm text-stone-500">No franchisees in this view.</td></tr>
                 ) : filtered.map((f) => {
                   const photo = f.photos?.[0]?.url;
                   return (
@@ -335,7 +336,20 @@ export default function FranchiseesPage() {
                         </Link>
                       </td>
                       <td className="px-3 py-2 text-sm text-stone-700">{[f.first_name, f.last_name].filter(Boolean).join(" ") || "—"}</td>
-                      <td className="px-3 py-2 text-xs text-stone-600 break-all">{f.mojo_email || "—"}</td>
+                      <td className="px-3 py-2 text-xs text-stone-600 break-all">
+                        {f.mojo_email ? (
+                          <a href={`mailto:${f.mojo_email}`} className="text-stone-700 hover:text-stone-950 hover:underline underline-offset-2" data-testid={`mailto-${f.id}`}>
+                            {f.mojo_email}
+                          </a>
+                        ) : "—"}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-stone-700 tabular-nums whitespace-nowrap">
+                        {f.mobile_phone ? (
+                          <a href={`tel:${(f.mobile_phone || "").replace(/\s+/g, "")}`} className="hover:text-stone-950 hover:underline underline-offset-2" data-testid={`tel-${f.id}`}>
+                            {f.mobile_phone}
+                          </a>
+                        ) : "—"}
+                      </td>
                       <td className="px-3 py-2 text-xs text-stone-700 tabular-nums">{f.postcode || "—"}</td>
                       <td className="px-3 py-2 text-xs text-stone-500 tabular-nums">{formatDate(f.date_added)}</td>
                       <td className="px-3 py-2"><MandateCell franchisee={f} /></td>
