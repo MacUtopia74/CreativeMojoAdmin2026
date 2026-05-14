@@ -27,7 +27,26 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
 - **Phase 4** Territory mapping tool + public find-a-class embed (replaces DaD Postcode Lookup)
 - **Phase 5** Licensee portal + 8-download/month quota + optional GoCardless webhook
 
-## What's Implemented (2026-05-13)
+## What's Implemented (2026-05-14)
+
+### Phase 1 — Iteration 7 (2026-05-14)
+- **Licence Contacts tab** — new 4th tab in /contacts: Sales Pipeline / Franchise Contacts / Licence Contacts / General Contacts. Backend `/api/contacts?tab=licence` filter returns only source=licence_enquiry NOT in pipeline. franchise tab is now strictly source=franchise_enquiry (licence records no longer mixed in).
+- **Move target='licence'** added to /contacts/{id}/move + /contacts/bulk-move so contacts can be reassigned between franchise/licence/general tabs and the pipeline freely.
+- **Referral source extraction** — intake handler now stores `referral_source` (Instagram / Facebook / X / Google / TikTok / Friend / Word of Mouth / Other). Supports both a single-labelled "Where did you hear about Creative Mojo?" field and Gravity Forms' spread-key pattern (each radio option emitted as its own key with value == label).
+- **Drawer UX** — contact drawer now shows referral source with matching social icon (Instagram/Facebook/Twitter for X icon, etc.) plus a "Heard about Creative Mojo via X" line.
+- **Pipeline visual differentiation** — kanban cards display a "FRANCHISE" (stone) or "LICENCE" (indigo) source pill with a matching coloured left-border accent, so franchise and licence leads are visually distinct in the pipeline.
+- **Form routing rule** — FORM_IDS_IN_PIPELINE = set() (empty). All new Gravity Forms submissions land in their respective Franchise/Licence/General Contacts tab; admin manually promotes worth-pursuing leads into the pipeline.
+- **Migration in_pipeline rule** — records with `why_contacting` IN ("Franchise enquiry","Franchise Enquiry","Franchise Enquiry Contact Form") land in Franchise Contacts on import, not the pipeline.
+
+### Tests (iteration 7)
+- Backend: 16/16 new tests in `test_phase1_licence.py` pass (tab filters, target=licence move, licence→franchise source change, bulk-move, intake referral_source for forms 1/17/32, plus 6 unit tests on _detect_referral_source).
+- Frontend: 100% — Playwright verified 4 tabs, Licence Contacts row + drawer with Instagram badge, Move dropdowns include licence option with current-tab-disabled behaviour, kanban cards have correct source pill + border accent (verified for both franchise stone and licence indigo).
+
+### Current data state (2026-05-14)
+- Sales Pipeline: ~421 records (non-franchise/licence enquiries — "Other", "Care home class enquiry", "Deliverable Art Kit Enquiry")
+- Franchise Contacts: 1,253 records (all 3 franchise label variants)
+- Licence Contacts: 1 (Sally Hare, came in via form 32 with referral=Instagram)
+- General Contacts: 5,958 legacy
 
 ### Phase 1 — Iteration 6 (2026-05-13)
 - **Franchisee photo caching**: Airtable signed photo URLs expire ~2hrs after issue, so migration now downloads each photo to `/app/backend/uploads/franchisees/<id>.<ext>` and rewrites `photos[0].url` to `/api/uploads/franchisees/<id>.<ext>`. FastAPI mounts the uploads directory as static under `/api/uploads`. New `POST /api/franchisees/refresh-photos` endpoint re-fetches Airtable attachment URLs without a full migration (useful when URLs expire between runs).
