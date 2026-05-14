@@ -450,8 +450,11 @@ FORM_ID_TO_SOURCE = {
     32: "licence_enquiry",      # licence enquiry form
 }
 
-# Form IDs that should go into the active sales pipeline by default
-FORM_IDS_IN_PIPELINE = {17, 32}
+# Form IDs that should go straight into the active Sales Pipeline by default.
+# Empty set = every new form submission lands in Franchise/General Contacts and the admin
+# manually promotes the ones worth pursuing. This matches the workflow the team uses
+# (pipeline = actively-worked leads only).
+FORM_IDS_IN_PIPELINE: set = set()
 
 
 def _pick(fields_by_label: dict, *candidates: str) -> Optional[str]:

@@ -296,10 +296,13 @@ async def run_migration(db, airtable_pat: str, airtable_base_id: str, run_by_ema
                 doc["pipeline_status"] = "archive"  # legacy data
             elif coll_name == "web_form_contacts":
                 doc["source"] = "franchise_enquiry"
-                # "Franchise Enquiry Contact Form" submissions are people using the franchise
-                # contact form for general questions — NOT active sales pipeline leads. Park them
-                # in "Franchise Contacts" so the sales pipeline only contains actively-worked leads.
-                if doc.get("why_contacting") == "Franchise Enquiry Contact Form":
+                # Franchise-tagged enquiries (any "Franchise…" value in the "Why you are contacting
+                # us" field) are general franchise contact-form submissions, NOT actively-worked
+                # sales leads. Park them in "Franchise Contacts" so the Sales Pipeline only
+                # contains contacts that have been actively engaged and moved into it manually.
+                wc = (doc.get("why_contacting") or "")
+                is_franchise_form = wc in ("Franchise enquiry", "Franchise Enquiry", "Franchise Enquiry Contact Form")
+                if is_franchise_form:
                     doc["in_pipeline"] = False
                     doc["pipeline_status"] = None
                 else:
