@@ -1398,7 +1398,7 @@ async def delete_contact(contact_id: str, _: dict = Depends(require_role("admin"
 # ----------------------------------------------------------------------------
 # Contact Move (flexible between tabs + bulk move)
 # ----------------------------------------------------------------------------
-MOVE_TARGETS = ("pipeline", "franchise", "licence", "general")
+MOVE_TARGETS = ("pipeline", "franchise", "licence", "general", "remove_from_pipeline")
 
 
 class ContactMoveRequest(BaseModel):
@@ -1445,39 +1445,56 @@ async def _move_one_contact(contact_id: str, target: str, pipeline_status: Optio
 
     if target in ("franchise", "licence"):
         target_source = "licence_enquiry" if target == "licence" else "franchise_enquiry"
-        # In web_form_contacts: set source to franchise/licence + leave the pipeline
+        # Retag the contact's TYPE while preserving any active pipeline state
+        # (in_pipeline + pipeline_status). Re-categorisation is now an
+        # independent action from pipeline membership.
         existing = await db.web_form_contacts.find_one({"id": contact_id}, {"_id": 0})
         if existing:
             await db.web_form_contacts.update_one(
                 {"id": contact_id},
-                {"$set": {"in_pipeline": False, "pipeline_status": None,
-                          "source": target_source, "updated_at": now}},
+                {"$set": {"source": target_source, "updated_at": now}},
             )
             return "web_form_contacts"
         legacy = await db.contacts.find_one({"id": contact_id}, {"_id": 0})
         if not legacy:
             return None
         legacy.update({
-            "in_pipeline": False,
-            "pipeline_status": None,
             "source": target_source,
             "promoted_from_legacy": True,
             "updated_at": now,
         })
+        # Preserve any pipeline flags already on the legacy row
+        legacy.setdefault("in_pipeline", False)
         await db.web_form_contacts.insert_one(legacy)
         await db.contacts.delete_one({"id": contact_id})
         return "web_form_contacts"
 
     if target == "general":
-        # In web_form_contacts: source becomes general_enquiry, leaves pipeline
+        # Retag to general_enquiry — also preserves pipeline state.
         r = await db.web_form_contacts.update_one(
             {"id": contact_id},
-            {"$set": {"in_pipeline": False, "pipeline_status": None,
-                      "source": "general_enquiry", "updated_at": now}},
+            {"$set": {"source": "general_enquiry", "updated_at": now}},
         )
         if r.matched_count:
             return "web_form_contacts"
         # legacy stays in contacts collection — just touch updated_at
+        r = await db.contacts.update_one(
+            {"id": contact_id},
+            {"$set": {"updated_at": now}},
+        )
+        if r.matched_count:
+            return "contacts"
+        return None
+
+    if target == "remove_from_pipeline":
+        # Explicit pipeline-only action: drop the contact out of the pipeline
+        # but keep their source/type unchanged.
+        r = await db.web_form_contacts.update_one(
+            {"id": contact_id},
+            {"$set": {"in_pipeline": False, "pipeline_status": None, "updated_at": now}},
+        )
+        if r.matched_count:
+            return "web_form_contacts"
         r = await db.contacts.update_one(
             {"id": contact_id},
             {"$set": {"in_pipeline": False, "pipeline_status": None, "updated_at": now}},

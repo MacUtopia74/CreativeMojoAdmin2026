@@ -526,10 +526,16 @@ function ReferralBadge({ source }) {
 }
 
 // Compact "Move to…" dropdown used both on rows (compact) and the bulk action bar
-function MoveMenu({ onMove, label = "Move", testid, currentTab, count }) {
+function MoveMenu({ onMove, label = "Move", testid, currentTab, count, contactSource, inPipeline }) {
   const [open, setOpen] = useState(false);
   const [showStages, setShowStages] = useState(false);
   const close = () => { setOpen(false); setShowStages(false); };
+  // Highlight the contact's CURRENT source so the user sees what they're changing FROM.
+  const currentType =
+    contactSource === "licence_enquiry" ? "licence"
+    : contactSource === "franchise_enquiry" ? "franchise"
+    : contactSource === "general_enquiry" ? "general"
+    : null;
   return (
     <div className="relative inline-block" onMouseLeave={close} data-testid={testid}>
       <button onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); setShowStages(false); }}
@@ -539,34 +545,42 @@ function MoveMenu({ onMove, label = "Move", testid, currentTab, count }) {
         <ChevronDown className="w-3 h-3" />
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-50 w-60 bg-white border border-stone-200 rounded-xl shadow-lg overflow-hidden text-sm text-stone-900">
+        <div className="absolute right-0 top-full mt-1 z-50 w-64 bg-white border border-stone-200 rounded-xl shadow-lg overflow-hidden text-sm text-stone-900">
           {!showStages ? (
             <>
-              <button onClick={(e) => { e.stopPropagation(); setShowStages(true); }} data-testid={`${testid}-pipeline`}
-                className="w-full text-left px-3 py-2 hover:bg-stone-50 flex items-center justify-between">
-                <span className="flex items-center gap-2"><Briefcase className="w-3.5 h-3.5 text-stone-500" /> {currentTab === "pipeline" ? "Change Pipeline Stage" : "Sales Pipeline"}</span>
-                <ChevronDown className="w-3 h-3 -rotate-90 text-stone-400" />
-              </button>
+              <div className="px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 bg-stone-50 border-b border-stone-200">Change Type</div>
               <button onClick={(e) => { e.stopPropagation(); onMove("franchise"); close(); }} data-testid={`${testid}-franchise`}
-                disabled={currentTab === "franchise"}
+                disabled={currentType === "franchise"}
                 className="w-full text-left px-3 py-2 hover:bg-stone-50 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2">
-                <Users className="w-3.5 h-3.5 text-stone-500" /> Franchise Contacts
+                <Users className="w-3.5 h-3.5 text-stone-500" /> Franchise{currentType === "franchise" && <span className="ml-auto text-[9px] text-stone-400 uppercase tracking-wider">current</span>}
               </button>
               <button onClick={(e) => { e.stopPropagation(); onMove("licence"); close(); }} data-testid={`${testid}-licence`}
-                disabled={currentTab === "licence"}
+                disabled={currentType === "licence"}
                 className="w-full text-left px-3 py-2 hover:bg-stone-50 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2">
-                <UserPlus className="w-3.5 h-3.5 text-indigo-500" /> Licence Contacts
+                <UserPlus className="w-3.5 h-3.5 text-indigo-500" /> Licence{currentType === "licence" && <span className="ml-auto text-[9px] text-stone-400 uppercase tracking-wider">current</span>}
               </button>
               <button onClick={(e) => { e.stopPropagation(); onMove("general"); close(); }} data-testid={`${testid}-general`}
-                disabled={currentTab === "general"}
+                disabled={currentType === "general"}
                 className="w-full text-left px-3 py-2 hover:bg-stone-50 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2">
-                <Users className="w-3.5 h-3.5 text-stone-500" /> General Contacts
+                <Users className="w-3.5 h-3.5 text-stone-500" /> General{currentType === "general" && <span className="ml-auto text-[9px] text-stone-400 uppercase tracking-wider">current</span>}
               </button>
+              <div className="px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 bg-stone-50 border-y border-stone-200">Pipeline</div>
+              <button onClick={(e) => { e.stopPropagation(); setShowStages(true); }} data-testid={`${testid}-pipeline`}
+                className="w-full text-left px-3 py-2 hover:bg-stone-50 flex items-center justify-between">
+                <span className="flex items-center gap-2"><Briefcase className="w-3.5 h-3.5 text-stone-500" /> {inPipeline ? "Change Pipeline Stage" : "Add to Pipeline"}</span>
+                <ChevronDown className="w-3 h-3 -rotate-90 text-stone-400" />
+              </button>
+              {inPipeline && (
+                <button onClick={(e) => { e.stopPropagation(); onMove("remove_from_pipeline"); close(); }} data-testid={`${testid}-remove-from-pipeline`}
+                  className="w-full text-left px-3 py-2 hover:bg-stone-50 flex items-center gap-2 text-red-700">
+                  <X className="w-3.5 h-3.5" /> Remove from Pipeline
+                </button>
+              )}
             </>
           ) : (
             <>
               <div className="px-3 py-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 bg-stone-50 border-b border-stone-200">
-                {currentTab === "pipeline" ? "Change stage to" : "Move to pipeline stage"}
+                {inPipeline ? "Change stage to" : "Add to pipeline as"}
               </div>
               {STAGES.map((s) => (
                 <button key={s.key} onClick={(e) => { e.stopPropagation(); onMove("pipeline", s.key); close(); }}
@@ -1278,7 +1292,12 @@ export default function ContactsPage() {
                     <td className="px-3 py-2 text-xs text-stone-700"><SourcePill source={c.source} /></td>
                     {isPipeline && <td className="px-3 py-2"><StageBadge status={c.pipeline_status} /></td>}
                     <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
-                      <MoveMenu onMove={(target, stage) => moveContact(c.id, target, stage)} label="Move" testid={`row-move-${c.id}`} currentTab={tab} />
+                      <MoveMenu
+                        onMove={(target, stage) => moveContact(c.id, target, stage)}
+                        label="Move" testid={`row-move-${c.id}`}
+                        currentTab={tab}
+                        contactSource={c.source}
+                        inPipeline={!!c.in_pipeline} />
                     </td>
                   </tr>
                 );
