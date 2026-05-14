@@ -929,7 +929,10 @@ async def list_contract_renewals(
     bucketed for the UI."""
     today = datetime.now(timezone.utc).date()
 
-    cur = db.contracts.find({"renewal_date": {"$exists": True, "$nin": [None, ""]}}, {"_id": 0})
+    cur = db.contracts.find({
+        "renewal_date": {"$exists": True, "$nin": [None, ""]},
+        "franchisee_id": {"$exists": True, "$nin": [None, ""]},  # skip orphan/unlinked contracts
+    }, {"_id": 0})
     rows: list[dict] = []
     async for c in cur:
         try:
