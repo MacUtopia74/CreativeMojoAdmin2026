@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 8 testing complete. Backend: created /app/backend/tests/test_phase1_search_addcontact.py with 16 tests — 16/16 PASS. Covers (a) smarter multi-token search + relevance ranking on GET /api/contacts (Penny Davies #1 for exact full-name; 6 Davies records on single-token; multi-token AND collapses to 1; whitespace/regex-special-chars safe; case-insensitive); (b) POST /api/contacts admin creation (target=franchise→franchise_enquiry, target=licence→licence_enquiry, target=general→general_enquiry, target=pipeline + pipeline_status=qualified → in_pipeline=true; missing names→400, invalid target→400, invalid pipeline_status→400, email lowercased, postcode uppercased, auth required, created contact appears in GET tab + deletable). All side-effect contacts cleaned up in finally blocks. Frontend Playwright on public URL verified: add-contact-button visible, modal opens with 4 target buttons, pipeline reveals 6-option stage dropdown, licence hides it, empty-submit shows red validation message and keeps modal open ('Please provide a first name, last name, email, or establishment.'), filled submit closes modal + creates contact + jumps to target tab (verified search of new contact in licence tab), Penny Davies search returns Penny first, Davies search returns 6 rows. Found ONE bug: AddContactModal defaultTarget ternary is inverted vs spec.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "ContactsPage.js — AddContactModal defaultTarget prop",
+        "issue": "defaultTarget ternary is inverted. Line 764 currently reads: `defaultTarget={tab === \"pipeline\" ? \"pipeline\" : tab}` which means when the user is on the Sales Pipeline tab and opens Add Contact, the default target is 'pipeline' (Sales Pipeline button highlighted). Per spec it should default to 'franchise' when on the pipeline tab. Fix: `defaultTarget={tab === \"pipeline\" ? \"franchise\" : tab}`. Visual proof captured: on /contacts (Sales Pipeline default tab) the modal opens with SALES PIPELINE button highlighted instead of FRANCHISE CONTACTS.",
+        "selector": "[data-testid='add-target-pipeline'] / [data-testid='add-target-franchise']",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase1_search_addcontact.py",
+    "/app/test_reports/pytest/phase1_search_addcontact.xml"
+  ],
+  "action_items": [
+    "Fix AddContactModal defaultTarget ternary at /app/frontend/src/pages/ContactsPage.js:764 — change `tab === 'pipeline' ? 'pipeline' : tab` to `tab === 'pipeline' ? 'franchise' : tab`. One-line fix; matches spec requirement: 'defaultTarget = currently viewed tab (or franchise if currently pipeline)'.",
+    "(Carry-over from iter 7) Optional: wrap legacy→web_form_contacts move in a transaction or try/except rollback for atomicity.",
+    "(Carry-over) server.py is now 1387 lines and ContactsPage.js 773 lines — both worth splitting."
+  ],
+  "critical_code_review_comments": [
+    "GET /api/contacts search: single-token uses fast single-regex path; multi-token uses $and of $or-per-field — correctly implements AND across tokens, OR across fields. re.escape() escapes regex metachars (verified with 'J.K.' search).",
+    "_score() weighting (1000/600/400/200/100/50/30/15/10) cleanly separates exact-name from partial matches; final tiebreaker hashes the date string which is acceptable but suboptimal — consider `(item.get('date') or item.get('date_added') or '')` directly to keep deterministic chronological tiebreak. Cosmetic only.",
+    "POST /api/contacts: ContactCreateRequest is Pydantic-validated; target is checked against MOVE_TARGETS, pipeline_status against PIPELINE_STAGES (forward-reference resolved at call time — fine in Python); at-least-one-name guard returns proper 400. Email lowercased and postcode uppercased before insert. manually_added_by captures admin email for audit. Source is in_pipeline correctly mapped per target. Solid.",
+    "AddContactModal: only real bug is the inverted defaultTarget ternary at line 764. The rest of the modal (validation, target switching, pipeline-stage conditional render, onCreated→jump-to-tab) is correct."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase1_search_addcontact.py (NEW — 16 tests, in-place cleanup, no migration run, no persistent data left in DB)"
+  ],
+  "success_rate": {"backend": "16/16 (100%)", "frontend": "9/10 (90%) — 1 bug: inverted defaultTarget on pipeline tab"},
+  "test_credentials": "admin@creativemojo.co.uk / CreativeMojo2026!",
+  "seed_data_creation": "test_phase1_search_addcontact.py creates ~6 short-lived web_form_contacts via POST /api/contacts and deletes them in fixture teardown / try-finally. Frontend Playwright created 1 licence contact via UI and deleted it via DELETE /api/contacts/{id} from page.evaluate(). No persistent state changes; admin user not mutated.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend test suite now 8 files in /app/backend/tests. Run iteration-8 suite with REACT_APP_BACKEND_URL exported: `pytest backend/tests/test_phase1_search_addcontact.py -v`. Penny Davies's id is currently the only exact-full-name 'penny davies' record (total=1 for that query). Davies token search returns 6 records on franchise tab. After iter-8 fix, re-run only frontend Playwright on /contacts (Sales Pipeline default tab) → open Add Contact → confirm FRANCHISE CONTACTS target is highlighted by default (`add-target-franchise` class contains 'bg-stone-950 text-white').",
+  "rca of the issue": "Bug: AddContactModal opens with 'Sales Pipeline' as default target when the user is on the Sales Pipeline tab, contrary to spec ('franchise if currently pipeline'). RCA: ternary inverted at ContactsPage.js:764. Reproduction: login → navigate /contacts (lands on Sales Pipeline by default) → click 'Add Contact' → observe Sales Pipeline target highlighted (black bg). Expected: FRANCHISE CONTACTS highlighted. Fix: swap the truthy branch from 'pipeline' to 'franchise'. No backend changes required."
+}

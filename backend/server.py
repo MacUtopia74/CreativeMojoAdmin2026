@@ -867,11 +867,28 @@ async def list_contacts(
         if q_legacy is not None: q_legacy["pipeline_status"] = pipeline_status
         if q_web is not None: q_web["pipeline_status"] = pipeline_status
     if search:
-        rx = {"$regex": search, "$options": "i"}
-        if q_legacy is not None:
-            q_legacy.setdefault("$and", []).append({"$or": [{"first_name": rx}, {"last_name": rx}, {"email": rx}, {"postcode": rx}, {"city": rx}]})
-        if q_web is not None:
-            q_web.setdefault("$and", []).append({"$or": [{"first_name": rx}, {"last_name": rx}, {"postcode": rx}, {"city": rx}, {"establishment_name": rx}, {"telephone": rx}, {"email": rx}]})
+        # Multi-token search across all relevant fields.
+        # Each token must match at least one field (AND across tokens, OR across fields)
+        # so "Penny Davies" finds the person whose first_name="Penny" AND last_name="Davies".
+        # A single token search still uses a fast single-regex path so partial matches are
+        # broad (e.g. "Davies" finds anyone named Davies anywhere).
+        import re
+        tokens = [t for t in re.split(r"\s+", search.strip()) if t]
+        legacy_fields = ["first_name", "last_name", "email", "postcode", "city"]
+        web_fields = ["first_name", "last_name", "email", "telephone", "postcode", "city", "establishment_name"]
+        if len(tokens) == 1:
+            rx = {"$regex": re.escape(tokens[0]), "$options": "i"}
+            if q_legacy is not None:
+                q_legacy.setdefault("$and", []).append({"$or": [{f: rx} for f in legacy_fields]})
+            if q_web is not None:
+                q_web.setdefault("$and", []).append({"$or": [{f: rx} for f in web_fields]})
+        else:
+            for tok in tokens:
+                rx = {"$regex": re.escape(tok), "$options": "i"}
+                if q_legacy is not None:
+                    q_legacy.setdefault("$and", []).append({"$or": [{f: rx} for f in legacy_fields]})
+                if q_web is not None:
+                    q_web.setdefault("$and", []).append({"$or": [{f: rx} for f in web_fields]})
 
     items = []
     if q_legacy is not None:
@@ -880,7 +897,53 @@ async def list_contacts(
     if q_web is not None:
         web = await db.web_form_contacts.find(q_web, {"_id": 0}).limit(limit).to_list(limit)
         items.extend(web)
-    items.sort(key=lambda x: x.get("date") or x.get("date_added") or "", reverse=True)
+
+    if search:
+        # Score each result so the most relevant matches surface first.
+        # Score weights: exact full-name match >> name-field token match >> other field match.
+        q_lower = search.strip().lower()
+        q_tokens = [t for t in q_lower.split() if t]
+
+        def _score(item: dict) -> int:
+            first = (item.get("first_name") or "").lower()
+            last = (item.get("last_name") or "").lower()
+            full = f"{first} {last}".strip()
+            email = (item.get("email") or "").lower()
+            est = (item.get("establishment_name") or "").lower()
+            city = (item.get("city") or "").lower()
+            postcode = (item.get("postcode") or "").lower()
+            phone = (item.get("telephone") or "").lower()
+
+            s = 0
+            # Exact full-name match (or reverse "Davies Penny")
+            if full == q_lower or f"{last} {first}".strip() == q_lower:
+                s += 1000
+            elif q_lower in full or full.startswith(q_lower):
+                s += 600
+            # All query tokens present in the name fields
+            if q_tokens and all((t in first) or (t in last) for t in q_tokens):
+                s += 400
+            # All query tokens present in name+email
+            if q_tokens and all((t in first) or (t in last) or (t in email) for t in q_tokens):
+                s += 200
+            # Token-level bonuses
+            for t in q_tokens:
+                if first == t or last == t:
+                    s += 100
+                if first.startswith(t) or last.startswith(t):
+                    s += 50
+                if t in first or t in last:
+                    s += 30
+                if t in email:
+                    s += 15
+                if t in est or t in city or t in postcode or t in phone:
+                    s += 10
+            return s
+
+        items.sort(key=lambda x: (-_score(x), -(x.get("date") or x.get("date_added") or "").__hash__()))
+    else:
+        items.sort(key=lambda x: x.get("date") or x.get("date_added") or "", reverse=True)
+
     return {"items": items[:limit], "total": len(items)}
 
 
@@ -894,6 +957,69 @@ async def get_contact(contact_id: str, _: dict = Depends(require_role("admin")))
     if not c:
         raise HTTPException(status_code=404, detail="Contact not found")
     return {"contact": c, "_source_collection": src}
+
+
+class ContactCreateRequest(BaseModel):
+    target: str  # "pipeline" | "franchise" | "licence" | "general"
+    pipeline_status: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: Optional[str] = None
+    telephone: Optional[str] = None
+    postcode: Optional[str] = None
+    city: Optional[str] = None
+    establishment_name: Optional[str] = None
+    referral_source: Optional[str] = None
+    notes: Optional[str] = None
+    message: Optional[str] = None
+
+
+@api.post("/contacts")
+async def create_contact(body: ContactCreateRequest, user: dict = Depends(require_role("admin"))):
+    """Admin can manually add a contact directly into any tab."""
+    if body.target not in MOVE_TARGETS:
+        raise HTTPException(status_code=400, detail=f"target must be one of {MOVE_TARGETS}")
+    if body.target == "pipeline" and body.pipeline_status and body.pipeline_status not in PIPELINE_STAGES:
+        raise HTTPException(status_code=400, detail=f"pipeline_status must be one of {PIPELINE_STAGES}")
+    if not (body.first_name or body.last_name or body.email or body.establishment_name):
+        raise HTTPException(status_code=400, detail="At least one of first_name, last_name, email, or establishment_name is required")
+
+    now = datetime.now(timezone.utc).isoformat()
+    source_by_target = {
+        "pipeline":  "franchise_enquiry",   # default; admin can change source later
+        "franchise": "franchise_enquiry",
+        "licence":   "licence_enquiry",
+        "general":   "general_enquiry",
+    }
+    source = source_by_target[body.target]
+    in_pipeline = (body.target == "pipeline")
+    pipeline_status = (body.pipeline_status or "new") if in_pipeline else None
+
+    doc = {
+        "id": str(uuid.uuid4()),
+        "first_name": (body.first_name or "").strip() or None,
+        "last_name": (body.last_name or "").strip() or None,
+        "email": (body.email or "").strip().lower() or None,
+        "telephone": (body.telephone or "").strip() or None,
+        "postcode": (body.postcode or "").strip().upper() or None,
+        "city": (body.city or "").strip() or None,
+        "establishment_name": (body.establishment_name or "").strip() or None,
+        "referral_source": body.referral_source or None,
+        "message": (body.message or body.notes or "").strip() or None,
+        "source": source,
+        "in_pipeline": in_pipeline,
+        "pipeline_status": pipeline_status,
+        "form_id": None,
+        "date": now,
+        "date_added": now,
+        "received_at": now,
+        "created_at": now,
+        "updated_at": now,
+        "manually_added_by": user.get("email"),
+    }
+    await db.web_form_contacts.insert_one(doc)
+    doc.pop("_id", None)
+    return {"ok": True, "contact": doc}
 
 
 class PipelineUpdateRequest(BaseModel):

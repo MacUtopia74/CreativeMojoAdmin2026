@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import api from "@/lib/api";
-import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus } from "lucide-react";
+import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus, Plus } from "lucide-react";
 
 const STAGES = [
   { key: "new", label: "New", color: "bg-stone-100 text-stone-700 border-stone-300", barColor: "bg-stone-400" },
@@ -59,6 +59,152 @@ function StageBadge({ status }) {
   if (!s) return <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-stone-100 text-stone-500 border border-stone-200 rounded-full">{status || "—"}</span>;
   return <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-full ${s.color}`}>{s.label}</span>;
 }
+function AddContactModal({ open, onClose, onCreated, defaultTarget = "franchise" }) {
+  const [form, setForm] = useState({
+    target: defaultTarget,
+    first_name: "", last_name: "", email: "", telephone: "",
+    postcode: "", city: "", establishment_name: "",
+    referral_source: "", notes: "",
+    pipeline_status: "new",
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      setForm((f) => ({ ...f, target: defaultTarget }));
+      setErr("");
+    }
+  }, [open, defaultTarget]);
+
+  if (!open) return null;
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!form.first_name && !form.last_name && !form.email && !form.establishment_name) {
+      setErr("Please provide a first name, last name, email, or establishment.");
+      return;
+    }
+    setSubmitting(true);
+    setErr("");
+    try {
+      const payload = { ...form };
+      if (payload.target !== "pipeline") delete payload.pipeline_status;
+      Object.keys(payload).forEach((k) => { if (payload[k] === "") delete payload[k]; });
+      const r = await api.post("/contacts", payload);
+      onCreated && onCreated(r.data.contact, form.target);
+      onClose();
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Could not save contact.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const TARGETS = [
+    { key: "franchise", label: "Franchise Contacts", icon: Users },
+    { key: "licence",   label: "Licence Contacts",   icon: UserPlus },
+    { key: "general",   label: "General Contacts",   icon: Users },
+    { key: "pipeline",  label: "Sales Pipeline",     icon: Briefcase },
+  ];
+  const REFERRALS = ["Instagram", "Facebook", "X", "TikTok", "Google", "Friend", "Word of Mouth", "Other"];
+
+  return (
+    <div onClick={onClose} className="fixed inset-0 z-50 bg-stone-950/40 backdrop-blur-sm flex items-start justify-center p-6 overflow-y-auto" data-testid="add-contact-modal">
+      <form onClick={(e) => e.stopPropagation()} onSubmit={submit}
+        className="w-full max-w-2xl bg-white border border-stone-200 rounded-2xl shadow-2xl my-10">
+        <div className="px-6 py-4 border-b border-stone-200 flex items-center justify-between">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">New contact</div>
+            <h2 className="text-xl font-display font-black text-stone-950 mt-1">Add a Contact</h2>
+          </div>
+          <button type="button" onClick={onClose} data-testid="add-contact-close" className="w-9 h-9 flex items-center justify-center hover:bg-stone-100 rounded-lg">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-5">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-2">Where should this contact land?</div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {TARGETS.map((t) => {
+                const active = form.target === t.key;
+                const Icon = t.icon;
+                return (
+                  <button key={t.key} type="button" onClick={() => setForm((f) => ({ ...f, target: t.key }))}
+                    data-testid={`add-target-${t.key}`}
+                    className={`px-3 py-3 border rounded-xl text-xs font-bold uppercase tracking-wider flex flex-col items-center gap-1.5 transition-colors ${
+                      active ? "bg-stone-950 text-white border-stone-950" : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"
+                    }`}>
+                    <Icon className="w-4 h-4" />
+                    <span className="text-[10px] leading-tight text-center">{t.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {form.target === "pipeline" && (
+              <div className="mt-3">
+                <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1.5">Starting pipeline stage</label>
+                <select value={form.pipeline_status} onChange={set("pipeline_status")} data-testid="add-pipeline-stage"
+                  className="w-full px-3 py-2 bg-white border border-stone-300 text-sm rounded-lg focus:outline-none focus:border-stone-900">
+                  {STAGES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                </select>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Field label="First name" value={form.first_name} onChange={set("first_name")} testid="add-first-name" />
+            <Field label="Last name" value={form.last_name} onChange={set("last_name")} testid="add-last-name" />
+            <Field label="Email" type="email" value={form.email} onChange={set("email")} testid="add-email" />
+            <Field label="Telephone" value={form.telephone} onChange={set("telephone")} testid="add-telephone" />
+            <Field label="Postcode" value={form.postcode} onChange={set("postcode")} testid="add-postcode" />
+            <Field label="City / Town" value={form.city} onChange={set("city")} testid="add-city" />
+            <Field label="Establishment" value={form.establishment_name} onChange={set("establishment_name")} testid="add-establishment" wide />
+            <div className="md:col-span-2">
+              <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1.5">Where did they hear about us?</label>
+              <select value={form.referral_source} onChange={set("referral_source")} data-testid="add-referral"
+                className="w-full px-3 py-2 bg-white border border-stone-300 text-sm rounded-lg focus:outline-none focus:border-stone-900">
+                <option value="">— Not specified —</option>
+                {REFERRALS.map((r) => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1.5">Notes</label>
+              <textarea value={form.notes} onChange={set("notes")} data-testid="add-notes" rows={3}
+                className="w-full px-3 py-2 bg-white border border-stone-300 text-sm rounded-lg focus:outline-none focus:border-stone-900" />
+            </div>
+          </div>
+
+          {err && <div className="px-4 py-3 border border-red-200 bg-red-50 text-sm text-red-800 rounded-xl flex items-center gap-2"><AlertCircle className="w-4 h-4" />{err}</div>}
+        </div>
+
+        <div className="px-6 py-4 border-t border-stone-200 flex items-center justify-end gap-2 bg-stone-50 rounded-b-2xl">
+          <button type="button" onClick={onClose} data-testid="add-contact-cancel"
+            className="px-4 py-2 text-xs font-bold uppercase tracking-wider border border-stone-300 bg-white text-stone-700 hover:bg-stone-50 rounded-lg">
+            Cancel
+          </button>
+          <button type="submit" disabled={submitting} data-testid="add-contact-submit"
+            className="px-5 py-2 text-xs font-bold uppercase tracking-wider bg-[#D4FF00] hover:bg-[#BDE600] text-stone-950 rounded-lg disabled:opacity-50 flex items-center gap-1.5">
+            {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+            Save contact
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function Field({ label, value, onChange, type = "text", testid, wide }) {
+  return (
+    <div className={wide ? "md:col-span-2" : ""}>
+      <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1.5">{label}</label>
+      <input type={type} value={value} onChange={onChange} data-testid={testid}
+        className="w-full px-3 py-2 bg-white border border-stone-300 text-sm rounded-lg focus:outline-none focus:border-stone-900" />
+    </div>
+  );
+}
+
 function sourceLabel(s) {
   return (SOURCE_STYLE[s]?.label) || s || "Other";
 }
@@ -302,6 +448,7 @@ export default function ContactsPage() {
   const [error, setError] = useState("");
   const [selected, setSelected] = useState(null);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [addOpen, setAddOpen] = useState(false);
 
   const clearSelection = () => setSelectedIds(new Set());
   const toggleSelect = (id) => {
@@ -422,6 +569,10 @@ export default function ContactsPage() {
               placeholder="Search…"
               className="pl-9 pr-3 py-2 w-56 bg-stone-50 border border-stone-300 text-sm focus:outline-none focus:border-stone-900 rounded-lg" />
           </div>
+          <button onClick={() => setAddOpen(true)} data-testid="add-contact-button"
+            className="px-4 py-2 bg-stone-950 text-white text-xs font-bold uppercase tracking-wider hover:bg-stone-800 transition-colors rounded-lg flex items-center gap-1.5">
+            <Plus className="w-3.5 h-3.5" /> Add Contact
+          </button>
         </div>
       </div>
 
@@ -609,6 +760,13 @@ export default function ContactsPage() {
           return moveContact(id, target);
         }}
         onDelete={remove} />
+      <AddContactModal open={addOpen} onClose={() => setAddOpen(false)}
+        defaultTarget={tab === "pipeline" ? "pipeline" : tab}
+        onCreated={(_c, target) => {
+          // Jump to the tab the contact landed in so the user sees it immediately
+          if (target && target !== tab) setTab(target);
+          load();
+        }} />
     </div>
   );
 }
