@@ -29,6 +29,13 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
 
 ## What's Implemented (2026-05-14)
 
+### Phase 1 — Iteration 14 (2026-05-14)
+- **Bulk pipeline stage change** — bulk action bar's "Move Selected ▾" menu (and per-row Move ▾) now lets you bulk-change pipeline stage on any tab. On the Sales Pipeline tab the first option re-labels to "Change Pipeline Stage" and the submenu header to "Change stage to"; selected cards stay visible and update in-place. From Franchise/Licence/General tabs the menu still reads "Sales Pipeline" + "Move to pipeline stage" and moves the contacts into pipeline at the chosen stage in one click. Works for all 6 stages: New / Contacted / Qualified / Demo Booked / Converted / Lost.
+
+### Tests (iteration 14)
+- Frontend: 100% — all label switching verified, in-place stage update on Pipeline tab, restore round-trip, Franchise-tab labels unchanged.
+- Backend: 100% (implicit) — bulk-move endpoint already supported target=pipeline+pipeline_status; verified via API after each mutation.
+
 ### Phase 1 — Iteration 13 (2026-05-14)
 - **Dashboard funnel bug fixed** — pipeline_funnel was counting every web_form_contact with `pipeline_status='new'` (1,664 stale ones from earlier import). Now filtered by `in_pipeline=True` so it matches the Sales & Contacts page exactly: New 24 / Demo Booked 1 / Converted 2. New `pipeline_funnel_by_source` field returned. Recent enquiries also gated on in_pipeline.
 - **Source toggle on Sales Pipeline** — new 3-button group (All / Franchise / Licence) on /contacts (visible only when tab=pipeline). Each button shows live count, filters both kanban and list views. Composes with the Age filter (e.g. Fresh + Licence = recent licence leads only).
