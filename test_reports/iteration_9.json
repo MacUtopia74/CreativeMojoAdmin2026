@@ -1,0 +1,44 @@
+{
+  "summary": "Iter 9 testing complete. Backend (2/2 pass): test_phase1_manual_flag.py verifies POST /api/contacts stores manually_added_by=admin email + ISO-8601 created_at on the create response and on subsequent GET /api/contacts, and that an imported contact (Penny Davies) carries NO manually_added_by field. Frontend Playwright on public preview URL — every required spec verified: (1) MANUAL BADGE: row sparkles icon (data-testid='manual-badge') visible on newly POSTed 'Manual QA9' franchise contact AND drawer banner (data-testid='drawer-manual-flag') reads exactly 'Added manually by admin@creativemojo.co.uk on 14 May 2026'; NEGATIVE: Penny Davies row has no manual-badge and her drawer has no drawer-manual-flag. (2) AGE FILTER: data-testid='age-filter' visible ONLY on Sales Pipeline tab (hidden on franchise/licence/general — verified). Counts: all=421, fresh=0, recent=0, stale=421 (matches spec). Click age-tier-fresh → 0 cards in every kanban column AND stat tiles all read 0; List view shows 'No records'. Click age-tier-all → restored. (3) SHIFT-CLICK in LIST: click 1st → '1 selected', shift-click 5th → '5 selected', shift-click 8th → '8 selected'. Kanban shift-click in 'new' column 1→4 → '4 selected'. (4) REGRESSION: Davies search returns 6 rows on franchise tab, add-contact-modal opens, row Move dropdown shows all 4 target options (pipeline/franchise/licence/general).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "ContactsPage.js — toggleSelect shift-click anchor-persist edge case",
+        "issue": "When user (a) clicks row N to select it, (b) clicks row N again to unselect it (bar disappears, 0 selected, but lastSelectedId still = N), then (c) shift-clicks row M — per spec this should 'fall back to single-toggle behaviour, so 1 selected'. Actual behaviour: code enters the range branch (lastSelectedId truthy and !== M); since the anchor row N is NOT in the selected set, `adding = next.has(lastSelectedId)` is false → it DELETES the range N..M from an already-empty set → result is 0 selected (bulk-action-bar does not appear). RCA: /app/frontend/src/pages/ContactsPage.js line 516-528 — the shift-range branch is taken even when the anchor is no longer selected. Suggested fix: gate the shift-range path on `next.has(lastSelectedId)` (i.e. only extend a live selection); otherwise fall through to plain toggle. Example: `if (evt && evt.shiftKey && lastSelectedId && lastSelectedId !== id && prev.has(lastSelectedId)) { ... }`. Plain-toggle (no shift) and the documented 1→5→8 extension flow remain unaffected by this fix.",
+        "selector": "[data-testid='select-<id>'] / [data-testid='card-select-<id>']",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase1_manual_flag.py",
+    "/app/test_reports/pytest/phase1_manual_flag.xml"
+  ],
+  "action_items": [
+    "(LOW) Fix shift-click anchor-persist edge case in /app/frontend/src/pages/ContactsPage.js:516 — only enter range-extension branch when the anchor (lastSelectedId) is still in the current selection set; otherwise fall through to single-toggle. One-line predicate addition.",
+    "(Carry-over) server.py >1380 lines and ContactsPage.js now 877 lines — both candidates for splitting.",
+    "Note on ambiguity in spec line: 'Click 3rd row WITHOUT shift — selection should change to only that row (single toggle); anchor becomes 3rd.' Current implementation treats this as a TOGGLE of row 3 (since 3 was already in the 1-8 range, toggle → 7 selected), which matches the explicit statement 'Plain clicks still toggle one at a time' in the same spec. We did NOT flag this as a bug; behaviour is consistent and matches the toggle wording. Main agent should confirm intended semantics if 'replace whole selection' is actually wanted."
+  ],
+  "critical_code_review_comments": [
+    "AGE_TIERS array, ageTier() helper and AgeBadge component are clean and DRY. AGE_TIERS array doubles as the predicate source for both the visibleItems memo and the per-button live count, so counts and filtering can never drift apart — nice design.",
+    "visibleItems memo is correctly the single source of truth for: grouped (kanban), stats (summary tiles), and table rows — when ageFilter changes, all three recompute coherently. Verified empirically (fresh → all read 0).",
+    "ManualBadge component is correctly conditional on truthy addedBy and reuses the brand lime '#D4FF00' sparkle. drawer-manual-flag block renders only when contact.manually_added_by truthy; created_at is rendered as en-GB locale date — verified '14 May 2026' output.",
+    "toggleSelect(id, evt) shift logic correctly uses visibleItems (not raw data.items) for the index range, so range-select respects the age filter (only verified positively; fresh=0 in current data so no rows to shift over). Anchor-persist edge case noted as low-priority ui_bug above.",
+    "AGE_TIERS button block is gated on `isPipeline && !loading && data.items.length > 0` — correctly hidden on other tabs and during initial loading flicker. Resetting ageFilter to 'all' on tab/stageFilter change (line 554) prevents stale-filter ghosting when navigating between tabs.",
+    "Backend POST /api/contacts response includes both manually_added_by and created_at on the create response itself (verified) — no need for the frontend to re-fetch the single contact to populate the badge.",
+    "ContactsPage.js is now 877 lines — adding ManualBadge, AgeBadge, AGE_TIERS, ageTier, shift-select logic on top of an already large file. Worth extracting AddContactModal, ContactDrawer, MoveMenu, and the BulkActionBar to separate files in a follow-up cleanup."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase1_manual_flag.py (NEW — 2 tests, full cleanup via finally-delete; no persistent DB writes)"
+  ],
+  "success_rate": {"backend": "2/2 (100%)", "frontend": "~95% — all 3 advertised features work; 1 LOW-priority edge case on shift-click after anchor unselect"},
+  "test_credentials": "admin@creativemojo.co.uk / CreativeMojo2026!",
+  "seed_data_creation": "Backend test creates 1 short-lived franchise contact (TEST_iter9_manualqa@example.com) and deletes it in try/finally. Frontend Playwright creates 1 contact via /api/contacts ('Manual QA9') and deletes it via DELETE /api/contacts/{id} in finally block. No persistent state changes.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter 9 features (manual-add indicator, age filter, shift-click range) are working in both kanban and list views. Backend audit fields (manually_added_by, created_at) verified persistent. Only outstanding item is a minor shift-click edge case when the user toggles their anchor off before shift-clicking another row — see ui_bugs[0] for one-line fix. test_phase1_manual_flag.py is reusable and runs in <1s; safe to include in CI regression runs.",
+  "rca of the issue": "Edge case: shift-click after unselecting anchor. Reproduction: list view → click checkbox of row A (selected, lastSelectedId=A), click checkbox of row A again (unselected, lastSelectedId still=A), shift-click checkbox of row B. Expected per spec: single-toggle, 1 selected. Actual: 0 selected, bulk-action-bar does not appear. RCA: /app/frontend/src/pages/ContactsPage.js:516 — `if (evt && evt.shiftKey && lastSelectedId && lastSelectedId !== id)` enters range branch regardless of whether the anchor is still in the selection. `adding = next.has(lastSelectedId)` is false (A was just unselected) so the loop tries to DELETE A..B from an already-empty Set, producing 0 entries. Mitigation: add `&& prev.has(lastSelectedId)` to the guard so range-extension only runs against a live selection; otherwise fall through to the single-toggle branch at line 530. Plain-click and the documented multi-step extension flows are unaffected."
+}

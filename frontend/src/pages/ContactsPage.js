@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import api from "@/lib/api";
-import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus, Plus } from "lucide-react";
+import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus, Plus, Sparkles } from "lucide-react";
 
 const STAGES = [
   { key: "new", label: "New", color: "bg-stone-100 text-stone-700 border-stone-300", barColor: "bg-stone-400" },
@@ -54,6 +54,44 @@ function daysLabel(d) {
   if (d < 365) return `${Math.floor(d / 30)}mo`;
   return `${Math.floor(d / 365)}y`;
 }
+
+// Pipeline age tiers — used to filter and visually grade cards so "New" actually means new.
+const AGE_TIERS = [
+  { key: "all",    label: "All ages",           test: () => true,                              accent: "" },
+  { key: "fresh",  label: "Fresh (≤ 30 days)",  test: (d) => d != null && d <= 30,             accent: "border-l-4 border-l-emerald-400" },
+  { key: "recent", label: "Recent (30–90 days)",test: (d) => d != null && d > 30 && d <= 90,   accent: "border-l-4 border-l-amber-400" },
+  { key: "stale",  label: "Stale (90+ days)",   test: (d) => d != null && d > 90,              accent: "border-l-4 border-l-stone-300" },
+];
+
+function ageTier(days) {
+  if (days == null) return null;
+  if (days <= 30) return "fresh";
+  if (days <= 90) return "recent";
+  return "stale";
+}
+
+function AgeBadge({ days }) {
+  if (days == null) return null;
+  const tier = ageTier(days);
+  const cls = tier === "fresh"  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+            : tier === "recent" ? "bg-amber-50 text-amber-800 border-amber-200"
+            : "bg-stone-100 text-stone-500 border-stone-200";
+  return (
+    <span className={`px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider border ${cls}`}>
+      {daysLabel(days)}
+    </span>
+  );
+}
+
+function ManualBadge({ addedBy }) {
+  if (!addedBy) return null;
+  return (
+    <span title={`Added manually by ${addedBy}`} className="inline-flex items-center gap-0.5 text-[#D4FF00]" data-testid="manual-badge">
+      <Sparkles className="w-3 h-3" fill="#D4FF00" stroke="#A89A00" strokeWidth={1} />
+    </span>
+  );
+}
+
 function StageBadge({ status }) {
   const s = STAGE_MAP[status];
   if (!s) return <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-stone-100 text-stone-500 border border-stone-200 rounded-full">{status || "—"}</span>;
@@ -326,8 +364,9 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
         </div>
         <div className="p-6 space-y-6">
           <div>
-            <h2 className="font-display text-3xl text-stone-950">
-              {[contact.first_name, contact.last_name].filter(Boolean).join(" ") || "(no name)"}
+            <h2 className="font-display text-3xl text-stone-950 flex items-center gap-2">
+              <span>{[contact.first_name, contact.last_name].filter(Boolean).join(" ") || "(no name)"}</span>
+              <ManualBadge addedBy={contact.manually_added_by} />
             </h2>
             {contact.establishment_name && <div className="text-base text-stone-600 mt-1">{contact.establishment_name}</div>}
             <div className="flex items-center gap-2 flex-wrap mt-3">
@@ -341,6 +380,17 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
             {contact.referral_source && (
               <div className="text-xs text-stone-500 mt-2">
                 Heard about Creative Mojo via <strong>{contact.referral_source}</strong>
+              </div>
+            )}
+            {contact.manually_added_by && (
+              <div className="mt-3 px-3 py-2 bg-[#D4FF00]/10 border border-[#D4FF00]/40 rounded-lg flex items-center gap-2 text-xs text-stone-800" data-testid="drawer-manual-flag">
+                <Sparkles className="w-3.5 h-3.5 text-stone-700" fill="#D4FF00" />
+                <span>
+                  Added manually by <strong>{contact.manually_added_by}</strong>
+                  {contact.created_at && (
+                    <> on <strong>{new Date(contact.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</strong></>
+                  )}
+                </span>
               </div>
             )}
           </div>
@@ -448,15 +498,39 @@ export default function ContactsPage() {
   const [error, setError] = useState("");
   const [selected, setSelected] = useState(null);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [lastSelectedId, setLastSelectedId] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [ageFilter, setAgeFilter] = useState("all");
 
-  const clearSelection = () => setSelectedIds(new Set());
-  const toggleSelect = (id) => {
+  const clearSelection = () => { setSelectedIds(new Set()); setLastSelectedId(null); };
+  // Visible items (filtered + age) — needed so shift-select knows the range
+  const visibleItems = useMemo(() => {
+    const af = AGE_TIERS.find((t) => t.key === ageFilter) || AGE_TIERS[0];
+    return data.items.filter((c) => af.test(daysSince(c.date || c.date_added)));
+  }, [data.items, ageFilter]);
+
+  const toggleSelect = (id, evt) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
+      // Shift-click: select the range from the last clicked checkbox up to this one
+      if (evt && evt.shiftKey && lastSelectedId && lastSelectedId !== id) {
+        const ids = visibleItems.map((c) => c.id);
+        const a = ids.indexOf(lastSelectedId);
+        const b = ids.indexOf(id);
+        if (a !== -1 && b !== -1) {
+          const [lo, hi] = a < b ? [a, b] : [b, a];
+          // If the anchor is currently selected, we ADD the range; otherwise we UNSET it.
+          const adding = next.has(lastSelectedId);
+          for (let i = lo; i <= hi; i++) {
+            if (adding) next.add(ids[i]); else next.delete(ids[i]);
+          }
+          return next;
+        }
+      }
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
+    setLastSelectedId(id);
   };
 
   const load = async () => {
@@ -477,7 +551,7 @@ export default function ContactsPage() {
   }, [tab, stageFilter, search]);
 
   // Reset selection whenever the tab/filter changes
-  useEffect(() => { clearSelection(); }, [tab, stageFilter]);
+  useEffect(() => { clearSelection(); setAgeFilter("all"); }, [tab, stageFilter]);
 
   const moveContact = async (contactId, target, pipeline_status) => {
     try {
@@ -528,18 +602,18 @@ export default function ContactsPage() {
 
   const grouped = useMemo(() => {
     const g = STAGES.reduce((acc, s) => ({ ...acc, [s.key]: [] }), {});
-    data.items.forEach((c) => {
+    visibleItems.forEach((c) => {
       const stage = c.pipeline_status && g[c.pipeline_status] ? c.pipeline_status : "new";
       g[stage].push(c);
     });
     return g;
-  }, [data.items]);
+  }, [visibleItems]);
 
   const stats = useMemo(() => {
-    const s = { total: data.items.length };
+    const s = { total: visibleItems.length };
     STAGES.forEach((stg) => { s[stg.key] = (grouped[stg.key] || []).length; });
     return s;
-  }, [data.items, grouped]);
+  }, [visibleItems, grouped]);
 
   const currentTab = TABS.find((t) => t.key === tab);
   const isPipeline = tab === "pipeline";
@@ -617,7 +691,24 @@ export default function ContactsPage() {
       )}
 
       {isPipeline && !loading && data.items.length > 0 && (
-        <div className="px-8 pt-6">
+        <div className="px-8 pt-6 space-y-4">
+          <div className="flex items-center gap-2 flex-wrap" data-testid="age-filter">
+            <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mr-1">Age</span>
+            {AGE_TIERS.map((t) => {
+              const active = ageFilter === t.key;
+              const count = t.key === "all"
+                ? data.items.length
+                : data.items.filter((c) => t.test(daysSince(c.date || c.date_added))).length;
+              return (
+                <button key={t.key} onClick={() => setAgeFilter(t.key)} data-testid={`age-tier-${t.key}`}
+                  className={`px-3 py-1 text-[11px] font-bold uppercase tracking-wider border rounded-lg transition-colors ${
+                    active ? "bg-stone-950 text-white border-stone-950" : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"
+                  }`}>
+                  {t.label} <span className={`ml-1 tabular-nums ${active ? "text-stone-300" : "text-stone-500"}`}>{count}</span>
+                </button>
+              );
+            })}
+          </div>
           <div className="grid grid-cols-2 lg:grid-cols-7 gap-3" data-testid="pipeline-summary">
             <button onClick={() => setStageFilter("")} className={`bg-white border border-stone-200 rounded-2xl p-4 text-left hover:border-stone-400 transition-colors ${stageFilter === "" ? "ring-2 ring-stone-950" : ""}`}>
               <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Total</div>
@@ -664,10 +755,13 @@ export default function ContactsPage() {
                           className={`bg-white border rounded-xl p-2.5 hover:border-stone-500 cursor-pointer text-xs ${isHot ? "border-[#D4FF00]" : "border-stone-200"} ${srcStyle.border} ${checked ? "ring-2 ring-stone-950" : ""}`}
                           data-testid={`pipeline-card-${c.id}`}>
                           <div className="flex items-start justify-between gap-2">
-                            <button onClick={(e) => { e.stopPropagation(); toggleSelect(c.id); }} data-testid={`card-select-${c.id}`} className="shrink-0 text-stone-400 hover:text-stone-950">
+                            <button onClick={(e) => { e.stopPropagation(); toggleSelect(c.id, e); }} data-testid={`card-select-${c.id}`} className="shrink-0 text-stone-400 hover:text-stone-950">
                               {checked ? <CheckSquare className="w-3.5 h-3.5 text-stone-950" /> : <Square className="w-3.5 h-3.5" />}
                             </button>
-                            <div className="font-semibold text-stone-950 truncate flex-1">{[c.first_name, c.last_name].filter(Boolean).join(" ") || "Unnamed"}</div>
+                            <div className="font-semibold text-stone-950 truncate flex-1 flex items-center gap-1">
+                              <span className="truncate">{[c.first_name, c.last_name].filter(Boolean).join(" ") || "Unnamed"}</span>
+                              <ManualBadge addedBy={c.manually_added_by} />
+                            </div>
                             {isHot && <span className="text-[9px] font-bold uppercase tracking-wider bg-[#D4FF00] text-stone-950 px-1 rounded">Hot</span>}
                           </div>
                           {c.establishment_name && <div className="text-stone-600 truncate mt-0.5 pl-5">{c.establishment_name}</div>}
@@ -676,7 +770,7 @@ export default function ContactsPage() {
                               <span className={`px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider border ${srcStyle.pill}`}>{srcStyle.label}</span>
                               <span className="text-stone-500">{c.postcode || ""}</span>
                             </div>
-                            <div className="text-stone-400">{daysLabel(age)}</div>
+                            <AgeBadge days={age} />
                           </div>
                         </div>
                       );
@@ -696,11 +790,12 @@ export default function ContactsPage() {
                   <th className="px-3 py-3 w-10">
                     <button onClick={(e) => {
                       e.stopPropagation();
-                      const visibleIds = data.items.slice(0, 500).map((c) => c.id);
-                      const allSelected = visibleIds.every((id) => selectedIds.has(id));
+                      const visibleIds = visibleItems.slice(0, 500).map((c) => c.id);
+                      const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
                       setSelectedIds(allSelected ? new Set() : new Set(visibleIds));
+                      setLastSelectedId(null);
                     }} data-testid="select-all" className="text-stone-500 hover:text-stone-900">
-                      {data.items.length > 0 && data.items.slice(0, 500).every((c) => selectedIds.has(c.id)) ?
+                      {visibleItems.length > 0 && visibleItems.slice(0, 500).every((c) => selectedIds.has(c.id)) ?
                         <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
                     </button>
                   </th>
@@ -714,20 +809,29 @@ export default function ContactsPage() {
                 </tr>
               </thead>
               <tbody>
-                {data.items.length === 0 ? (
+                {visibleItems.length === 0 ? (
                   <tr><td colSpan={isPipeline ? 8 : 7} className="px-3 py-10 text-center text-sm text-stone-500">No records.</td></tr>
-                ) : data.items.slice(0, 500).map((c) => {
+                ) : visibleItems.slice(0, 500).map((c) => {
                   const checked = selectedIds.has(c.id);
+                  const age = daysSince(c.date || c.date_added);
                   return (
                   <tr key={c.id} onClick={() => setSelected(c)} className={`border-b border-stone-100 last:border-0 hover:bg-stone-50 cursor-pointer ${checked ? "bg-[#D4FF00]/5" : ""}`} data-testid={`contact-row-${c.id}`}>
-                    <td className="px-3 py-2" onClick={(e) => { e.stopPropagation(); toggleSelect(c.id); }}>
+                    <td className="px-3 py-2" onClick={(e) => { e.stopPropagation(); toggleSelect(c.id, e); }}>
                       <button data-testid={`select-${c.id}`} className="text-stone-500 hover:text-stone-900">
                         {checked ? <CheckSquare className="w-4 h-4 text-stone-950" /> : <Square className="w-4 h-4" />}
                       </button>
                     </td>
-                    <td className="px-3 py-2 text-xs text-stone-500">{(c.date || c.date_added) ? String(c.date || c.date_added).slice(0, 10) : "—"}</td>
+                    <td className="px-3 py-2 text-xs text-stone-500">
+                      <div className="flex items-center gap-1.5">
+                        <span>{(c.date || c.date_added) ? String(c.date || c.date_added).slice(0, 10) : "—"}</span>
+                        {isPipeline && <AgeBadge days={age} />}
+                      </div>
+                    </td>
                     <td className="px-3 py-2">
-                      <div className="text-sm text-stone-950 font-semibold">{[c.first_name, c.last_name].filter(Boolean).join(" ") || "(no name)"}</div>
+                      <div className="text-sm text-stone-950 font-semibold flex items-center gap-1.5">
+                        {[c.first_name, c.last_name].filter(Boolean).join(" ") || "(no name)"}
+                        <ManualBadge addedBy={c.manually_added_by} />
+                      </div>
                       {c.establishment_name && <div className="text-xs text-stone-600">{c.establishment_name}</div>}
                     </td>
                     <td className="px-3 py-2 text-xs text-stone-600">
@@ -745,8 +849,8 @@ export default function ContactsPage() {
                 })}
               </tbody>
             </table>
-            {data.items.length > 500 && (
-              <div className="px-3 py-2 text-xs text-stone-500 border-t border-stone-100">Showing first 500 of {data.items.length.toLocaleString()}.</div>
+            {visibleItems.length > 500 && (
+              <div className="px-3 py-2 text-xs text-stone-500 border-t border-stone-100">Showing first 500 of {visibleItems.length.toLocaleString()}.</div>
             )}
           </div>
         )}
