@@ -786,6 +786,107 @@ async def get_franchisee(franchisee_id: str, _: dict = Depends(require_role("adm
     return {"franchisee": f, "contracts": contracts, "territories": territories, "enquiries": enquiries}
 
 
+# Editable franchisee fields (admin only). Any unspecified field is left untouched.
+FRANCHISEE_EDITABLE_FIELDS = {
+    "first_name", "last_name", "organisation", "email", "mojo_email", "secondary_email",
+    "telephone", "mobile_phone", "address", "city", "county", "postcode", "country",
+    "potential", "fee_paid", "anniversary_reminder", "notes",
+    "status", "staying_leaving",
+}
+
+
+@api.patch("/franchisees/{franchisee_id}")
+async def update_franchisee(franchisee_id: str, body: dict, user: dict = Depends(require_role("admin"))):
+    f = await db.franchisees.find_one({"id": franchisee_id}, {"_id": 0})
+    if not f:
+        raise HTTPException(status_code=404, detail="Franchisee not found")
+    updates: Dict[str, Any] = {}
+    for k, v in (body or {}).items():
+        if k not in FRANCHISEE_EDITABLE_FIELDS:
+            continue
+        if isinstance(v, str):
+            v = v.strip()
+            if k == "email":
+                v = v.lower()
+            if k == "postcode":
+                v = v.upper()
+        updates[k] = v if v != "" else None
+    if not updates:
+        raise HTTPException(status_code=400, detail="No editable fields provided")
+    updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+    updates["updated_by"] = user.get("email")
+    await db.franchisees.update_one({"id": franchisee_id}, {"$set": updates})
+    fresh = await db.franchisees.find_one({"id": franchisee_id}, {"_id": 0})
+    return {"ok": True, "franchisee": fresh}
+
+
+@api.post("/contacts/{contact_id}/convert-to-franchisee")
+async def convert_contact_to_franchisee(contact_id: str, user: dict = Depends(require_role("admin"))):
+    """Create a franchisee/licencee record from an existing contact and mark the contact 'converted'.
+    The record-type (franchisee vs licencee) is derived from the contact's source field."""
+    contact = await db.web_form_contacts.find_one({"id": contact_id}, {"_id": 0})
+    src_coll = "web_form_contacts"
+    if not contact:
+        contact = await db.contacts.find_one({"id": contact_id}, {"_id": 0})
+        src_coll = "contacts"
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    if contact.get("converted_to_franchisee_id"):
+        raise HTTPException(status_code=409, detail="Contact already converted")
+    record_type = "licencee" if contact.get("source") == "licence_enquiry" else "franchisee"
+    now = datetime.now(timezone.utc).isoformat()
+    f_id = str(uuid.uuid4())
+    notes_lines = []
+    if contact.get("message"):
+        notes_lines.append(f"Original enquiry message:\n{contact['message']}")
+    if contact.get("referral_source"):
+        notes_lines.append(f"Heard about us via: {contact['referral_source']}")
+    if contact.get("why_contacting"):
+        notes_lines.append(f"Why contacting: {contact['why_contacting']}")
+    if contact.get("date"):
+        notes_lines.append(f"Original enquiry date: {contact['date']}")
+    franchisee_doc = {
+        "id": f_id,
+        "record_type": record_type,
+        "first_name": contact.get("first_name"),
+        "last_name": contact.get("last_name"),
+        "organisation": contact.get("establishment_name"),
+        "email": contact.get("email"),
+        "telephone": contact.get("telephone"),
+        "mobile_phone": contact.get("mobile_phone"),
+        "postcode": contact.get("postcode"),
+        "city": contact.get("city"),
+        "country": contact.get("country_tag"),
+        "potential": contact.get("potential"),
+        "tags": ["Converted from enquiry"],
+        "status": "Active",
+        "converted_from_contact_id": contact_id,
+        "converted_at": now,
+        "converted_by": user.get("email"),
+        "notes": "\n\n".join(notes_lines) if notes_lines else None,
+        "created_at": now,
+        "updated_at": now,
+        "contract_ids": [],
+        "territory_ids": [],
+    }
+    await db.franchisees.insert_one(franchisee_doc)
+    # Mark contact as converted (keep it on pipeline as 'converted' for trail)
+    update = {
+        "in_pipeline": True,
+        "pipeline_status": "converted",
+        "converted_to_franchisee_id": f_id,
+        "converted_to_record_type": record_type,
+        "converted_at": now,
+        "updated_at": now,
+    }
+    if src_coll == "web_form_contacts":
+        await db.web_form_contacts.update_one({"id": contact_id}, {"$set": update})
+    else:
+        await db.contacts.update_one({"id": contact_id}, {"$set": update})
+    franchisee_doc.pop("_id", None)
+    return {"ok": True, "record_type": record_type, "franchisee": franchisee_doc}
+
+
 # ----------------------------------------------------------------------------
 # CRM — Contracts
 # ----------------------------------------------------------------------------

@@ -46,7 +46,7 @@ function formatDate(value) {
   // Accept "YYYY-MM-DD" or full ISO "YYYY-MM-DD HH:MM:SS" / "YYYY-MM-DDTHH:MM:SSZ"
   const s = String(value);
   const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
   return s.slice(0, 10);
 }
 
@@ -651,7 +651,11 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
                 <span>
                   Added manually by <strong>{contact.manually_added_by}</strong>
                   {contact.created_at && (
-                    <> on <strong>{new Date(contact.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" })}</strong></>
+                    <> on <strong>{(() => {
+                      const s = String(contact.created_at);
+                      const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+                      return m ? `${m[3]}/${m[2]}/${m[1]}` : s.slice(0, 10);
+                    })()}</strong></>
                   )}
                 </span>
               </div>
@@ -706,7 +710,7 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
             )}
             {dateAdded && (
               <div className="flex items-start gap-2"><Calendar className="w-3.5 h-3.5 text-stone-400 mt-1" />
-                <span className="text-stone-900">{String(dateAdded).slice(0, 10)} <span className="text-stone-500">· {sinceCreated} days ago</span></span></div>
+                <span className="text-stone-900">{formatDate(dateAdded)} <span className="text-stone-500">· {sinceCreated} days ago</span></span></div>
             )}
           </div>
 

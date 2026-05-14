@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import api from "@/lib/api";
 import { Search, AlertCircle } from "lucide-react";
+import { formatDate } from "@/lib/date";
 
 const SEGMENTS = [
   { key: "active", label: "Active", tag: "Franchisee" },
@@ -174,7 +175,7 @@ export default function FranchiseesPage() {
                       <td className="px-3 py-2 text-sm text-stone-700">{[f.first_name, f.last_name].filter(Boolean).join(" ") || "—"}</td>
                       <td className="px-3 py-2 text-xs text-stone-600">{f.mojo_email || "—"}</td>
                       <td className="px-3 py-2 text-xs text-stone-700">{f.postcode || "—"}</td>
-                      <td className="px-3 py-2 text-xs text-stone-500">{f.date_added ? String(f.date_added).slice(0, 10) : "—"}</td>
+                      <td className="px-3 py-2 text-xs text-stone-500">{formatDate(f.date_added)}</td>
                       <td className="px-3 py-2">
                         {f.mandate ? (
                           <span className="inline-block px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[#D4FF00]/20 border border-[#D4FF00]/60 text-stone-900 rounded-md">

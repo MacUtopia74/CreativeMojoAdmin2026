@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useParams, Link } from "react-router-dom";
 import api from "@/lib/api";
-import { ArrowLeft, MapPin, Mail, Phone, Calendar, Globe, Facebook, AlertCircle, User, Tag, FileText, Map, MessageSquare } from "lucide-react";
+import { formatDate, daysFromToday } from "@/lib/date";
+import { ArrowLeft, MapPin, AlertCircle, User, FileText, Map, MessageSquare, Pencil, Check, X as XIcon, Clock, ShieldCheck, ShieldAlert, Globe, Facebook } from "lucide-react";
 
 function Panel({ icon: Icon, title, action, children, testid }) {
   return (
@@ -18,12 +19,78 @@ function Panel({ icon: Icon, title, action, children, testid }) {
   );
 }
 
-function Row({ label, value, mono }) {
+// In-place editable text field
+function EditField({ field, value, label, type = "text", editing, draft, setDraft, mono }) {
+  if (!editing) {
+    return (
+      <div>
+        <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">{label}</div>
+        <div className={`text-sm text-stone-900 mt-1 ${mono ? "tabular-nums" : ""}`}>
+          {value || <span className="text-stone-300">—</span>}
+        </div>
+      </div>
+    );
+  }
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">{label}</div>
-      <div className={`text-sm text-stone-900 mt-1 ${mono ? "tabular-nums" : ""}`}>
-        {value || <span className="text-stone-300">—</span>}
+      <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-1">{label}</label>
+      <input
+        type={type} value={draft[field] ?? ""}
+        onChange={(e) => setDraft((d) => ({ ...d, [field]: e.target.value }))}
+        data-testid={`edit-${field}`}
+        className="w-full px-3 py-2 text-sm border border-stone-300 rounded-lg bg-white focus:outline-none focus:border-stone-900" />
+    </div>
+  );
+}
+
+// A big current-contract card with date countdown — used at top of Contracts panel
+function CurrentContractCard({ contract }) {
+  const renewal = contract.renewal_date;
+  const daysLeft = daysFromToday(renewal);
+  const tier = daysLeft == null ? null
+             : daysLeft < 0 ? "expired"
+             : daysLeft <= 30 ? "expiring"
+             : daysLeft <= 90 ? "soon"
+             : "active";
+  const accent = tier === "expired"  ? "border-red-300 bg-red-50"
+               : tier === "expiring" ? "border-amber-300 bg-amber-50"
+               : tier === "soon"     ? "border-blue-200 bg-blue-50"
+               : "border-emerald-200 bg-emerald-50";
+  const Icon = tier === "expired" ? ShieldAlert : tier === "expiring" ? Clock : ShieldCheck;
+  const accentText = tier === "expired" ? "text-red-700" : tier === "expiring" ? "text-amber-800" : tier === "soon" ? "text-blue-800" : "text-emerald-800";
+  return (
+    <div className={`border-2 rounded-2xl p-5 ${accent}`} data-testid="current-contract">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-center gap-2">
+          <Icon className={`w-4 h-4 ${accentText}`} />
+          <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-700">Current Contract · {contract.ref ? `#${contract.ref}` : "Active"}</div>
+        </div>
+        <div className={`px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${
+          tier === "expired" ? "bg-red-200 text-red-900"
+          : tier === "expiring" ? "bg-amber-200 text-amber-900"
+          : tier === "soon" ? "bg-blue-200 text-blue-900"
+          : "bg-emerald-200 text-emerald-900"
+        }`}>
+          {tier === "expired" ? `Expired ${Math.abs(daysLeft)}d ago` : daysLeft != null ? `${daysLeft} days remaining` : "Active"}
+        </div>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-5">
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Started</div>
+          <div className="font-display text-2xl text-stone-950 tabular-nums mt-0.5">{formatDate(contract.commencement_date)}</div>
+        </div>
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Renews / Expires</div>
+          <div className="font-display text-2xl text-stone-950 tabular-nums mt-0.5">{formatDate(contract.renewal_date)}</div>
+        </div>
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Term</div>
+          <div className="font-display text-2xl text-stone-950 mt-0.5">{contract.contract_term_years ? `${contract.contract_term_years} yrs` : "—"}</div>
+        </div>
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Monthly Fee</div>
+          <div className="font-display text-2xl text-stone-950 mt-0.5">{contract.monthly_fee != null ? `£${contract.monthly_fee}` : "—"}</div>
+        </div>
       </div>
     </div>
   );
@@ -34,6 +101,9 @@ export default function FranchiseeDetailPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({});
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -45,40 +115,91 @@ export default function FranchiseeDetailPage() {
     })();
   }, [id]);
 
+  const startEdit = () => {
+    const f = data.franchisee;
+    setDraft({
+      first_name: f.first_name || "", last_name: f.last_name || "",
+      organisation: f.organisation || "", email: f.email || "",
+      mojo_email: f.mojo_email || "", secondary_email: f.secondary_email || "",
+      telephone: f.telephone || "", mobile_phone: f.mobile_phone || "",
+      address: f.address || f.address_street || "", city: f.city || "", county: f.county || "", postcode: f.postcode || "",
+      country: f.country || "", notes: f.notes || "",
+    });
+    setEditing(true);
+  };
+  const cancelEdit = () => { setEditing(false); setDraft({}); };
+  const saveEdit = async () => {
+    setSaving(true);
+    try {
+      const r = await api.patch(`/franchisees/${id}`, draft);
+      setData((d) => ({ ...d, franchisee: r.data.franchisee }));
+      setEditing(false);
+    } catch (e) { setError("Could not save changes."); }
+    finally { setSaving(false); }
+  };
+
+  const { current, history } = useMemo(() => {
+    if (!data) return { current: null, history: [] };
+    // "Current" = the active contract with the latest renewal date that isn't cancelled
+    const sorted = [...(data.contracts || [])].sort((a, b) =>
+      String(b.renewal_date || "").localeCompare(String(a.renewal_date || "")));
+    const cur = sorted.find((c) => !c.cancelled_early) || null;
+    return { current: cur, history: sorted.filter((c) => c.id !== cur?.id) };
+  }, [data]);
+
   if (loading) return <div className="min-h-screen flex items-center justify-center text-stone-500 text-sm uppercase tracking-widest">Loading…</div>;
   if (error || !data) return (
     <div className="p-12">
-      <div className="border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-center gap-2 max-w-lg rounded-xl">
-        <AlertCircle className="w-4 h-4" /> {error || "Not found"}
+      <Link to="/franchisees" className="text-xs uppercase tracking-widest font-bold text-stone-500 hover:text-stone-950">← Back to list</Link>
+      <div className="border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-center gap-2 max-w-lg rounded-xl mt-6">
+        <AlertCircle className="w-4 h-4" /> {error}
       </div>
-      <Link to="/franchisees" className="inline-flex items-center gap-2 mt-4 text-sm text-stone-700 hover:text-stone-950">
-        <ArrowLeft className="w-4 h-4" /> Back to franchisees
-      </Link>
     </div>
   );
 
-  const { franchisee: f, contracts, territories, enquiries } = data;
+  const f = data.franchisee;
+  const contracts = data.contracts || [];
+  const territories = data.territories || [];
+  const enquiries = data.enquiries || [];
   const photo = f.photos?.[0]?.url;
-  const fullName = [f.first_name, f.last_name].filter(Boolean).join(" ");
-  const statusTag = (f.tags || []).find((t) => ["Franchisee", "EX-Franchisee", "Worldwide Licencee"].includes(t));
-  const feeTag = (f.tags || []).find((t) => /£/.test(t));
-  const otherTags = (f.tags || []).filter((t) => t !== statusTag && t !== feeTag);
+  const fullName = `${f.first_name || ""} ${f.last_name || ""}`.trim();
+  const tags = Array.isArray(f.tags) ? f.tags : f.tags ? [f.tags] : [];
+  const statusTag = tags.find((t) => /Franchisee|Licencee|Worldwide|Ex-/i.test(t));
+  const feeTag = tags.find((t) => /Mojo Fee|Mojo Live/i.test(t));
+  const otherTags = tags.filter((t) => t !== statusTag && t !== feeTag);
   const statusColor = statusTag === "Franchisee" ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-    : statusTag === "EX-Franchisee" ? "bg-stone-100 text-stone-600 border-stone-300"
-    : "bg-blue-50 text-blue-700 border-blue-200";
-
-  const activeContracts = contracts.filter((c) => !c.cancelled_early);
+                    : statusTag === "Worldwide Licencee" ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                    : statusTag === "EX-Franchisee" ? "bg-stone-100 text-stone-500 border-stone-200"
+                    : "bg-stone-50 text-stone-700 border-stone-200";
 
   return (
-    <div className="min-h-screen">
-      <div className="h-16 border-b border-stone-200 bg-white flex items-center px-8 sticky top-0 z-10" data-testid="topbar">
-        <Link to="/franchisees" data-testid="back-button" className="flex items-center gap-2 text-sm text-stone-700 hover:text-stone-950">
-          <ArrowLeft className="w-4 h-4" /> Franchisees
-        </Link>
-        <div className="ml-6 flex items-baseline gap-3">
-          <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">{f.franchise_number || "—"}</div>
+    <div className="bg-stone-50 min-h-screen">
+      <div className="h-16 border-b border-stone-200 bg-white flex items-center justify-between px-6">
+        <div className="flex items-center gap-4">
+          <Link to="/franchisees" className="text-xs uppercase tracking-widest font-bold text-stone-500 hover:text-stone-950 flex items-center gap-1.5" data-testid="back-to-list">
+            <ArrowLeft className="w-3.5 h-3.5" /> Franchisees
+          </Link>
+          <span className="text-stone-300">·</span>
           <h1 className="font-display text-xl text-stone-950" data-testid="franchisee-detail-name">{fullName || f.organisation || "—"}</h1>
-          {fullName && f.organisation && <span className="text-sm text-stone-500">· {f.organisation}</span>}
+        </div>
+        <div className="flex items-center gap-2">
+          {!editing ? (
+            <button onClick={startEdit} data-testid="edit-franchisee"
+              className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider border border-stone-300 bg-white text-stone-900 hover:bg-stone-50 rounded-lg flex items-center gap-1.5">
+              <Pencil className="w-3.5 h-3.5" /> Edit
+            </button>
+          ) : (
+            <>
+              <button onClick={cancelEdit} data-testid="cancel-edit"
+                className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider border border-stone-300 bg-white text-stone-700 hover:bg-stone-50 rounded-lg flex items-center gap-1.5">
+                <XIcon className="w-3.5 h-3.5" /> Cancel
+              </button>
+              <button onClick={saveEdit} disabled={saving} data-testid="save-edit"
+                className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider bg-[#D4FF00] hover:bg-[#BDE600] text-stone-950 rounded-lg flex items-center gap-1.5 disabled:opacity-50">
+                <Check className="w-3.5 h-3.5" /> {saving ? "Saving…" : "Save"}
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -98,7 +219,7 @@ export default function FranchiseeDetailPage() {
             <div className="flex items-center gap-2 flex-wrap">
               {statusTag && <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-md ${statusColor}`}>{statusTag}</span>}
               {feeTag && <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[#D4FF00]/15 border border-[#D4FF00]/60 text-stone-900 rounded-md">{feeTag}</span>}
-              <span className="text-xs text-stone-500">Franchise #{f.franchise_number}</span>
+              {f.franchise_number && <span className="text-xs text-stone-500">Franchise #{f.franchise_number}</span>}
             </div>
             <div>
               <h2 className="font-display text-4xl text-stone-950">{fullName || f.organisation}</h2>
@@ -114,12 +235,11 @@ export default function FranchiseeDetailPage() {
               </div>
             )}
           </div>
-          {/* Quick stats */}
           <div className="grid grid-cols-3 gap-px bg-stone-200 border border-stone-200 lg:min-w-[420px] rounded-2xl overflow-hidden">
             <div className="bg-white p-4">
               <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Contracts</div>
               <div className="font-display text-2xl text-stone-950 mt-1">{contracts.length}</div>
-              <div className="text-xs text-stone-500 mt-0.5">{activeContracts.length} active</div>
+              <div className="text-xs text-stone-500 mt-0.5">{contracts.filter(c => !c.cancelled_early).length} active</div>
             </div>
             <div className="bg-white p-4">
               <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Territory</div>
@@ -136,16 +256,71 @@ export default function FranchiseeDetailPage() {
           </div>
         </div>
 
-        {/* PANELS GRID */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Panel icon={User} title="Contact Details" testid="panel-contact">
-            <div className="grid grid-cols-2 gap-5">
-              <Row label="Mojo Email" value={f.mojo_email ? <a href={`mailto:${f.mojo_email}`} className="hover:underline">{f.mojo_email}</a> : null} mono />
-              <Row label="Secondary Email" value={f.secondary_email} mono />
-              <Row label="Mobile Phone" value={f.mobile_phone} mono />
-              <Row label="Home Phone" value={f.home_phone} mono />
+        {/* CONTRACTS — full-width prominent */}
+        <Panel icon={FileText} title={`Contracts (${contracts.length})`} testid="panel-contracts">
+          {contracts.length === 0 ? (
+            <div className="text-sm text-stone-500 text-center py-6">No contracts on file.</div>
+          ) : (
+            <div className="space-y-5">
+              {current && <CurrentContractCard contract={current} />}
+              {history.length > 0 && (
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-3">Previous Contracts ({history.length})</div>
+                  <div className="border border-stone-200 rounded-xl overflow-hidden">
+                    <table className="w-full" data-testid="contracts-history">
+                      <thead className="bg-stone-50 border-b border-stone-200">
+                        <tr>
+                          <th className="text-left px-3 py-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Ref</th>
+                          <th className="text-left px-3 py-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Started</th>
+                          <th className="text-left px-3 py-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Ended</th>
+                          <th className="text-left px-3 py-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Term</th>
+                          <th className="text-left px-3 py-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Fee</th>
+                          <th className="text-left px-3 py-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {history.map((c) => (
+                          <tr key={c.id} className="border-b border-stone-100 last:border-0 hover:bg-stone-50">
+                            <td className="px-3 py-2 text-sm font-semibold text-stone-700">{c.ref ? `#${c.ref}` : "—"}</td>
+                            <td className="px-3 py-2 text-xs text-stone-700 tabular-nums">{formatDate(c.commencement_date)}</td>
+                            <td className="px-3 py-2 text-xs text-stone-700 tabular-nums">{formatDate(c.renewal_date)}</td>
+                            <td className="px-3 py-2 text-xs text-stone-700">{c.contract_term_years ? `${c.contract_term_years} yrs` : "—"}</td>
+                            <td className="px-3 py-2 text-xs text-stone-700">{c.monthly_fee != null ? `£${c.monthly_fee}` : "—"}</td>
+                            <td className="px-3 py-2">
+                              {c.cancelled_early
+                                ? <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-red-50 text-red-700 border border-red-200 rounded-md">Cancelled</span>
+                                : <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-stone-100 text-stone-600 border border-stone-200 rounded-md">Ended</span>}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
-            {(f.website || f.facebook) && (
+          )}
+        </Panel>
+
+        {/* Side-by-side details + map placeholder */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Panel icon={User} title="Contact Details" testid="panel-contact"
+            action={!editing && (
+              <button onClick={startEdit} className="text-[10px] uppercase tracking-widest font-bold text-stone-500 hover:text-stone-950 flex items-center gap-1">
+                <Pencil className="w-3 h-3" /> Edit
+              </button>
+            )}>
+            <div className="grid grid-cols-2 gap-5">
+              <EditField field="first_name" label="First Name" value={f.first_name} editing={editing} draft={draft} setDraft={setDraft} />
+              <EditField field="last_name" label="Last Name" value={f.last_name} editing={editing} draft={draft} setDraft={setDraft} />
+              <EditField field="organisation" label="Organisation" value={f.organisation} editing={editing} draft={draft} setDraft={setDraft} />
+              <EditField field="email" label="Email" value={f.email} type="email" editing={editing} draft={draft} setDraft={setDraft} mono />
+              <EditField field="mojo_email" label="Mojo Email" value={f.mojo_email} type="email" editing={editing} draft={draft} setDraft={setDraft} mono />
+              <EditField field="secondary_email" label="Secondary Email" value={f.secondary_email} type="email" editing={editing} draft={draft} setDraft={setDraft} mono />
+              <EditField field="telephone" label="Telephone" value={f.telephone} editing={editing} draft={draft} setDraft={setDraft} mono />
+              <EditField field="mobile_phone" label="Mobile" value={f.mobile_phone} editing={editing} draft={draft} setDraft={setDraft} mono />
+            </div>
+            {!editing && (f.website || f.facebook) && (
               <div className="flex flex-wrap gap-4 pt-4 mt-4 border-t border-stone-100 text-xs">
                 {f.website && <a href={f.website.startsWith("http") ? f.website : `https://${f.website}`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-stone-700 hover:text-stone-950"><Globe className="w-3 h-3" /> {f.website}</a>}
                 {f.facebook && <a href={f.facebook.startsWith("http") ? f.facebook : `https://facebook.com/${f.facebook}`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-stone-700 hover:text-stone-950"><Facebook className="w-3 h-3" /> {f.facebook}</a>}
@@ -154,90 +329,70 @@ export default function FranchiseeDetailPage() {
           </Panel>
 
           <Panel icon={MapPin} title="Address" testid="panel-address">
-            <div className="text-sm text-stone-900 leading-relaxed">
-              {[f.address_street, f.city, f.county, f.postcode].filter(Boolean).join(", ") || <span className="text-stone-300">No address</span>}
-            </div>
-            <div className="grid grid-cols-2 gap-5 mt-4 pt-4 border-t border-stone-100">
-              <Row label="City" value={f.city} />
-              <Row label="County" value={f.county} />
-              <Row label="Postcode" value={f.postcode} mono />
-              <Row label="Date Added" value={f.date_added ? String(f.date_added).slice(0, 10) : null} mono />
+            <div className="grid grid-cols-2 gap-5">
+              <EditField field="address" label="Street" value={f.address || f.address_street} editing={editing} draft={draft} setDraft={setDraft} />
+              <EditField field="city" label="City" value={f.city} editing={editing} draft={draft} setDraft={setDraft} />
+              <EditField field="county" label="County" value={f.county} editing={editing} draft={draft} setDraft={setDraft} />
+              <EditField field="postcode" label="Postcode" value={f.postcode} editing={editing} draft={draft} setDraft={setDraft} mono />
+              <EditField field="country" label="Country" value={f.country} editing={editing} draft={draft} setDraft={setDraft} />
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Date Added</div>
+                <div className="text-sm text-stone-900 mt-1 tabular-nums">{f.date_added ? formatDate(f.date_added) : <span className="text-stone-300">—</span>}</div>
+              </div>
             </div>
           </Panel>
 
-          {f.notes && (
-            <Panel icon={MessageSquare} title="Notes" testid="panel-notes">
-              <div className="text-sm text-stone-700 whitespace-pre-wrap leading-relaxed">{f.notes}</div>
-            </Panel>
-          )}
-
-          {enquiries.length > 0 && (
-            <Panel icon={MessageSquare} title={`Original Enquiry (${enquiries.length})`} testid="panel-enquiries">
-              <div className="space-y-3">
-                {enquiries.slice(0, 3).map((e) => (
-                  <div key={e.id} className="text-sm">
-                    <div className="text-xs text-stone-500">{e.date ? String(e.date).slice(0, 10) : ""}</div>
-                    <div className="text-stone-900 mt-1">{e.why_contacting || e.message || "—"}</div>
-                  </div>
-                ))}
+          {/* Territory map placeholder — actual Mapbox map arrives in Phase 4 */}
+          <Panel icon={Map} title={`Territory Map (${territories.length} postcode sectors)`} testid="panel-map">
+            <div className="aspect-[16/9] bg-stone-100 border border-stone-200 rounded-xl flex flex-col items-center justify-center gap-2 relative overflow-hidden">
+              {/* faint dot grid to suggest 'map' */}
+              <div className="absolute inset-0 opacity-30" style={{
+                backgroundImage: "radial-gradient(#a8a29e 1px, transparent 1px)",
+                backgroundSize: "16px 16px",
+              }} />
+              <Map className="w-8 h-8 text-stone-400 relative" />
+              <div className="text-xs text-stone-600 text-center relative max-w-xs">
+                Live Mapbox territory map arrives in <strong>Phase 4</strong>.
+                Will support postcode lookup and embed on the public site.
               </div>
-            </Panel>
-          )}
+            </div>
+            {territories.length > 0 && (
+              <div className="mt-4">
+                <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-2">All postcode sectors</div>
+                <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto">
+                  {territories.map((t) => (
+                    <span key={t.id} className="px-2 py-0.5 bg-stone-100 text-xs text-stone-800 tabular-nums rounded-md">{t.postcode}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </Panel>
+
+          <Panel icon={MessageSquare} title="Notes" testid="panel-notes">
+            {editing ? (
+              <textarea value={draft.notes ?? ""} onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))}
+                rows={6} data-testid="edit-notes"
+                className="w-full px-3 py-2 text-sm border border-stone-300 rounded-lg bg-white focus:outline-none focus:border-stone-900" />
+            ) : (
+              <div className="text-sm text-stone-700 whitespace-pre-wrap leading-relaxed min-h-[60px]">
+                {f.notes || <span className="text-stone-300">No notes</span>}
+              </div>
+            )}
+          </Panel>
         </div>
 
-        {/* Contracts panel - full width */}
-        <Panel icon={FileText} title={`Contracts (${contracts.length})`} testid="panel-contracts">
-          {contracts.length === 0 ? (
-            <div className="text-sm text-stone-500 text-center py-4">No contracts.</div>
-          ) : (
-            <table className="w-full" data-testid="franchisee-contracts">
-              <thead className="border-b border-stone-200">
-                <tr>
-                  <th className="text-left px-0 py-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Ref</th>
-                  <th className="text-left px-3 py-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Commencement</th>
-                  <th className="text-left px-3 py-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Renewal</th>
-                  <th className="text-left px-3 py-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Term</th>
-                  <th className="text-left px-3 py-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Monthly Fee</th>
-                  <th className="text-left px-3 py-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Renewal Fee</th>
-                  <th className="text-left px-3 py-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {contracts.map((c) => (
-                  <tr key={c.id} className="border-b border-stone-100 last:border-0 hover:bg-stone-50">
-                    <td className="px-0 py-2 text-sm font-semibold text-stone-950">#{c.ref}</td>
-                    <td className="px-3 py-2 text-xs text-stone-700 tabular-nums">{c.commencement_date ? String(c.commencement_date).slice(0, 10) : "—"}</td>
-                    <td className="px-3 py-2 text-xs text-stone-700 tabular-nums">{c.renewal_date ? String(c.renewal_date).slice(0, 10) : "—"}</td>
-                    <td className="px-3 py-2 text-xs text-stone-700">{c.contract_term_years ? `${c.contract_term_years} yrs` : "—"}</td>
-                    <td className="px-3 py-2 text-xs text-stone-700">{c.monthly_fee != null ? `£${c.monthly_fee}` : "—"}</td>
-                    <td className="px-3 py-2 text-xs text-stone-700">
-                      {c.renewal_fee != null ? `£${c.renewal_fee}` : "—"}
-                      {c.renewal_fee_paid && <span className="ml-1 text-emerald-700 font-bold">✓</span>}
-                    </td>
-                    <td className="px-3 py-2">
-                      {c.cancelled_early
-                        ? <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-red-50 text-red-700 border border-red-200 rounded-md">Cancelled</span>
-                        : <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md">{c.staying_leaving || "Active"}</span>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </Panel>
-
-        {/* Territory panel - full width */}
-        <Panel icon={Map} title={`Territory · ${territories.length} postcode sector${territories.length === 1 ? "" : "s"}`} testid="panel-territory">
-          {territories.length === 0 ? (
-            <div className="text-sm text-stone-500 text-center py-4">No territory assigned.</div>
-          ) : (
-            <div className="flex flex-wrap gap-1.5" data-testid="franchisee-territories">
-              {territories.map((t) => (
-                <span key={t.id} className="px-2 py-0.5 bg-stone-100 text-xs text-stone-800 tabular-nums rounded-md">{t.postcode}</span>
+        {enquiries.length > 0 && (
+          <Panel icon={MessageSquare} title={`Original Enquiry (${enquiries.length})`} testid="panel-enquiries">
+            <div className="space-y-3">
+              {enquiries.slice(0, 5).map((e) => (
+                <div key={e.id} className="text-sm border-l-2 border-stone-200 pl-3">
+                  <div className="text-xs text-stone-500 tabular-nums">{formatDate(e.date)}</div>
+                  <div className="text-stone-900 mt-1">{e.why_contacting || e.message || "—"}</div>
+                </div>
               ))}
             </div>
-          )}
-        </Panel>
+          </Panel>
+        )}
       </div>
     </div>
   );
