@@ -296,16 +296,23 @@ async def run_migration(db, airtable_pat: str, airtable_base_id: str, run_by_ema
                 doc["pipeline_status"] = "archive"  # legacy data
             elif coll_name == "web_form_contacts":
                 doc["source"] = "franchise_enquiry"
-                doc["in_pipeline"] = True  # imported Airtable web-form records are franchise enquiries
-                # Default pipeline status based on existing fields
-                doc["pipeline_status"] = "new"
-                if doc.get("response_sent") and str(doc["response_sent"]).lower() not in ("no", "false", ""):
-                    doc["pipeline_status"] = "contacted"
-                if doc.get("potential") and "yes" in str(doc.get("potential", "")).lower():
-                    doc["pipeline_status"] = "qualified"
-                # If linked to a franchisee → converted
-                if doc.get("_franchisee_airtable_ids"):
-                    doc["pipeline_status"] = "converted"
+                # "Franchise Enquiry Contact Form" submissions are people using the franchise
+                # contact form for general questions — NOT active sales pipeline leads. Park them
+                # in "Franchise Contacts" so the sales pipeline only contains actively-worked leads.
+                if doc.get("why_contacting") == "Franchise Enquiry Contact Form":
+                    doc["in_pipeline"] = False
+                    doc["pipeline_status"] = None
+                else:
+                    doc["in_pipeline"] = True  # imported Airtable web-form records are franchise enquiries
+                    # Default pipeline status based on existing fields
+                    doc["pipeline_status"] = "new"
+                    if doc.get("response_sent") and str(doc["response_sent"]).lower() not in ("no", "false", ""):
+                        doc["pipeline_status"] = "contacted"
+                    if doc.get("potential") and "yes" in str(doc.get("potential", "")).lower():
+                        doc["pipeline_status"] = "qualified"
+                    # If linked to a franchisee → converted
+                    if doc.get("_franchisee_airtable_ids"):
+                        doc["pipeline_status"] = "converted"
             airtable_id_to_uuid[coll_name][rec["id"]] = doc["id"]
             docs.append(doc)
         if docs:
