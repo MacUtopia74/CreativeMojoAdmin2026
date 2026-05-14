@@ -29,6 +29,15 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
 
 ## What's Implemented (2026-05-14)
 
+### Phase 1 — Iteration 10 (2026-05-14)
+- **30-day pipeline freshness rule** — one-time DB sweep: 9 recent franchise/licence enquiries moved INTO pipeline as "New"; 304 stale "New" records moved OUT to Franchise Contacts. Migration.py updated with the same logic. Records already advanced past "new" (contacted/qualified/etc) stay regardless of age.
+- **WP form routing** — `FORM_IDS_IN_PIPELINE = {17, 32}` (Franchise + Licence forms). New submissions land in Sales Pipeline as "New" immediately.
+- **Bulk CSV import** — POST `/api/contacts/import` (rows + target + dedupe_by_email). Frontend "Import CSV" button opens 3-step wizard: upload → preview/target → success. Auto-detects 11 common column aliases (Gravity Forms, Mailchimp, generic spreadsheets). Tolerant CSV parser handles quoted multi-line fields. Imported rows stamped with manually_added_by + import_batch.
+
+### Tests (iteration 10)
+- Backend: 16/16 pytest pass (target=licence/pipeline/general/franchise; validation; dedupe toggle; ISO-date truncation; auth; intake routing for forms 17/32/1).
+- Frontend: 100% — Playwright import wizard E2E, target switching, pipeline-stage reveal/hide, success step, auto-jump to destination tab, manual-badge present on imported rows.
+
 ### Phase 1 — Iteration 9 (2026-05-14)
 - **Manual-add indicator** — manually-created contacts (those with `manually_added_by` set) show a yellow ✨ Sparkles icon next to their name in both the list view and pipeline kanban cards. Drawer now also displays a banner "Added manually by `<email>` on `<long-format date>`".
 - **Pipeline age filter** — on the Sales Pipeline tab, a row of 4 buttons above the summary tiles (All / Fresh ≤30d / Recent 30–90d / Stale >90d) filters the kanban + list to that age window. Live counts on each button. Made it immediately obvious that all 421 of the existing "New" pipeline records are >90 days old.
