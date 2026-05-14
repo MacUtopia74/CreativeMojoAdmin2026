@@ -650,17 +650,30 @@ async def dashboard_stats(_: dict = Depends(require_role("admin"))):
         for m in mandate_breakdown
     ]
 
-    # Pipeline funnel (web form contacts only — active sales pipeline)
+    # Pipeline funnel (active sales pipeline only — records with in_pipeline=true)
     funnel_pipeline = [
-        {"$group": {"_id": "$pipeline_status", "count": {"$sum": 1}}},
+        {"$match": {"in_pipeline": True}},
+        {"$group": {
+            "_id": {"status": "$pipeline_status", "source": "$source"},
+            "count": {"$sum": 1},
+        }},
     ]
-    funnel_raw = await db.web_form_contacts.aggregate(funnel_pipeline).to_list(20)
-    funnel = {f["_id"] or "new": f["count"] for f in funnel_raw}
+    funnel_raw = await db.web_form_contacts.aggregate(funnel_pipeline).to_list(50)
+    # Aggregate into { status: total, by_source: { franchise: n, licence: n } }
+    funnel: Dict[str, Any] = {}
+    funnel_by_source: Dict[str, Dict[str, int]] = {"franchise": {}, "licence": {}, "other": {}}
+    for f in funnel_raw:
+        status = f["_id"].get("status") or "new"
+        src = f["_id"].get("source") or ""
+        funnel[status] = funnel.get(status, 0) + f["count"]
+        bucket = "franchise" if src == "franchise_enquiry" else "licence" if src == "licence_enquiry" else "other"
+        funnel_by_source[bucket][status] = funnel_by_source[bucket].get(status, 0) + f["count"]
 
-    # Recent enquiries (last 5 by date)
+    # Recent enquiries (last 5 by date — active pipeline only)
     recent_enquiries = await db.web_form_contacts.find(
-        {}, {"_id": 0, "id": 1, "first_name": 1, "last_name": 1, "establishment_name": 1,
-             "postcode": 1, "date": 1, "pipeline_status": 1, "potential": 1},
+        {"in_pipeline": True},
+        {"_id": 0, "id": 1, "first_name": 1, "last_name": 1, "establishment_name": 1,
+         "postcode": 1, "date": 1, "pipeline_status": 1, "potential": 1, "source": 1},
     ).sort("date", -1).limit(5).to_list(5)
 
     airtable_summary = None
@@ -684,6 +697,7 @@ async def dashboard_stats(_: dict = Depends(require_role("admin"))):
         "territories_migrated": territories,
         "mandate_breakdown": mandate_breakdown,
         "pipeline_funnel": funnel,
+        "pipeline_funnel_by_source": funnel_by_source,
         "recent_enquiries": recent_enquiries,
         "airtable": airtable_summary,
         "last_migration": last_migration.get("run_at") if last_migration else None,

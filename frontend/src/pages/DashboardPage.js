@@ -209,7 +209,7 @@ export default function DashboardPage() {
                   <div key={e.id} className="text-sm border-b border-stone-100 last:border-0 pb-2 last:pb-0">
                     <div className="flex items-center justify-between gap-2">
                       <div className="font-semibold text-stone-900 truncate">{[e.first_name, e.last_name].filter(Boolean).join(" ") || "Unnamed"}</div>
-                      <div className="text-[10px] text-stone-500 shrink-0 tabular-nums">{e.date ? String(e.date).slice(0, 10) : ""}</div>
+                      <div className="text-[10px] text-stone-500 shrink-0 tabular-nums">{e.date ? (() => { const m = String(e.date).match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}-${m[2]}-${m[1]}` : String(e.date).slice(0,10); })() : ""}</div>
                     </div>
                     <div className="text-xs text-stone-600 truncate">{e.establishment_name || ""}</div>
                     <div className="text-xs text-stone-500 mt-0.5">{e.postcode || ""} · <span className="capitalize">{e.pipeline_status || "new"}</span></div>

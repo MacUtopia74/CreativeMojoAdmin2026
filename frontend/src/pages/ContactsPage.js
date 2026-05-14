@@ -766,13 +766,19 @@ export default function ContactsPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [ageFilter, setAgeFilter] = useState("all");
+  const [sourceFilter, setSourceFilter] = useState("all"); // 'all' | 'franchise' | 'licence'
 
   const clearSelection = () => { setSelectedIds(new Set()); setLastSelectedId(null); };
-  // Visible items (filtered + age) — needed so shift-select knows the range
+  // Visible items (filtered + age + source) — needed so shift-select knows the range
   const visibleItems = useMemo(() => {
     const af = AGE_TIERS.find((t) => t.key === ageFilter) || AGE_TIERS[0];
-    return data.items.filter((c) => af.test(daysSince(c.date || c.date_added)));
-  }, [data.items, ageFilter]);
+    return data.items.filter((c) => {
+      if (!af.test(daysSince(c.date || c.date_added))) return false;
+      if (sourceFilter === "franchise" && c.source !== "franchise_enquiry") return false;
+      if (sourceFilter === "licence"   && c.source !== "licence_enquiry")   return false;
+      return true;
+    });
+  }, [data.items, ageFilter, sourceFilter]);
 
   const toggleSelect = (id, evt) => {
     setSelectedIds((prev) => {
@@ -815,7 +821,7 @@ export default function ContactsPage() {
   }, [tab, stageFilter, search]);
 
   // Reset selection whenever the tab/filter changes
-  useEffect(() => { clearSelection(); setAgeFilter("all"); }, [tab, stageFilter]);
+  useEffect(() => { clearSelection(); setAgeFilter("all"); setSourceFilter("all"); }, [tab, stageFilter]);
 
   const moveContact = async (contactId, target, pipeline_status) => {
     try {
@@ -978,22 +984,48 @@ export default function ContactsPage() {
 
       {isPipeline && !loading && data.items.length > 0 && (
         <div className="px-8 pt-6 space-y-4">
-          <div className="flex items-center gap-2 flex-wrap" data-testid="age-filter">
-            <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mr-1">Age</span>
-            {AGE_TIERS.map((t) => {
-              const active = ageFilter === t.key;
-              const count = t.key === "all"
-                ? data.items.length
-                : data.items.filter((c) => t.test(daysSince(c.date || c.date_added))).length;
-              return (
-                <button key={t.key} onClick={() => setAgeFilter(t.key)} data-testid={`age-tier-${t.key}`}
-                  className={`px-3 py-1 text-[11px] font-bold uppercase tracking-wider border rounded-lg transition-colors ${
-                    active ? "bg-stone-950 text-white border-stone-950" : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"
-                  }`}>
-                  {t.label} <span className={`ml-1 tabular-nums ${active ? "text-stone-300" : "text-stone-500"}`}>{count}</span>
-                </button>
-              );
-            })}
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap" data-testid="age-filter">
+              <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mr-1">Age</span>
+              {AGE_TIERS.map((t) => {
+                const active = ageFilter === t.key;
+                const count = t.key === "all"
+                  ? data.items.length
+                  : data.items.filter((c) => t.test(daysSince(c.date || c.date_added))).length;
+                return (
+                  <button key={t.key} onClick={() => setAgeFilter(t.key)} data-testid={`age-tier-${t.key}`}
+                    className={`px-3 py-1 text-[11px] font-bold uppercase tracking-wider border rounded-lg transition-colors ${
+                      active ? "bg-stone-950 text-white border-stone-950" : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"
+                    }`}>
+                    {t.label} <span className={`ml-1 tabular-nums ${active ? "text-stone-300" : "text-stone-500"}`}>{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <span className="text-stone-300">·</span>
+            <div className="flex items-center gap-2 flex-wrap" data-testid="source-filter">
+              <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mr-1">Type</span>
+              {[
+                { key: "all",       label: "All",       },
+                { key: "franchise", label: "Franchise"  },
+                { key: "licence",   label: "Licence"    },
+              ].map((s) => {
+                const active = sourceFilter === s.key;
+                const count = s.key === "all"
+                  ? data.items.length
+                  : data.items.filter((c) => c.source === (s.key === "franchise" ? "franchise_enquiry" : "licence_enquiry")).length;
+                const dotColor = s.key === "franchise" ? "bg-stone-500" : s.key === "licence" ? "bg-indigo-500" : "bg-stone-300";
+                return (
+                  <button key={s.key} onClick={() => setSourceFilter(s.key)} data-testid={`source-${s.key}`}
+                    className={`px-3 py-1 text-[11px] font-bold uppercase tracking-wider border rounded-lg transition-colors flex items-center gap-1.5 ${
+                      active ? "bg-stone-950 text-white border-stone-950" : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"
+                    }`}>
+                    {s.key !== "all" && <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />}
+                    {s.label} <span className={`ml-1 tabular-nums ${active ? "text-stone-300" : "text-stone-500"}`}>{count}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
           <div className="grid grid-cols-2 lg:grid-cols-7 gap-3" data-testid="pipeline-summary">
             <button onClick={() => setStageFilter("")} className={`bg-white border border-stone-200 rounded-2xl p-4 text-left hover:border-stone-400 transition-colors ${stageFilter === "" ? "ring-2 ring-stone-950" : ""}`}>

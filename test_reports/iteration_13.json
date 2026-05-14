@@ -1,0 +1,35 @@
+{
+  "summary": "Iter13 testing complete — all features verified. (1) BACKEND GET /api/dashboard/stats: pipeline_funnel = {new:24, demo_booked:1, converted:2} (no stale 1664). pipeline_funnel_by_source exists with franchise:{new:9, demo_booked:1, converted:2}, licence:{new:15}, other:{}. recent_enquiries = exactly the 5 expected May-2026 records (Sally Hare 2026-05-14, Tracy Wilkinson 2026-05-14, Sue Gadler 2026-05-12, Karen Kinnersley 2026-05-12, Mary Fetterplace 2026-05-12). (2) BACKEND regression GET /api/contacts?tab=pipeline returns 27 records, all in_pipeline=true, 15 licence_enquiry + 12 franchise_enquiry. (3) FRONTEND Dashboard funnel bars render exactly: New 24, Contacted 0, Qualified 0, Demo Booked 1, Converted 2, Lost 0. Recent Enquiries shows the 5 expected names in DD-MM-YYYY format (14-05-2026 / 12-05-2026). (4) FRONTEND /contacts on Pipeline tab: data-testid='source-filter' visible with 3 buttons — source-all 'All 27', source-franchise 'Franchise 12', source-licence 'Licence 15'. (5) Filter behavior verified via data-testid='pipeline-card-*': source-all → 27 cards (12 franchise + 15 licence by pill), source-franchise → 12 cards (12 franchise / 0 licence), source-licence → 15 cards (0 franchise / 15 licence), source-all again → 27. (6) Compose source-licence + age-tier-fresh → 15 licence cards (all <=30d, May 2026). (7) Pipeline-summary stat tiles recompute per source: franchise → NEW 9 / DEMO BOOKED 1 / CONVERTED 2 / LOST 0; licence → NEW 15 / others 0. (8) List view + source-licence → table shows 15 rows, all with LICENCE pill, 0 franchise. (9) source-filter hidden on Franchise Contacts, Licence Contacts, and General Contacts tabs (verified data-testid='source-filter' returns null on all three). (10) Skipped destructive bulk-move + source restoration test per agent-to-agent note (state-restoration fragility). Pytest 4/4 PASS.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter13_funnel_source.py",
+    "/app/test_reports/pytest/iter13_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "ContactsPage.js still well over the 700-line splitting threshold (~1180 lines after iter12). Iter13 added sourceFilter state + visibleItems memo + source-filter button group — file keeps growing. Consider extracting SourceFilter as a small subcomponent and Kanban/ListView into separate files in next refactor pass.",
+    "Source filter button label currently shows '{Label} {count}' inline ('Franchise 12'). For better screen-reader/data-binding the count could be wrapped in its own <span data-testid='source-franchise-count'> so future tests can read count independently of label text — minor enhancement.",
+    "server.py dashboard_stats now aggregates pipeline_funnel + pipeline_funnel_by_source in two passes over web_form_contacts with in_pipeline:true filter. For 27 records this is trivial; if pipeline grows large, a single Mongo aggregation $group on (in_pipeline, source, pipeline_status) would be more efficient than client-side counting."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter13_funnel_source.py (NEW — 4 tests: pipeline_funnel filtered, pipeline_funnel_by_source shape, recent_enquiries names+dates, /api/contacts?tab=pipeline regression)"
+  ],
+  "success_rate": {
+    "backend": "4/4 (100%) — dashboard funnel, by_source split, recent_enquiries, pipeline-tab regression all pass",
+    "frontend": "100% — source filter button group, kanban filtering, list-view filtering, age+source compose, stat-tile recompute, source-filter hidden on non-pipeline tabs, dashboard bars and recent enquiry list all verified"
+  },
+  "test_credentials": "admin@creativemojo.co.uk / CreativeMojo2026!",
+  "seed_data_creation": "None. Read-only filter tests, no DB writes. Destructive bulk-move test deliberately skipped per agent-to-agent note.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter13 stable. Pipeline state: 27 contacts (24 new + 1 demo_booked + 2 converted). Licence in pipeline=15 (all new), Franchise in pipeline=12 (9 new + 1 demo_booked + 2 converted). data-testid for source filter buttons = source-all / source-franchise / source-licence (each shows '{label} {count}' inline). Kanban card data-testid = pipeline-card-{id}. Tab buttons use data-testid mode-pipeline / mode-franchise / mode-licence / mode-general (NOT tab-*). Stat tiles use data-testid stat-new/stat-contacted/stat-qualified/stat-demo_booked/stat-converted/stat-lost. Source filter is rendered ONLY when mode==='pipeline'. test_iter13_funnel_source.py is idempotent (read-only) — safe to re-run.",
+  "rca of the issue": "N/A — no defects found in iter13 implementation. Both code changes (dashboard funnel in_pipeline=true filter + pipeline_funnel_by_source split; ContactsPage source filter button group composing with age filter) work exactly as specified."
+}
