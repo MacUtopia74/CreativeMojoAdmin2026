@@ -198,7 +198,21 @@ def build_router(db, require_role) -> APIRouter:
         scanned = 0
         matched: list[dict] = []
         unmatched: list[dict] = []
-        updates: list[dict] = []
+        # franchisee_id -> best candidate so far. We score each candidate so a
+        # customer with an ACTIVE mandate always wins over one with a cancelled
+        # or missing mandate, regardless of which order GoCardless returns them.
+        # Score (higher = better):
+        #   3 — mandate.status == "active"
+        #   2 — mandate.status in (pending_submission, submitted, pending_customer_approval)
+        #   1 — any other mandate present
+        #   0 — no mandate
+        _STATUS_RANK = {
+            "active": 3,
+            "pending_customer_approval": 2,
+            "pending_submission": 2,
+            "submitted": 2,
+        }
+        best: dict[str, dict] = {}
 
         try:
             for cust in _paginate_customers(client):
@@ -235,19 +249,32 @@ def build_router(db, require_role) -> APIRouter:
                     "mandate": mandate_summary,
                 }
                 matched.append(rec)
-                # Prepare DB update
-                update_doc = {
-                    "gocardless_customer_id": cust.id,
-                    "gocardless_mandate_id": mandate_summary.get("mandate_id"),
-                    "gocardless_mandate_status": mandate_summary.get("status"),
-                    "gocardless_mandate_reference": mandate_summary.get("reference"),
-                    "gocardless_mandate_scheme": mandate_summary.get("scheme"),
-                    "gocardless_synced_at": _now_iso(),
-                }
-                updates.append({"franchisee_id": f["id"], "update": update_doc})
+                # Score this candidate
+                status = (mandate_summary.get("status") or "")
+                score = _STATUS_RANK.get(status, 1 if mandate_summary else 0)
+                prev = best.get(f["id"])
+                if prev is None or score > prev["score"]:
+                    best[f["id"]] = {"score": score, "rec": rec}
         except gocardless_pro.errors.GoCardlessProError as exc:
             logger.error("GoCardless sync error: %s", exc)
             raise HTTPException(status_code=502, detail=f"GoCardless API error: {exc}") from exc
+
+        # Build one update per franchisee using the winning candidate
+        updates: list[dict] = []
+        for fid, picked in best.items():
+            rec = picked["rec"]
+            ms = rec["mandate"]
+            updates.append({
+                "franchisee_id": fid,
+                "update": {
+                    "gocardless_customer_id": rec["gc_customer_id"],
+                    "gocardless_mandate_id": ms.get("mandate_id"),
+                    "gocardless_mandate_status": ms.get("status"),
+                    "gocardless_mandate_reference": ms.get("reference"),
+                    "gocardless_mandate_scheme": ms.get("scheme"),
+                    "gocardless_synced_at": _now_iso(),
+                },
+            })
 
         committed = 0
         if not dry_run:
