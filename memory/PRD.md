@@ -29,6 +29,15 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
 
 ## What's Implemented (2026-05-14)
 
+### Phase 1 — Iteration 13 (2026-05-14)
+- **Dashboard funnel bug fixed** — pipeline_funnel was counting every web_form_contact with `pipeline_status='new'` (1,664 stale ones from earlier import). Now filtered by `in_pipeline=True` so it matches the Sales & Contacts page exactly: New 24 / Demo Booked 1 / Converted 2. New `pipeline_funnel_by_source` field returned. Recent enquiries also gated on in_pipeline.
+- **Source toggle on Sales Pipeline** — new 3-button group (All / Franchise / Licence) on /contacts (visible only when tab=pipeline). Each button shows live count, filters both kanban and list views. Composes with the Age filter (e.g. Fresh + Licence = recent licence leads only).
+- Dashboard "Recent Enquiries" date now uses DD-MM-YYYY format.
+
+### Tests (iteration 13)
+- Backend: 4/4 pass (dashboard funnel & by_source split, recent enquiries date, /contacts?tab=pipeline regression).
+- Frontend: 100% — dashboard bars correct (24/0/0/1/2/0), source filter button group on pipeline tab only, kanban+list filtering, compose with age filter, pipeline-summary tiles recompute by source.
+
 ### Phase 1 — Iteration 12 (2026-05-14)
 - **30-day auto-route rule everywhere** — POST /api/contacts and POST /api/contacts/import now auto-promote franchise/licence contacts to Pipeline 'New' when their date is within 30 days. Per-row decision on imports. General/explicit-pipeline targets behave as before.
 - **Date format DD-MM-YYYY** across the contacts page. Drawer "Added manually by … on …" now also uses DD/MM/YYYY.
