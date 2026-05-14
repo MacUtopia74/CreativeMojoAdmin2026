@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import api from "@/lib/api";
-import { RefreshCw, AlertCircle, Calendar, ArrowRight, Activity, TrendingUp, Users, FileText, Contact, MapPin } from "lucide-react";
+import { RefreshCw, AlertCircle, Calendar, ArrowRight, Activity, TrendingUp, Users, FileText, Contact, MapPin, CreditCard, AlertTriangle, CheckCircle2 } from "lucide-react";
 
 const PIPELINE_STAGES = [
   { key: "new", label: "New", color: "bg-stone-400" },
@@ -47,6 +47,7 @@ function Panel({ icon: Icon, title, action, children, testid }) {
 export default function DashboardPage() {
   const [stats, setStats] = useState(null);
   const [anniversaries, setAnniversaries] = useState(null);
+  const [gcAlerts, setGcAlerts] = useState(null);
   const [error, setError] = useState("");
   const [migrating, setMigrating] = useState(false);
   const [migrateResult, setMigrateResult] = useState(null);
@@ -60,6 +61,10 @@ export default function DashboardPage() {
       const { data } = await api.get("/anniversaries/today");
       setAnniversaries(data);
     } catch (e) { /* noop */ }
+    try {
+      const { data } = await api.get("/gocardless/alerts", { params: { hours: 24 } });
+      setGcAlerts(data);
+    } catch (e) { /* GoCardless optional */ }
   };
 
   useEffect(() => { refresh(); }, []);
@@ -189,8 +194,34 @@ export default function DashboardPage() {
                     </div>
                   );
                 })}
-                <div className="text-xs text-stone-500 pt-2 mt-2 border-t border-stone-100">
-                  Goes live via GoCardless API in Phase 1.5
+                <div className="pt-2 mt-2 border-t border-stone-100" data-testid="gc-dashboard-alerts">
+                  {gcAlerts ? (
+                    gcAlerts.items.length === 0 ? (
+                      <div className="flex items-center gap-2 text-xs text-emerald-700">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>GoCardless · no failed mandates or payments in the last 24h</span>
+                      </div>
+                    ) : (
+                      <Link to="/franchisees" className="block">
+                        <div className="flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-2 text-stone-700">
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                            <span className="font-semibold">GoCardless · Last 24h</span>
+                          </div>
+                          <div className="flex items-center gap-3 tabular-nums">
+                            {gcAlerts.by_type.payment_failed > 0 && <span className="text-red-700"><strong>{gcAlerts.by_type.payment_failed}</strong> failed payments</span>}
+                            {gcAlerts.by_type.mandate_cancelled > 0 && <span className="text-amber-700"><strong>{gcAlerts.by_type.mandate_cancelled}</strong> cancelled</span>}
+                            {gcAlerts.by_type.mandate_failed > 0 && <span className="text-red-700"><strong>{gcAlerts.by_type.mandate_failed}</strong> mandate fails</span>}
+                          </div>
+                        </div>
+                      </Link>
+                    )
+                  ) : (
+                    <div className="flex items-center gap-2 text-xs text-stone-500">
+                      <CreditCard className="w-3.5 h-3.5" />
+                      <span>GoCardless · awaiting first sync (use the "Sync GoCardless" button on the Franchisees page)</span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

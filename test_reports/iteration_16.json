@@ -1,0 +1,37 @@
+{
+  "summary": "Phase 1.5 GoCardless integration tested end-to-end. All 7 backend pytest tests pass against LIVE GoCardless. All frontend GC flows (dashboard alerts tile, Franchisees sync modal dry-run, FranchiseeDetailPage panel + pill + KPI + refresh, unmatched gc-not-linked state) work as specified. Phase 1.7 (Convert) regression smoke-tested OK: pipeline kanban (6 columns, 25 cards) and drawer-convert button still present. NO commit/dry_run=false calls were made.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "verified_results": {
+    "pytest_iter16": "7/7 PASSED in 23.98s (status, alerts default, alerts custom 168h, dry-run, webhook missing sig 498, webhook bad sig 498, webhook good sig processes 2 events)",
+    "GET /api/gocardless/status": "configured=true, environment=live, webhook_secret_set=false, last_sync populated",
+    "POST /api/gocardless/mandates/sync?dry_run=true": "customers_scanned=108, franchisees_total=88, matched_count=89, unmatched_count=19, committed_count=0, dry_run=true",
+    "GET /api/gocardless/alerts (24h)": "items=[], by_type has all 4 keys (mandate_cancelled, mandate_failed, mandate_expired, payment_failed), window_hours=24",
+    "GET /api/gocardless/alerts?hours=168": "window_hours=168 OK",
+    "POST /api/gocardless/franchisees/{id}/refresh": "linked=true; persisted gocardless_customer_id=CU01KYJ34RSYGG, gocardless_mandate_id=MD01KMCHJGHKWN, gocardless_mandate_status=active, last_payment £197.76 in Mongo and returned by GET /api/franchisees/{id}.franchisee",
+    "POST /api/webhooks/gocardless (no sig)": "498 (verified by pytest)",
+    "Dashboard gc-dashboard-alerts tile": "Present inside MANDATE STATUS panel; shows green '✓ GoCardless · no failed mandates or payments in the last 24h'",
+    "Franchisees gc-sync-button + modal + dry-run": "Button visible top-right; modal opens; dry-run shows GC Customers 108, Matched 89 (gc-matched-count=89), Unmatched 19, sample matches list rendered; gc-sync-close dismisses modal; gc-sync-commit was NOT clicked",
+    "FranchiseeDetailPage linked (Clementina)": "panel-gocardless renders; mandate-pill='Active' (green); kpi-mandate uses MandatePill showing 'Active CREATIVEMOJO-Q9HDG'; Status/Scheme(BACS)/Last Payment(£197.76 18/05/2026)/Next Payment columns visible; gc-refresh button works (re-fetched live, still Active)",
+    "FranchiseeDetailPage unlinked (Cheryl du Plooy)": "panel-gocardless renders; gc-not-linked visible ('Not linked to GoCardless...'); KPI tile says 'Not linked / Run GoCardless sync'; mandate-pill absent (correct)",
+    "Dashboard after sync modal": "gc-dashboard-alerts still renders correctly with no console errors",
+    "Sidebar regression": "No 'Contracts' tab in sidebar (Phase 1.7 cleanup intact). Items: Dashboard, Franchisees, Sales & Contacts, Form Intake, Airtable Inspector, Migration Plan",
+    "Phase 1.7 regression": "Sales Pipeline kanban at /contacts renders 6 stage columns and 25 cards; drawer opens on card click; drawer-convert-section + drawer-convert button present"
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter16_gocardless.py",
+    "/app/test_reports/pytest/iter16_gocardless.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py uses deprecated @app.on_event('startup'/'shutdown') — non-blocking but FastAPI now recommends lifespan handlers (cosmetic).",
+    "server.py is 1637 lines — exceeds 700-line guideline; consider splitting CRM franchisee routes, dashboard, airtable proxy, and migration plan into separate routers (non-blocking, deferrable)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@creativemojo.co.uk / CreativeMojo2026! (from /app/memory/test_credentials.md) — used successfully throughout.",
+  "seed_data_creation": "The /refresh test persisted GC fields onto a real franchisee record (Clementina Phillips, id 6bbf65a1-af0c-4c00-abe1-f2814766e230). This is an explicitly-allowed write per the request (single-franchisee scope, not bulk). No bulk commit was performed.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase 1.5 GoCardless fully passing. Webhook secret is intentionally blank — user will set GOCARDLESS_WEBHOOK_SECRET after creating the dashboard webhook. After secret is set, the in-process webhook tests will still work (they reload the module). Live GC token has ~108 customers + 88 franchisees + ~89 active matches. NEVER call POST /gocardless/mandates/sync?dry_run=false in tests — that writes 89 rows to production. The /refresh endpoint IS safe for per-record writes."
+}

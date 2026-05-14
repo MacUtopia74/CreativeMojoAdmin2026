@@ -1614,6 +1614,10 @@ async def on_shutdown():
 # ----------------------------------------------------------------------------
 # Wire up
 # ----------------------------------------------------------------------------
+# Phase 1.5 — GoCardless live mandate integration
+from gocardless_integration import build_router as build_gocardless_router  # noqa: E402
+api.include_router(build_gocardless_router(db, require_role))
+
 app.include_router(api)
 
 # Serve cached franchisee photos (downloaded from Airtable at migration time so they

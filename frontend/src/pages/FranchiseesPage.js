@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import api from "@/lib/api";
-import { Search, AlertCircle } from "lucide-react";
+import { Search, AlertCircle, RefreshCw, CreditCard, CheckCircle2, X } from "lucide-react";
 import { formatDate } from "@/lib/date";
 
 const SEGMENTS = [
@@ -16,6 +16,115 @@ function hasTag(franchisee, tag) {
   return Array.isArray(tags) ? tags.includes(tag) : tags === tag;
 }
 
+// Phase 1.5 — GoCardless sync modal. Defaults to DRY-RUN until the operator
+// explicitly hits "Commit to database".
+function GoCardlessSyncModal({ open, onClose, onCommitted }) {
+  const [busy, setBusy] = useState(false);
+  const [report, setReport] = useState(null);
+  const [err, setErr] = useState("");
+
+  const run = async (dryRun) => {
+    setBusy(true); setErr("");
+    try {
+      const { data } = await api.post(`/gocardless/mandates/sync?dry_run=${dryRun ? "true" : "false"}`);
+      setReport(data);
+      if (!dryRun) onCommitted?.();
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Sync failed.");
+    } finally { setBusy(false); }
+  };
+
+  if (!open) return null;
+  const committed = report && report.dry_run === false;
+
+  return (
+    <div onClick={onClose} className="fixed inset-0 z-50 bg-stone-950/40 backdrop-blur-sm flex items-start justify-center p-6 overflow-y-auto" data-testid="gc-sync-modal">
+      <div onClick={(e) => e.stopPropagation()} className="bg-white border border-stone-200 max-w-2xl w-full rounded-2xl shadow-2xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200">
+          <div className="flex items-center gap-2">
+            <CreditCard className="w-4 h-4 text-stone-700" />
+            <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">GoCardless Sync</div>
+          </div>
+          <button onClick={onClose} data-testid="gc-sync-close" className="w-9 h-9 flex items-center justify-center hover:bg-stone-100 rounded-lg"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="px-6 py-5 space-y-4">
+          {!report && !err && !busy && (
+            <>
+              <p className="text-sm text-stone-700">
+                Read every active GoCardless customer and link them to franchisees by email
+                (<code className="text-xs bg-stone-100 px-1 rounded">email</code>,
+                <code className="text-xs bg-stone-100 px-1 rounded ml-1">mojo_email</code>,
+                <code className="text-xs bg-stone-100 px-1 rounded ml-1">secondary_email</code>).
+              </p>
+              <p className="text-xs text-stone-500">A dry-run scans everything but writes nothing to the database — review the matches first, then commit.</p>
+              <div className="flex items-center gap-2 pt-2">
+                <button onClick={() => run(true)} data-testid="gc-sync-dryrun"
+                  className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-lg flex items-center gap-1.5">
+                  <RefreshCw className="w-3.5 h-3.5" /> Run Dry-Run
+                </button>
+              </div>
+            </>
+          )}
+          {busy && (
+            <div className="text-sm text-stone-600 flex items-center gap-2 py-6">
+              <RefreshCw className="w-4 h-4 animate-spin" /> Talking to GoCardless…
+            </div>
+          )}
+          {err && (
+            <div className="text-sm text-red-700 bg-red-50 border border-red-200 px-3 py-2 rounded-lg" data-testid="gc-sync-error">
+              <AlertCircle className="w-4 h-4 inline mr-1" /> {err}
+            </div>
+          )}
+          {report && (
+            <div className="space-y-3" data-testid="gc-sync-report">
+              <div className="grid grid-cols-3 gap-2">
+                <div className="bg-stone-50 border border-stone-200 rounded-lg p-3">
+                  <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">GC Customers</div>
+                  <div className="font-display text-2xl text-stone-950 mt-1 tabular-nums">{report.customers_scanned}</div>
+                </div>
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                  <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-emerald-700">Matched</div>
+                  <div className="font-display text-2xl text-emerald-900 mt-1 tabular-nums" data-testid="gc-matched-count">{report.matched_count}</div>
+                </div>
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-amber-700">Unmatched</div>
+                  <div className="font-display text-2xl text-amber-900 mt-1 tabular-nums">{report.unmatched_count}</div>
+                </div>
+              </div>
+              {report.matched_preview?.length > 0 && (
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-2">Sample Matches</div>
+                  <div className="border border-stone-200 rounded-lg divide-y divide-stone-100 max-h-56 overflow-y-auto text-xs">
+                    {report.matched_preview.map((m) => (
+                      <div key={m.franchisee_id + (m.mandate?.mandate_id || "")} className="px-3 py-2 flex items-center justify-between">
+                        <span className="text-stone-700">{m.franchisee_email}</span>
+                        <span className="text-stone-500 tabular-nums">{m.mandate?.mandate_id || "no mandate"} · {m.mandate?.status || "—"}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {committed ? (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 flex items-center gap-2 text-sm text-emerald-800" data-testid="gc-sync-committed">
+                  <CheckCircle2 className="w-4 h-4" /> Committed {report.committed_count} franchisee link(s) to the database.
+                </div>
+              ) : (
+                <div className="flex items-center justify-between pt-2 border-t border-stone-200">
+                  <button onClick={() => { setReport(null); setErr(""); }} className="text-xs text-stone-500 hover:text-stone-900">Reset</button>
+                  <button onClick={() => run(false)} disabled={busy} data-testid="gc-sync-commit"
+                    className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-[#D4FF00] text-stone-950 hover:bg-[#BDE600] rounded-lg flex items-center gap-1.5 disabled:opacity-50">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Commit to database
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function FranchiseesPage() {
   const [all, setAll] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -24,6 +133,13 @@ export default function FranchiseesPage() {
   const [segment, setSegment] = useState("active");
   const [sortBy, setSortBy] = useState("franchise_number");
   const [sortDir, setSortDir] = useState(1);
+  const [gcSyncOpen, setGcSyncOpen] = useState(false);
+  const reload = async () => {
+    try {
+      const { data } = await api.get("/franchisees", { params: { limit: 500, sort_by: "franchise_number", sort_dir: 1 } });
+      setAll(data.items || []);
+    } catch (e) { setError("Could not load franchisees."); }
+  };
 
   useEffect(() => {
     (async () => {
@@ -87,18 +203,26 @@ export default function FranchiseesPage() {
           <h1 className="font-display text-xl text-stone-950">Franchisees</h1>
           <span className="text-xs text-stone-500">{filtered.length} of {all.length} records</span>
         </div>
-        <div className="relative">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            data-testid="franchisee-search"
-            placeholder="Search name, org, email, postcode…"
-            className="pl-10 pr-4 py-2 w-80 bg-stone-50 border border-stone-300 text-sm focus:outline-none focus:border-stone-900 rounded-lg"
-          />
+        <div className="flex items-center gap-2">
+          <button onClick={() => setGcSyncOpen(true)} data-testid="gc-sync-button"
+            className="px-3 py-2 text-xs font-bold uppercase tracking-wider border border-stone-300 bg-white text-stone-900 hover:bg-stone-50 rounded-lg flex items-center gap-1.5">
+            <CreditCard className="w-3.5 h-3.5" /> Sync GoCardless
+          </button>
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              data-testid="franchisee-search"
+              placeholder="Search name, org, email, postcode…"
+              className="pl-10 pr-4 py-2 w-80 bg-stone-50 border border-stone-300 text-sm focus:outline-none focus:border-stone-900 rounded-lg"
+            />
+          </div>
         </div>
       </div>
+
+      <GoCardlessSyncModal open={gcSyncOpen} onClose={() => setGcSyncOpen(false)} onCommitted={reload} />
 
       {/* Segment tabs */}
       <div className="px-8 pt-6">
