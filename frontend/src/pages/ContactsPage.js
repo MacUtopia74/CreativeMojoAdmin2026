@@ -1250,9 +1250,17 @@ export default function ContactsPage() {
                       </button>
                     </td>
                     <td className="px-3 py-2">
-                      <div className="text-sm text-stone-950 font-semibold flex items-center gap-1.5">
+                      <div className="text-sm text-stone-950 font-semibold flex items-center gap-1.5 flex-wrap">
                         {[c.first_name, c.last_name].filter(Boolean).join(" ") || "(no name)"}
                         <ManualBadge addedBy={c.manually_added_by} />
+                        {!isPipeline && c.in_pipeline && (
+                          <span data-testid={`in-pipeline-${c.id}`}
+                            className="px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider bg-[#D4FF00] text-stone-950 border border-stone-950 flex items-center gap-1"
+                            title="Also in the Sales Pipeline">
+                            <Kanban className="w-2.5 h-2.5" />
+                            In Pipeline{c.pipeline_status ? ` · ${c.pipeline_status.replace(/_/g, " ")}` : ""}
+                          </span>
+                        )}
                       </div>
                       {c.establishment_name && <div className="text-xs text-stone-600">{c.establishment_name}</div>}
                     </td>

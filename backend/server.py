@@ -1009,26 +1009,20 @@ async def list_contacts(
         q_legacy = None
         q_web["in_pipeline"] = True
     elif tab == "franchise":
-        # Franchise enquiries that are NOT in the sales pipeline
+        # ALL franchise enquiries — pipeline membership is now just a tag, not
+        # an exclusion. Pipeline contacts also appear here, so we never lose
+        # track of someone just because they're being actively chased.
         q_legacy = None
-        q_web["$and"] = [
-            {"source": "franchise_enquiry"},
-            {"$or": [{"in_pipeline": {"$ne": True}}, {"in_pipeline": {"$exists": False}}]},
-        ]
+        q_web["source"] = "franchise_enquiry"
     elif tab == "licence":
-        # Licence enquiries that are NOT in the sales pipeline
+        # ALL licence enquiries (including those currently in the pipeline).
         q_legacy = None
-        q_web["$and"] = [
-            {"source": "licence_enquiry"},
-            {"$or": [{"in_pipeline": {"$ne": True}}, {"in_pipeline": {"$exists": False}}]},
-        ]
+        q_web["source"] = "licence_enquiry"
     elif tab == "general":
-        # General + legacy contacts that are NOT in the sales pipeline
-        q_legacy = {}  # all legacy
-        q_web["$and"] = [
-            {"source": "general_enquiry"},
-            {"$or": [{"in_pipeline": {"$ne": True}}, {"in_pipeline": {"$exists": False}}]},
-        ]
+        # General + legacy contacts (legacy gets the long-tail of pre-2024
+        # enquiries; web=general_enquiry covers anything new).
+        q_legacy = {}
+        q_web["source"] = "general_enquiry"
     else:
         if source:
             if source == "legacy_general_enquiry":
