@@ -337,7 +337,7 @@ export default function FranchiseeDetailPage() {
               <EditField field="country" label="Country" value={f.country} editing={editing} draft={draft} setDraft={setDraft} />
               <div>
                 <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Date Added</div>
-                <div className="text-sm text-stone-900 mt-1 tabular-nums">{f.date_added ? formatDate(f.date_added) : <span className="text-stone-300">—</span>}</div>
+                <div className="text-sm text-stone-900 mt-1 tabular-nums">{(f.date_added || f.created_at) ? formatDate(f.date_added || f.created_at) : <span className="text-stone-300">—</span>}</div>
               </div>
             </div>
           </Panel>

@@ -6,6 +6,7 @@ load_dotenv(ROOT_DIR / ".env")
 
 import os
 import logging
+import re
 import uuid
 import bcrypt
 import jwt
@@ -844,17 +845,21 @@ async def convert_contact_to_franchisee(contact_id: str, user: dict = Depends(re
     if contact.get("why_contacting"):
         notes_lines.append(f"Why contacting: {contact['why_contacting']}")
     if contact.get("date"):
-        notes_lines.append(f"Original enquiry date: {contact['date']}")
+        # Format ISO date to DD/MM/YYYY for human-readable notes
+        raw_date = str(contact["date"])
+        m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", raw_date)
+        display_date = f"{m.group(3)}/{m.group(2)}/{m.group(1)}" if m else raw_date
+        notes_lines.append(f"Original enquiry date: {display_date}")
     franchisee_doc = {
         "id": f_id,
         "record_type": record_type,
         "first_name": contact.get("first_name"),
         "last_name": contact.get("last_name"),
         "organisation": contact.get("establishment_name"),
-        "email": contact.get("email"),
+        "email": (contact.get("email") or "").lower() or None,
         "telephone": contact.get("telephone"),
         "mobile_phone": contact.get("mobile_phone"),
-        "postcode": contact.get("postcode"),
+        "postcode": (contact.get("postcode") or "").upper() or None,
         "city": contact.get("city"),
         "country": contact.get("country_tag"),
         "potential": contact.get("potential"),

@@ -22,12 +22,23 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
 - **Phase 1** ✅ Admin shell + login + CRM core + Airtable migration + WordPress form pipeline (×3 forms) + anniversary reminders scaffold
 - **Phase 1.5** GoCardless live mandate status (read-only API + webhook). Replaces static `mandate` field with live status pill + last/next payment.
 - **Phase 1.6** ✅ Sales pipeline (simple): Kanban view of enquiries with stages New → Contacted → Qualified → Demo Booked → Converted → Lost
+- **Phase 1.7** ✅ One-click Convert to Franchisee/Licencee from sales pipeline; Franchisee detail page consolidates contracts (Contracts sidebar tab retired)
 - **Phase 2** Order management + WooCommerce live sync + Gantt view
 - **Phase 3** Franchisee logins + Cloudflare R2 file storage + file browser (FileCamp retired)
 - **Phase 4** Territory mapping tool + public find-a-class embed (replaces DaD Postcode Lookup)
 - **Phase 5** Licensee portal + 8-download/month quota + optional GoCardless webhook
 
 ## What's Implemented (2026-05-14)
+
+### Phase 1.7 — Iteration 15 (2026-05-14) ✅ Convert + Layout Consolidation
+- **One-click Convert to Franchisee/Licencee** — new section in the ContactsPage drawer with a prominent CTA. Auto-derives `record_type` from the contact's source (`licence_enquiry` → Licencee, anything else → Franchisee). Backend `POST /api/contacts/{id}/convert-to-franchisee` creates the franchisee record, copies first/last/email/postcode/phones/organisation, stamps tags=['Converted from enquiry'], builds a notes string from the original message/referral_source/why_contacting/date (date now formatted DD/MM/YYYY), and marks the contact `pipeline_status='converted'` + `converted_to_franchisee_id`. Second call returns 409 idempotency lock. Email auto-lowercased, postcode auto-uppercased at insert-time. Drawer flips to "VIEW RECORD" (emerald) for already-converted contacts.
+- **Franchisee Detail Page rewrite** — inline-edit on contact + address fields (Pencil → Save/Cancel, EditField component); prominent Current Contract card with `daysFromToday` countdown ("X days remaining" / "Expired Xd ago" / "Expiring" / "Soon" tiers and colour); Previous Contracts history table; Territory Map placeholder (Phase 4 Mapbox stub with dot-grid + postcode-sector pills); Original Enquiry panel (when present); KPI strip (Contracts / Territory / Mandate); 'Date Added' falls back to `created_at` when `date_added` empty.
+- **Contracts sidebar tab removed** — `Layout.js` NAV no longer includes the standalone Contracts link. Contracts now live exclusively inside each franchisee's detail page (single source of truth, no double-handling). The /contracts route is still mounted in App.js for any old bookmarks.
+- **Shared date helper** — `/app/frontend/src/lib/date.js` (`formatDate`, `daysFromToday`, `daysBetween`, `daysSinceToday`). All dates on FranchiseeDetailPage, drawer, and convert-note now use DD/MM/YYYY.
+
+### Tests (iteration 15)
+- Backend: 9/9 pytest pass (`test_iter15_convert.py`) — franchise→franchisee, licence→licencee, 409 idempotency, GET no _id leak, PATCH normalises postcode/email + updated_at/updated_by, 404 on missing, dashboard funnel intact, move/promote/demote regression, bulk-move regression.
+- Frontend: 100% — sidebar without Contracts, drawer-convert label switches Franchisee↔Licencee by source, convert→confirm→navigate flow, FranchiseeDetailPage panels render, inline edit save persists + uppercases postcode, cancel-edit discards draft, already-converted state shows VIEW RECORD, 409 on 2nd convert, DD/MM/YYYY dates throughout.
 
 ### Phase 1 — Iteration 14 (2026-05-14)
 - **Bulk pipeline stage change** — bulk action bar's "Move Selected ▾" menu (and per-row Move ▾) now lets you bulk-change pipeline stage on any tab. On the Sales Pipeline tab the first option re-labels to "Change Pipeline Stage" and the submenu header to "Change stage to"; selected cards stay visible and update in-place. From Franchise/Licence/General tabs the menu still reads "Sales Pipeline" + "Move to pipeline stage" and moves the contacts into pipeline at the chosen stage in one click. Works for all 6 stages: New / Contacted / Qualified / Demo Booked / Converted / Lost.
