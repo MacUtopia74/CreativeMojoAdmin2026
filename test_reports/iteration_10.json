@@ -1,0 +1,29 @@
+{
+  "summary": "Iteration 10 testing complete. ALL backend (16/16 pytest) and ALL frontend (Playwright on public preview URL) acceptance criteria PASS. Backend: POST /api/contacts/import verified for target=licence (3 rows -> inserted=2, skipped_duplicate=1 vs Sally Hare email, skipped_empty=0), target=pipeline+pipeline_status=qualified (in_pipeline=true, status=qualified, source=franchise_enquiry), target=general (source=general_enquiry, in_pipeline=false), target=franchise with ISO timestamp '2026-05-01T10:00:00Z' -> stored date='2026-05-01' (truncated). Validation: invalid target -> 400, invalid pipeline_status -> 400, empty rows -> 400, no-auth -> 401. dedupe_by_email=false bypasses dup check (2 inserted same email). All-empty row -> skipped_empty++. Intake routing: form_id=17 -> in_pipeline=true source=franchise_enquiry stage=new; form_id=32 -> in_pipeline=true source=licence_enquiry stage=new; form_id=1 -> in_pipeline=false source=general_enquiry. Data sanity: pipeline tab has >=13 rows all in_pipeline=true; franchise tab >=1500 (~1660 in spec); licence tab non-empty. Frontend: Sales Pipeline default tab shows All 13 / Fresh 10 / Recent 0 / Stale 3 — EXACT match with spec. import-csv-button visible next to add-contact-button. Clicking opens import-csv-modal Step 1. set_input_files with 'First Name,Surname Name,Email,Telephone Number,Entry Date' header + 2 data rows progressed to Step 2 with 4 target buttons. import-pipeline-stage HIDDEN when target=licence, VISIBLE when target=pipeline. Submitting with target=licence -> Step 3 'Imported 2 contacts · Sent to Licence Contacts'. After Close, page auto-jumped to Licence Contacts tab; both imported rows visible with sparkle manual-badge (count=2). All test contacts cleaned up via DELETE /api/contacts/{id} (status 200).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter10_import_intake.py",
+    "/app/test_reports/pytest/iter10_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py:1057 references MOVE_TARGETS which is defined later at line 1209 — works only because evaluation happens at request time, but module-level ordering is fragile. Consider hoisting MOVE_TARGETS and PIPELINE_STAGES near the top of the file alongside other constants.",
+    "import_contacts() pre-loads ALL existing emails from web_form_contacts into memory for dedupe (set ~7000 rows currently). Fine for now but won't scale past low-hundreds of thousands; consider per-row indexed lookup or bulk $in query against just the incoming emails.",
+    "import_contacts() persists docs via insert_many WITHOUT ordered=False — on insert failure the whole batch aborts (no per-row error reporting). Acceptable for v1 but worth flagging if partial-failure UX is wanted.",
+    "ContactImportRow.date accepts free-form string; only normalises if 'T' is present. Malformed dates (e.g. '14/05/2026' UK-style) pass through unchanged and may break downstream date sorting. Consider stricter ISO/YYYY-MM-DD validation or dateutil parsing.",
+    "server.py is now ~1496 lines and ContactsPage.js ~1130+ lines — both well past the 700-line threshold flagged in earlier iterations. Splitting ImportCsvModal into its own component file (and a routes/contacts.py module on backend) would be a sensible follow-up.",
+    "Frontend ImportCsvModal correctly closes/clears state on success and triggers parent-driven tab switch via onImported. Manual badge re-uses data-testid='manual-badge' so the existing iter9 sparkle treatment carries over for imported rows (verified — 2 badges on screen).",
+    "Backend correctly sets manually_added_by=user.email and import_batch=now_iso on every imported doc — these survive the GET round-trip so the frontend badge logic works without extra wiring."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter10_import_intake.py (NEW — 16 tests, full cleanup via fixture; no persistent DB writes)"
+  ],
+  "success_rate": {"backend": "16/16 (100%)", "frontend": "100% — every advertised iter10 acceptance criterion verified"},
+  "test_credentials": "admin@creativemojo.co.uk / CreativeMojo2026!  ·  INTAKE_TOKEN=cm_intake_8f4a3c8b9e2d7f1a5c8b9e2d7f1a5c8b",
+  "seed_data_creation": "All backend tests use TEST_/qa10*/qa.tracy.iter10*/tf17/tf32/tf1 prefixed emails and clean up via DELETE /api/contacts/{id} in the created_ids fixture teardown. Frontend Playwright test cleans up qa.tracy.iter10@example.com and qa.sue.iter10@example.com via fetch DELETE in finally block. No persistent state changes to existing Sally Hare or other production records.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter10 features (POST /api/contacts/import, FORM_IDS_IN_PIPELINE routing for forms 17/32, 30-day pipeline freshness rule, 3-step ImportCsvModal with auto-tab-switch + manual badge on imported rows) all verified working end-to-end. test_iter10_import_intake.py is reusable and runs in ~6s — safe for CI regression. Pipeline currently has 13 active records; do NOT run /api/migration/run again as the cleanup has already been applied. Sally Hare (sallyhare6119@gmail.com) is in Pipeline (form 32, today) — use that email for dedupe testing.",
+  "rca of the issue": "n/a — no functional defects found in iter10."
+}

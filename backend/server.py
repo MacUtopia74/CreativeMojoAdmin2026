@@ -450,11 +450,10 @@ FORM_ID_TO_SOURCE = {
     32: "licence_enquiry",      # licence enquiry form
 }
 
-# Form IDs that should go straight into the active Sales Pipeline by default.
-# Empty set = every new form submission lands in Franchise/General Contacts and the admin
-# manually promotes the ones worth pursuing. This matches the workflow the team uses
-# (pipeline = actively-worked leads only).
-FORM_IDS_IN_PIPELINE: set = set()
+# Form IDs whose submissions land directly in the active Sales Pipeline as "New".
+# Form 17 = Franchise Enquiry · Form 32 = Licence Enquiry. These represent fresh leads
+# that should be triaged by the sales team immediately, not parked in the contacts tabs.
+FORM_IDS_IN_PIPELINE: set = {17, 32}
 
 
 def _pick(fields_by_label: dict, *candidates: str) -> Optional[str]:
@@ -1027,6 +1026,116 @@ class PipelineUpdateRequest(BaseModel):
 
 
 PIPELINE_STAGES = ["new", "contacted", "qualified", "demo_booked", "converted", "lost", "archive"]
+
+
+class ContactImportRow(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: Optional[str] = None
+    telephone: Optional[str] = None
+    postcode: Optional[str] = None
+    city: Optional[str] = None
+    country: Optional[str] = None
+    establishment_name: Optional[str] = None
+    referral_source: Optional[str] = None
+    message: Optional[str] = None
+    date: Optional[str] = None  # ISO date or YYYY-MM-DD
+
+
+class ContactImportRequest(BaseModel):
+    target: str  # "pipeline" | "franchise" | "licence" | "general"
+    pipeline_status: Optional[str] = None
+    rows: List[ContactImportRow]
+    dedupe_by_email: bool = True
+
+
+@api.post("/contacts/import")
+async def import_contacts(body: ContactImportRequest, user: dict = Depends(require_role("admin"))):
+    """Bulk-import contacts (e.g. CSV of historical Gravity Forms entries that never
+    reached Airtable). Skips rows with no name/email/establishment and rows whose email
+    already exists when dedupe_by_email=True."""
+    if body.target not in MOVE_TARGETS:
+        raise HTTPException(status_code=400, detail=f"target must be one of {MOVE_TARGETS}")
+    if body.target == "pipeline" and body.pipeline_status and body.pipeline_status not in PIPELINE_STAGES:
+        raise HTTPException(status_code=400, detail=f"pipeline_status must be one of {PIPELINE_STAGES}")
+    if not body.rows:
+        raise HTTPException(status_code=400, detail="No rows supplied")
+
+    source_by_target = {
+        "pipeline":  "franchise_enquiry",
+        "franchise": "franchise_enquiry",
+        "licence":   "licence_enquiry",
+        "general":   "general_enquiry",
+    }
+    source = source_by_target[body.target]
+    in_pipeline = (body.target == "pipeline")
+    pipeline_status = (body.pipeline_status or "new") if in_pipeline else None
+
+    now = datetime.now(timezone.utc).isoformat()
+    inserted = 0
+    skipped_empty = 0
+    skipped_duplicate = 0
+    existing_emails: set = set()
+    if body.dedupe_by_email:
+        cur = db.web_form_contacts.find({"email": {"$ne": None}}, {"_id": 0, "email": 1})
+        async for r in cur:
+            if r.get("email"):
+                existing_emails.add(r["email"].strip().lower())
+
+    docs_to_insert = []
+    for row in body.rows:
+        if not (row.first_name or row.last_name or row.email or row.establishment_name):
+            skipped_empty += 1
+            continue
+        email = (row.email or "").strip().lower() or None
+        if body.dedupe_by_email and email and email in existing_emails:
+            skipped_duplicate += 1
+            continue
+        if email:
+            existing_emails.add(email)
+        date_val = (row.date or "").strip() or now
+        # Normalise date if it's full ISO timestamp
+        if "T" in date_val:
+            try:
+                date_val = date_val[:10]
+            except Exception:
+                pass
+        doc = {
+            "id": str(uuid.uuid4()),
+            "first_name": (row.first_name or "").strip() or None,
+            "last_name": (row.last_name or "").strip() or None,
+            "email": email,
+            "telephone": (row.telephone or "").strip() or None,
+            "postcode": (row.postcode or "").strip().upper() or None,
+            "city": (row.city or "").strip() or None,
+            "country_tag": (row.country or "").strip() or None,
+            "establishment_name": (row.establishment_name or "").strip() or None,
+            "referral_source": (row.referral_source or "").strip() or None,
+            "message": (row.message or "").strip() or None,
+            "source": source,
+            "in_pipeline": in_pipeline,
+            "pipeline_status": pipeline_status,
+            "form_id": None,
+            "date": date_val,
+            "date_added": date_val,
+            "received_at": now,
+            "created_at": now,
+            "updated_at": now,
+            "manually_added_by": user.get("email"),
+            "import_batch": now,
+        }
+        docs_to_insert.append(doc)
+
+    if docs_to_insert:
+        await db.web_form_contacts.insert_many(docs_to_insert)
+        inserted = len(docs_to_insert)
+    return {
+        "ok": True,
+        "inserted": inserted,
+        "skipped_empty": skipped_empty,
+        "skipped_duplicate": skipped_duplicate,
+        "target": body.target,
+    }
 
 
 @api.patch("/contacts/{contact_id}/pipeline")

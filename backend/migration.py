@@ -296,26 +296,32 @@ async def run_migration(db, airtable_pat: str, airtable_base_id: str, run_by_ema
                 doc["pipeline_status"] = "archive"  # legacy data
             elif coll_name == "web_form_contacts":
                 doc["source"] = "franchise_enquiry"
-                # Franchise-tagged enquiries (any "Franchise…" value in the "Why you are contacting
-                # us" field) are general franchise contact-form submissions, NOT actively-worked
-                # sales leads. Park them in "Franchise Contacts" so the Sales Pipeline only
-                # contains contacts that have been actively engaged and moved into it manually.
-                wc = (doc.get("why_contacting") or "")
-                is_franchise_form = wc in ("Franchise enquiry", "Franchise Enquiry", "Franchise Enquiry Contact Form")
-                if is_franchise_form:
+                # Pipeline placement rule:
+                #   • Recent (≤ 30 days) franchise/licence enquiries → Pipeline as "New" so the
+                #     sales team triages them.
+                #   • Records already advanced past "new" (response sent / qualified / converted)
+                #     stay in Pipeline regardless of age.
+                #   • Older or untouched enquiries → Franchise Contacts (out of pipeline).
+                from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+                cutoff = (_dt.now(_tz.utc) - _td(days=30)).strftime("%Y-%m-%d")
+                date_str = doc.get("date") or ""
+                is_recent = bool(date_str) and date_str >= cutoff
+
+                # Derive a stage signal from existing Airtable fields
+                stage = None
+                if doc.get("response_sent") and str(doc["response_sent"]).lower() not in ("no", "false", ""):
+                    stage = "contacted"
+                if doc.get("potential") and "yes" in str(doc.get("potential", "")).lower():
+                    stage = "qualified"
+                if doc.get("_franchisee_airtable_ids"):
+                    stage = "converted"
+
+                if is_recent or stage:
+                    doc["in_pipeline"] = True
+                    doc["pipeline_status"] = stage or "new"
+                else:
                     doc["in_pipeline"] = False
                     doc["pipeline_status"] = None
-                else:
-                    doc["in_pipeline"] = True  # imported Airtable web-form records are franchise enquiries
-                    # Default pipeline status based on existing fields
-                    doc["pipeline_status"] = "new"
-                    if doc.get("response_sent") and str(doc["response_sent"]).lower() not in ("no", "false", ""):
-                        doc["pipeline_status"] = "contacted"
-                    if doc.get("potential") and "yes" in str(doc.get("potential", "")).lower():
-                        doc["pipeline_status"] = "qualified"
-                    # If linked to a franchisee → converted
-                    if doc.get("_franchisee_airtable_ids"):
-                        doc["pipeline_status"] = "converted"
             airtable_id_to_uuid[coll_name][rec["id"]] = doc["id"]
             docs.append(doc)
         if docs:

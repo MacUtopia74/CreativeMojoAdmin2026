@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import api from "@/lib/api";
-import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus, Plus, Sparkles } from "lucide-react";
+import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus, Plus, Sparkles, Upload, FileText, CheckCircle2 } from "lucide-react";
 
 const STAGES = [
   { key: "new", label: "New", color: "bg-stone-100 text-stone-700 border-stone-300", barColor: "bg-stone-400" },
@@ -239,6 +239,255 @@ function Field({ label, value, onChange, type = "text", testid, wide }) {
       <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1.5">{label}</label>
       <input type={type} value={value} onChange={onChange} data-testid={testid}
         className="w-full px-3 py-2 bg-white border border-stone-300 text-sm rounded-lg focus:outline-none focus:border-stone-900" />
+    </div>
+  );
+}
+
+// CSV header alias map — common Gravity Forms / Excel column variations
+const CSV_HEADER_ALIASES = {
+  first_name:         ["first name", "firstname", "given name", "fname"],
+  last_name:          ["last name", "surname", "surname name", "lastname", "family name", "lname"],
+  email:              ["email", "email address", "e-mail"],
+  telephone:          ["telephone", "telephone number", "phone", "phone number", "mobile", "tel"],
+  postcode:           ["postcode", "post code", "zip", "zip code", "postal code"],
+  city:               ["city", "city / town", "town", "city/town"],
+  country:            ["country"],
+  establishment_name: ["establishment", "establishment name", "business", "business name", "company", "1st line of address", "address"],
+  referral_source:    ["referral", "referral source", "where did you hear about us", "where did you hear about creative mojo", "how did you hear about us"],
+  message:            ["message", "your message", "comments", "notes"],
+  date:               ["date", "entry date", "submission date", "submitted at", "created", "created at"],
+};
+
+function parseCsv(text) {
+  // Tolerant CSV parser handling quoted fields with embedded commas + newlines + ""-escape
+  const rows = [];
+  let row = [], cell = "", inQuotes = false, i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"' && text[i + 1] === '"') { cell += '"'; i += 2; continue; }
+      if (ch === '"') { inQuotes = false; i++; continue; }
+      cell += ch; i++; continue;
+    }
+    if (ch === '"') { inQuotes = true; i++; continue; }
+    if (ch === ",") { row.push(cell); cell = ""; i++; continue; }
+    if (ch === "\r") { i++; continue; }
+    if (ch === "\n") { row.push(cell); rows.push(row); row = []; cell = ""; i++; continue; }
+    cell += ch; i++;
+  }
+  if (cell.length > 0 || row.length > 0) { row.push(cell); rows.push(row); }
+  return rows.filter((r) => r.some((c) => c && c.trim()));
+}
+
+function mapHeaders(headers) {
+  const out = {};
+  headers.forEach((h, idx) => {
+    const norm = (h || "").trim().toLowerCase();
+    for (const field of Object.keys(CSV_HEADER_ALIASES)) {
+      if (CSV_HEADER_ALIASES[field].includes(norm) || norm === field) {
+        out[field] = idx;
+        break;
+      }
+    }
+  });
+  return out;
+}
+
+function ImportCsvModal({ open, onClose, onImported, defaultTarget = "licence" }) {
+  const [step, setStep] = useState(1);          // 1: upload, 2: preview, 3: done
+  const [target, setTarget] = useState(defaultTarget);
+  const [pipelineStage, setPipelineStage] = useState("new");
+  const [dedupe, setDedupe] = useState(true);
+  const [filename, setFilename] = useState("");
+  const [headers, setHeaders] = useState([]);
+  const [mapped, setMapped] = useState({});
+  const [parsedRows, setParsedRows] = useState([]);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+
+  useEffect(() => { if (open) { setStep(1); setTarget(defaultTarget); setErr(""); setResult(null); setParsedRows([]); setHeaders([]); setMapped({}); setFilename(""); } }, [open, defaultTarget]);
+
+  if (!open) return null;
+
+  const onFile = async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setErr("");
+    setFilename(f.name);
+    try {
+      const text = await f.text();
+      const rows = parseCsv(text);
+      if (rows.length < 2) { setErr("CSV looks empty — need a header row and at least one data row."); return; }
+      const hdrs = rows[0].map((h) => (h || "").trim());
+      const dataRows = rows.slice(1);
+      const colMap = mapHeaders(hdrs);
+      const matchedFields = Object.keys(colMap).length;
+      if (matchedFields === 0) { setErr(`No recognised columns. CSV headers I saw: ${hdrs.join(", ")}`); return; }
+      // Project each row into a typed object
+      const proj = dataRows.map((r) => {
+        const obj = {};
+        Object.entries(colMap).forEach(([field, idx]) => { obj[field] = (r[idx] || "").trim(); });
+        return obj;
+      }).filter((o) => o.first_name || o.last_name || o.email || o.establishment_name);
+      setHeaders(hdrs);
+      setMapped(colMap);
+      setParsedRows(proj);
+      setStep(2);
+    } catch (ex) {
+      setErr("Could not read the file. Please upload a UTF-8 CSV.");
+    }
+  };
+
+  const TARGETS = [
+    { key: "licence",   label: "Licence Contacts",   icon: UserPlus },
+    { key: "franchise", label: "Franchise Contacts", icon: Users },
+    { key: "general",   label: "General Contacts",   icon: Users },
+    { key: "pipeline",  label: "Sales Pipeline",     icon: Briefcase },
+  ];
+
+  const submit = async () => {
+    setBusy(true); setErr("");
+    try {
+      const payload = { target, dedupe_by_email: dedupe, rows: parsedRows };
+      if (target === "pipeline") payload.pipeline_status = pipelineStage;
+      const r = await api.post("/contacts/import", payload);
+      setResult(r.data);
+      setStep(3);
+      onImported && onImported(r.data, target);
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Import failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div onClick={onClose} className="fixed inset-0 z-50 bg-stone-950/40 backdrop-blur-sm flex items-start justify-center p-6 overflow-y-auto" data-testid="import-csv-modal">
+      <div onClick={(e) => e.stopPropagation()} className="w-full max-w-2xl bg-white border border-stone-200 rounded-2xl shadow-2xl my-10">
+        <div className="px-6 py-4 border-b border-stone-200 flex items-center justify-between">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">Bulk import · Step {step} of 3</div>
+            <h2 className="text-xl font-display font-black text-stone-950 mt-1">Import contacts from CSV</h2>
+          </div>
+          <button onClick={onClose} data-testid="import-close" className="w-9 h-9 flex items-center justify-center hover:bg-stone-100 rounded-lg"><X className="w-4 h-4" /></button>
+        </div>
+
+        {step === 1 && (
+          <div className="p-6 space-y-5">
+            <div className="text-sm text-stone-700">
+              Upload a CSV exported from Gravity Forms, Mailchimp, or any spreadsheet. We auto-detect the following columns (case-insensitive, common aliases supported):
+            </div>
+            <div className="grid grid-cols-2 gap-1 text-xs text-stone-600">
+              {Object.keys(CSV_HEADER_ALIASES).map((f) => <div key={f}>· <code className="font-mono">{f}</code></div>)}
+            </div>
+            <label className="block">
+              <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-2">CSV file</div>
+              <div className="border-2 border-dashed border-stone-300 rounded-xl p-6 text-center hover:border-stone-500 transition-colors cursor-pointer">
+                <Upload className="w-6 h-6 mx-auto text-stone-400 mb-2" />
+                <div className="text-sm text-stone-700">Click to choose, or drop a CSV file here</div>
+                <input type="file" accept=".csv,text/csv" onChange={onFile} className="hidden" data-testid="csv-file-input" />
+              </div>
+            </label>
+            {err && <div className="px-4 py-3 border border-red-200 bg-red-50 text-sm text-red-800 rounded-xl flex items-center gap-2"><AlertCircle className="w-4 h-4 shrink-0" /><span>{err}</span></div>}
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="p-6 space-y-5">
+            <div className="px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl text-sm flex items-center gap-2">
+              <FileText className="w-4 h-4 text-stone-500" />
+              <span><strong>{filename}</strong> — {parsedRows.length} usable rows · {Object.keys(mapped).length} columns mapped</span>
+            </div>
+
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-2">Send these contacts to</div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                {TARGETS.map((t) => {
+                  const active = target === t.key;
+                  const Icon = t.icon;
+                  return (
+                    <button key={t.key} onClick={() => setTarget(t.key)} data-testid={`import-target-${t.key}`}
+                      className={`px-3 py-3 border rounded-xl text-xs font-bold uppercase tracking-wider flex flex-col items-center gap-1.5 ${
+                        active ? "bg-stone-950 text-white border-stone-950" : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"
+                      }`}>
+                      <Icon className="w-4 h-4" /> <span className="text-[10px] leading-tight text-center">{t.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {target === "pipeline" && (
+                <div className="mt-3">
+                  <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1.5">Starting pipeline stage</label>
+                  <select value={pipelineStage} onChange={(e) => setPipelineStage(e.target.value)} data-testid="import-pipeline-stage"
+                    className="w-full px-3 py-2 bg-white border border-stone-300 text-sm rounded-lg">
+                    {STAGES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={dedupe} onChange={(e) => setDedupe(e.target.checked)} data-testid="import-dedupe" />
+              <span>Skip rows whose email already exists in the CRM (recommended)</span>
+            </label>
+
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-2">Preview · first 5 rows</div>
+              <div className="border border-stone-200 rounded-xl overflow-x-auto max-h-64">
+                <table className="w-full text-xs">
+                  <thead className="bg-stone-50 border-b border-stone-200">
+                    <tr>{Object.keys(mapped).map((f) => <th key={f} className="px-2 py-1.5 text-left font-bold text-stone-700">{f}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {parsedRows.slice(0, 5).map((r, i) => (
+                      <tr key={i} className="border-b border-stone-100 last:border-0">
+                        {Object.keys(mapped).map((f) => <td key={f} className="px-2 py-1 text-stone-700 whitespace-nowrap">{r[f] || "—"}</td>)}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            {err && <div className="px-4 py-3 border border-red-200 bg-red-50 text-sm text-red-800 rounded-xl flex items-center gap-2"><AlertCircle className="w-4 h-4 shrink-0" /><span>{err}</span></div>}
+          </div>
+        )}
+
+        {step === 3 && result && (
+          <div className="p-6 space-y-3">
+            <div className="px-4 py-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-start gap-3">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 mt-0.5 shrink-0" />
+              <div>
+                <div className="font-bold text-emerald-900">Imported {result.inserted} contact{result.inserted === 1 ? "" : "s"}</div>
+                <div className="text-xs text-emerald-800 mt-1">
+                  Sent to <strong>{TARGETS.find((t) => t.key === result.target)?.label || result.target}</strong>.
+                  {result.skipped_empty ? ` Skipped ${result.skipped_empty} empty rows.` : ""}
+                  {result.skipped_duplicate ? ` Skipped ${result.skipped_duplicate} duplicate emails.` : ""}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="px-6 py-4 border-t border-stone-200 flex items-center justify-end gap-2 bg-stone-50 rounded-b-2xl">
+          {step === 2 && (
+            <button onClick={() => setStep(1)} className="px-4 py-2 text-xs font-bold uppercase tracking-wider border border-stone-300 bg-white text-stone-700 hover:bg-stone-50 rounded-lg">
+              ← Back
+            </button>
+          )}
+          <button onClick={onClose} data-testid="import-cancel"
+            className="px-4 py-2 text-xs font-bold uppercase tracking-wider border border-stone-300 bg-white text-stone-700 hover:bg-stone-50 rounded-lg">
+            {step === 3 ? "Close" : "Cancel"}
+          </button>
+          {step === 2 && (
+            <button onClick={submit} disabled={busy || parsedRows.length === 0} data-testid="import-submit"
+              className="px-5 py-2 text-xs font-bold uppercase tracking-wider bg-[#D4FF00] hover:bg-[#BDE600] text-stone-950 rounded-lg disabled:opacity-50 flex items-center gap-1.5">
+              {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+              Import {parsedRows.length} contact{parsedRows.length === 1 ? "" : "s"}
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -500,6 +749,7 @@ export default function ContactsPage() {
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [lastSelectedId, setLastSelectedId] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [ageFilter, setAgeFilter] = useState("all");
 
   const clearSelection = () => { setSelectedIds(new Set()); setLastSelectedId(null); };
@@ -642,6 +892,10 @@ export default function ContactsPage() {
               placeholder="Search…"
               className="pl-9 pr-3 py-2 w-56 bg-stone-50 border border-stone-300 text-sm focus:outline-none focus:border-stone-900 rounded-lg" />
           </div>
+          <button onClick={() => setImportOpen(true)} data-testid="import-csv-button"
+            className="px-3 py-2 border border-stone-300 bg-white text-stone-900 text-xs font-bold uppercase tracking-wider hover:bg-stone-50 transition-colors rounded-lg flex items-center gap-1.5">
+            <Upload className="w-3.5 h-3.5" /> Import CSV
+          </button>
           <button onClick={() => setAddOpen(true)} data-testid="add-contact-button"
             className="px-4 py-2 bg-stone-950 text-white text-xs font-bold uppercase tracking-wider hover:bg-stone-800 transition-colors rounded-lg flex items-center gap-1.5">
             <Plus className="w-3.5 h-3.5" /> Add Contact
@@ -866,7 +1120,12 @@ export default function ContactsPage() {
       <AddContactModal open={addOpen} onClose={() => setAddOpen(false)}
         defaultTarget={tab === "pipeline" ? "franchise" : tab}
         onCreated={(_c, target) => {
-          // Jump to the tab the contact landed in so the user sees it immediately
+          if (target && target !== tab) setTab(target);
+          load();
+        }} />
+      <ImportCsvModal open={importOpen} onClose={() => setImportOpen(false)}
+        defaultTarget={tab === "pipeline" ? "licence" : tab}
+        onImported={(_r, target) => {
           if (target && target !== tab) setTab(target);
           load();
         }} />
