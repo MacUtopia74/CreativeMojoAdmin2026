@@ -512,18 +512,17 @@ export default function ContactsPage() {
   const toggleSelect = (id, evt) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      // Shift-click: select the range from the last clicked checkbox up to this one
-      if (evt && evt.shiftKey && lastSelectedId && lastSelectedId !== id) {
+      // Shift-click: extend the live selection from the anchor (last clicked checkbox)
+      // up to the current one. Only triggers when the anchor is still selected — otherwise
+      // fall through to single-toggle.
+      if (evt && evt.shiftKey && lastSelectedId && lastSelectedId !== id && next.has(lastSelectedId)) {
         const ids = visibleItems.map((c) => c.id);
         const a = ids.indexOf(lastSelectedId);
         const b = ids.indexOf(id);
         if (a !== -1 && b !== -1) {
           const [lo, hi] = a < b ? [a, b] : [b, a];
-          // If the anchor is currently selected, we ADD the range; otherwise we UNSET it.
-          const adding = next.has(lastSelectedId);
-          for (let i = lo; i <= hi; i++) {
-            if (adding) next.add(ids[i]); else next.delete(ids[i]);
-          }
+          // Anchor is selected — ADD the range to the selection.
+          for (let i = lo; i <= hi; i++) next.add(ids[i]);
           return next;
         }
       }

@@ -29,6 +29,15 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
 
 ## What's Implemented (2026-05-14)
 
+### Phase 1 — Iteration 9 (2026-05-14)
+- **Manual-add indicator** — manually-created contacts (those with `manually_added_by` set) show a yellow ✨ Sparkles icon next to their name in both the list view and pipeline kanban cards. Drawer now also displays a banner "Added manually by `<email>` on `<long-format date>`".
+- **Pipeline age filter** — on the Sales Pipeline tab, a row of 4 buttons above the summary tiles (All / Fresh ≤30d / Recent 30–90d / Stale >90d) filters the kanban + list to that age window. Live counts on each button. Made it immediately obvious that all 421 of the existing "New" pipeline records are >90 days old.
+- **Shift-click range select** — clicking a row checkbox while holding Shift selects every row between the last-clicked anchor and the current one. Works in both list view and pipeline kanban. Gracefully falls back to single-toggle when the anchor is no longer selected.
+
+### Tests (iteration 9)
+- Backend: 2/2 tests in `test_phase1_manual_flag.py` pass (manually_added_by + created_at stored on creation and on GET; imported contacts carry no such field).
+- Frontend: 100% — Playwright verified all 3 features: sparkle on row + drawer banner; age filter visible only on pipeline tab with correct counts and filter behaviour; shift-click 1→5 = 5 selected, then shift-click 8 = 8 selected (range extension); cleaned up post-test.
+
 ### Phase 1 — Iteration 8 (2026-05-14)
 - **Smarter contact search** — multi-token AND, OR across fields, with relevance ranking. Searching "Penny Davies" now returns Penny Davies (exact full-name match) first, then anyone else with both tokens present, then partial matches. Single-token search returns all rows containing that token (e.g. "Davies" → 6 Davies-surnamed records). Regex special chars are escaped so "J.K." is safe. Case-insensitive.
 - **POST /api/contacts** — admin can manually create a contact in any tab (target: pipeline/franchise/licence/general, with optional pipeline_status). Source mapped from target. Email auto-lowercased, postcode auto-uppercased. Stamped with `manually_added_by`.
