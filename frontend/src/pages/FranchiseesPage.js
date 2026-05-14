@@ -4,6 +4,44 @@ import api from "@/lib/api";
 import { Search, AlertCircle, RefreshCw, CreditCard, CheckCircle2, X } from "lucide-react";
 import { formatDate } from "@/lib/date";
 
+// Live GoCardless mandate pill — mirrors the one on FranchiseeDetailPage so the
+// list and detail views stay visually in sync.
+const MANDATE_STYLE = {
+  active: "bg-emerald-100 text-emerald-800 border-emerald-300",
+  pending_submission: "bg-blue-100 text-blue-800 border-blue-300",
+  submitted: "bg-blue-100 text-blue-800 border-blue-300",
+  pending_customer_approval: "bg-amber-100 text-amber-800 border-amber-300",
+  cancelled: "bg-red-100 text-red-800 border-red-300",
+  failed: "bg-red-100 text-red-800 border-red-300",
+  expired: "bg-stone-200 text-stone-700 border-stone-300",
+  consumed: "bg-stone-200 text-stone-700 border-stone-300",
+};
+const MANDATE_LABEL = {
+  active: "Active",
+  pending_submission: "Pending",
+  submitted: "Submitted",
+  pending_customer_approval: "Awaiting",
+  cancelled: "Cancelled",
+  failed: "Failed",
+  expired: "Expired",
+  consumed: "Consumed",
+};
+function MandateCell({ franchisee }) {
+  const s = franchisee.gocardless_mandate_status;
+  if (!s) {
+    if (franchisee.gocardless_customer_id) {
+      return <span className="text-stone-400 text-[10px] uppercase tracking-wider">No mandate</span>;
+    }
+    return <span className="text-stone-300 text-xs">—</span>;
+  }
+  return (
+    <span data-testid={`mandate-${franchisee.id}`}
+      className={`inline-block px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-md ${MANDATE_STYLE[s] || "bg-stone-100 text-stone-600 border-stone-200"}`}>
+      {MANDATE_LABEL[s] || s}
+    </span>
+  );
+}
+
 const SEGMENTS = [
   { key: "active", label: "Active", tag: "Franchisee" },
   { key: "ex", label: "Ex-Franchisees", tag: "EX-Franchisee" },
@@ -264,14 +302,14 @@ export default function FranchiseesPage() {
             <table className="w-full">
               <thead className="bg-[#F2F2F0] border-b border-stone-200">
                 <tr>
-                  <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-12">Photo</th>
-                  <th onClick={headerClick("franchise_number")} className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 cursor-pointer hover:bg-stone-200/50 w-24">No. <SortArrow col="franchise_number" /></th>
-                  <th onClick={headerClick("organisation")} className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 cursor-pointer hover:bg-stone-200/50">Organisation <SortArrow col="organisation" /></th>
-                  <th onClick={headerClick("last_name")} className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 cursor-pointer hover:bg-stone-200/50">Name <SortArrow col="last_name" /></th>
+                  <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-36">Photo</th>
+                  <th onClick={headerClick("franchise_number")} className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 cursor-pointer hover:bg-stone-200/50 w-16">No. <SortArrow col="franchise_number" /></th>
+                  <th onClick={headerClick("organisation")} className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 cursor-pointer hover:bg-stone-200/50 w-64">Organisation <SortArrow col="organisation" /></th>
+                  <th onClick={headerClick("last_name")} className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 cursor-pointer hover:bg-stone-200/50 w-40">Name <SortArrow col="last_name" /></th>
                   <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Mojo Email</th>
-                  <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-28">Postcode</th>
-                  <th onClick={headerClick("date_added")} className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 cursor-pointer hover:bg-stone-200/50 w-32">Added <SortArrow col="date_added" /></th>
-                  <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-24">Mandate</th>
+                  <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-24">Postcode</th>
+                  <th onClick={headerClick("date_added")} className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 cursor-pointer hover:bg-stone-200/50 w-28">Added <SortArrow col="date_added" /></th>
+                  <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-28">Mandate</th>
                 </tr>
               </thead>
               <tbody>
@@ -290,23 +328,17 @@ export default function FranchiseesPage() {
                           </div>
                         )}
                       </td>
-                      <td className="px-3 py-2 text-xs text-stone-500">{f.franchise_number || "—"}</td>
+                      <td className="px-3 py-2 text-xs text-stone-500 tabular-nums">{f.franchise_number || "—"}</td>
                       <td className="px-3 py-2">
-                        <Link to={`/franchisees/${f.id}`} className="text-sm font-semibold text-stone-950 hover:text-stone-700" data-testid={`franchisee-link-${f.id}`}>
+                        <Link to={`/franchisees/${f.id}`} className="text-sm font-semibold text-stone-950 hover:text-stone-700 leading-snug line-clamp-2" data-testid={`franchisee-link-${f.id}`}>
                           {f.organisation || "(no organisation)"}
                         </Link>
                       </td>
                       <td className="px-3 py-2 text-sm text-stone-700">{[f.first_name, f.last_name].filter(Boolean).join(" ") || "—"}</td>
-                      <td className="px-3 py-2 text-xs text-stone-600">{f.mojo_email || "—"}</td>
-                      <td className="px-3 py-2 text-xs text-stone-700">{f.postcode || "—"}</td>
-                      <td className="px-3 py-2 text-xs text-stone-500">{formatDate(f.date_added)}</td>
-                      <td className="px-3 py-2">
-                        {f.mandate ? (
-                          <span className="inline-block px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[#D4FF00]/20 border border-[#D4FF00]/60 text-stone-900 rounded-md">
-                            {Array.isArray(f.mandate) ? f.mandate[0] : f.mandate}
-                          </span>
-                        ) : <span className="text-stone-300 text-xs">—</span>}
-                      </td>
+                      <td className="px-3 py-2 text-xs text-stone-600 break-all">{f.mojo_email || "—"}</td>
+                      <td className="px-3 py-2 text-xs text-stone-700 tabular-nums">{f.postcode || "—"}</td>
+                      <td className="px-3 py-2 text-xs text-stone-500 tabular-nums">{formatDate(f.date_added)}</td>
+                      <td className="px-3 py-2"><MandateCell franchisee={f} /></td>
                     </tr>
                   );
                 })}
