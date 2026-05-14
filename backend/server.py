@@ -918,6 +918,64 @@ async def list_contracts(
     return {"items": items, "total": await db.contracts.count_documents(q)}
 
 
+@api.get("/contracts/renewals")
+async def list_contract_renewals(
+    within_days: int = Query(180, ge=1, le=3650, description="Only show contracts expiring within this many days from today; overdue always included."),
+    include_overdue: bool = Query(True),
+    _: dict = Depends(require_role("admin")),
+):
+    """Phase 1.8 — return all contracts that are either already expired (overdue)
+    or expiring within `within_days`, joined with franchisee details and
+    bucketed for the UI."""
+    today = datetime.now(timezone.utc).date()
+
+    cur = db.contracts.find({"renewal_date": {"$exists": True, "$nin": [None, ""]}}, {"_id": 0})
+    rows: list[dict] = []
+    async for c in cur:
+        try:
+            rd = c["renewal_date"]
+            renewal = datetime.strptime(rd[:10], "%Y-%m-%d").date()
+        except Exception:  # noqa: BLE001
+            continue
+        days = (renewal - today).days
+        if days < 0 and not include_overdue:
+            continue
+        if days > within_days:
+            continue
+        # bucket the row for easy UI grouping
+        if days < 0:
+            bucket = "overdue"
+        elif days <= 30:
+            bucket = "lt_30"
+        elif days <= 90:
+            bucket = "lt_90"  # the "reminder zone"
+        elif days <= 180:
+            bucket = "lt_180"
+        else:
+            bucket = "later"
+        rows.append({**c, "days_remaining": days, "bucket": bucket})
+
+    # Attach franchisee photo / mobile / mandate status
+    fids = list({r.get("franchisee_id") for r in rows if r.get("franchisee_id")})
+    franchisees_lookup = {
+        f["id"]: f for f in await db.franchisees.find(
+            {"id": {"$in": fids}},
+            {"_id": 0, "id": 1, "first_name": 1, "last_name": 1, "organisation": 1,
+             "mojo_email": 1, "email": 1, "mobile_phone": 1, "photos": 1, "postcode": 1,
+             "gocardless_mandate_status": 1, "gocardless_mandate_reference": 1, "tags": 1},
+        ).to_list(1000)
+    }
+    for r in rows:
+        r["franchisee"] = franchisees_lookup.get(r.get("franchisee_id"))
+
+    rows.sort(key=lambda r: r["days_remaining"])
+    counts = {"overdue": 0, "lt_30": 0, "lt_90": 0, "lt_180": 0, "later": 0}
+    for r in rows:
+        counts[r["bucket"]] = counts.get(r["bucket"], 0) + 1
+    counts["reminder_zone"] = counts["lt_30"] + counts["lt_90"]  # ≤90 days from today
+    return {"items": rows, "counts": counts, "window_days": within_days, "today": today.isoformat()}
+
+
 @api.get("/contracts/{contract_id}")
 async def get_contract(contract_id: str, _: dict = Depends(require_role("admin"))):
     c = await db.contracts.find_one({"id": contract_id}, {"_id": 0})

@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import api from "@/lib/api";
-import { RefreshCw, AlertCircle, Calendar, ArrowRight, Activity, TrendingUp, Users, FileText, Contact, MapPin, CreditCard, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { RefreshCw, AlertCircle, Calendar, ArrowRight, Activity, TrendingUp, Users, FileText, Contact, MapPin, CreditCard, AlertTriangle, CheckCircle2, BellRing, Mail } from "lucide-react";
 
 const PIPELINE_STAGES = [
   { key: "new", label: "New", color: "bg-stone-400" },
@@ -48,6 +48,7 @@ export default function DashboardPage() {
   const [stats, setStats] = useState(null);
   const [anniversaries, setAnniversaries] = useState(null);
   const [gcAlerts, setGcAlerts] = useState(null);
+  const [renewals, setRenewals] = useState(null);
   const [error, setError] = useState("");
   const [migrating, setMigrating] = useState(false);
   const [migrateResult, setMigrateResult] = useState(null);
@@ -65,6 +66,13 @@ export default function DashboardPage() {
       const { data } = await api.get("/gocardless/alerts", { params: { hours: 24 } });
       setGcAlerts(data);
     } catch (e) { /* GoCardless optional */ }
+    try {
+      // Phase 1.8 — To-Do panel sources contracts expiring in ≤90 days (the
+      // "reminder zone") plus an overdue count. We cap the window at 180d so
+      // the panel stays focused; the full list lives on /renewals.
+      const { data } = await api.get("/contracts/renewals", { params: { within_days: 180 } });
+      setRenewals(data);
+    } catch (e) { /* renewals optional */ }
   };
 
   useEffect(() => { refresh(); }, []);
@@ -128,6 +136,87 @@ export default function DashboardPage() {
           <KPI label="Enquiries" value={stats?.web_form_contacts} hint={`${conversionRate}% converted lifetime`} to="/contacts" testid="kpi-contacts" />
           <KPI label="Territory Postcodes" value={stats?.territories_migrated} hint="DaD bridge → Phase 4" testid="kpi-territories" />
         </div>
+
+        {/* Phase 1.8 — TO DO: Contract renewals in the reminder zone (≤90 days) */}
+        <Panel icon={BellRing} title="To Do · Contract Renewals" testid="panel-todo-renewals"
+          action={
+            <Link to="/renewals" className="text-xs font-bold uppercase tracking-wider text-stone-700 hover:text-stone-950 flex items-center gap-1" data-testid="todo-open-renewals">
+              Open Renewals <ArrowRight className="w-3 h-3" />
+            </Link>
+          }>
+          {!renewals ? (
+            <div className="text-sm text-stone-500">Loading renewals…</div>
+          ) : (() => {
+            const reminderItems = renewals.items.filter((r) => r.days_remaining >= 0 && r.days_remaining <= 90);
+            const expiringSoon = renewals.items.filter((r) => r.days_remaining > 90 && r.days_remaining <= 180);
+            if (reminderItems.length === 0 && expiringSoon.length === 0) {
+              return (
+                <div className="flex items-center gap-2 text-sm text-emerald-700 py-1">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Nothing to chase right now — no renewals in the next 180 days.</span>
+                </div>
+              );
+            }
+            return (
+              <div className="space-y-4">
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3" data-testid="todo-zone-overdue">
+                    <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-red-700">Already Expired</div>
+                    <div className="font-display text-2xl text-red-900 mt-1 tabular-nums">{renewals.counts.overdue || 0}</div>
+                  </div>
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3" data-testid="todo-zone-remind">
+                    <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-amber-700">≤ 90 Days · Remind</div>
+                    <div className="font-display text-2xl text-amber-900 mt-1 tabular-nums">{reminderItems.length}</div>
+                  </div>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3" data-testid="todo-zone-180">
+                    <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-blue-700">91 — 180 Days</div>
+                    <div className="font-display text-2xl text-blue-900 mt-1 tabular-nums">{expiringSoon.length}</div>
+                  </div>
+                </div>
+                {reminderItems.length > 0 && (
+                  <div>
+                    <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-2">Email reminders due now</div>
+                    <div className="border border-stone-200 rounded-lg divide-y divide-stone-100 overflow-hidden">
+                      {reminderItems.slice(0, 6).map((r) => {
+                        const f = r.franchisee || {};
+                        const to = f.mojo_email || f.email || r.email_rollup || "";
+                        const fname = f.first_name || "there";
+                        const org = f.organisation || "your Creative Mojo franchise";
+                        const renewalDate = r.renewal_date ? new Date(r.renewal_date).toLocaleDateString("en-GB") : "";
+                        const subject = `Your Creative Mojo franchise agreement renews in ${r.days_remaining} days`;
+                        const body = `Hi ${fname},\n\nJust a friendly heads-up — your franchise agreement for ${org} comes up for renewal on ${renewalDate} (${r.days_remaining} days from today).\n\nCould you have a quick look over your existing terms and let me know if you'd like to renew? Happy to jump on a call to talk through anything.\n\nBest,\nLiz @ Creative Mojo HQ`;
+                        const mailto = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+                        return (
+                          <div key={r.id} className="px-3 py-2 flex items-center gap-3 hover:bg-stone-50" data-testid={`todo-renewal-${r.id}`}>
+                            <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-md tabular-nums ${r.days_remaining <= 30 ? "bg-red-100 text-red-800 border-red-300" : "bg-amber-100 text-amber-900 border-amber-300"}`}>{r.days_remaining}d left</span>
+                            <Link to={`/franchisees/${f.id || ""}`} className="text-sm font-semibold text-stone-900 hover:underline flex-1 truncate">
+                              {org}
+                              <span className="text-xs text-stone-500 font-normal ml-2">· {[f.first_name, f.last_name].filter(Boolean).join(" ")}</span>
+                            </Link>
+                            <span className="text-[11px] text-stone-500 tabular-nums hidden md:inline">Renews {renewalDate}</span>
+                            {to ? (
+                              <a href={mailto} data-testid={`todo-mail-${r.id}`}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-red-600 hover:bg-red-700 text-white rounded-lg transition">
+                                <Mail className="w-3 h-3" /> Remind
+                              </a>
+                            ) : (
+                              <span className="text-[10px] text-stone-400">no email</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                      {reminderItems.length > 6 && (
+                        <Link to="/renewals" className="block px-3 py-2 text-[11px] text-stone-500 hover:text-stone-900 hover:bg-stone-50 text-center uppercase tracking-wider font-bold">
+                          + {reminderItems.length - 6} more · Open Renewals
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+        </Panel>
 
         {/* Sales pipeline funnel - full width */}
         <Panel icon={TrendingUp} title="Sales Pipeline · Enquiry Funnel" action={
