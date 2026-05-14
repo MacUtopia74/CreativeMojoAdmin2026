@@ -6,9 +6,9 @@ import { RefreshCw, AlertCircle, Calendar, ArrowRight, Activity, TrendingUp, Use
 const PIPELINE_STAGES = [
   { key: "new", label: "New", color: "bg-stone-400" },
   { key: "contacted", label: "Contacted", color: "bg-blue-400" },
-  { key: "qualified", label: "Qualified", color: "bg-amber-400" },
-  { key: "demo_booked", label: "Demo Booked", color: "bg-purple-400" },
-  { key: "converted", label: "Converted", color: "bg-emerald-500" },
+  { key: "qualified", label: "Interested", color: "bg-amber-400" },
+  { key: "demo_booked", label: "Shadow Day Booked", color: "bg-purple-400" },
+  { key: "converted", label: "Territory Map", color: "bg-emerald-500" },
   { key: "lost", label: "Lost", color: "bg-red-400" },
 ];
 

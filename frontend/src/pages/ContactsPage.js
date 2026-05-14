@@ -6,9 +6,9 @@ import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calend
 const STAGES = [
   { key: "new", label: "New", color: "bg-stone-100 text-stone-700 border-stone-300", barColor: "bg-stone-400" },
   { key: "contacted", label: "Contacted", color: "bg-blue-50 text-blue-700 border-blue-200", barColor: "bg-blue-400" },
-  { key: "qualified", label: "Qualified", color: "bg-amber-50 text-amber-800 border-amber-200", barColor: "bg-amber-400" },
-  { key: "demo_booked", label: "Demo Booked", color: "bg-purple-50 text-purple-700 border-purple-200", barColor: "bg-purple-400" },
-  { key: "converted", label: "Converted", color: "bg-emerald-50 text-emerald-700 border-emerald-200", barColor: "bg-emerald-500" },
+  { key: "qualified", label: "Interested", color: "bg-amber-50 text-amber-800 border-amber-200", barColor: "bg-amber-400" },
+  { key: "demo_booked", label: "Shadow Day Booked", color: "bg-purple-50 text-purple-700 border-purple-200", barColor: "bg-purple-400" },
+  { key: "converted", label: "Territory Map", color: "bg-emerald-50 text-emerald-700 border-emerald-200", barColor: "bg-emerald-500" },
   { key: "lost", label: "Lost", color: "bg-red-50 text-red-700 border-red-200", barColor: "bg-red-400" },
 ];
 
@@ -984,11 +984,11 @@ export default function ContactsPage() {
     try {
       const { data: res } = await api.post(`/contacts/${contact.id}/convert-to-franchisee`);
       const fid = res?.franchisee?.id;
-      // Update the contact in-place to reflect "converted" status
+      // Update the contact in-place to reflect "converted" status — removes from pipeline
       setData((d) => ({
         ...d,
         items: d.items.map((c) => c.id === contact.id
-          ? { ...c, in_pipeline: true, pipeline_status: "converted",
+          ? { ...c, in_pipeline: false, pipeline_status: null,
               converted_to_franchisee_id: fid, converted_to_record_type: res.record_type }
           : c),
       }));

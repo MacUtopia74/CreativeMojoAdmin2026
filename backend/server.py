@@ -875,10 +875,12 @@ async def convert_contact_to_franchisee(contact_id: str, user: dict = Depends(re
         "territory_ids": [],
     }
     await db.franchisees.insert_one(franchisee_doc)
-    # Mark contact as converted (keep it on pipeline as 'converted' for trail)
+    # Mark contact as converted — remove from the pipeline (the conversion is
+    # tracked by `converted_to_franchisee_id`, NOT by a pipeline stage, so they
+    # don't pollute the renamed "Territory Map" column).
     update = {
-        "in_pipeline": True,
-        "pipeline_status": "converted",
+        "in_pipeline": False,
+        "pipeline_status": None,
         "converted_to_franchisee_id": f_id,
         "converted_to_record_type": record_type,
         "converted_at": now,
