@@ -20,7 +20,7 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
 
 ## Build Plan
 - **Phase 1** ✅ Admin shell + login + CRM core + Airtable migration + WordPress form pipeline (×3 forms) + anniversary reminders scaffold
-- **Phase 1.5** GoCardless live mandate status (read-only API + webhook). Replaces static `mandate` field with live status pill + last/next payment.
+- **Phase 1.5** ✅ GoCardless live mandate status (read-only API + webhook). Live status pill + last/next payment + dashboard alerts + dry-run sync.
 - **Phase 1.6** ✅ Sales pipeline (simple): Kanban view of enquiries with stages New → Contacted → Qualified → Demo Booked → Converted → Lost
 - **Phase 1.7** ✅ One-click Convert to Franchisee/Licencee from sales pipeline; Franchisee detail page consolidates contracts (Contracts sidebar tab retired)
 - **Phase 2** Order management + WooCommerce live sync + Gantt view
@@ -29,6 +29,24 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
 - **Phase 5** Licensee portal + 8-download/month quota + optional GoCardless webhook
 
 ## What's Implemented (2026-05-14)
+
+### Phase 1.5 — Iteration 16 (2026-05-14) ✅ GoCardless Live Read-Only
+- **Read-only LIVE GoCardless integration** using the official `gocardless-pro` SDK (v3.4.0), API version `2015-07-06`. Never creates, cancels or modifies anything on the GoCardless side.
+- **POST /api/gocardless/mandates/sync?dry_run=true|false** — paginates every GoCardless customer, looks them up by email (matches across `email`, `mojo_email`, **and** comma-split `secondary_email`), fetches each customer's mandate (status/scheme/reference/next_possible_charge_date). Dry-run is the **default**. With live data: 108 customers scanned, 88 franchisees, **89 matched**, 19 unmatched. Sync log persisted to `gocardless_sync_log` collection.
+- **POST /api/gocardless/franchisees/{id}/refresh** — re-fetches mandate + latest payment + next subscription payment for one franchisee. Single-record write, no bulk-DB risk.
+- **GET /api/gocardless/alerts?hours=24** — returns recent webhook events grouped into `mandate_cancelled / mandate_failed / mandate_expired / payment_failed`.
+- **GET /api/gocardless/status** — diagnostic endpoint for the UI: shows whether GC is configured, environment (live/sandbox), webhook-secret presence, and the last sync record.
+- **POST /api/webhooks/gocardless** — HMAC-SHA256 signature verification (`hmac.compare_digest` constant-time). Missing or bad signatures get 498. Verified events are stored in `gocardless_events` (audit log) and surface into `gocardless_alerts` on cancel/fail/expire actions. Auto-updates the matching franchisee's cached mandate status.
+- **Frontend:**
+  - **FranchiseesPage**: new "Sync GoCardless" top-bar button → opens modal with dry-run/commit two-step flow + sample match preview.
+  - **FranchiseeDetailPage**: KPI tile replaced with live `MandatePill`; new `GoCardlessPanel` shows Status / Scheme / Last Payment (amount + DD/MM/YYYY) / Next Payment + "Refresh from GoCardless" button.
+  - **DashboardPage**: new `gc-dashboard-alerts` tile under "Mandate Status" — green "✓ no failed payments" when clean; counters for failed payments / cancelled mandates when present.
+- **Webhook secret left blank by design** — user adds it in `/app/backend/.env` after creating the webhook endpoint on the GoCardless dashboard. Until then the endpoint rejects 498 (safe default).
+
+### Tests (iteration 16)
+- Backend: 7/7 pytest pass (`test_iter16_gocardless.py`) — status endpoint, alerts default + custom window, **live dry-run with committed_count=0 assertion**, webhook signature missing → 498, bad sig → 498, good sig → 200 + alert rows in DB for both mandate.cancelled and payment.failed.
+- Frontend: 100% — Dashboard tile renders; Franchisees sync modal opens, dry-run shows GC Customers 108 / Matched 89 / Unmatched 19; FranchiseeDetailPage `panel-gocardless` + `mandate-pill` + `kpi-mandate` all render correctly for both linked and unlinked franchisees; gc-refresh button works.
+- Live data observed: Clementina Phillips → Mandate `MD01KMCHJGHKWN`, status `Active`, last payment £197.76 on 18/05/2026.
 
 ### Phase 1.7 — Iteration 15 (2026-05-14) ✅ Convert + Layout Consolidation
 - **One-click Convert to Franchisee/Licencee** — new section in the ContactsPage drawer with a prominent CTA. Auto-derives `record_type` from the contact's source (`licence_enquiry` → Licencee, anything else → Franchisee). Backend `POST /api/contacts/{id}/convert-to-franchisee` creates the franchisee record, copies first/last/email/postcode/phones/organisation, stamps tags=['Converted from enquiry'], builds a notes string from the original message/referral_source/why_contacting/date (date now formatted DD/MM/YYYY), and marks the contact `pipeline_status='converted'` + `converted_to_franchisee_id`. Second call returns 409 idempotency lock. Email auto-lowercased, postcode auto-uppercased at insert-time. Drawer flips to "VIEW RECORD" (emerald) for already-converted contacts.
