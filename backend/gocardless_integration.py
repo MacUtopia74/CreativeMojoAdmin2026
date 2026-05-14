@@ -276,6 +276,60 @@ def build_router(db, require_role) -> APIRouter:
         # Include up to 10 of each in the response (for the UI preview)
         return {**report, "matched_preview": matched[:10], "unmatched_preview": unmatched[:10]}
 
+    # ---- bulk payment refresh (last/next payment for every linked franchisee) -
+    @router.post("/gocardless/payments/refresh-all")
+    async def gc_refresh_payments_all(
+        limit: int = Query(200, le=500, description="Cap rows processed per call"),
+        only_active: bool = Query(True, description="Only refresh franchisees whose mandate is currently 'active'"),
+        user: dict = Depends(require_role("admin")),
+    ):
+        """Walk every franchisee that has a gocardless_mandate_id set and refresh
+        last/next payment + mandate status from GoCardless in one pass.
+        Idempotent — safe to re-run."""
+        if not gc_configured():
+            raise HTTPException(status_code=503, detail="GoCardless not configured.")
+        client = get_gc_client()
+        q: dict = {"gocardless_mandate_id": {"$exists": True, "$nin": [None, ""]}}
+        if only_active:
+            q["gocardless_mandate_status"] = "active"
+        franchisees = await db.franchisees.find(
+            q, {"_id": 0, "id": 1, "gocardless_mandate_id": 1}
+        ).limit(limit).to_list(length=None)
+
+        started = _now_iso()
+        processed = 0
+        updated = 0
+        errors: list[dict] = []
+        for f in franchisees:
+            mid = f["gocardless_mandate_id"]
+            try:
+                summary = await _fetch_mandate_summary(client, mid)
+                update_doc = {
+                    "gocardless_mandate_status": summary.get("status"),
+                    "gocardless_mandate_reference": summary.get("reference"),
+                    "gocardless_mandate_scheme": summary.get("scheme"),
+                    "gocardless_last_payment": summary.get("last_payment"),
+                    "gocardless_next_payment": summary.get("next_payment"),
+                    "gocardless_synced_at": _now_iso(),
+                }
+                await db.franchisees.update_one({"id": f["id"]}, {"$set": update_doc})
+                updated += 1
+            except Exception as exc:  # noqa: BLE001
+                errors.append({"franchisee_id": f["id"], "mandate_id": mid, "error": str(exc)})
+            processed += 1
+
+        report = {
+            "started_at": started,
+            "finished_at": _now_iso(),
+            "processed": processed,
+            "updated": updated,
+            "errors": errors[:20],
+            "error_count": len(errors),
+            "operator": user.get("email"),
+        }
+        await db.gocardless_sync_log.insert_one({"job": "refresh_payments_all", **report})
+        return report
+
     # ---- single franchisee refresh ----------------------------------------
     @router.post("/gocardless/franchisees/{franchisee_id}/refresh")
     async def gc_refresh_one(franchisee_id: str, _user: dict = Depends(require_role("admin"))):
