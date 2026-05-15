@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 const MENU_WIDTH = 192; // matches min-w-[192px] below
+const MENU_HEIGHT_ESTIMATE = 220; // 5 items + divider + paddings
 
 export default function FolderActionsMenu({ folder, onChanged, onMove, onShare }) {
   const [open, setOpen] = useState(false);
@@ -29,7 +30,13 @@ export default function FolderActionsMenu({ folder, onChanged, onMove, onShare }
     // Right-align the menu with the button. Clamp within viewport.
     let left = r.right - MENU_WIDTH;
     if (left < 8) left = 8;
-    const top = r.bottom + 4;
+    // Default: drop below the button. If that would overflow the
+    // viewport's bottom edge, flip upwards so the menu is always
+    // visible (e.g. last folder rows or short browser windows).
+    const spaceBelow = window.innerHeight - r.bottom;
+    const top = spaceBelow < MENU_HEIGHT_ESTIMATE + 12
+      ? Math.max(8, r.top - MENU_HEIGHT_ESTIMATE - 4)
+      : r.bottom + 4;
     setPos({ top, left });
   };
 
