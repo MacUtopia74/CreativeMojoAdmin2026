@@ -122,7 +122,7 @@ export default function FranchiseeTerritoryWidget({ franchiseeId }) {
           centre={summary.centre}
           centreLabel={summary.franchisee?.organisation || summary.franchisee?.postcode || ""}
           height={420}
-          interactive={false}
+          mode="merged"
         />
       ) : (
         <div className="text-sm text-stone-500 bg-stone-50 border border-dashed border-stone-300 rounded-xl px-4 py-6 text-center">

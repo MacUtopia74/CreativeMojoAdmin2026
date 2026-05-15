@@ -14,9 +14,11 @@ import TerritoryMap from "@/components/territory/TerritoryMap";
 import {
   Search, Loader2, Target, Save, Trash2, MapPin, Plus, RotateCcw,
   Users, AlertCircle, CheckCircle2, Pencil, ChevronRight, ArrowLeft,
+  ClipboardPaste,
 } from "lucide-react";
 
 const TARGET_HOMES = 150;
+const KM_PER_MI = 1.609344;
 
 export default function TerritoryBuilderPage() {
   const [params] = useSearchParams();
@@ -27,7 +29,7 @@ export default function TerritoryBuilderPage() {
   const [postcode, setPostcode] = useState("");
   const [centre, setCentre] = useState(null);
   const [centreLabel, setCentreLabel] = useState("");
-  const [radiusKm, setRadiusKm] = useState(15);
+  const [radiusMi, setRadiusMi] = useState(10); // miles
   const [sectors, setSectors] = useState([]);
   const [selected, setSelected] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -40,6 +42,9 @@ export default function TerritoryBuilderPage() {
   const [saving, setSaving] = useState(false);
   const [franchisee, setFranchisee] = useState(null);
   const [territorySavedAt, setTerritorySavedAt] = useState(null);
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteText, setPasteText] = useState("");
+  const [pastePreview, setPastePreview] = useState(null);
 
   // Load contact details + existing plans if contact_id is provided
   useEffect(() => {
@@ -101,19 +106,41 @@ export default function TerritoryBuilderPage() {
     })();
   }, [planId]);
 
-  // Refresh sectors-near when centre or radius changes
+  // Refresh sectors-near when centre or radius changes. When in
+  // franchisee-lock mode, also fetch the geometry of every owned sector
+  // (even those outside the search radius) so the map always shows
+  // the full territory.
   const refreshSectors = useCallback(async () => {
-    if (!centre) return;
+    if (!centre && !franchiseeId) return;
     setLoading(true); setErr("");
     try {
-      const { data } = await api.get("/territory/sectors-near", {
-        params: { lat: centre.lat, lon: centre.lng, radius_km: radiusKm },
-      });
-      setSectors(data.sectors || []);
+      let near = { sectors: [] };
+      if (centre) {
+        const { data } = await api.get("/territory/sectors-near", {
+          params: { lat: centre.lat, lon: centre.lng, radius_km: radiusMi * KM_PER_MI },
+        });
+        near = data;
+      }
+      let owned = [];
+      const ownedCodes = (franchiseeId && franchisee?.territory_sectors) || [];
+      if (ownedCodes.length) {
+        const { data } = await api.get("/territory/sector-geometries", {
+          params: { sectors: ownedCodes.join(",") },
+        });
+        owned = data.sectors || [];
+      }
+      // Merge — favouring "near" entries for distance info, but ensuring
+      // every owned sector ends up in the feature list.
+      const map = new Map();
+      for (const s of near.sectors || []) map.set(s.sector, s);
+      for (const s of owned) {
+        if (!map.has(s.sector)) map.set(s.sector, { ...s, distance_km: 9999 });
+      }
+      setSectors(Array.from(map.values()));
     } catch (e) {
       setErr(e?.response?.data?.detail || "Could not load sectors.");
     } finally { setLoading(false); }
-  }, [centre, radiusKm]);
+  }, [centre, radiusMi, franchiseeId, franchisee]);
   useEffect(() => { refreshSectors(); }, [refreshSectors]);
 
   const lookupPostcode = async () => {
@@ -263,10 +290,14 @@ export default function TerritoryBuilderPage() {
         </div>
         <div className="flex items-center gap-2 text-xs">
           <span className="text-stone-500 font-bold uppercase tracking-wider">Radius</span>
-          <input type="range" min="5" max="40" step="1" value={radiusKm}
-            onChange={(e) => setRadiusKm(+e.target.value)} className="w-32" data-testid="radius-slider" />
-          <span className="tabular-nums font-bold text-stone-900">{radiusKm} km</span>
+          <input type="range" min="3" max="30" step="1" value={radiusMi}
+            onChange={(e) => setRadiusMi(+e.target.value)} className="w-32" data-testid="radius-slider" />
+          <span className="tabular-nums font-bold text-stone-900">{radiusMi} mi</span>
         </div>
+        <button onClick={() => setPasteOpen(true)} data-testid="open-paste"
+          className="px-3 py-2 text-xs font-bold uppercase tracking-wider bg-white border border-stone-300 text-stone-900 hover:bg-stone-50 rounded-lg flex items-center gap-1.5">
+          <ClipboardPaste className="w-3.5 h-3.5" /> Paste sectors
+        </button>
       </div>
 
       {err && (
@@ -369,7 +400,7 @@ export default function TerritoryBuilderPage() {
                   <button key={s.sector} onClick={() => toggleSector(s.sector)} data-testid={`chip-near-${s.sector}`}
                     className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 text-xs rounded-lg text-left ${isSel ? "bg-stone-950 text-white" : "hover:bg-stone-50 text-stone-800"}`}>
                     <span className="font-bold">{s.sector}</span>
-                    <span className="tabular-nums">{s.home_count} homes · {s.distance_km.toFixed(1)} km</span>
+                    <span className="tabular-nums">{s.home_count} homes · {(s.distance_km / KM_PER_MI).toFixed(1)} mi</span>
                     {isSel ? <CheckCircle2 className="w-3.5 h-3.5 text-[#D4FF00] shrink-0" /> : <Plus className="w-3.5 h-3.5 text-stone-400 shrink-0" />}
                   </button>
                 );
@@ -378,6 +409,80 @@ export default function TerritoryBuilderPage() {
           </div>
         </div>
       </div>
+
+      {/* Paste-sectors modal */}
+      {pasteOpen && (
+        <div onClick={() => setPasteOpen(false)} className="fixed inset-0 z-50 bg-stone-950/70 backdrop-blur-sm flex items-center justify-center p-6" data-testid="paste-modal">
+          <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full">
+            <div className="px-5 py-4 border-b border-stone-200 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ClipboardPaste className="w-4 h-4 text-stone-700" />
+                <span className="font-bold text-stone-950">Paste postcode sectors</span>
+              </div>
+              <button onClick={() => setPasteOpen(false)} className="w-8 h-8 hover:bg-stone-100 rounded-md flex items-center justify-center">
+                <RotateCcw className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-3">
+              <p className="text-xs text-stone-600">Paste a list of postcode sectors — one per line, comma- or space-separated all work. e.g. <code className="bg-stone-100 px-1 rounded">BA7 7</code>, <code className="bg-stone-100 px-1 rounded">BA20 1</code>, <code className="bg-stone-100 px-1 rounded">DT9 4</code>…</p>
+              <textarea value={pasteText} onChange={(e) => setPasteText(e.target.value)} data-testid="paste-textarea"
+                rows={10} placeholder="BA7 7&#10;BA20 1&#10;BA20 2&#10;DT1 1&#10;…"
+                className="w-full px-3 py-2 text-sm font-mono bg-stone-50 border border-stone-200 rounded-lg" />
+              {pastePreview && (
+                <div className="text-xs space-y-1">
+                  <div className="text-emerald-700">
+                    <strong>{pastePreview.sectors.length}</strong> sectors recognised · <strong>{pastePreview.home_count}</strong> CQC homes
+                  </div>
+                  {pastePreview.unrecognised.length > 0 && (
+                    <div className="text-amber-700">
+                      <strong>{pastePreview.unrecognised.length}</strong> not recognised: {pastePreview.unrecognised.slice(0, 6).join(", ")}{pastePreview.unrecognised.length > 6 ? "…" : ""}
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button onClick={() => setPasteOpen(false)} className="px-3 py-2 text-xs font-bold rounded-lg border border-stone-300 hover:bg-stone-50">Cancel</button>
+                <button data-testid="paste-preview"
+                  onClick={async () => {
+                    try {
+                      const { data } = await api.post(`/franchisees/${franchiseeId || "preview"}/territory/parse`, { text: pasteText });
+                      setPastePreview(data);
+                    } catch (e) {
+                      setPastePreview({ sectors: [], unrecognised: [], home_count: 0, error: e?.response?.data?.detail || "Parse failed" });
+                    }
+                  }}
+                  className="px-3 py-2 text-xs font-bold rounded-lg border border-stone-400 hover:bg-stone-50">
+                  Preview
+                </button>
+                <button data-testid="paste-apply"
+                  onClick={async () => {
+                    let toApply = pastePreview?.sectors;
+                    if (!toApply) {
+                      try {
+                        const { data } = await api.post(`/franchisees/${franchiseeId || "preview"}/territory/parse`, { text: pasteText });
+                        toApply = data.sectors;
+                      } catch (e) {
+                        setErr(e?.response?.data?.detail || "Parse failed");
+                        return;
+                      }
+                    }
+                    if (!toApply?.length) return;
+                    setSelected((cur) => {
+                      const set = new Set([...cur, ...toApply]);
+                      return [...set];
+                    });
+                    setPasteOpen(false);
+                    setPasteText("");
+                    setPastePreview(null);
+                  }}
+                  className="px-3 py-2 text-xs font-bold uppercase tracking-wider rounded-lg bg-[#D4FF00] text-stone-950 hover:bg-[#BDE600]">
+                  Add to selection
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

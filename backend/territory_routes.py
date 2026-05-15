@@ -354,6 +354,34 @@ def build_territory_router(db, require_role):  # noqa: D401
             raise HTTPException(404, detail="Plan not found")
         return {"ok": True}
 
+    @router.post("/franchisees/{franchisee_id}/territory/parse")
+    async def parse_territory_paste(
+        franchisee_id: str,
+        body: dict,
+        _user: dict = Depends(require_role("admin")),
+    ):
+        """Accepts free-form text (comma-, newline- or space-separated) and
+        normalises it into UK postcode sector codes. Reports which lines
+        couldn't be parsed and the live home count."""
+        raw = (body.get("text") or "")
+        tokens = [t.strip() for t in re.split(r"[\n,;]+", raw) if t.strip()]
+        good: List[str] = []
+        bad: List[str] = []
+        # Match patterns like "EX15 1", "EX151", "ex15 1 ab", "EX 15 1"
+        sector_pat = re.compile(r"([A-Z]{1,2}\d[A-Z\d]?)\s*(\d)", re.I)
+        for tok in tokens:
+            m = sector_pat.match(tok.replace(" ", "")) or sector_pat.match(tok)
+            if not m:
+                bad.append(tok)
+                continue
+            sec = f"{m.group(1).upper()} {m.group(2)}"
+            if sec not in good:
+                good.append(sec)
+        homes = 0
+        if good:
+            homes = await db.cqc_locations.count_documents({"postcode_sector": {"$in": good}})
+        return {"sectors": good, "unrecognised": bad, "home_count": homes}
+
     # --------------------------- franchisee territory save (admin lock-down)
     @router.put("/franchisees/{franchisee_id}/territory")
     async def save_franchisee_territory(
