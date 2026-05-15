@@ -73,7 +73,7 @@ export default function RecentFilesStrip({ viewMode = "list", onOpenFile, onDown
     <div className="bg-white border-2 border-stone-900 rounded-2xl overflow-hidden mb-4 shadow-sm" data-testid="recent-strip">
       <button onClick={() => setOpen((o) => !o)}
         data-testid="recent-strip-toggle"
-        className={`w-full px-5 py-3 flex items-center justify-between transition-colors ${open ? "bg-stone-950 text-white" : "bg-[#D4FF00] hover:bg-[#BDE600]"}`}>
+        className={`w-full px-5 py-3 flex items-center justify-between transition-colors ${open ? "bg-stone-950 text-white" : "bg-[#DEDD0C] hover:brightness-95"}`}>
         <div className="flex items-center gap-2.5">
           <div className={`w-7 h-7 rounded-md flex items-center justify-center ${open ? "bg-[#D4FF00]" : "bg-stone-950"}`}>
             <Sparkles className={`w-4 h-4 ${open ? "text-stone-950" : "text-[#D4FF00]"}`} />
