@@ -227,7 +227,8 @@ def build_router(db, require_role) -> APIRouter:
     ):
         import secrets
         key = body.get("key")
-        days = int(body.get("days") or 30)
+        raw_days = body.get("days")
+        days = int(raw_days if raw_days is not None else 30)
         days = max(1, min(days, 30))
         if not key:
             raise HTTPException(400, detail="key required")

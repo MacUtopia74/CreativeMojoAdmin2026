@@ -28,6 +28,24 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
 - **Phase 4** Territory mapping tool + public find-a-class embed (replaces DaD Postcode Lookup)
 - **Phase 5** Licensee portal + 8-download/month quota + optional GoCardless webhook
 
+## What's Implemented (2026-05-15)
+
+### Phase 3 — Iteration 17 (2026-05-15) ✅ File browser UX fixes
+Fixed 6 issues reported by user on the FilesPage in iteration 16:
+- **Folder visibility bug**: `GET /api/files/tree` now considers hidden `.keep` placeholders when deriving sub-folders so empty/newly-created folders surface, but still excludes them from the user-facing `files` array.
+- **Upload "Network error"** (R2 token can't `PutBucketCors`): switched to **server-proxied multipart** `POST /api/files/upload` (FormData → FastAPI UploadFile → boto3 `put_object`) with XHR upload progress on the frontend. Bypasses R2 CORS entirely. Direct presigned PUT endpoint kept (`/files/upload-url`) for future use once admin token CORS perms are available.
+- **PDF Preview**: switched from `<iframe>` to `<object data='...#view=FitH' type='application/pdf'>` with `<embed>` fallback. Backend `GET /api/files/download` now sets `Content-Disposition: inline` (vs `attachment`) based on the `attachment` query flag — fixes browsers that were auto-downloading PDFs instead of rendering them.
+- **Download button**: added a permanent yellow `Download` lozenge (data-testid `preview-download`) in the preview-modal header that uses the `attachment` URL.
+- **Share links up to 30 days**: redesigned to use a stable app-side token. `POST /api/files/share-link {key, days(1..30)}` creates a token in `files_share_links`; public `GET /api/files/share/{token}` 302-redirects to a freshly-signed 1-hour R2 URL on each click (with `Content-Disposition: inline`). Works around R2's hard 7-day sigv4 cap. Token includes hit counter + revocable flag for future audit/UX.
+- **List/Grid view toggle**: new view-mode toggle in the FilesPage toolbar (data-testids `view-list` / `view-grid`). Grid renders large tinted thumbnail tiles per file type, with per-tile Share + Download. Persists per-browser in `localStorage.filesViewMode`.
+- **Content indexing** (Q from user): documented as not in scope — R2 is dumb storage. If full-text/OCR search is needed later, would require a background worker (Textract / Tika).
+
+**Backend**: 7/7 pytest regression suite at `/app/backend/tests/test_iter17_files.py`. Frontend: 4/4 Playwright flows verified (view toggle, new folder, upload, preview download, share modal).
+
+**Known recommendations from review (deferred — not blocking):**
+- `POST /files/upload` reads full body into memory. Acceptable up to ~50MB; for larger franchise audio (60–200MB), switch to streaming `upload_fileobj`.
+- `GET /files/share/{token}` does not pre-check object existence before 302; could surface a friendlier 410 if the underlying R2 object was deleted.
+
 ## What's Implemented (2026-05-14)
 
 ### Phase 1.5 — Iteration 16 (2026-05-14) ✅ GoCardless Live Read-Only
