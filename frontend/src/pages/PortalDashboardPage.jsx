@@ -6,9 +6,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import api from "@/lib/api";
 import Logo from "@/components/Logo";
 import FranchiseeFilesPanel from "@/components/files/FranchiseeFilesPanel";
+import FranchiseeTerritoryWidget from "@/components/territory/FranchiseeTerritoryWidget";
 import {
   LogOut, Phone, Mail, Globe, MapPin, Calendar, ShieldCheck, ShieldAlert,
-  Map, FolderOpen, User as UserIcon, Loader2, AlertCircle, Smartphone,
+  FolderOpen, User as UserIcon, Loader2, AlertCircle, Smartphone,
   CreditCard, Clock,
 } from "lucide-react";
 
@@ -155,19 +156,9 @@ export default function PortalDashboardPage() {
                 </div>
               </div>
 
-              {/* Territory placeholder */}
-              <div className="bg-white border border-stone-200 rounded-2xl p-6 lg:col-span-2 flex flex-col items-center justify-center text-center min-h-[260px]" data-testid="portal-territory">
-                <div className="w-14 h-14 rounded-xl bg-[#EEEE86] flex items-center justify-center mb-4">
-                  <Map className="w-7 h-7 text-stone-950" />
-                </div>
-                <div className="text-xs uppercase tracking-[0.3em] font-bold text-stone-700 mb-1">Your territory</div>
-                <div className="font-display text-2xl text-stone-950 mb-2">Map &amp; postcode lookup</div>
-                <p className="text-base text-stone-500 max-w-md">
-                  Soon you'll be able to see your territory on a map and type any postcode to check whether it falls inside your area.
-                </p>
-                <span className="mt-4 px-3 py-1.5 text-xs font-bold uppercase tracking-wider bg-stone-100 text-stone-700 rounded-md">
-                  Coming in Phase 4
-                </span>
+              {/* Territory widget (real Mapbox map + postcode lookup) */}
+              <div className="lg:col-span-2">
+                <FranchiseeTerritoryWidget />
               </div>
             </div>
 

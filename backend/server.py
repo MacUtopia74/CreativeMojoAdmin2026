@@ -1927,6 +1927,7 @@ api.include_router(build_gocardless_router(db, require_role))
 from filecamp_migration import build_router as build_migration_router  # noqa: E402
 from files_routes import build_router as build_files_router  # noqa: E402
 from portal_routes import build_portal_router  # noqa: E402
+from territory_routes import build_territory_router  # noqa: E402
 api.include_router(build_migration_router(db, require_role))
 api.include_router(build_files_router(db, require_role))
 api.include_router(build_portal_router(
@@ -1934,6 +1935,7 @@ api.include_router(build_portal_router(
     create_refresh_token, set_auth_cookies,
     check_lockout, record_failure, clear_failures, user_to_public,
 ))
+api.include_router(build_territory_router(db, require_role))
 
 app.include_router(api)
 

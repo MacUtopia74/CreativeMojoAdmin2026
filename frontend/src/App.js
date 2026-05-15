@@ -16,6 +16,7 @@ import ContactsPage from "@/pages/ContactsPage";
 import FormIntakePage from "@/pages/FormIntakePage";
 import PublicFolderSharePage from "@/pages/PublicFolderSharePage";
 import PortalLoginPage from "@/pages/PortalLoginPage";
+import TerritoryBuilderPage from "@/pages/TerritoryBuilderPage";
 import PortalDashboardPage from "@/pages/PortalDashboardPage";
 
 export default function App() {
@@ -43,6 +44,7 @@ export default function App() {
               <Route path="/contracts" element={<ContractsPage />} />
               <Route path="/renewals" element={<ContractRenewalsPage />} />
               <Route path="/files" element={<FilesPage />} />
+              <Route path="/territory-builder" element={<TerritoryBuilderPage />} />
               <Route path="/contacts" element={<ContactsPage />} />
               <Route path="/form-intake" element={<FormIntakePage />} />
               <Route path="/airtable-inspector" element={<AirtableInspectorPage />} />

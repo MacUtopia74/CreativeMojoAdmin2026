@@ -1,0 +1,328 @@
+// Admin Territory Builder.
+//
+// Flow:
+//   1. Search a postcode → marker dropped, surrounding sectors loaded
+//   2. Adjust radius (5-30 km) → reload sectors
+//   3. Click sector dots on the map (or chips below) to add/remove from
+//      the territory. Live home counter at the top targets 150.
+//   4. Save → either as a brand-new "Territory Plan" linked to a contact
+//      or update an existing plan. Plans are editable and persisted.
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import api from "@/lib/api";
+import TerritoryMap from "@/components/territory/TerritoryMap";
+import {
+  Search, Loader2, Target, Save, Trash2, MapPin, Plus, RotateCcw,
+  Users, AlertCircle, CheckCircle2, Pencil, ChevronRight, ArrowLeft,
+} from "lucide-react";
+
+const TARGET_HOMES = 150;
+
+export default function TerritoryBuilderPage() {
+  const [params] = useSearchParams();
+  const contactId = params.get("contact_id") || null;
+  const planId = params.get("plan_id") || null;
+
+  const [postcode, setPostcode] = useState("");
+  const [centre, setCentre] = useState(null);
+  const [centreLabel, setCentreLabel] = useState("");
+  const [radiusKm, setRadiusKm] = useState(15);
+  const [sectors, setSectors] = useState([]);
+  const [selected, setSelected] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [savedPlan, setSavedPlan] = useState(null);
+  const [err, setErr] = useState("");
+  const [name, setName] = useState("");
+  const [notes, setNotes] = useState("");
+  const [contact, setContact] = useState(null);
+  const [existingPlans, setExistingPlans] = useState([]);
+  const [saving, setSaving] = useState(false);
+
+  // Load contact details + existing plans if contact_id is provided
+  useEffect(() => {
+    if (!contactId) return;
+    (async () => {
+      try {
+        const c = await api.get(`/contacts/${contactId}`);
+        setContact(c.data);
+      } catch {/* ignore */}
+      try {
+        const p = await api.get("/territory-plans", { params: { contact_id: contactId } });
+        setExistingPlans(p.data.plans || []);
+      } catch {/* ignore */}
+    })();
+  }, [contactId]);
+
+  // Hydrate an existing plan
+  useEffect(() => {
+    if (!planId) return;
+    (async () => {
+      try {
+        const { data } = await api.get("/territory-plans", { params: {} });
+        const found = (data.plans || []).find((p) => p.id === planId);
+        if (!found) return;
+        setSavedPlan(found);
+        setName(found.name || "");
+        setNotes(found.notes || "");
+        setSelected(found.sectors || []);
+        if (found.centre_lat && found.centre_lng) {
+          setCentre({ lat: found.centre_lat, lng: found.centre_lng });
+          setCentreLabel(found.centre_postcode || "");
+          setPostcode(found.centre_postcode || "");
+        }
+      } catch {/* ignore */}
+    })();
+  }, [planId]);
+
+  // Refresh sectors-near when centre or radius changes
+  const refreshSectors = useCallback(async () => {
+    if (!centre) return;
+    setLoading(true); setErr("");
+    try {
+      const { data } = await api.get("/territory/sectors-near", {
+        params: { lat: centre.lat, lon: centre.lng, radius_km: radiusKm },
+      });
+      setSectors(data.sectors || []);
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Could not load sectors.");
+    } finally { setLoading(false); }
+  }, [centre, radiusKm]);
+  useEffect(() => { refreshSectors(); }, [refreshSectors]);
+
+  const lookupPostcode = async () => {
+    if (!postcode.trim()) return;
+    setLoading(true); setErr("");
+    try {
+      const { data } = await api.get("/territory/postcode-lookup", { params: { postcode: postcode.trim() } });
+      if (data.latitude == null) throw new Error("No coordinates");
+      setCentre({ lat: data.latitude, lng: data.longitude });
+      setCentreLabel(`${data.postcode} · ${data.admin_district || data.region || ""}`);
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Postcode not found");
+    } finally { setLoading(false); }
+  };
+
+  const toggleSector = (sec) => {
+    setSelected((cur) => cur.includes(sec) ? cur.filter((s) => s !== sec) : [...cur, sec]);
+  };
+
+  // Live home count for the selected sectors (server-side authority)
+  const [homeCount, setHomeCount] = useState({ count: 0, per_sector: {} });
+  useEffect(() => {
+    if (!selected.length) { setHomeCount({ count: 0, per_sector: {} }); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await api.get("/territory/homes-count", { params: { sectors: selected.join(",") } });
+        if (!cancelled) setHomeCount(data);
+      } catch {/* ignore */}
+    })();
+    return () => { cancelled = true; };
+  }, [selected]);
+
+  const progress = Math.min(100, Math.round((homeCount.count / TARGET_HOMES) * 100));
+
+  const save = async () => {
+    if (!selected.length || !centre) { setErr("Pick a postcode and at least one sector first."); return; }
+    setSaving(true); setErr("");
+    try {
+      const body = {
+        contact_id: contactId,
+        name: name || (centreLabel ? `Territory near ${centreLabel}` : `Territory plan`),
+        centre_postcode: postcode || null,
+        centre_lat: centre.lat,
+        centre_lng: centre.lng,
+        sectors: selected,
+        home_count: homeCount.count,
+        notes,
+      };
+      if (savedPlan?.id) {
+        const { data } = await api.patch(`/territory-plans/${savedPlan.id}`, body);
+        setSavedPlan(data);
+      } else {
+        const { data } = await api.post("/territory-plans", body);
+        setSavedPlan(data);
+      }
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Could not save");
+    } finally { setSaving(false); }
+  };
+
+  const deletePlan = async () => {
+    if (!savedPlan?.id) return;
+    if (!window.confirm("Delete this territory plan?")) return;
+    await api.delete(`/territory-plans/${savedPlan.id}`);
+    setSavedPlan(null);
+    setSelected([]);
+    setName("");
+    setNotes("");
+  };
+
+  const sortedSelected = useMemo(() => [...selected].sort(), [selected]);
+
+  return (
+    <div className="p-6 max-w-[1600px] mx-auto space-y-5" data-testid="territory-builder">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <div className="flex items-center gap-2 text-xs uppercase tracking-[0.3em] font-bold text-stone-500 mb-1">
+            <Target className="w-3.5 h-3.5" /> Territory Builder
+          </div>
+          <h1 className="font-display text-3xl text-stone-950">
+            {contact ? `Plan a territory for ${contact.first_name} ${contact.last_name}` : "Build a prospect territory"}
+          </h1>
+          {contact && (
+            <Link to={`/contacts/${contact.id}`} className="text-xs text-stone-500 hover:underline inline-flex items-center gap-1 mt-1">
+              <ArrowLeft className="w-3 h-3" /> Back to contact
+            </Link>
+          )}
+        </div>
+        <div className="bg-white border border-stone-200 rounded-xl p-4 flex items-center gap-5">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">Homes</div>
+            <div className="font-display text-3xl text-stone-950 tabular-nums" data-testid="home-count">{homeCount.count} <span className="text-stone-400 text-lg">/ {TARGET_HOMES}</span></div>
+          </div>
+          <div className="w-40">
+            <div className="h-2 bg-stone-100 rounded-full overflow-hidden">
+              <div className="h-full transition-all bg-emerald-500" style={{ width: `${progress}%` }} />
+            </div>
+            <div className="text-[10px] text-stone-500 mt-1">{selected.length} sector{selected.length === 1 ? "" : "s"} selected</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Existing plans for this contact */}
+      {existingPlans.length > 0 && !savedPlan && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm" data-testid="existing-plans">
+          <div className="font-bold text-amber-900 mb-1">Existing plans for this contact</div>
+          <div className="flex flex-wrap gap-2">
+            {existingPlans.map((p) => (
+              <Link key={p.id} to={`/territory-builder?contact_id=${contactId}&plan_id=${p.id}`}
+                className="px-3 py-1.5 text-xs font-bold rounded-md bg-white border border-amber-300 hover:bg-amber-100">
+                {p.name || "Untitled"} · {p.home_count || 0} homes
+                <ChevronRight className="inline w-3 h-3 ml-0.5" />
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Search bar */}
+      <div className="bg-white border border-stone-200 rounded-2xl p-4 flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2 flex-1 min-w-[260px]">
+          <Search className="w-4 h-4 text-stone-400" />
+          <input value={postcode} onChange={(e) => setPostcode(e.target.value)} data-testid="postcode-input"
+            onKeyDown={(e) => { if (e.key === "Enter") lookupPostcode(); }}
+            placeholder="Type the contact's postcode (e.g. EX15 1NB)"
+            className="flex-1 px-2 py-1.5 text-sm bg-transparent outline-none placeholder:text-stone-400" />
+          <button onClick={lookupPostcode} disabled={loading || !postcode.trim()} data-testid="lookup-postcode"
+            className="px-3 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-lg disabled:opacity-50 flex items-center gap-1.5">
+            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MapPin className="w-3.5 h-3.5" />}
+            Drop marker
+          </button>
+        </div>
+        <div className="flex items-center gap-2 text-xs">
+          <span className="text-stone-500 font-bold uppercase tracking-wider">Radius</span>
+          <input type="range" min="5" max="40" step="1" value={radiusKm}
+            onChange={(e) => setRadiusKm(+e.target.value)} className="w-32" data-testid="radius-slider" />
+          <span className="tabular-nums font-bold text-stone-900">{radiusKm} km</span>
+        </div>
+      </div>
+
+      {err && (
+        <div className="text-sm text-red-700 bg-red-50 border border-red-200 px-3 py-2 rounded-xl flex items-center gap-1.5">
+          <AlertCircle className="w-4 h-4" /> {err}
+        </div>
+      )}
+
+      <div className="grid lg:grid-cols-3 gap-5">
+        {/* Map */}
+        <div className="lg:col-span-2">
+          <TerritoryMap
+            sectors={sectors}
+            selected={selected}
+            centre={centre}
+            centreLabel={centreLabel}
+            onToggleSector={toggleSector}
+            height={620}
+          />
+          <div className="text-[11px] text-stone-500 mt-2 flex items-center gap-3 flex-wrap">
+            <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-stone-950" /> Selected</span>
+            <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-white border-2 border-stone-400" /> Available</span>
+            <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-red-500 border-2 border-white shadow" /> Contact's postcode</span>
+            <span className="text-stone-400">·</span>
+            <span>Numbers on each dot are CQC home counts in that sector</span>
+          </div>
+        </div>
+
+        {/* Side panel */}
+        <div className="space-y-4">
+          <div className="bg-white border border-stone-200 rounded-2xl p-4">
+            <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500 mb-2">Plan details</div>
+            <input value={name} onChange={(e) => setName(e.target.value)} data-testid="plan-name"
+              placeholder="Plan name (e.g. Exeter & Mid Devon proposal)"
+              className="w-full px-3 py-2 text-sm bg-stone-50 border border-stone-200 rounded-lg mb-2" />
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} data-testid="plan-notes"
+              rows={3} placeholder="Notes (optional)"
+              className="w-full px-3 py-2 text-sm bg-stone-50 border border-stone-200 rounded-lg" />
+            <div className="flex items-center gap-2 mt-3">
+              <button onClick={save} disabled={saving || !selected.length} data-testid="save-plan"
+                className="flex-1 px-3 py-2 text-xs font-bold uppercase tracking-wider bg-[#D4FF00] text-stone-950 hover:bg-[#BDE600] rounded-lg disabled:opacity-50 flex items-center justify-center gap-1.5">
+                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                {savedPlan ? "Update plan" : "Save plan"}
+              </button>
+              {savedPlan && (
+                <button onClick={deletePlan} className="px-3 py-2 text-xs font-bold rounded-lg border border-red-300 text-red-700 hover:bg-red-50" data-testid="delete-plan">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+              <button onClick={() => { setSelected([]); }} className="px-3 py-2 text-xs font-bold rounded-lg border border-stone-300 hover:bg-stone-50" title="Clear all sectors">
+                <RotateCcw className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            {savedPlan && (
+              <div className="mt-3 px-3 py-2 text-[11px] bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Saved · last update {new Date(savedPlan.updated_at || savedPlan.created_at).toLocaleString()}
+              </div>
+            )}
+          </div>
+
+          {/* Selected sectors list */}
+          <div className="bg-white border border-stone-200 rounded-2xl p-4">
+            <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500 mb-2">Selected sectors ({sortedSelected.length})</div>
+            {!sortedSelected.length && <div className="text-xs text-stone-500">Click sectors on the map to add them here.</div>}
+            <div className="flex flex-wrap gap-1.5">
+              {sortedSelected.map((s) => (
+                <button key={s} onClick={() => toggleSector(s)} data-testid={`chip-selected-${s}`}
+                  className="group inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-red-700 rounded-md">
+                  {s} · {homeCount.per_sector?.[s] || 0}
+                  <Trash2 className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Sectors in radius */}
+          <div className="bg-white border border-stone-200 rounded-2xl p-4">
+            <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500 mb-2 flex items-center justify-between">
+              <span>Nearby sectors ({sectors.length})</span>
+              {loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-stone-400" />}
+            </div>
+            <div className="max-h-72 overflow-auto space-y-1">
+              {sectors.map((s) => {
+                const isSel = selected.includes(s.sector);
+                return (
+                  <button key={s.sector} onClick={() => toggleSector(s.sector)} data-testid={`chip-near-${s.sector}`}
+                    className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 text-xs rounded-lg text-left ${isSel ? "bg-stone-950 text-white" : "hover:bg-stone-50 text-stone-800"}`}>
+                    <span className="font-bold">{s.sector}</span>
+                    <span className="tabular-nums">{s.home_count} homes · {s.distance_km.toFixed(1)} km</span>
+                    {isSel ? <CheckCircle2 className="w-3.5 h-3.5 text-[#D4FF00] shrink-0" /> : <Plus className="w-3.5 h-3.5 text-stone-400 shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

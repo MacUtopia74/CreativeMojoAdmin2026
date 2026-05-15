@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "@/lib/api";
-import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus, Plus, Sparkles, Upload, FileText, CheckCircle2, Send, Award } from "lucide-react";
+import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus, Plus, Sparkles, Upload, FileText, CheckCircle2, Send, Award, Target } from "lucide-react";
 
 const STAGES = [
   { key: "new", label: "New", color: "bg-stone-100 text-stone-700 border-stone-300", barColor: "bg-stone-400" },
@@ -717,6 +717,27 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
               )}
             </div>
           </div>
+
+          {/* Phase 4 — Plan territory for prospective franchisees */}
+          {!alreadyConverted && (isFranchiseEnq || isInPipeline) && (
+            <a href={`/territory-builder?contact_id=${contact.id}`}
+              data-testid="drawer-plan-territory"
+              className="block p-4 border border-stone-300 rounded-xl hover:border-stone-500 hover:shadow-md transition-all bg-gradient-to-br from-[#EEEE86]/30 to-white">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-stone-950 flex items-center gap-1.5">
+                    <Target className="w-4 h-4 text-stone-700" /> Plan their territory
+                  </div>
+                  <div className="text-xs text-stone-600 mt-1">
+                    Build a sample 150-home territory around their postcode using live CQC data. Saved against this contact and easy to edit.
+                  </div>
+                </div>
+                <span className="shrink-0 px-3 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 text-white rounded-lg flex items-center gap-1.5">
+                  Open builder
+                </span>
+              </div>
+            </a>
+          )}
 
           {isInPipeline ? (
             <div>
