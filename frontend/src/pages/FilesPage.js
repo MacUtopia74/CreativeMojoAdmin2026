@@ -19,6 +19,8 @@ import {
 import FolderActionsMenu from "@/components/files/FolderActionsMenu";
 import FolderMovePicker from "@/components/files/FolderMovePicker";
 import FolderShareModal from "@/components/files/FolderShareModal";
+import RecentFilesStrip from "@/components/files/RecentFilesStrip";
+import TrashView from "@/components/files/TrashView";
 
 function fmtBytes(b) {
   if (b == null) return "—";
@@ -520,10 +522,9 @@ export default function FilesPage() {
   const [share, setShare] = useState(null);
   const [folderShare, setFolderShare] = useState(null);
   const [movingFolder, setMovingFolder] = useState(null);
-  // Special virtual scope: "__recent__" shows files uploaded in the last
-  // 30 days across franchisee+shared scopes (NOT admin-only).
-  const [recentMode, setRecentMode] = useState(false);
-  const [recent, setRecent] = useState(null);
+  // Trash view: shows soft-deleted folders with restore + permanent
+  // delete + empty-trash actions. Activated from the sidebar.
+  const [trashMode, setTrashMode] = useState(false);
   // View mode persists per browser. "list" = compact admin rows; "grid" =
   // FileCamp-style large thumbnail tiles (better for franchisees / visual
   // browsing of artwork & PDFs).
@@ -550,15 +551,6 @@ export default function FilesPage() {
 
   useEffect(() => { reloadScopes(); }, [reloadScopes]);
   useEffect(() => { reloadTree(prefix); }, [prefix, reloadTree]);
-
-  // Recent files (last 30 days, franchisee+shared scopes only)
-  const reloadRecent = useCallback(async () => {
-    try {
-      const { data } = await api.get("/files/recent", { params: { days: 30, limit: 200 } });
-      setRecent(data);
-    } catch (e) { setRecent({ items: [], count: 0 }); }
-  }, []);
-  useEffect(() => { if (recentMode) reloadRecent(); }, [recentMode, reloadRecent]);
 
   const moveFolder = async (newParent) => {
     const src = movingFolder.key;
@@ -624,19 +616,15 @@ export default function FilesPage() {
           {/* Sidebar — scope navigation */}
           <aside className="col-span-12 md:col-span-3 space-y-4">
             <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden">
-              <button onClick={() => { setRecentMode(false); setPrefix(""); }} data-testid="scope-all"
-                className={`w-full px-3 py-2 text-left text-xs font-bold uppercase tracking-wider hover:bg-stone-50 ${prefix === "" && !recentMode ? "bg-stone-100" : ""}`}>
+              <button onClick={() => { setTrashMode(false); setPrefix(""); }} data-testid="scope-all"
+                className={`w-full px-3 py-2 text-left text-xs font-bold uppercase tracking-wider hover:bg-stone-50 ${prefix === "" && !trashMode ? "bg-stone-100" : ""}`}>
                 All files
-              </button>
-              <button onClick={() => { setRecentMode(true); setPrefix(""); }} data-testid="scope-recent"
-                className={`w-full px-3 py-2 text-left text-xs font-bold uppercase tracking-wider hover:bg-stone-50 flex items-center gap-1.5 border-t border-stone-100 ${recentMode ? "bg-[#D4FF00]/30" : ""}`}>
-                <Sparkles className="w-3 h-3 text-stone-700" /> Recently added · 30 days
               </button>
               <div className="border-t border-stone-100">
                 <div className="px-3 py-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 bg-stone-50">Shared</div>
                 {(scopeTree?.shared_folders || []).map((f) => (
-                  <button key={f.folder} onClick={() => { setRecentMode(false); setPrefix(`shared/${f.folder}/`); }}
-                    className={`w-full px-3 py-2 text-left text-xs hover:bg-stone-50 flex items-center justify-between ${prefix === `shared/${f.folder}/` && !recentMode ? "bg-blue-50" : ""}`}>
+                  <button key={f.folder} onClick={() => { setTrashMode(false); setPrefix(`shared/${f.folder}/`); }}
+                    className={`w-full px-3 py-2 text-left text-xs hover:bg-stone-50 flex items-center justify-between ${prefix === `shared/${f.folder}/` && !trashMode ? "bg-blue-50" : ""}`}>
                     <span className="flex items-center gap-2 truncate"><Globe className="w-3 h-3 text-blue-600" /> {f.folder.replace(/-/g, " ")}</span>
                     <span className="text-[10px] text-stone-500 tabular-nums">{f.files}</span>
                   </button>
@@ -645,12 +633,18 @@ export default function FilesPage() {
               <div className="border-t border-stone-100">
                 <div className="px-3 py-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 bg-stone-50">Admin only</div>
                 {(scopeTree?.admin_folders || []).map((f) => (
-                  <button key={f.folder} onClick={() => { setRecentMode(false); setPrefix(`admin/${f.folder}/`); }}
-                    className={`w-full px-3 py-2 text-left text-xs hover:bg-stone-50 flex items-center justify-between ${prefix === `admin/${f.folder}/` && !recentMode ? "bg-amber-50" : ""}`}>
+                  <button key={f.folder} onClick={() => { setTrashMode(false); setPrefix(`admin/${f.folder}/`); }}
+                    className={`w-full px-3 py-2 text-left text-xs hover:bg-stone-50 flex items-center justify-between ${prefix === `admin/${f.folder}/` && !trashMode ? "bg-amber-50" : ""}`}>
                     <span className="flex items-center gap-2 truncate"><Lock className="w-3 h-3 text-amber-600" /> {f.folder.replace(/-/g, " ")}</span>
                     <span className="text-[10px] text-stone-500 tabular-nums">{f.files}</span>
                   </button>
                 ))}
+              </div>
+              <div className="border-t border-stone-100">
+                <button onClick={() => setTrashMode(true)} data-testid="scope-trash"
+                  className={`w-full px-3 py-2 text-left text-xs font-bold uppercase tracking-wider hover:bg-stone-50 flex items-center gap-1.5 ${trashMode ? "bg-red-50 text-red-700" : "text-stone-700"}`}>
+                  <Trash2 className="w-3 h-3" /> Trash
+                </button>
               </div>
             </div>
             <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden">
@@ -660,7 +654,7 @@ export default function FilesPage() {
                   <div className="px-3 py-4 text-xs text-stone-500">No franchisees yet</div>
                 )}
                 {(scopeTree?.franchisees || []).map((f) => (
-                  <button key={f.franchisee_id} onClick={() => { setRecentMode(false); setPrefix("franchisees/"); }}
+                  <button key={f.franchisee_id} onClick={() => { setTrashMode(false); setPrefix("franchisees/"); }}
                     className="w-full px-3 py-2 text-left text-xs hover:bg-stone-50 flex items-center justify-between"
                     data-testid={`scope-franchisee-${f.franchisee_id}`}>
                     <span className="flex items-center gap-2 truncate"><Users className="w-3 h-3 text-emerald-600" /> {f.franchise_number || "—"} · {f.organisation || f.name}</span>
@@ -673,58 +667,9 @@ export default function FilesPage() {
 
           {/* Main pane */}
           <main className="col-span-12 md:col-span-9 space-y-3">
-            {recentMode ? (
-              <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid="recent-view">
-                <div className="px-4 py-3 border-b border-stone-200 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-3.5 h-3.5 text-stone-700" />
-                    <span className="text-xs uppercase tracking-widest font-bold text-stone-700">
-                      Recently added · {recent?.count || 0} files in the last {recent?.days || 30} days
-                    </span>
-                  </div>
-                  <button onClick={() => setRecentMode(false)} className="text-xs text-stone-500 hover:text-stone-900">Close</button>
-                </div>
-                {!recent && (
-                  <div className="px-4 py-12 text-center text-sm text-stone-500 flex items-center justify-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin" /> Loading…
-                  </div>
-                )}
-                {recent && recent.items.length === 0 && (
-                  <div className="px-4 py-12 text-center text-sm text-stone-500" data-testid="recent-empty">
-                    Nothing new in the last {recent.days} days.
-                  </div>
-                )}
-                {recent && recent.items.length > 0 && (
-                  <div className="divide-y divide-stone-100">
-                    {recent.items.map((it) => {
-                      const Icon = fileIcon(it);
-                      const when = it.uploaded_at || it.imported_at || it.last_modified;
-                      return (
-                        <div key={it.key} className="px-4 py-2 flex items-center justify-between hover:bg-stone-50 gap-3" data-testid={`recent-row-${it.key}`}>
-                          <button onClick={() => setPreview(it)} className="flex items-center gap-3 truncate text-left flex-1">
-                            <Icon className="w-4 h-4 text-stone-500 shrink-0" />
-                            <div className="truncate min-w-0">
-                              <div className="text-sm text-stone-900 truncate hover:underline">{it.name}</div>
-                              <div className="text-[11px] text-stone-500 truncate">
-                                {it.franchisee_label || it.parent_prefix}
-                                {when ? ` · ${formatDate(when)}` : ""}
-                              </div>
-                            </div>
-                          </button>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <ScopeBadge scope={it.scope} />
-                            <span className="text-xs text-stone-500 tabular-nums">{fmtBytes(it.size)}</span>
-                            <button onClick={() => download(it.key)} disabled={downloadingKey === it.key}
-                              className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-md flex items-center gap-1 disabled:opacity-50">
-                              {downloadingKey === it.key ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+            {trashMode ? (
+              <TrashView onClose={() => setTrashMode(false)}
+                onChanged={() => { reloadScopes(); reloadTree(prefix); }} />
             ) : results ? (
               <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid="search-results">
                 <div className="px-4 py-3 border-b border-stone-200 flex items-center justify-between">
@@ -763,6 +708,9 @@ export default function FilesPage() {
               </div>
             ) : (
               <>
+                <RecentFilesStrip viewMode={viewMode}
+                  onOpenFile={(it) => setPreview(it)}
+                  onDownload={(key) => download(key)} />
                 <div className="bg-white border border-stone-200 rounded-2xl px-4 py-3 flex items-center justify-between gap-3 flex-wrap" data-testid="files-tree">
                   <Breadcrumb prefix={prefix} onJump={setPrefix} />
                   <div className="flex items-center gap-2 relative">

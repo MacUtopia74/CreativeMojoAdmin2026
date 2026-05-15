@@ -30,6 +30,12 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
 
 ## What's Implemented (2026-05-15)
 
+### Phase 3 — Iteration 19 (2026-05-15) ✅ Trash bin + Recent-files strip
+- **Trash bin UI**: new sidebar "Trash" entry → main pane lists every soft-deleted folder with `deleted_at`, who deleted it, file count, size. Per-entry **Restore** (moves it back to its original path) and **Delete forever** (hard-purges from R2 + index). Header has **"Delete all now"** which requires a `EMPTY` typed-confirmation before purging the whole trash.
+- **Recent files strip**: moved out of the sidebar into a **collapsible card directly above** the file tree. Default open, persisted in `localStorage.recentStripOpen`. Switches between thumbnail tiles (when grid view is on) and a dense scrollable list (when list view is on). Click a file to preview; one-click download per row.
+- **New backend endpoints**: `GET /files/trash`, `POST /files/trash/restore`, `DELETE /files/trash/item?trash_prefix=...`, `DELETE /files/trash/empty?confirm=EMPTY`.
+- **New frontend components**: `components/files/RecentFilesStrip.jsx`, `components/files/TrashView.jsx`.
+
 ### Phase 3 — Iteration 18 (2026-05-15) ✅ Folder operations + Recents + Folder share + Franchisee Files panel
 - **Admin folder operations** (`POST /files/folder/rename`, `POST /files/folder/move`, `DELETE /files/folder`): rename inline, move via tree-picker, soft-delete (moves contents under `.trash/<ISO-ts>/...` — kept for future cron-purge after 30 days). All admin-only.
 - **`GET /files/recent?days=30`**: returns files uploaded/imported in the last 30 days, scoped to `franchisee` + `shared` only (admin-only folders intentionally excluded — safe for the future franchisee portal). New sidebar entry `Recently added · 30 days` in FilesPage with badge counts and franchisee labels.

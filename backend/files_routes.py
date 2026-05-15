@@ -655,6 +655,133 @@ def build_router(db, require_role) -> APIRouter:
         return {"trashed": True, "trash_prefix": trash_prefix, **result}
 
     # -----------------------------------------------------------------
+    # Trash bin: list, restore, purge. All admin-only. Soft-deleted items
+    # live under `.trash/<ts>/<original>/...`. We use files_trash_log as
+    # the source of truth for "what was deleted, when, by whom".
+    @router.get("/files/trash")
+    async def files_trash_list(_user: dict = Depends(require_role("admin"))):
+        cur = db.files_trash_log.find({}, {"_id": 0}).sort("deleted_at", -1).limit(500)
+        entries = await cur.to_list(500)
+        # For each entry, double-check how many files currently exist in
+        # R2 (some may already have been restored / individually purged).
+        out = []
+        total_bytes = 0
+        for e in entries:
+            tp = e.get("trash_prefix")
+            if not tp:
+                continue
+            agg = await db.files_index.aggregate([
+                {"$match": {"key": {"$regex": f"^{re.escape(tp)}"}}},
+                {"$group": {"_id": None, "files": {"$sum": 1}, "bytes": {"$sum": "$size"}}},
+            ]).to_list(1)
+            files_now = (agg[0]["files"] if agg else 0)
+            bytes_now = (agg[0]["bytes"] if agg else 0)
+            total_bytes += bytes_now
+            out.append({
+                "trash_prefix": tp,
+                "original_prefix": e.get("original_prefix"),
+                "deleted_at": e.get("deleted_at"),
+                "deleted_by": e.get("deleted_by"),
+                "files_at_delete": e.get("files_count", 0),
+                "files_now": files_now,
+                "bytes_now": bytes_now,
+                "restored": files_now == 0,
+            })
+        return {"items": out, "total_bytes": total_bytes,
+                "active_count": sum(1 for x in out if not x["restored"])}
+
+    @router.post("/files/trash/restore")
+    async def files_trash_restore(body: dict, user: dict = Depends(require_role("admin"))):
+        """Restore a trashed folder to its original path."""
+        tp = (body.get("trash_prefix") or "").strip()
+        if not tp:
+            raise HTTPException(400, detail="trash_prefix required")
+        if not tp.startswith(".trash/"):
+            raise HTTPException(400, detail="Not a trash prefix")
+        if not tp.endswith("/"):
+            tp += "/"
+        # Original prefix from the trash log (canonical) or derived from path
+        log_rec = await db.files_trash_log.find_one({"trash_prefix": tp}, {"_id": 0})
+        if log_rec and log_rec.get("original_prefix"):
+            original = log_rec["original_prefix"]
+        else:
+            # .trash/<ts>/<original>/... → strip the .trash/<ts>/ prefix
+            after = tp[len(".trash/"):]
+            ts_part, _, rest = after.partition("/")
+            original = rest
+        if not original or not original.endswith("/"):
+            raise HTTPException(400, detail="Could not derive original path")
+        # Refuse if anything already exists at the destination
+        clash = await db.files_index.count_documents({
+            "key": {"$regex": f"^{re.escape(original)}"},
+            "hidden": {"$ne": True},
+        })
+        if clash:
+            raise HTTPException(409, detail=f"A folder already exists at {original}. Rename it first.")
+        result = await _move_prefix(tp, original, reason="restore",
+                                     user_email=user.get("email"))
+        await db.files_trash_log.update_one(
+            {"trash_prefix": tp},
+            {"$set": {"restored_at": _now(), "restored_by": user.get("email")}},
+        )
+        return {"restored": True, "to": original, **result}
+
+    @router.delete("/files/trash/item")
+    async def files_trash_purge_one(
+        trash_prefix: str = Query(...),
+        user: dict = Depends(require_role("admin")),
+    ):
+        """Permanently delete one trash entry (folder)."""
+        tp = trash_prefix
+        if not tp.startswith(".trash/"):
+            raise HTTPException(400, detail="Not a trash prefix")
+        if not tp.endswith("/"):
+            tp += "/"
+        s3 = get_client()
+        cur = db.files_index.find({"key": {"$regex": f"^{re.escape(tp)}"}}, {"_id": 0, "key": 1})
+        items = await cur.to_list(50000)
+        deleted = 0
+        for it in items:
+            try:
+                s3.delete_object(Bucket=R2_BUCKET, Key=it["key"])
+                deleted += 1
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("R2 delete failed for %s: %s", it["key"], exc)
+        await db.files_index.delete_many({"key": {"$regex": f"^{re.escape(tp)}"}})
+        await db.files_trash_log.update_one(
+            {"trash_prefix": tp},
+            {"$set": {"purged_at": _now(), "purged_by": user.get("email"),
+                      "purged_count": deleted}},
+        )
+        return {"purged": deleted, "trash_prefix": tp}
+
+    @router.delete("/files/trash/empty")
+    async def files_trash_empty(
+        confirm: str = Query("", description="Must equal 'EMPTY' to proceed"),
+        user: dict = Depends(require_role("admin")),
+    ):
+        """Permanently purge everything in `.trash/`. Irreversible."""
+        if confirm != "EMPTY":
+            raise HTTPException(400, detail="Confirmation required (?confirm=EMPTY)")
+        s3 = get_client()
+        cur = db.files_index.find({"key": {"$regex": r"^\.trash/"}}, {"_id": 0, "key": 1})
+        items = await cur.to_list(100000)
+        deleted = 0
+        for it in items:
+            try:
+                s3.delete_object(Bucket=R2_BUCKET, Key=it["key"])
+                deleted += 1
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("R2 delete failed for %s: %s", it["key"], exc)
+        await db.files_index.delete_many({"key": {"$regex": r"^\.trash/"}})
+        await db.files_trash_log.update_many(
+            {"purged_at": {"$exists": False}},
+            {"$set": {"purged_at": _now(), "purged_by": user.get("email"),
+                      "purged_count": -1}},
+        )
+        return {"purged": deleted, "emptied": True}
+
+    # -----------------------------------------------------------------
     # Folder share tokens. Admin generates a public link → recipient
     # gets a page listing all files in the folder with per-file download
     # buttons AND a "Download All as ZIP" button.
