@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Navigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import Logo from "@/components/Logo";
 import { ArrowRight } from "lucide-react";
 
 const LOGIN_IMAGE =
@@ -36,11 +37,8 @@ export default function LoginPage() {
         <img src={LOGIN_IMAGE} alt="" className="absolute inset-0 w-full h-full object-cover opacity-80" />
         <div className="absolute inset-0 bg-gradient-to-br from-stone-950/70 via-stone-900/40 to-stone-900/70" />
         <div className="relative h-full flex flex-col justify-between p-12 text-white">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-[#D4FF00] flex items-center justify-center rounded-lg">
-              <span className="font-display font-black text-stone-950">M</span>
-            </div>
-            <span className="font-display font-black text-xl tracking-tight">Creative Mojo</span>
+          <div>
+            <Logo className="h-14" />
           </div>
           <div className="space-y-4">
             <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-[#D4FF00]">Admin Console</div>
@@ -57,11 +55,8 @@ export default function LoginPage() {
       {/* Right form */}
       <div className="flex-1 flex items-center justify-center p-8 bg-[#F9F9F8]">
         <div className="w-full max-w-md">
-          <div className="lg:hidden flex items-center gap-2 mb-12">
-            <div className="w-7 h-7 bg-[#D4FF00] flex items-center justify-center rounded-lg">
-              <span className="font-display font-black text-stone-950 text-sm">M</span>
-            </div>
-            <div className="font-display font-black text-lg tracking-tight">Creative Mojo</div>
+          <div className="lg:hidden mb-10">
+            <Logo className="h-12" />
           </div>
 
           <div className="space-y-2 mb-10">

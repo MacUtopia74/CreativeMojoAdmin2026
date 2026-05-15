@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import Logo from "@/components/Logo";
 import {
   LayoutDashboard,
   Users,
@@ -36,14 +37,9 @@ export default function Layout() {
     <div className="min-h-screen flex bg-[#F9F9F8]">
       {/* Sidebar */}
       <aside className="w-[260px] shrink-0 bg-[#F2F2F0] border-r border-stone-200 flex flex-col" data-testid="sidebar">
-        <div className="px-6 py-7 border-b border-stone-200">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-[#D4FF00] flex items-center justify-center rounded-lg">
-              <span className="font-display font-black text-stone-950 text-sm">M</span>
-            </div>
-            <div className="font-display font-black text-lg tracking-tight text-stone-950">Creative Mojo</div>
-          </div>
-          <div className="text-[10px] uppercase tracking-[0.2em] text-stone-500 mt-1.5 font-bold">Admin Console</div>
+        <div className="px-5 py-5 border-b border-stone-200 bg-stone-950 flex flex-col items-start gap-1.5">
+          <Logo className="h-16" />
+          <div className="text-[10px] uppercase tracking-[0.2em] text-[#D4FF00] font-bold pl-1">Admin Console</div>
         </div>
 
         <nav className="flex-1 py-4">

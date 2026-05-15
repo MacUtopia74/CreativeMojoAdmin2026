@@ -6,6 +6,7 @@ import { useParams } from "react-router-dom";
 import { API_BASE } from "@/lib/api";
 import axios from "axios";
 import { Download, FileText, Image as ImageIcon, FileAudio, FileVideo, FileArchive, File as FileIcon, AlertCircle, Loader2, Package } from "lucide-react";
+import Logo from "@/components/Logo";
 
 function fmtBytes(b) {
   if (b == null) return "—";
@@ -49,12 +50,9 @@ export default function PublicFolderSharePage() {
   return (
     <div className="min-h-screen bg-[#FBFAF8]" data-testid="public-folder-share">
       <div className="max-w-4xl mx-auto px-6 py-10">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 bg-[#D4FF00] rounded-lg flex items-center justify-center font-display text-stone-950 text-xl font-bold">M</div>
-          <div>
-            <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">Creative Mojo</div>
-            <div className="font-display text-xl text-stone-950">Shared Folder</div>
-          </div>
+        <div className="bg-stone-950 rounded-2xl px-6 py-5 mb-6 flex items-center justify-between">
+          <Logo className="h-12" />
+          <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-[#D4FF00]">Shared Folder</div>
         </div>
 
         {loading && (
