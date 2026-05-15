@@ -21,6 +21,7 @@ import FolderMovePicker from "@/components/files/FolderMovePicker";
 import FolderShareModal from "@/components/files/FolderShareModal";
 import RecentFilesStrip from "@/components/files/RecentFilesStrip";
 import TrashView from "@/components/files/TrashView";
+import FileThumbnail from "@/components/files/FileThumbnail";
 
 function fmtBytes(b) {
   if (b == null) return "—";
@@ -775,13 +776,11 @@ export default function FilesPage() {
                           </div>
                         ))}
                         {tree.files.map((it) => {
-                          const Icon = fileIcon(it);
-                          const tint = fileTint(it);
                           return (
                             <div key={it.key} className="group flex flex-col items-stretch border border-stone-200 hover:border-stone-400 hover:shadow-md transition-all rounded-xl overflow-hidden bg-white relative" data-testid={`file-grid-${it.key}`}>
                               <button onClick={() => setPreview(it)} data-testid={`preview-grid-${it.key}`}
-                                className={`aspect-square flex items-center justify-center border-b ${tint}`}>
-                                <Icon className="w-14 h-14 opacity-80 group-hover:scale-105 transition-transform" />
+                                className="aspect-square overflow-hidden">
+                                <FileThumbnail file={it} className="w-full h-full" />
                               </button>
                               <div className="p-2.5 flex-1 flex flex-col">
                                 <div className="text-xs font-semibold text-stone-900 truncate" title={it.name}>{it.name}</div>

@@ -11,6 +11,7 @@ import {
   FileText, FileAudio, FileVideo, FileArchive, Image as ImageIcon, Users, Globe,
   Folder, List, LayoutGrid,
 } from "lucide-react";
+import FileThumbnail from "@/components/files/FileThumbnail";
 
 function fmtBytes(b) {
   if (b == null) return "—";
@@ -165,13 +166,11 @@ export default function RecentFilesStrip({ onOpenFile, onDownload, onOpenFolder 
                     </button>
                   ))}
                   {items.map((it) => {
-                    const Icon = pickIcon(it);
-                    const t = tint(it);
                     return (
                       <div key={it.key} className="group border border-stone-200 hover:border-stone-400 hover:shadow-sm transition-all rounded-xl overflow-hidden bg-white" data-testid={`recent-tile-${it.key}`}>
                         <button onClick={() => onOpenFile?.(it)}
-                          className={`w-full aspect-square flex items-center justify-center ${t}`}>
-                          <Icon className="w-10 h-10 opacity-80 group-hover:scale-105 transition-transform" />
+                          className="w-full aspect-square overflow-hidden">
+                          <FileThumbnail file={it} className="w-full h-full" />
                         </button>
                         <div className="p-2">
                           <div className="text-[11px] font-semibold text-stone-900 truncate" title={it.name}>{it.name}</div>

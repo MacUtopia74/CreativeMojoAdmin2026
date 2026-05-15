@@ -30,6 +30,15 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
 
 ## What's Implemented (2026-05-15)
 
+### Phase 3 — Iteration 20 (2026-05-15) ✅ Thumbnails + Recent folders + Recent strip enhancements
+- **Real thumbnails for images and PDFs** in both the Recents strip grid and the main file grid view. Implementation:
+  - **Images**: `<img>` with lazy loading + object-cover, served directly from R2 via 1h-signed inline URLs.
+  - **PDFs**: client-side PDF.js (4.7.76) renders page 1 → JPEG dataURL → in-memory cache keyed by R2 key. Worker loaded from `unpkg.com/pdfjs-dist/.../pdf.worker.min.mjs`.
+  - Backend `_attach_preview_url` enriches eligible items with `preview_url` (for `<img>`) and `pdf_proxy_url` (for PDF.js).
+  - **R2 CORS workaround**: new same-origin endpoint `GET /api/files/proxy?key=...` streams R2 object bytes through the backend (admin-only). PDF.js can fetch via XHR without browser CORS blocking.
+- **Recent strip**: added folder rendering. `/api/files/recent` now returns a `folders` array — distinct parent prefixes that received new files in the last 30 days, with file count + bytes + latest_at + franchisee label. Folders are sorted first; click jumps into them.
+- **Recent strip view toggle**: independent **List / Grid** toggle inside the strip (persisted as `localStorage.recentStripView`), decoupled from the main browser's view mode.
+
 ### Phase 3 — Iteration 19 (2026-05-15) ✅ Trash bin + Recent-files strip
 - **Trash bin UI**: new sidebar "Trash" entry → main pane lists every soft-deleted folder with `deleted_at`, who deleted it, file count, size. Per-entry **Restore** (moves it back to its original path) and **Delete forever** (hard-purges from R2 + index). Header has **"Delete all now"** which requires a `EMPTY` typed-confirmation before purging the whole trash.
 - **Recent files strip**: moved out of the sidebar into a **collapsible card directly above** the file tree. Default open, persisted in `localStorage.recentStripOpen`. Switches between thumbnail tiles (when grid view is on) and a dense scrollable list (when list view is on). Click a file to preview; one-click download per row.

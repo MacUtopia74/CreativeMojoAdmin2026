@@ -56,6 +56,43 @@ def _classify_uploaded_key(key: str) -> dict:
     return {"scope": SCOPE_ADMIN}
 
 
+def _is_image_or_pdf(content_type: str | None, name: str | None) -> str | None:
+    """Return 'image', 'pdf', or None for thumbnail-eligible files."""
+    ct = (content_type or "").lower()
+    ext = ((name or "").rsplit(".", 1)[-1] or "").lower()
+    if ct.startswith("image/") or ext in {"jpg", "jpeg", "png", "gif", "webp", "svg", "heic"}:
+        return "image"
+    if ct == "application/pdf" or ext == "pdf":
+        return "pdf"
+    return None
+
+
+def _attach_preview_url(item: dict) -> None:
+    """Mutates `item` to include a `preview_url` (1h signed, inline) when
+    the file is renderable as an image/pdf thumbnail. PDFs additionally
+    get a `pdf_proxy_url` pointing at our same-origin backend proxy —
+    PDF.js needs to fetch the bytes via XHR and R2's bucket-level CORS
+    is not configurable from our token, so the proxy is required."""
+    kind = _is_image_or_pdf(item.get("content_type"), item.get("name"))
+    if not kind:
+        return
+    name = item.get("name") or "file"
+    disp = f'inline; filename="{name.replace(chr(34), "")}"'
+    try:
+        item["preview_url"] = presigned_get_url(
+            item["key"], expires_in=3600, content_disposition=disp,
+        )
+        item["preview_kind"] = kind
+        if kind == "pdf":
+            # Same-origin proxy so PDF.js can fetch the bytes without
+            # being blocked by CORS. URL-quote the key so '/' / '%' /
+            # spaces survive the round-trip.
+            item["pdf_proxy_url"] = f"/api/files/proxy?key={urllib.parse.quote(item['key'], safe='')}"
+    except Exception:  # noqa: BLE001
+        # R2 not configured / signing failed — degrade silently to icon
+        pass
+
+
 def build_router(db, require_role) -> APIRouter:
     router = APIRouter()
 
@@ -173,7 +210,7 @@ def build_router(db, require_role) -> APIRouter:
             else:
                 if it.get("hidden"):
                     continue
-                files.append({
+                entry = {
                     "key": it["key"],
                     "name": it["name"],
                     "size": it["size"],
@@ -182,7 +219,9 @@ def build_router(db, require_role) -> APIRouter:
                     "imported_at": it.get("imported_at"),
                     "scope": it.get("scope"),
                     "orphan": it.get("orphan"),
-                })
+                }
+                _attach_preview_url(entry)
+                files.append(entry)
         return {
             "prefix": prefix,
             "folders": sorted(sub_dirs.values(), key=lambda x: x["name"].lower()),
@@ -205,6 +244,40 @@ def build_router(db, require_role) -> APIRouter:
         cur = db.files_index.find(query, {"_id": 0}).sort("name", 1).limit(limit)
         items = await cur.to_list(limit)
         return {"items": items, "count": len(items)}
+
+    # -----------------------------------------------------------------
+    # Same-origin proxy for R2 objects. Used by PDF.js (and any other
+    # JS-driven byte reader) to bypass R2's missing CORS policy. Admin
+    # only — same auth model as the rest of /api/files.
+    @router.get("/files/proxy")
+    async def files_proxy(
+        key: str = Query(...),
+        _user: dict = Depends(require_role("admin")),
+    ):
+        from fastapi.responses import StreamingResponse
+        existing = await db.files_index.find_one({"key": key}, {"_id": 0, "name": 1, "content_type": 1, "size": 1})
+        if not existing:
+            raise HTTPException(404, detail="File not found in index")
+        try:
+            obj = get_client().get_object(Bucket=R2_BUCKET, Key=key)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(502, detail=f"R2 fetch failed: {exc}") from exc
+        body = obj["Body"]
+        headers = {
+            "Content-Type": existing.get("content_type") or obj.get("ContentType") or "application/octet-stream",
+            "Content-Length": str(obj.get("ContentLength") or existing.get("size") or 0),
+            # Cache aggressively — these objects are immutable once
+            # uploaded (any change creates a new key).
+            "Cache-Control": "private, max-age=3600",
+        }
+        # FastAPI's StreamingResponse will iterate the boto3 StreamingBody.
+        def iterator():
+            try:
+                for chunk in body.iter_chunks(chunk_size=64 * 1024):
+                    yield chunk
+            finally:
+                body.close()
+        return StreamingResponse(iterator(), headers=headers)
 
     # -----------------------------------------------------------------
     @router.get("/files/download")
@@ -541,6 +614,9 @@ def build_router(db, require_role) -> APIRouter:
             f = f_lookup.get(it.get("franchisee_id"))
             if f:
                 it["franchisee_label"] = f"{f.get('franchise_number') or ''} · {f.get('organisation') or f.get('first_name') or ''}".strip(" ·")
+            # Inline a 1-hour preview URL for image + PDF types so the
+            # frontend can render real thumbnails without round-tripping.
+            _attach_preview_url(it)
 
         # Aggregate the distinct folders that received those recent files.
         # A "recently active folder" = the parent_prefix of any file in
