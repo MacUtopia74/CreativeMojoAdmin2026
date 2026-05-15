@@ -713,9 +713,10 @@ export default function FilesPage() {
               </div>
             ) : (
               <>
-                <RecentFilesStrip viewMode={viewMode}
+                <RecentFilesStrip
                   onOpenFile={(it) => setPreview(it)}
-                  onDownload={(key) => download(key)} />
+                  onDownload={(key) => download(key)}
+                  onOpenFolder={(key) => setPrefix(key)} />
                 <div className="bg-[#EEEE86] border border-stone-300 rounded-2xl px-5 py-4 flex items-center justify-between gap-3 flex-wrap shadow-sm" data-testid="files-tree">
                   <Breadcrumb prefix={prefix} onJump={setPrefix} />
                   <div className="flex items-center gap-2 relative">

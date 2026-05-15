@@ -541,7 +541,48 @@ def build_router(db, require_role) -> APIRouter:
             f = f_lookup.get(it.get("franchisee_id"))
             if f:
                 it["franchisee_label"] = f"{f.get('franchise_number') or ''} · {f.get('organisation') or f.get('first_name') or ''}".strip(" ·")
-        return {"items": items, "count": len(items), "days": days}
+
+        # Aggregate the distinct folders that received those recent files.
+        # A "recently active folder" = the parent_prefix of any file in
+        # `items`. This means both newly-created folders (their .keep
+        # placeholder + first file uploads) and existing folders that
+        # received fresh uploads will show up. Top-level prefixes
+        # (admin/, shared/, franchisees/) are excluded — too coarse.
+        folders_map: dict = {}
+        for it in items:
+            pp = it.get("parent_prefix") or ""
+            if not pp or pp.count("/") <= 1:
+                # e.g. "" or "shared/" — not a useful folder card
+                continue
+            entry = folders_map.get(pp)
+            when = it.get("uploaded_at") or it.get("imported_at") or it.get("last_modified")
+            if not entry:
+                leaf = pp.rstrip("/").rsplit("/", 1)[-1]
+                folders_map[pp] = {
+                    "key": pp,
+                    "name": leaf,
+                    "file_count": 1,
+                    "bytes": it.get("size", 0),
+                    "latest_at": when,
+                    "scope": it.get("scope"),
+                    "franchisee_id": it.get("franchisee_id"),
+                    "franchisee_label": it.get("franchisee_label"),
+                }
+            else:
+                entry["file_count"] += 1
+                entry["bytes"] += it.get("size", 0)
+                if when and (not entry["latest_at"] or when > entry["latest_at"]):
+                    entry["latest_at"] = when
+        folders_out = sorted(folders_map.values(),
+                              key=lambda f: f["latest_at"] or "",
+                              reverse=True)
+        return {
+            "items": items,
+            "count": len(items),
+            "folders": folders_out,
+            "folder_count": len(folders_out),
+            "days": days,
+        }
 
     # -----------------------------------------------------------------
     # Folder operations: rename, move, soft-delete.
