@@ -3,10 +3,11 @@
 // falls back to a Download button. Header carries a permanent Download
 // button so any file can be saved with one click.
 import { useEffect, useState } from "react";
-import api from "@/lib/api";
+import api, { API_BASE } from "@/lib/api";
 import {
   Download, X, ExternalLink, Loader2, AlertCircle, File as FileIcon,
 } from "lucide-react";
+import PdfJsViewer from "@/components/files/PdfJsViewer";
 
 export default function FilePreviewModal({ file, onClose }) {
   const [url, setUrl] = useState(null);
@@ -18,6 +19,17 @@ export default function FilePreviewModal({ file, onClose }) {
     setUrl(null); setDlUrl(null); setErr("");
     (async () => {
       try {
+        const ct = (file.content_type || "").toLowerCase();
+        const ext = (file.name?.split(".").pop() || "").toLowerCase();
+        const isPdf = ct === "application/pdf" || ext === "pdf";
+        // PDFs: stream through same-origin proxy so the browser
+        // renders them inline (avoids Safari/R2 cross-site refusal).
+        if (isPdf) {
+          setUrl(`${API_BASE}/files/proxy?key=${encodeURIComponent(file.key)}`);
+          const { data: dl } = await api.get("/files/download", { params: { key: file.key, attachment: true } });
+          setDlUrl(dl.url);
+          return;
+        }
         const previewReq = api.get("/files/download", { params: { key: file.key, attachment: false } });
         const dlReq = api.get("/files/download", { params: { key: file.key, attachment: true } });
         const [{ data: pv }, { data: dl }] = await Promise.all([previewReq, dlReq]);
@@ -63,19 +75,7 @@ export default function FilePreviewModal({ file, onClose }) {
           {!url && !err && <Loader2 className="w-6 h-6 animate-spin text-stone-400" />}
           {err && <div className="text-sm text-red-700 flex items-center gap-2"><AlertCircle className="w-4 h-4" /> {err}</div>}
           {url && isImg && <img src={url} alt={file.name} className="max-w-full max-h-[70vh] object-contain rounded" />}
-          {url && isPdf && (
-            <object data={`${url}#view=FitH`} type="application/pdf" className="w-full h-[75vh] bg-white border border-stone-200 rounded" data-testid="preview-pdf">
-              <embed src={`${url}#view=FitH`} type="application/pdf" className="w-full h-[75vh]" />
-              <div className="text-center p-6">
-                <FileIcon className="w-12 h-12 text-stone-300 mx-auto mb-3" />
-                <div className="text-sm text-stone-600 mb-3">Your browser can&apos;t display this PDF inline.</div>
-                <a href={url} target="_blank" rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-lg">
-                  <ExternalLink className="w-3.5 h-3.5" /> Open in a new tab
-                </a>
-              </div>
-            </object>
-          )}
+          {url && isPdf && <PdfJsViewer url={url} />}
           {url && isAudio && <audio src={url} controls className="w-full max-w-2xl" />}
           {url && isVideo && <video src={url} controls className="max-w-full max-h-[70vh] rounded" />}
           {url && !isImg && !isPdf && !isAudio && !isVideo && (

@@ -29,6 +29,9 @@ from file_storage import (
     SCOPE_FRANCHISEE, SCOPE_SHARED, SCOPE_ADMIN, get_client,
 )
 from franchisee_folders import derive_franchisee_prefix
+from thumbnail_service import (
+    get_cached_thumbnail, build_thumbnail, SIZES as THUMB_SIZES,
+)
 
 logger = logging.getLogger("creative-mojo-admin.files")
 
@@ -347,6 +350,56 @@ def build_router(db, require_role) -> APIRouter:
             finally:
                 body.close()
         return StreamingResponse(iterator(), headers=headers)
+
+    # -----------------------------------------------------------------
+    # Thumbnail cache. Server-renders a 256-ish JPEG once per file, stores
+    # it in R2 under `_thumbs/`, returns it with aggressive caching so
+    # the browser keeps it for the session. Massively speeds up folder
+    # rendering vs. client-side PDF.js (which had to download the full
+    # multi-MB PDF for every tile).
+    @router.get("/files/thumbnail")
+    async def files_thumbnail(
+        key: str = Query(...),
+        size: str = Query("md"),
+        user: dict = Depends(require_role("admin", "franchisee")),
+    ):
+        from fastapi.responses import Response
+        if size not in THUMB_SIZES:
+            size = "md"
+        existing = await db.files_index.find_one(
+            {"key": key},
+            {"_id": 0, "name": 1, "content_type": 1, "franchisee_id": 1, "scope": 1},
+        )
+        if not existing:
+            raise HTTPException(404, detail="File not found in index")
+        # Apply franchisee scope (matches /files/proxy)
+        if user.get("role") == "franchisee":
+            fid = user.get("franchisee_id")
+            if key.startswith("shared/meeting-audio-files/"):
+                raise HTTPException(403, detail="Forbidden")
+            if not (key.startswith("shared/") or existing.get("franchisee_id") == fid
+                    or existing.get("scope") == SCOPE_SHARED):
+                raise HTTPException(403, detail="Forbidden")
+        ct_src = (existing.get("content_type") or "").lower()
+        ext = (existing.get("name") or "").rsplit(".", 1)[-1].lower()
+        # Only PDFs + raster images can be thumbed. Anything else → 415.
+        if not (ct_src.startswith("image/") or ct_src == "application/pdf"
+                or ext in {"jpg", "jpeg", "png", "gif", "webp", "heic", "pdf"}):
+            raise HTTPException(415, detail="Thumbnail not supported for this type")
+
+        cached = get_cached_thumbnail(key, size)
+        if cached:
+            return Response(content=cached, media_type="image/jpeg",
+                            headers={"Cache-Control": "public, max-age=86400, immutable"})
+
+        import anyio
+        data = await anyio.to_thread.run_sync(
+            build_thumbnail, key, size, existing.get("content_type"),
+        )
+        if not data:
+            raise HTTPException(422, detail="Could not render thumbnail")
+        return Response(content=data, media_type="image/jpeg",
+                        headers={"Cache-Control": "public, max-age=86400, immutable"})
 
     # -----------------------------------------------------------------
     @router.get("/files/download")
