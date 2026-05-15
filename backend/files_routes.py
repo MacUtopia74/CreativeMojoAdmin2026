@@ -280,12 +280,19 @@ def build_router(db, require_role) -> APIRouter:
         q: str = Query(..., min_length=2),
         limit: int = Query(50, le=200),
         scope: Optional[str] = Query(None),
-        _user: dict = Depends(require_role("admin")),
+        user: dict = Depends(require_role("admin", "franchisee")),
     ):
         terms = q.strip().split()
         query: dict = {"$and": [{"name": {"$regex": re.escape(t), "$options": "i"}} for t in terms]}
         if scope:
             query["scope"] = scope
+        # Hide soft-deleted items and .keep placeholders
+        query["hidden"] = {"$ne": True}
+        query["key"] = {"$not": re.compile(r"^\.trash/")}
+        # Apply franchisee scope clause if needed
+        scope_clause = await _franchisee_scope_filter(user)
+        if scope_clause:
+            query["$and"] = (query.get("$and") or []) + [scope_clause]
         cur = db.files_index.find(query, {"_id": 0}).sort("name", 1).limit(limit)
         items = await cur.to_list(limit)
         return {"items": items, "count": len(items)}
@@ -297,12 +304,18 @@ def build_router(db, require_role) -> APIRouter:
     @router.get("/files/proxy")
     async def files_proxy(
         key: str = Query(...),
-        _user: dict = Depends(require_role("admin")),
+        user: dict = Depends(require_role("admin", "franchisee")),
     ):
         from fastapi.responses import StreamingResponse
-        existing = await db.files_index.find_one({"key": key}, {"_id": 0, "name": 1, "content_type": 1, "size": 1})
+        existing = await db.files_index.find_one({"key": key}, {"_id": 0, "name": 1, "content_type": 1, "size": 1, "franchisee_id": 1, "scope": 1})
         if not existing:
             raise HTTPException(404, detail="File not found in index")
+        # Enforce franchisee scope: must be shared/ or owned by the user
+        if user.get("role") == "franchisee":
+            fid = user.get("franchisee_id")
+            if not (key.startswith("shared/") or existing.get("franchisee_id") == fid
+                    or existing.get("scope") == SCOPE_SHARED):
+                raise HTTPException(403, detail="Forbidden")
         try:
             obj = get_client().get_object(Bucket=R2_BUCKET, Key=key)
         except Exception as exc:  # noqa: BLE001

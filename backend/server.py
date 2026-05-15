@@ -950,6 +950,16 @@ async def portal_me(user: dict = Depends(require_role("franchisee"))):
         "photo_url", "photos", "territory_postcodes", "territory_geojson",
     }
     profile = {k: f.get(k) for k in keep if k in f}
+    # Fallback: if Airtable didn't carry over a start_date, derive it
+    # from the earliest known contract for this franchisee.
+    if not profile.get("start_date"):
+        earliest = await db.contracts.find_one(
+            {"franchisee_id": fid, "start_date": {"$ne": None}},
+            {"_id": 0, "start_date": 1},
+            sort=[("start_date", 1)],
+        )
+        if earliest and earliest.get("start_date"):
+            profile["start_date"] = earliest["start_date"]
     return {"profile": profile, "user": user_to_public(user)}
 
 

@@ -23,15 +23,15 @@ function yearsBetween(iso) {
 function Field({ icon: Icon, label, value, href }) {
   if (!value) return null;
   const content = (
-    <div className="flex items-start gap-2.5">
-      <Icon className="w-3.5 h-3.5 text-stone-400 mt-0.5 shrink-0" />
+    <div className="flex items-start gap-3">
+      <Icon className="w-4 h-4 text-stone-400 mt-0.5 shrink-0" />
       <div className="min-w-0">
-        <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">{label}</div>
-        <div className="text-sm text-stone-900 truncate">{value}</div>
+        <div className="text-[11px] uppercase tracking-[0.2em] font-bold text-stone-500">{label}</div>
+        <div className="text-base text-stone-900 truncate">{value}</div>
       </div>
     </div>
   );
-  return href ? <a href={href} className="block hover:bg-stone-50 -mx-2 px-2 py-1 rounded-md transition-colors">{content}</a> : <div>{content}</div>;
+  return href ? <a href={href} className="block hover:bg-stone-50 -mx-2 px-2 py-1.5 rounded-md transition-colors">{content}</a> : <div>{content}</div>;
 }
 
 function MandateBadge({ status }) {
@@ -48,8 +48,8 @@ function MandateBadge({ status }) {
   const v = map[status] || { cls: "bg-stone-100 text-stone-700 border-stone-300", icon: ShieldAlert, label: status };
   const I = v.icon;
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md border ${v.cls}`}>
-      <I className="w-3 h-3" /> {v.label}
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold uppercase tracking-wider rounded-md border ${v.cls}`}>
+      <I className="w-3.5 h-3.5" /> {v.label}
     </span>
   );
 }
@@ -103,33 +103,33 @@ export default function PortalDashboardPage() {
         {profile && (
           <>
             {/* Hero card */}
-            <div className="bg-white border border-stone-200 rounded-2xl px-6 py-5 flex items-center justify-between gap-6 flex-wrap" data-testid="portal-hero">
-              <div className="flex items-center gap-4">
+            <div className="bg-white border border-stone-200 rounded-2xl px-8 py-7 flex items-center justify-between gap-6 flex-wrap" data-testid="portal-hero">
+              <div className="flex items-center gap-5">
                 {profile.photo_url ? (
-                  <img src={profile.photo_url} alt={profile.full_name || profile.first_name} className="w-16 h-16 rounded-full object-cover border-2 border-stone-200" />
+                  <img src={profile.photo_url} alt={profile.full_name || profile.first_name} className="w-20 h-20 rounded-full object-cover border-2 border-stone-200" />
                 ) : (
-                  <div className="w-16 h-16 rounded-full bg-stone-100 flex items-center justify-center text-stone-400">
-                    <UserIcon className="w-8 h-8" />
+                  <div className="w-20 h-20 rounded-full bg-stone-100 flex items-center justify-center text-stone-400">
+                    <UserIcon className="w-10 h-10" />
                   </div>
                 )}
                 <div>
-                  <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">
+                  <div className="text-xs uppercase tracking-[0.3em] font-bold text-stone-500">
                     Franchise #{profile.franchise_number || "—"}
                   </div>
-                  <div className="font-display text-2xl text-stone-950">{profile.organisation || profile.full_name || ""}</div>
-                  <div className="text-sm text-stone-600">{profile.first_name} {profile.last_name}</div>
+                  <div className="font-display text-3xl text-stone-950 leading-tight">{profile.organisation || profile.full_name || ""}</div>
+                  <div className="text-base text-stone-600 mt-0.5">{profile.first_name} {profile.last_name}</div>
                 </div>
               </div>
-              <div className="flex items-center gap-6 flex-wrap">
+              <div className="flex items-center gap-8 flex-wrap">
                 {years != null && (
-                  <div className="text-center">
-                    <div className="font-display text-3xl text-stone-950 tabular-nums">{years.toFixed(1)}</div>
-                    <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Years running</div>
+                  <div className="text-center" data-testid="portal-years">
+                    <div className="font-display text-4xl text-stone-950 tabular-nums leading-none">{years.toFixed(1)}</div>
+                    <div className="text-[11px] uppercase tracking-[0.2em] font-bold text-stone-500 mt-1.5">Years as a franchisee</div>
                   </div>
                 )}
                 {profile.gocardless_mandate_status && (
                   <div>
-                    <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-1">Direct Debit</div>
+                    <div className="text-[11px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-1.5">Direct Debit</div>
                     <MandateBadge status={profile.gocardless_mandate_status} />
                   </div>
                 )}
@@ -139,12 +139,12 @@ export default function PortalDashboardPage() {
             {/* Two-column grid */}
             <div className="grid lg:grid-cols-3 gap-6">
               {/* Contact info */}
-              <div className="bg-white border border-stone-200 rounded-2xl p-5 lg:col-span-1" data-testid="portal-contact">
-                <div className="flex items-center gap-2 mb-4">
-                  <UserIcon className="w-3.5 h-3.5 text-stone-700" />
-                  <span className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-700">Your details</span>
+              <div className="bg-white border border-stone-200 rounded-2xl p-6 lg:col-span-1" data-testid="portal-contact">
+                <div className="flex items-center gap-2 mb-5">
+                  <UserIcon className="w-4 h-4 text-stone-700" />
+                  <span className="text-xs uppercase tracking-[0.3em] font-bold text-stone-700">Your details</span>
                 </div>
-                <div className="space-y-3">
+                <div className="space-y-4">
                   <Field icon={Mail} label="Email" value={profile.mojo_email || profile.email} href={`mailto:${profile.mojo_email || profile.email}`} />
                   <Field icon={Phone} label="Phone" value={profile.phone} href={`tel:${profile.phone}`} />
                   <Field icon={Smartphone} label="Mobile" value={profile.mobile} href={`tel:${profile.mobile}`} />
@@ -156,26 +156,26 @@ export default function PortalDashboardPage() {
               </div>
 
               {/* Territory placeholder */}
-              <div className="bg-white border border-stone-200 rounded-2xl p-5 lg:col-span-2 flex flex-col items-center justify-center text-center min-h-[240px]" data-testid="portal-territory">
-                <div className="w-12 h-12 rounded-xl bg-[#EEEE86] flex items-center justify-center mb-3">
-                  <Map className="w-6 h-6 text-stone-950" />
+              <div className="bg-white border border-stone-200 rounded-2xl p-6 lg:col-span-2 flex flex-col items-center justify-center text-center min-h-[260px]" data-testid="portal-territory">
+                <div className="w-14 h-14 rounded-xl bg-[#EEEE86] flex items-center justify-center mb-4">
+                  <Map className="w-7 h-7 text-stone-950" />
                 </div>
-                <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-700 mb-1">Your territory</div>
-                <div className="font-display text-xl text-stone-950 mb-2">Map &amp; postcode lookup</div>
-                <p className="text-sm text-stone-500 max-w-md">
+                <div className="text-xs uppercase tracking-[0.3em] font-bold text-stone-700 mb-1">Your territory</div>
+                <div className="font-display text-2xl text-stone-950 mb-2">Map &amp; postcode lookup</div>
+                <p className="text-base text-stone-500 max-w-md">
                   Soon you'll be able to see your territory on a map and type any postcode to check whether it falls inside your area.
                 </p>
-                <span className="mt-3 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-stone-100 text-stone-700 rounded-md">
+                <span className="mt-4 px-3 py-1.5 text-xs font-bold uppercase tracking-wider bg-stone-100 text-stone-700 rounded-md">
                   Coming in Phase 4
                 </span>
               </div>
             </div>
 
             {/* Files */}
-            <div className="bg-white border border-stone-200 rounded-2xl p-5" data-testid="portal-files">
-              <div className="flex items-center gap-2 mb-4">
-                <FolderOpen className="w-3.5 h-3.5 text-stone-700" />
-                <span className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-700">Your files &amp; shared brand library</span>
+            <div className="bg-white border border-stone-200 rounded-2xl p-6" data-testid="portal-files">
+              <div className="flex items-center gap-2 mb-5">
+                <FolderOpen className="w-4 h-4 text-stone-700" />
+                <span className="text-xs uppercase tracking-[0.3em] font-bold text-stone-700">Your files</span>
               </div>
               <FranchiseeFilesPanel franchisee={profile} />
             </div>
