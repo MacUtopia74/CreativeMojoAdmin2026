@@ -50,9 +50,9 @@ export default function PublicFolderSharePage() {
   return (
     <div className="min-h-screen bg-[#FBFAF8]" data-testid="public-folder-share">
       <div className="max-w-4xl mx-auto px-6 py-10">
-        <div className="bg-stone-950 rounded-2xl px-6 py-5 mb-6 flex items-center justify-between">
+        <div className="bg-[#EEEE86] rounded-2xl px-6 py-5 mb-6 flex items-center justify-between border border-yellow-300/50">
           <Logo className="h-12" />
-          <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-[#D4FF00]">Shared Folder</div>
+          <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-950">Shared Folder</div>
         </div>
 
         {loading && (
@@ -71,7 +71,7 @@ export default function PublicFolderSharePage() {
                 <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">Folder</div>
                 <h1 className="font-display text-2xl text-stone-950 truncate" data-testid="public-folder-label">{data.label}</h1>
                 <div className="text-xs text-stone-500 mt-1 tabular-nums">
-                  {data.file_count} files{exp ? ` · expires ${exp.toLocaleDateString()}` : ""}
+                  {data.file_count} files{exp ? ` · expires ${exp.toLocaleDateString()}` : " · permanent access"}
                 </div>
               </div>
               <a href={zipUrl} data-testid="public-folder-zip-btn"

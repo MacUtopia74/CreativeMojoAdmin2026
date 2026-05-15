@@ -7,7 +7,7 @@ import { Share2, X, Loader2, Copy, CheckCircle2 } from "lucide-react";
 import { prettyFolderName } from "@/utils/folderName";
 
 export default function FolderShareModal({ folder, onClose }) {
-  const [days, setDays] = useState(30);
+  const [days, setDays] = useState(0);  // 0 = lifetime
   const [url, setUrl] = useState(null);
   const [expiresAt, setExpiresAt] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -50,12 +50,16 @@ export default function FolderShareModal({ folder, onClose }) {
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Expires in</span>
-            {[1, 7, 14, 30].map((d) => (
+            {[1, 7, 30].map((d) => (
               <button key={d} onClick={() => { setDays(d); generate(d); }} data-testid={`folder-share-days-${d}`}
                 className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md border ${days === d ? "bg-stone-950 text-white border-stone-950" : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"}`}>
                 {d} {d === 1 ? "day" : "days"}
               </button>
             ))}
+            <button onClick={() => { setDays(0); generate(0); }} data-testid="folder-share-days-lifetime"
+              className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md border ${days === 0 ? "bg-stone-950 text-white border-stone-950" : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"}`}>
+              Lifetime
+            </button>
           </div>
           {busy && <div className="text-sm text-stone-500 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Generating…</div>}
           {err && <div className="text-xs text-red-700 bg-red-50 border border-red-200 px-3 py-2 rounded-lg">{err}</div>}
@@ -71,7 +75,9 @@ export default function FolderShareModal({ folder, onClose }) {
               </div>
               <div className="text-[11px] text-stone-500">
                 Recipients see a clean page listing every file with individual download buttons AND a “Download All as ZIP” option.
-                {expiresAt ? ` Auto-expires ${new Date(expiresAt).toLocaleString()}.` : ""}
+                {expiresAt
+                  ? ` Auto-expires ${new Date(expiresAt).toLocaleString()}.`
+                  : " This link never expires — share with franchisees for permanent access."}
               </div>
             </div>
           )}

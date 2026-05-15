@@ -958,8 +958,12 @@ def build_router(db, require_role) -> APIRouter:
         import secrets
         prefix = (body.get("prefix") or "").strip()
         raw_days = body.get("days")
-        days = int(raw_days if raw_days is not None else 30)
-        days = max(1, min(days, 30))
+        # `days=0` (or "lifetime") → no expiry. Otherwise clamp to 1..3650.
+        lifetime = raw_days in (0, "0", None, "lifetime")
+        if lifetime:
+            days = 0
+        else:
+            days = max(1, min(int(raw_days), 3650))
         if not prefix:
             raise HTTPException(400, detail="prefix required")
         if not prefix.endswith("/"):
@@ -973,7 +977,11 @@ def build_router(db, require_role) -> APIRouter:
             raise HTTPException(404, detail="Folder is empty — nothing to share")
         token = secrets.token_urlsafe(18)
         now_ts = datetime.now(timezone.utc).timestamp()
-        expires_at_ts = now_ts + days * 86400
+        if lifetime:
+            expires_iso = None
+        else:
+            expires_iso = datetime.fromtimestamp(
+                now_ts + days * 86400, tz=timezone.utc).isoformat()
         leaf = prefix.rstrip("/").rsplit("/", 1)[-1] or prefix.rstrip("/")
         doc = {
             "token": token,
@@ -981,7 +989,7 @@ def build_router(db, require_role) -> APIRouter:
             "prefix": prefix,
             "label": leaf.replace("-", " "),
             "file_count": cnt,
-            "expires_at": datetime.fromtimestamp(expires_at_ts, tz=timezone.utc).isoformat(),
+            "expires_at": expires_iso,
             "created_at": _now(),
             "created_by": user.get("email"),
             "revoked": False,
@@ -991,8 +999,9 @@ def build_router(db, require_role) -> APIRouter:
         base = (os.environ.get("FRONTEND_URL") or "").rstrip("/")
         # Public viewer URL — handled by the React app
         url = f"{base}/share/folder/{token}"
-        return {"url": url, "token": token, "expires_at": doc["expires_at"],
-                "days": days, "label": doc["label"], "file_count": cnt}
+        return {"url": url, "token": token, "expires_at": expires_iso,
+                "days": days, "lifetime": lifetime,
+                "label": doc["label"], "file_count": cnt}
 
     async def _resolve_folder_token(token: str) -> dict:
         rec = await db.files_share_links.find_one(
@@ -1000,12 +1009,14 @@ def build_router(db, require_role) -> APIRouter:
         )
         if not rec or rec.get("revoked"):
             raise HTTPException(404, detail="Share link not found or revoked")
-        try:
-            expires_at = datetime.fromisoformat(rec["expires_at"])
-        except Exception:  # noqa: BLE001
-            expires_at = None
-        if expires_at and datetime.now(timezone.utc) > expires_at:
-            raise HTTPException(410, detail="Share link expired")
+        exp_raw = rec.get("expires_at")
+        if exp_raw:  # None / "" → lifetime
+            try:
+                expires_at = datetime.fromisoformat(exp_raw)
+            except Exception:  # noqa: BLE001
+                expires_at = None
+            if expires_at and datetime.now(timezone.utc) > expires_at:
+                raise HTTPException(410, detail="Share link expired")
         return rec
 
     @router.get("/files/folder-share/{token}")

@@ -42,45 +42,48 @@ function Row({ children, onClick, testid }) {
 }
 
 export default function FranchiseeFilesPanel({ franchisee, canUpload = true }) {
-  // Build the franchisee's R2 prefix from their slug fields. We rely on
-  // the migration's deterministic folder_key (number + organisation +
-  // first/last name). Fallback: list by franchisee_id which always works.
-  const [prefix, setPrefix] = useState(""); // relative to franchisee root; "" = root
+  // Two tabs: their own files (under their R2 root prefix) and the
+  // shared brand library (read-only). Both browse via the same backend
+  // `/files/tree` endpoint — franchisee users are auto-scoped, admins
+  // see exactly what the franchisee would see when previewing here.
+  const [tab, setTab] = useState("own"); // "own" | "brand"
+  const [prefix, setPrefix] = useState(""); // relative to current root
   const [tree, setTree] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [downloadingKey, setDownloadingKey] = useState(null);
 
-  // First call: ask backend for ANY files belonging to this franchisee
-  // and derive their root prefix from the first key. Subsequent calls
-  // use the derived prefix.
-  const [rootPrefix, setRootPrefix] = useState(null);
+  // Root prefix for "their own files". Lazily resolved from the first
+  // tree call against `franchisees/?franchisee_id=...`.
+  const [ownRootPrefix, setOwnRootPrefix] = useState(null);
+  // Root prefix for "brand library" is always shared/ — sub-folders
+  // are surfaced naturally by the tree endpoint.
+  const BRAND_ROOT = "shared/";
 
-  const fetchRoot = useCallback(async () => {
+  const fetchOwnRoot = useCallback(async () => {
     setLoading(true); setErr("");
     try {
-      // Two requests in parallel: tree (top-level franchisees/ scoped to id),
-      // and a search filtered by franchisee_id to derive the root prefix.
       const { data } = await api.get("/files/tree", {
         params: { prefix: "franchisees/", franchisee_id: franchisee.id },
       });
-      // tree returns folders under franchisees/ — pick the one that
-      // belongs to this franchisee (should be exactly one in normal data).
       const candidate = (data.folders || [])[0];
-      if (candidate) {
-        setRootPrefix(candidate.key);
-      } else {
-        setRootPrefix(null);
-      }
+      setOwnRootPrefix(candidate ? candidate.key : null);
     } catch (e) {
       setErr(e?.response?.data?.detail || "Could not load files.");
     } finally { setLoading(false); }
   }, [franchisee.id]);
 
-  useEffect(() => { fetchRoot(); }, [fetchRoot]);
+  // Backwards-compat alias for the bootstrap button below
+  const fetchRoot = fetchOwnRoot;
 
-  // Once we have the root, fetch the current sub-prefix
+  useEffect(() => { fetchOwnRoot(); }, [fetchOwnRoot]);
+
+  // Reset breadcrumb when switching tabs
+  useEffect(() => { setPrefix(""); }, [tab]);
+
+  const rootPrefix = tab === "own" ? ownRootPrefix : BRAND_ROOT;
   const fullPrefix = rootPrefix ? rootPrefix + prefix : null;
+
   useEffect(() => {
     if (!fullPrefix) return;
     setLoading(true); setErr("");
@@ -110,13 +113,26 @@ export default function FranchiseeFilesPanel({ franchisee, canUpload = true }) {
   };
 
   const segs = prefix.split("/").filter(Boolean);
+  const breadcrumbHome = tab === "own" ? "Their files" : "Brand library";
 
   return (
     <div className="space-y-3" data-testid="franchisee-files-panel">
+      {/* Tab strip */}
+      <div className="flex items-center gap-1 border-b border-stone-200" data-testid="franchisee-files-tabs">
+        <button onClick={() => setTab("own")} data-testid="ff-tab-own"
+          className={`px-3 py-2 text-[10px] uppercase tracking-[0.2em] font-bold border-b-2 transition-colors ${tab === "own" ? "border-stone-950 text-stone-950" : "border-transparent text-stone-500 hover:text-stone-800"}`}>
+          Their files
+        </button>
+        <button onClick={() => setTab("brand")} data-testid="ff-tab-brand"
+          className={`px-3 py-2 text-[10px] uppercase tracking-[0.2em] font-bold border-b-2 transition-colors ${tab === "brand" ? "border-stone-950 text-stone-950" : "border-transparent text-stone-500 hover:text-stone-800"}`}>
+          Brand library
+        </button>
+      </div>
+
       {/* Header strip: breadcrumb + Download all */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-1 text-xs text-stone-600 flex-wrap" data-testid="franchisee-files-breadcrumb">
-          <button onClick={() => setPrefix("")} className="hover:underline font-bold text-stone-800">Their files</button>
+          <button onClick={() => setPrefix("")} className="hover:underline font-bold text-stone-800">{breadcrumbHome}</button>
           {segs.map((s, i) => {
             const upto = segs.slice(0, i + 1).join("/") + "/";
             return (
@@ -127,7 +143,7 @@ export default function FranchiseeFilesPanel({ franchisee, canUpload = true }) {
             );
           })}
         </div>
-        {rootPrefix && (
+        {tab === "own" && rootPrefix && (
           <button onClick={zipAll} data-testid="franchisee-files-zip"
             className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-lg flex items-center gap-1.5">
             <Package className="w-3 h-3" /> Download this folder as ZIP
@@ -146,7 +162,7 @@ export default function FranchiseeFilesPanel({ franchisee, canUpload = true }) {
           <AlertCircle className="w-3.5 h-3.5" /> {err}
         </div>
       )}
-      {!loading && !err && !rootPrefix && (
+      {!loading && !err && !rootPrefix && tab === "own" && (
         <div className="px-4 py-8 text-center space-y-3" data-testid="franchisee-files-empty">
           <Folder className="w-10 h-10 text-stone-300 mx-auto" />
           <div className="text-sm text-stone-500">
