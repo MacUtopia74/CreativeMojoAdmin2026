@@ -884,11 +884,16 @@ async def franchisee_bootstrap_folders(
 async def franchisees_bootstrap_folders_all(
     user: dict = Depends(require_role("admin")),
 ):
-    """Bulk-bootstrap standard folders for every active franchisee that
-    doesn't already have them. Safe to rerun — skips existing folders."""
+    """Bulk-bootstrap standard folders for every ACTIVE franchisee that
+    doesn't already have them. Ex-franchisees (tagged 'EX-Franchisee'
+    or lifecycle_status='ex_franchisee') are excluded so their folders
+    don't pollute the admin browser. Safe to rerun — skips existing."""
     from franchisee_folders import ensure_franchisee_folders
     cur = db.franchisees.find(
-        {"$or": [{"status": "Active"}, {"status": {"$exists": False}}]},
+        {
+            "tags": {"$nin": ["EX-Franchisee"]},
+            "lifecycle_status": {"$ne": "ex_franchisee"},
+        },
         {"_id": 0},
     )
     items = await cur.to_list(5000)
