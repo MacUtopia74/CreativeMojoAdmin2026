@@ -219,10 +219,52 @@ def build_territory_router(db, require_role):  # noqa: D401
             for c in counts:
                 if c["_id"] in sector_map:
                     sector_map[c["_id"]]["home_count"] = c["n"]
+        # Attach Voronoi polygon geometries (one per sector)
+        if sector_map:
+            geoms = await db.sector_geometries.find(
+                {"sector": {"$in": list(sector_map.keys())}},
+                {"_id": 0, "sector": 1, "geometry": 1},
+            ).to_list(5000)
+            for g in geoms:
+                if g["sector"] in sector_map:
+                    sector_map[g["sector"]]["geometry"] = g["geometry"]
         result = sorted(sector_map.values(), key=lambda x: x["distance_km"])
         for r in result:
             r.setdefault("home_count", 0)
         return {"sectors": result, "count": len(result)}
+
+    @router.get("/territory/sector-geometries")
+    async def sector_geometries(
+        sectors: str = Query(..., description="Comma-separated sector codes"),
+        _user: dict = Depends(require_role("admin", "franchisee")),
+    ):
+        codes = [s.strip().upper() for s in sectors.split(",") if s.strip()]
+        if not codes:
+            return {"sectors": []}
+        geoms = await db.sector_geometries.find(
+            {"sector": {"$in": codes}}, {"_id": 0},
+        ).to_list(5000)
+        pcs = await db.postcodes_cache.find(
+            {"sector": {"$in": codes}}, {"_id": 0, "sector": 1, "latitude": 1, "longitude": 1},
+        ).to_list(5000)
+        pc_map = {p["sector"]: p for p in pcs}
+        counts = await db.cqc_locations.aggregate([
+            {"$match": {"postcode_sector": {"$in": codes}}},
+            {"$group": {"_id": "$postcode_sector", "n": {"$sum": 1}}},
+        ]).to_list(5000)
+        c_map = {c["_id"]: c["n"] for c in counts}
+        out = []
+        for g in geoms:
+            sec = g["sector"]
+            centre = pc_map.get(sec, {})
+            out.append({
+                "sector": sec,
+                "geometry": g.get("geometry"),
+                "latitude": centre.get("latitude"),
+                "longitude": centre.get("longitude"),
+                "home_count": c_map.get(sec, 0),
+            })
+        return {"sectors": out, "count": len(out)}
 
     # ------------------------------------------------------------------ homes
     @router.get("/territory/homes")

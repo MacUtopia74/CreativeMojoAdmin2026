@@ -1,6 +1,7 @@
-// Reusable Mapbox UK map for the Territory Builder + franchisee portal.
-// Renders postcode-sector centroids as clickable circles. Click toggles
-// selection and bubbles the change to the parent via `onToggleSector`.
+// Mapbox UK map that renders postcode-sector Voronoi polygons. Click
+// to add/remove sectors from the selection. Selected sectors merge
+// visually into a single coloured territory outline (Mapbox does the
+// dissolve automatically by layering fills).
 import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -8,156 +9,129 @@ import "mapbox-gl/dist/mapbox-gl.css";
 const TOKEN = process.env.REACT_APP_MAPBOX_TOKEN;
 
 export default function TerritoryMap({
-  sectors = [],          // [{sector, latitude, longitude, home_count, distance_km}]
-  selected = [],         // array of sector codes (strings)
-  centre = null,         // { lat, lng } — marker for the contact's postcode
+  sectors = [],          // [{sector, latitude, longitude, home_count, geometry}]
+  selected = [],         // array of sector codes
+  centre = null,
   centreLabel = "",
   height = 520,
-  interactive = true,
+  fillColor = "#D4FF00",
+  selectedStrokeColor = "#15803D",
   onToggleSector = () => {},
-  onMapClick = () => {}, // bubbles non-sector clicks
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const centreMarkerRef = useRef(null);
   const [ready, setReady] = useState(false);
 
-  // Init once
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
-    if (!TOKEN) {
-      // Will render an inline notice below; map ref stays null.
-      return;
-    }
+    if (!containerRef.current || mapRef.current || !TOKEN) return;
     mapboxgl.accessToken = TOKEN;
     const map = new mapboxgl.Map({
       container: containerRef.current,
       style: "mapbox://styles/mapbox/light-v11",
       center: centre ? [centre.lng, centre.lat] : [-2.5, 53.4],
       zoom: centre ? 9.5 : 5.4,
-      attributionControl: true,
     });
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
     mapRef.current = map;
 
     map.on("load", () => {
-      map.addSource("sectors", {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: [] },
-      });
+      map.addSource("sectors", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
 
-      // Outer "halo" — selected sectors get a thick highlight
-      map.addLayer({
-        id: "sectors-halo",
-        type: "circle",
-        source: "sectors",
-        paint: {
-          "circle-radius": ["case", ["get", "selected"], 18, 0],
-          "circle-color": "#D4FF00",
-          "circle-opacity": 0.55,
-        },
-      });
-
-      // Main sector circle (size scales with home count)
+      // Base fill — every sector in radius is a subtle tile; selected = bright fill
       map.addLayer({
         id: "sectors-fill",
-        type: "circle",
+        type: "fill",
         source: "sectors",
         paint: {
-          "circle-radius": [
-            "interpolate", ["linear"], ["get", "home_count"],
-            0, 6, 5, 9, 15, 12, 40, 16,
-          ],
-          "circle-color": ["case",
-            ["get", "selected"], "#0F172A",
+          "fill-color": ["case",
+            ["get", "selected"], fillColor,
             ["get", "owned"], "#10B981",
-            "#FFFFFF",
+            "#ffffff",
           ],
-          "circle-stroke-width": 2,
-          "circle-stroke-color": ["case",
-            ["get", "selected"], "#0F172A",
-            ["get", "owned"], "#059669",
-            "#737373",
+          "fill-opacity": ["case",
+            ["get", "selected"], 0.65,
+            ["get", "owned"], 0.45,
+            ["boolean", ["feature-state", "hover"], false], 0.5,
+            0.15,
           ],
         },
       });
 
-      // Sector label
+      // Outline for every sector
+      map.addLayer({
+        id: "sectors-outline",
+        type: "line",
+        source: "sectors",
+        paint: {
+          "line-color": ["case",
+            ["get", "selected"], selectedStrokeColor,
+            ["get", "owned"], "#047857",
+            "#a8a29e",
+          ],
+          "line-width": ["case", ["get", "selected"], 2.5, ["get", "owned"], 2, 1],
+          "line-opacity": 0.8,
+        },
+      });
+
+      // Sector + home-count label (only where there's data)
       map.addLayer({
         id: "sectors-label",
         type: "symbol",
         source: "sectors",
         layout: {
-          "text-field": ["get", "sector"],
-          "text-size": 10,
-          "text-offset": [0, 1.4],
+          "text-field": ["concat", ["get", "sector"], "\n", ["to-string", ["get", "home_count"]], " homes"],
+          "text-size": 11,
           "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+          "text-allow-overlap": false,
         },
         paint: {
-          "text-color": "#1c1917",
+          "text-color": "#0c0a09",
           "text-halo-color": "#ffffff",
           "text-halo-width": 1.5,
         },
       });
 
-      // Home-count badge in the centre of the dot
-      map.addLayer({
-        id: "sectors-count",
-        type: "symbol",
-        source: "sectors",
-        layout: {
-          "text-field": ["to-string", ["get", "home_count"]],
-          "text-size": 10,
-          "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
-          "text-allow-overlap": true,
-        },
-        paint: {
-          "text-color": ["case", ["get", "selected"], "#D4FF00", "#1c1917"],
-        },
-      });
-
-      map.on("click", "sectors-fill", (e) => {
+      let hoverId = null;
+      map.on("mousemove", "sectors-fill", (e) => {
         const f = e.features?.[0];
         if (!f) return;
-        e.preventDefault?.();
-        onToggleSector(f.properties.sector);
-      });
-
-      map.on("mouseenter", "sectors-fill", () => {
+        if (hoverId !== null) {
+          map.setFeatureState({ source: "sectors", id: hoverId }, { hover: false });
+        }
+        hoverId = f.id;
+        map.setFeatureState({ source: "sectors", id: hoverId }, { hover: true });
         map.getCanvas().style.cursor = "pointer";
       });
       map.on("mouseleave", "sectors-fill", () => {
+        if (hoverId !== null) map.setFeatureState({ source: "sectors", id: hoverId }, { hover: false });
+        hoverId = null;
         map.getCanvas().style.cursor = "";
       });
-
-      map.on("click", (e) => {
-        if (e.defaultPrevented) return;
-        onMapClick({ lng: e.lngLat.lng, lat: e.lngLat.lat });
+      map.on("click", "sectors-fill", (e) => {
+        const f = e.features?.[0];
+        if (!f) return;
+        onToggleSector(f.properties.sector);
       });
-
       setReady(true);
     });
 
-    return () => {
-      map.remove();
-      mapRef.current = null;
-    };
-    // We deliberately do NOT depend on centre/sectors here — those drive
-    // separate effects below to avoid re-creating the map on every change.
+    return () => { map.remove(); mapRef.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Push sector data into the map whenever they change
+  // Sync features
   useEffect(() => {
     if (!ready || !mapRef.current) return;
     const src = mapRef.current.getSource("sectors");
     if (!src) return;
     const sel = new Set(selected);
     const features = sectors
-      .filter((s) => s.latitude != null && s.longitude != null)
-      .map((s) => ({
+      .filter((s) => s.geometry)
+      .map((s, i) => ({
         type: "Feature",
-        geometry: { type: "Point", coordinates: [s.longitude, s.latitude] },
+        id: i + 1,
+        geometry: s.geometry,
         properties: {
           sector: s.sector,
           home_count: s.home_count || 0,
@@ -177,7 +151,7 @@ export default function TerritoryMap({
     }
     if (centre && centre.lat != null && centre.lng != null) {
       const el = document.createElement("div");
-      el.style.cssText = "width:28px;height:28px;border-radius:50%;background:#EF4444;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4);";
+      el.style.cssText = "width:28px;height:28px;border-radius:50%;background:#EF4444;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4);z-index:5;position:relative;";
       const marker = new mapboxgl.Marker(el)
         .setLngLat([centre.lng, centre.lat])
         .setPopup(centreLabel ? new mapboxgl.Popup({ offset: 18 }).setText(centreLabel) : undefined)
@@ -189,7 +163,7 @@ export default function TerritoryMap({
 
   if (!TOKEN) {
     return (
-      <div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-6 text-sm text-amber-900" data-testid="map-no-token">
+      <div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-6 text-sm text-amber-900">
         <strong>Map disabled:</strong> add <code className="bg-amber-100 px-1 rounded">REACT_APP_MAPBOX_TOKEN</code> to <code>/app/frontend/.env</code> to render the map.
       </div>
     );

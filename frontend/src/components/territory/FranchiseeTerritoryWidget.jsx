@@ -26,26 +26,16 @@ export default function FranchiseeTerritoryWidget({ franchiseeId }) {
         const params = franchiseeId ? { franchisee_id: franchiseeId } : {};
         const { data } = await api.get("/territory/franchisee-summary", { params });
         setSummary(data);
-        if ((data.sectors || []).length) {
-          // We want each sector with its centroid for the map. Reuse
-          // sectors-near with a generous radius around the HQ if known,
-          // OR fetch each sector's centroid via postcode-lookup of any
-          // member postcode. Simplest: pull cached centroids via the
-          // "homes" endpoint and group manually.
-          const { data: hc } = await api.get("/territory/homes-count", {
-            params: { sectors: data.sectors.join(",") },
+        const list = data.sectors || [];
+        if (list.length) {
+          // Pull every owned sector's polygon + home count in one shot.
+          const { data: geoms } = await api.get("/territory/sector-geometries", {
+            params: { sectors: list.join(",") },
           });
-          // Fetch centroids in one shot via sectors-near around centre
-          if (data.centre) {
-            const { data: near } = await api.get("/territory/sectors-near", {
-              params: { lat: data.centre.lat, lon: data.centre.lng, radius_km: 40 },
-            });
-            const wanted = new Set(data.sectors);
-            const filtered = (near.sectors || [])
-              .filter((s) => wanted.has(s.sector))
-              .map((s) => ({ ...s, home_count: hc.per_sector?.[s.sector] || s.home_count, owned: true }));
-            setSectors(filtered);
-          }
+          const owned = (geoms.sectors || []).map((s) => ({ ...s, owned: true }));
+          setSectors(owned);
+        } else {
+          setSectors([]);
         }
       } catch (e) {
         setErr(e?.response?.data?.detail || "Could not load territory.");
