@@ -2,7 +2,8 @@ import { useEffect, useState, useMemo } from "react";
 import { useParams, Link } from "react-router-dom";
 import api from "@/lib/api";
 import { formatDate, daysFromToday } from "@/lib/date";
-import { ArrowLeft, MapPin, AlertCircle, User, FileText, Map, MessageSquare, Pencil, Check, X as XIcon, Clock, ShieldCheck, ShieldAlert, Globe, Facebook, CreditCard, RefreshCw, AlertTriangle, Power, PowerOff, BellRing } from "lucide-react";
+import { ArrowLeft, MapPin, AlertCircle, User, FileText, Map, MessageSquare, Pencil, Check, X as XIcon, Clock, ShieldCheck, ShieldAlert, Globe, Facebook, CreditCard, RefreshCw, AlertTriangle, Power, PowerOff, BellRing, FolderOpen } from "lucide-react";
+import FranchiseeFilesPanel from "@/components/files/FranchiseeFilesPanel";
 
 // Live GoCardless mandate status pill (read from cached franchisee fields)
 const MANDATE_STYLES = {
@@ -487,6 +488,13 @@ export default function FranchiseeDetailPage() {
 
         {/* GoCardless live mandate + payment summary */}
         <GoCardlessPanel franchisee={f} onRefreshed={(fresh) => setData((d) => ({ ...d, franchisee: fresh }))} />
+
+        {/* Files — scoped to this franchisee's R2 folder. Phase-3 portal
+            users land here as their primary view. Admins see it inline so
+            they don't need to bounce to the global Files menu. */}
+        <Panel icon={FolderOpen} title="Files" testid="panel-files">
+          <FranchiseeFilesPanel franchisee={f} />
+        </Panel>
 
         {/* Side-by-side details + map placeholder */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

@@ -14,8 +14,11 @@ import {
   Download, Loader2, AlertCircle, CloudUpload, Database, Users, Lock, Globe,
   RefreshCw, ChevronUp, ChevronDown, X, ExternalLink, Share2, Copy, CheckCircle2,
   FolderPlus, Trash2, Eye, LayoutGrid, List, FileText, Image as ImageIcon,
-  FileAudio, FileVideo, FileArchive,
+  FileAudio, FileVideo, FileArchive, Sparkles, Clock,
 } from "lucide-react";
+import FolderActionsMenu from "@/components/files/FolderActionsMenu";
+import FolderMovePicker from "@/components/files/FolderMovePicker";
+import FolderShareModal from "@/components/files/FolderShareModal";
 
 function fmtBytes(b) {
   if (b == null) return "—";
@@ -515,6 +518,12 @@ export default function FilesPage() {
   const [downloadingKey, setDownloadingKey] = useState(null);
   const [preview, setPreview] = useState(null);
   const [share, setShare] = useState(null);
+  const [folderShare, setFolderShare] = useState(null);
+  const [movingFolder, setMovingFolder] = useState(null);
+  // Special virtual scope: "__recent__" shows files uploaded in the last
+  // 30 days across franchisee+shared scopes (NOT admin-only).
+  const [recentMode, setRecentMode] = useState(false);
+  const [recent, setRecent] = useState(null);
   // View mode persists per browser. "list" = compact admin rows; "grid" =
   // FileCamp-style large thumbnail tiles (better for franchisees / visual
   // browsing of artwork & PDFs).
@@ -541,6 +550,22 @@ export default function FilesPage() {
 
   useEffect(() => { reloadScopes(); }, [reloadScopes]);
   useEffect(() => { reloadTree(prefix); }, [prefix, reloadTree]);
+
+  // Recent files (last 30 days, franchisee+shared scopes only)
+  const reloadRecent = useCallback(async () => {
+    try {
+      const { data } = await api.get("/files/recent", { params: { days: 30, limit: 200 } });
+      setRecent(data);
+    } catch (e) { setRecent({ items: [], count: 0 }); }
+  }, []);
+  useEffect(() => { if (recentMode) reloadRecent(); }, [recentMode, reloadRecent]);
+
+  const moveFolder = async (newParent) => {
+    const src = movingFolder.key;
+    await api.post("/files/folder/move", { prefix: src, new_parent: newParent });
+    setMovingFolder(null);
+    reloadTree(prefix); reloadScopes();
+  };
 
   // Live search debounce
   useEffect(() => {
@@ -599,15 +624,19 @@ export default function FilesPage() {
           {/* Sidebar — scope navigation */}
           <aside className="col-span-12 md:col-span-3 space-y-4">
             <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden">
-              <button onClick={() => setPrefix("")} data-testid="scope-all"
-                className={`w-full px-3 py-2 text-left text-xs font-bold uppercase tracking-wider hover:bg-stone-50 ${prefix === "" ? "bg-stone-100" : ""}`}>
+              <button onClick={() => { setRecentMode(false); setPrefix(""); }} data-testid="scope-all"
+                className={`w-full px-3 py-2 text-left text-xs font-bold uppercase tracking-wider hover:bg-stone-50 ${prefix === "" && !recentMode ? "bg-stone-100" : ""}`}>
                 All files
+              </button>
+              <button onClick={() => { setRecentMode(true); setPrefix(""); }} data-testid="scope-recent"
+                className={`w-full px-3 py-2 text-left text-xs font-bold uppercase tracking-wider hover:bg-stone-50 flex items-center gap-1.5 border-t border-stone-100 ${recentMode ? "bg-[#D4FF00]/30" : ""}`}>
+                <Sparkles className="w-3 h-3 text-stone-700" /> Recently added · 30 days
               </button>
               <div className="border-t border-stone-100">
                 <div className="px-3 py-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 bg-stone-50">Shared</div>
                 {(scopeTree?.shared_folders || []).map((f) => (
-                  <button key={f.folder} onClick={() => setPrefix(`shared/${f.folder}/`)}
-                    className={`w-full px-3 py-2 text-left text-xs hover:bg-stone-50 flex items-center justify-between ${prefix === `shared/${f.folder}/` ? "bg-blue-50" : ""}`}>
+                  <button key={f.folder} onClick={() => { setRecentMode(false); setPrefix(`shared/${f.folder}/`); }}
+                    className={`w-full px-3 py-2 text-left text-xs hover:bg-stone-50 flex items-center justify-between ${prefix === `shared/${f.folder}/` && !recentMode ? "bg-blue-50" : ""}`}>
                     <span className="flex items-center gap-2 truncate"><Globe className="w-3 h-3 text-blue-600" /> {f.folder.replace(/-/g, " ")}</span>
                     <span className="text-[10px] text-stone-500 tabular-nums">{f.files}</span>
                   </button>
@@ -616,8 +645,8 @@ export default function FilesPage() {
               <div className="border-t border-stone-100">
                 <div className="px-3 py-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 bg-stone-50">Admin only</div>
                 {(scopeTree?.admin_folders || []).map((f) => (
-                  <button key={f.folder} onClick={() => setPrefix(`admin/${f.folder}/`)}
-                    className={`w-full px-3 py-2 text-left text-xs hover:bg-stone-50 flex items-center justify-between ${prefix === `admin/${f.folder}/` ? "bg-amber-50" : ""}`}>
+                  <button key={f.folder} onClick={() => { setRecentMode(false); setPrefix(`admin/${f.folder}/`); }}
+                    className={`w-full px-3 py-2 text-left text-xs hover:bg-stone-50 flex items-center justify-between ${prefix === `admin/${f.folder}/` && !recentMode ? "bg-amber-50" : ""}`}>
                     <span className="flex items-center gap-2 truncate"><Lock className="w-3 h-3 text-amber-600" /> {f.folder.replace(/-/g, " ")}</span>
                     <span className="text-[10px] text-stone-500 tabular-nums">{f.files}</span>
                   </button>
@@ -631,7 +660,7 @@ export default function FilesPage() {
                   <div className="px-3 py-4 text-xs text-stone-500">No franchisees yet</div>
                 )}
                 {(scopeTree?.franchisees || []).map((f) => (
-                  <button key={f.franchisee_id} onClick={() => setPrefix("franchisees/")}
+                  <button key={f.franchisee_id} onClick={() => { setRecentMode(false); setPrefix("franchisees/"); }}
                     className="w-full px-3 py-2 text-left text-xs hover:bg-stone-50 flex items-center justify-between"
                     data-testid={`scope-franchisee-${f.franchisee_id}`}>
                     <span className="flex items-center gap-2 truncate"><Users className="w-3 h-3 text-emerald-600" /> {f.franchise_number || "—"} · {f.organisation || f.name}</span>
@@ -644,7 +673,59 @@ export default function FilesPage() {
 
           {/* Main pane */}
           <main className="col-span-12 md:col-span-9 space-y-3">
-            {results ? (
+            {recentMode ? (
+              <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid="recent-view">
+                <div className="px-4 py-3 border-b border-stone-200 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-3.5 h-3.5 text-stone-700" />
+                    <span className="text-xs uppercase tracking-widest font-bold text-stone-700">
+                      Recently added · {recent?.count || 0} files in the last {recent?.days || 30} days
+                    </span>
+                  </div>
+                  <button onClick={() => setRecentMode(false)} className="text-xs text-stone-500 hover:text-stone-900">Close</button>
+                </div>
+                {!recent && (
+                  <div className="px-4 py-12 text-center text-sm text-stone-500 flex items-center justify-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Loading…
+                  </div>
+                )}
+                {recent && recent.items.length === 0 && (
+                  <div className="px-4 py-12 text-center text-sm text-stone-500" data-testid="recent-empty">
+                    Nothing new in the last {recent.days} days.
+                  </div>
+                )}
+                {recent && recent.items.length > 0 && (
+                  <div className="divide-y divide-stone-100">
+                    {recent.items.map((it) => {
+                      const Icon = fileIcon(it);
+                      const when = it.uploaded_at || it.imported_at || it.last_modified;
+                      return (
+                        <div key={it.key} className="px-4 py-2 flex items-center justify-between hover:bg-stone-50 gap-3" data-testid={`recent-row-${it.key}`}>
+                          <button onClick={() => setPreview(it)} className="flex items-center gap-3 truncate text-left flex-1">
+                            <Icon className="w-4 h-4 text-stone-500 shrink-0" />
+                            <div className="truncate min-w-0">
+                              <div className="text-sm text-stone-900 truncate hover:underline">{it.name}</div>
+                              <div className="text-[11px] text-stone-500 truncate">
+                                {it.franchisee_label || it.parent_prefix}
+                                {when ? ` · ${formatDate(when)}` : ""}
+                              </div>
+                            </div>
+                          </button>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <ScopeBadge scope={it.scope} />
+                            <span className="text-xs text-stone-500 tabular-nums">{fmtBytes(it.size)}</span>
+                            <button onClick={() => download(it.key)} disabled={downloadingKey === it.key}
+                              className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-md flex items-center gap-1 disabled:opacity-50">
+                              {downloadingKey === it.key ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            ) : results ? (
               <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid="search-results">
                 <div className="px-4 py-3 border-b border-stone-200 flex items-center justify-between">
                   <span className="text-xs uppercase tracking-widest font-bold text-stone-700">Search results · {results.count}</span>
@@ -722,16 +803,22 @@ export default function FilesPage() {
                     viewMode === "grid" ? (
                       <div className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3" data-testid="files-grid">
                         {tree.folders.map((f) => (
-                          <button key={f.key} onClick={() => setPrefix(f.key)} data-testid={`folder-grid-${f.name}`}
-                            className="group flex flex-col items-stretch border border-stone-200 hover:border-stone-400 hover:shadow-md transition-all rounded-xl overflow-hidden text-left bg-white">
-                            <div className="aspect-square bg-amber-50 flex items-center justify-center border-b border-amber-100">
+                          <div key={f.key} className="group flex flex-col items-stretch border border-stone-200 hover:border-stone-400 hover:shadow-md transition-all rounded-xl overflow-hidden text-left bg-white relative">
+                            <button onClick={() => setPrefix(f.key)} data-testid={`folder-grid-${f.name}`}
+                              className="aspect-square bg-amber-50 flex items-center justify-center border-b border-amber-100">
                               <Folder className="w-14 h-14 text-amber-600 group-hover:scale-105 transition-transform" />
+                            </button>
+                            <div className="p-2.5 flex items-start justify-between gap-2">
+                              <button onClick={() => setPrefix(f.key)} className="text-left min-w-0 flex-1">
+                                <div className="text-xs font-semibold text-stone-900 truncate">{f.name.replace(/-/g, " ")}</div>
+                                <div className="text-[10px] text-stone-500 tabular-nums mt-0.5">{f.files} files · {fmtBytes(f.bytes)}</div>
+                              </button>
+                              <FolderActionsMenu folder={f}
+                                onChanged={() => { reloadTree(prefix); reloadScopes(); }}
+                                onMove={(fl) => setMovingFolder(fl)}
+                                onShare={(fl) => setFolderShare(fl)} />
                             </div>
-                            <div className="p-2.5">
-                              <div className="text-xs font-semibold text-stone-900 truncate">{f.name.replace(/-/g, " ")}</div>
-                              <div className="text-[10px] text-stone-500 tabular-nums mt-0.5">{f.files} files · {fmtBytes(f.bytes)}</div>
-                            </div>
-                          </button>
+                          </div>
                         ))}
                         {tree.files.map((it) => {
                           const Icon = fileIcon(it);
@@ -768,15 +855,19 @@ export default function FilesPage() {
                     ) : (
                     <div className="divide-y divide-stone-100">
                       {tree.folders.map((f) => (
-                        <button key={f.key} onClick={() => setPrefix(f.key)}
-                          data-testid={`folder-${f.name}`}
-                          className="w-full px-4 py-2 hover:bg-stone-50 flex items-center justify-between text-left">
-                          <div className="flex items-center gap-3 truncate">
+                        <div key={f.key} data-testid={`folder-${f.name}`}
+                          className="w-full px-4 py-2 hover:bg-stone-50 flex items-center justify-between gap-3 group">
+                          <button onClick={() => setPrefix(f.key)}
+                            className="flex items-center gap-3 truncate text-left flex-1">
                             <Folder className="w-4 h-4 text-amber-600 shrink-0" />
                             <span className="text-sm text-stone-900 truncate">{f.name.replace(/-/g, " ")}</span>
-                          </div>
+                          </button>
                           <span className="text-xs text-stone-500 tabular-nums">{f.files} files · {fmtBytes(f.bytes)}</span>
-                        </button>
+                          <FolderActionsMenu folder={f}
+                            onChanged={() => { reloadTree(prefix); reloadScopes(); }}
+                            onMove={(fl) => setMovingFolder(fl)}
+                            onShare={(fl) => setFolderShare(fl)} />
+                        </div>
                       ))}
                       {tree.files.map((it) => (
                         <div key={it.key} className="px-4 py-2 flex items-center justify-between hover:bg-stone-50" data-testid={`file-row-${it.key}`}>
@@ -812,6 +903,11 @@ export default function FilesPage() {
       {/* Preview & Share modals */}
       <PreviewModal file={preview} onClose={() => setPreview(null)} />
       <ShareModal file={share} onClose={() => setShare(null)} />
+      <FolderShareModal folder={folderShare} onClose={() => setFolderShare(null)} />
+      <FolderMovePicker open={!!movingFolder}
+        sourcePrefix={movingFolder?.key || ""}
+        onClose={() => setMovingFolder(null)}
+        onConfirm={moveFolder} />
     </div>
   );
 }

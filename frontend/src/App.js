@@ -14,6 +14,7 @@ import ContractRenewalsPage from "@/pages/ContractRenewalsPage";
 import FilesPage from "@/pages/FilesPage";
 import ContactsPage from "@/pages/ContactsPage";
 import FormIntakePage from "@/pages/FormIntakePage";
+import PublicFolderSharePage from "@/pages/PublicFolderSharePage";
 
 export default function App() {
   return (
@@ -22,6 +23,7 @@ export default function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/share/folder/:token" element={<PublicFolderSharePage />} />
             <Route
               element={
                 <ProtectedRoute>

@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 18 — Phase 3 Files folder ops: rename/move/soft-delete, /files/recent, folder-share + public viewer + ZIP, FranchiseeFilesPanel. 8/8 backend tests pass after one minor adjustment. Frontend flows verified end-to-end including PUBLIC unauthenticated folder-share viewer.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/files/folder/move", "issue": "Response field `moved` is shadowed: `{\"moved\": True, **result}` is overwritten by `result[\"moved\"]` (the integer count). Same pattern works fine for /rename (`renamed` key is different) and /folder (`trashed` key is different). Frontend should treat truthy count as success — adjust the response to e.g. `{\"ok\": True, **result}` for consistency."},
+      {"endpoint": "GET /api/files/tree (prefix=\"\")", "issue": "Root tree listing does NOT exclude the `.trash/` prefix (only /scope-tree does). The hidden trash folder is therefore visible as a regular folder in the admin Files page root view, with a kebab menu that lets the admin rename/move/share/delete it. Consider regex-excluding `^\\.trash/` from /files/tree as well, or rendering it read-only."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "FilesPage root", "issues": ["`.trash` folder is rendered like a normal folder (with a full kebab menu and 7 files badge). It came from the soft-delete in the test run. Either hide it client-side or make the backend /files/tree filter it out."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter18_folder_ops.py",
+    "/app/test_reports/pytest/iter18_folder_ops.xml"
+  ],
+  "action_items": [
+    "Fix moved-key shadowing in /files/folder/move response (cosmetic, but mis-typed contract).",
+    "Filter `^\\.trash/` out of /api/files/tree results so it doesn't show up in the admin file browser sidebar/main pane (scope-tree already excludes it)."
+  ],
+  "critical_code_review_comments": [
+    "files_routes.py — `_stream_zip` reads each object fully into memory before zipping. Spec says 'no size cap' for folder-share ZIPs; for >100MB folders this could OOM the FastAPI worker. Recommend switching to zipstream-ng + StreamingResponse before any large customer asset packs are shared.",
+    "files_routes.py — both /files/folder-share/{token} GET and ZIP routes are unauthenticated (intentional) but neither rate-limits or revokes on excessive hits. Future hardening: cap `hits` per IP/min.",
+    "files_routes.py — `_classify_uploaded_key` returns admin scope for keys that don't start with `franchisees/` or `shared/`. When soft-deleting a franchisee folder, the moved entries get `scope: admin` because the new key starts with `.trash/...`. That's actually safe (admin scope hides them from franchisees) but means the audit trail loses the original scope. Consider stashing `previous_scope` on soft-delete.",
+    "FolderActionsMenu.jsx — uses window.prompt for rename UX; iOS Safari sometimes truncates these. Future: replace with a proper inline rename or modal."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter18_folder_ops.py (new)"
+  ],
+  "success_rate": {"backend": "100% (8/8)", "frontend": "100% of critical flows"},
+  "test_credentials": "admin@creativemojo.co.uk / CreativeMojo2026! (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Created admin/test-iter18-<ts>/ and shared/test-iter18-<ts>/ folders during the pytest run; teardown fixture soft-deletes them via DELETE /api/files/folder and hard-deletes individual file keys via DELETE /api/files. One folder share token was created during UI testing (franchisees/, 30 days) — will auto-expire.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter18 regression suite is at /app/backend/tests/test_iter18_folder_ops.py (8 tests, ~25s). Public folder-share route is /share/folder/:token and IS reachable without auth cookies (verified). Two known minor issues to fix: (a) /files/folder/move response `moved` key is overwritten by integer count, (b) /files/tree does not exclude .trash/ even though /scope-tree does. The FranchiseeFilesPanel's `franchisee-files-zip` button only renders when the franchisee has a mapped R2 root prefix; tested franchisee (Helen Lyons #0006) had no R2 folder so the button was correctly hidden — selector exists in code.",
+  "rca_of_the_issue": "moved-shadow bug: `_move_prefix` returns a dict that already contains a `moved: <int>` key (count of files moved). The wrapper `files_folder_move` returns `{\"moved\": True, **result}` — Python dict unpacking lets the later key win, so the response ends up as `{\"moved\": 2, ...}` rather than `{\"moved\": True, ...}`. Fix: rename the wrapper key (e.g. `{\"ok\": True, **result}`) or rename the inner counter (`moved_count`)."
+}

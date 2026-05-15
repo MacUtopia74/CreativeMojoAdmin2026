@@ -67,7 +67,10 @@ def build_router(db, require_role) -> APIRouter:
         - shared (folders + counts)
         - admin (folders + counts)"""
         pipeline = [
-            {"$match": {"hidden": {"$ne": True}}},
+            {"$match": {
+                "hidden": {"$ne": True},
+                "key": {"$not": re.compile(r"^\.trash/")},
+            }},
             {"$group": {
                 "_id": {"scope": "$scope",
                          "top_folder": {"$arrayElemAt": [{"$split": ["$parent_prefix", "/"]}, 1]}},
@@ -79,7 +82,11 @@ def build_router(db, require_role) -> APIRouter:
         rows = await db.files_index.aggregate(pipeline).to_list(1000)
         # Per-franchisee summary
         f_pipeline = [
-            {"$match": {"scope": SCOPE_FRANCHISEE, "franchisee_id": {"$ne": None}}},
+            {"$match": {
+                "scope": SCOPE_FRANCHISEE,
+                "franchisee_id": {"$ne": None},
+                "key": {"$not": re.compile(r"^\.trash/")},
+            }},
             {"$group": {"_id": "$franchisee_id", "files": {"$sum": 1}, "bytes": {"$sum": "$size"}}},
             {"$sort": {"bytes": -1}},
         ]
@@ -489,5 +496,326 @@ def build_router(db, require_role) -> APIRouter:
             raise HTTPException(502, detail=f"R2 delete failed: {exc}") from exc
         await db.files_index.delete_one({"key": key})
         return {"deleted": key}
+
+    # -----------------------------------------------------------------
+    # Recent uploads — only franchisee+shared scopes (admin-only files
+    # are intentionally excluded so this view is safe for the future
+    # franchisee portal). Default: last 30 days.
+    @router.get("/files/recent")
+    async def files_recent(
+        days: int = Query(30, ge=1, le=365),
+        limit: int = Query(200, le=500),
+        _user: dict = Depends(require_role("admin")),
+    ):
+        from datetime import timedelta
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        q = {
+            "scope": {"$in": [SCOPE_FRANCHISEE, SCOPE_SHARED]},
+            "hidden": {"$ne": True},
+            "key": {"$not": re.compile(r"^\.trash/")},
+            "$or": [
+                {"uploaded_at": {"$gte": cutoff}},
+                {"imported_at": {"$gte": cutoff}},
+                {"last_modified": {"$gte": cutoff}},
+            ],
+        }
+        cur = (db.files_index
+               .find(q, {"_id": 0})
+               .sort([("uploaded_at", -1), ("imported_at", -1), ("last_modified", -1)])
+               .limit(limit))
+        items = await cur.to_list(limit)
+        # Enrich with franchisee names for nicer display
+        f_ids = list({it.get("franchisee_id") for it in items if it.get("franchisee_id")})
+        f_lookup = {}
+        if f_ids:
+            f_docs = await db.franchisees.find(
+                {"id": {"$in": f_ids}},
+                {"_id": 0, "id": 1, "franchise_number": 1, "organisation": 1, "first_name": 1, "last_name": 1},
+            ).to_list(1000)
+            f_lookup = {f["id"]: f for f in f_docs}
+        for it in items:
+            f = f_lookup.get(it.get("franchisee_id"))
+            if f:
+                it["franchisee_label"] = f"{f.get('franchise_number') or ''} · {f.get('organisation') or f.get('first_name') or ''}".strip(" ·")
+        return {"items": items, "count": len(items), "days": days}
+
+    # -----------------------------------------------------------------
+    # Folder operations: rename, move, soft-delete.
+    # In S3/R2 these are all multi-step (copy-then-delete) loops over
+    # every object under the prefix. Acceptable for our scale (folders
+    # are typically <500 files, <100MB). We also update files_index in
+    # bulk so the UI reflects the new layout immediately.
+    def _safe_name(raw: str) -> str:
+        s = re.sub(r"[^\w\s.\-]", "", raw or "").strip()
+        return s
+
+    async def _move_prefix(src_prefix: str, dst_prefix: str, *, reason: str, user_email: str) -> dict:
+        if not src_prefix.endswith("/"):
+            src_prefix += "/"
+        if not dst_prefix.endswith("/"):
+            dst_prefix += "/"
+        if src_prefix == dst_prefix:
+            raise HTTPException(400, detail="Source and destination are the same")
+        if dst_prefix.startswith(src_prefix):
+            raise HTTPException(400, detail="Cannot move a folder into itself")
+        s3 = get_client()
+        # Iterate all index entries under src_prefix (including .keep)
+        cur = db.files_index.find({"key": {"$regex": f"^{re.escape(src_prefix)}"}}, {"_id": 0})
+        entries = await cur.to_list(50000)
+        if not entries:
+            raise HTTPException(404, detail="Folder is empty or does not exist")
+        moved = 0
+        errors = []
+        new_scope = _classify_uploaded_key(dst_prefix)["scope"]
+        for ent in entries:
+            old_key = ent["key"]
+            new_key = dst_prefix + old_key[len(src_prefix):]
+            try:
+                s3.copy_object(Bucket=R2_BUCKET, Key=new_key,
+                               CopySource={"Bucket": R2_BUCKET, "Key": old_key})
+                s3.delete_object(Bucket=R2_BUCKET, Key=old_key)
+            except Exception as exc:  # noqa: BLE001
+                errors.append({"key": old_key, "error": str(exc)})
+                continue
+            patch = {
+                "key": new_key,
+                "parent_prefix": new_key.rsplit("/", 1)[0] + "/" if "/" in new_key else "",
+                "scope": new_scope,
+                "moved_at": _now(),
+                "moved_by": user_email,
+                "moved_reason": reason,
+            }
+            await db.files_index.update_one({"key": old_key}, {"$set": patch})
+            moved += 1
+        return {"moved": moved, "errors": errors,
+                "from": src_prefix, "to": dst_prefix}
+
+    @router.post("/files/folder/rename")
+    async def files_folder_rename(body: dict, user: dict = Depends(require_role("admin"))):
+        prefix = (body.get("prefix") or "").strip()
+        new_name = _safe_name(body.get("new_name") or "")
+        if not prefix or not new_name:
+            raise HTTPException(400, detail="prefix and new_name required")
+        if not prefix.endswith("/"):
+            prefix += "/"
+        # Parent of the renamed folder = the prefix without the last segment
+        parts = prefix.rstrip("/").split("/")
+        parent = "/".join(parts[:-1])
+        if parent:
+            parent += "/"
+        new_prefix = f"{parent}{new_name}/"
+        result = await _move_prefix(prefix, new_prefix, reason="rename", user_email=user.get("email"))
+        return {"renamed": True, **result}
+
+    @router.post("/files/folder/move")
+    async def files_folder_move(body: dict, user: dict = Depends(require_role("admin"))):
+        src = (body.get("prefix") or "").strip()
+        dst_parent = (body.get("new_parent") or "").strip()
+        if not src:
+            raise HTTPException(400, detail="prefix required")
+        if not src.endswith("/"):
+            src += "/"
+        if dst_parent and not dst_parent.endswith("/"):
+            dst_parent += "/"
+        # New prefix = dst_parent + last segment of src
+        leaf = src.rstrip("/").rsplit("/", 1)[-1]
+        new_prefix = f"{dst_parent}{leaf}/"
+        result = await _move_prefix(src, new_prefix, reason="move", user_email=user.get("email"))
+        return {"moved": True, **result}
+
+    @router.delete("/files/folder")
+    async def files_folder_soft_delete(
+        prefix: str = Query(...),
+        user: dict = Depends(require_role("admin")),
+    ):
+        """Soft delete: moves the folder under `.trash/<ISO-ts>/` so
+        nothing is actually destroyed. A future cron job can purge
+        anything older than 30 days."""
+        if not prefix.endswith("/"):
+            prefix += "/"
+        if prefix.startswith(".trash/"):
+            raise HTTPException(400, detail="Folder is already in trash")
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        trash_prefix = f".trash/{ts}/{prefix}"
+        result = await _move_prefix(prefix, trash_prefix,
+                                     reason="soft_delete", user_email=user.get("email"))
+        await db.files_trash_log.insert_one({
+            "original_prefix": prefix,
+            "trash_prefix": trash_prefix,
+            "deleted_at": _now(),
+            "deleted_by": user.get("email"),
+            "files_count": result.get("moved", 0),
+            "errors": result.get("errors", []),
+        })
+        return {"trashed": True, "trash_prefix": trash_prefix, **result}
+
+    # -----------------------------------------------------------------
+    # Folder share tokens. Admin generates a public link → recipient
+    # gets a page listing all files in the folder with per-file download
+    # buttons AND a "Download All as ZIP" button.
+    @router.post("/files/folder-share")
+    async def files_folder_share_create(body: dict, user: dict = Depends(require_role("admin"))):
+        import secrets
+        prefix = (body.get("prefix") or "").strip()
+        raw_days = body.get("days")
+        days = int(raw_days if raw_days is not None else 30)
+        days = max(1, min(days, 30))
+        if not prefix:
+            raise HTTPException(400, detail="prefix required")
+        if not prefix.endswith("/"):
+            prefix += "/"
+        # Make sure the folder has files we can share
+        cnt = await db.files_index.count_documents({
+            "key": {"$regex": f"^{re.escape(prefix)}"},
+            "hidden": {"$ne": True},
+        })
+        if cnt == 0:
+            raise HTTPException(404, detail="Folder is empty — nothing to share")
+        token = secrets.token_urlsafe(18)
+        now_ts = datetime.now(timezone.utc).timestamp()
+        expires_at_ts = now_ts + days * 86400
+        leaf = prefix.rstrip("/").rsplit("/", 1)[-1] or prefix.rstrip("/")
+        doc = {
+            "token": token,
+            "kind": "folder",
+            "prefix": prefix,
+            "label": leaf.replace("-", " "),
+            "file_count": cnt,
+            "expires_at": datetime.fromtimestamp(expires_at_ts, tz=timezone.utc).isoformat(),
+            "created_at": _now(),
+            "created_by": user.get("email"),
+            "revoked": False,
+            "hits": 0,
+        }
+        await db.files_share_links.insert_one(doc)
+        base = (os.environ.get("FRONTEND_URL") or "").rstrip("/")
+        # Public viewer URL — handled by the React app
+        url = f"{base}/share/folder/{token}"
+        return {"url": url, "token": token, "expires_at": doc["expires_at"],
+                "days": days, "label": doc["label"], "file_count": cnt}
+
+    async def _resolve_folder_token(token: str) -> dict:
+        rec = await db.files_share_links.find_one(
+            {"token": token, "kind": "folder"}, {"_id": 0},
+        )
+        if not rec or rec.get("revoked"):
+            raise HTTPException(404, detail="Share link not found or revoked")
+        try:
+            expires_at = datetime.fromisoformat(rec["expires_at"])
+        except Exception:  # noqa: BLE001
+            expires_at = None
+        if expires_at and datetime.now(timezone.utc) > expires_at:
+            raise HTTPException(410, detail="Share link expired")
+        return rec
+
+    @router.get("/files/folder-share/{token}")
+    async def files_folder_share_view(token: str):
+        """PUBLIC listing of a shared folder. No auth — anyone with the
+        link can see file names + per-file presigned download URLs."""
+        rec = await _resolve_folder_token(token)
+        prefix = rec["prefix"]
+        cur = db.files_index.find({
+            "key": {"$regex": f"^{re.escape(prefix)}"},
+            "hidden": {"$ne": True},
+        }, {"_id": 0}).sort("key", 1).limit(2000)
+        items = await cur.to_list(2000)
+        files_out = []
+        for it in items:
+            rel = it["key"][len(prefix):]
+            disp = f'attachment; filename="{(it.get("name") or "file").replace(chr(34), "")}"'
+            signed = presigned_get_url(it["key"], expires_in=3600,
+                                        content_disposition=disp)
+            files_out.append({
+                "name": it.get("name"),
+                "rel_path": rel,
+                "size": it.get("size", 0),
+                "content_type": it.get("content_type"),
+                "download_url": signed,
+            })
+        await db.files_share_links.update_one(
+            {"token": token},
+            {"$inc": {"hits": 1}, "$set": {"last_hit_at": _now()}},
+        )
+        return {
+            "label": rec.get("label"),
+            "file_count": rec.get("file_count"),
+            "expires_at": rec.get("expires_at"),
+            "files": files_out,
+            "zip_url": f"/api/files/folder-share/{token}/zip",
+        }
+
+    # -----------------------------------------------------------------
+    # Streaming ZIP download — both for public folder shares and for
+    # admin "Download as ZIP" on any folder.
+    def _stream_zip(keys_with_names: list[tuple[str, str]], zip_name: str):
+        """Build an in-memory ZIP of (key, rel_name) tuples. Acceptable
+        because user-stated upper bound is ~100 MB; if folders grow much
+        larger, swap for zipstream-ng + StreamingResponse."""
+        import io
+        import zipfile
+        buf = io.BytesIO()
+        s3 = get_client()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED, compresslevel=4) as zf:
+            for key, rel in keys_with_names:
+                try:
+                    body = s3.get_object(Bucket=R2_BUCKET, Key=key)["Body"].read()
+                    zf.writestr(rel, body)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Skipping %s in ZIP build: %s", key, exc)
+        buf.seek(0)
+        return buf
+
+    async def _collect_folder_keys(prefix: str) -> list[tuple[str, str]]:
+        cur = db.files_index.find({
+            "key": {"$regex": f"^{re.escape(prefix)}"},
+            "hidden": {"$ne": True},
+        }, {"_id": 0, "key": 1, "name": 1}).sort("key", 1).limit(2000)
+        items = await cur.to_list(2000)
+        out = []
+        for it in items:
+            rel = it["key"][len(prefix):]
+            if not rel:
+                continue
+            out.append((it["key"], rel))
+        return out
+
+    @router.get("/files/folder-share/{token}/zip")
+    async def files_folder_share_zip(token: str):
+        from fastapi.responses import StreamingResponse
+        rec = await _resolve_folder_token(token)
+        keys = await _collect_folder_keys(rec["prefix"])
+        if not keys:
+            raise HTTPException(404, detail="Folder is empty")
+        buf = _stream_zip(keys, rec.get("label") or "folder")
+        safe = (rec.get("label") or "folder").replace('"', "")
+        await db.files_share_links.update_one(
+            {"token": token},
+            {"$inc": {"hits": 1}, "$set": {"last_hit_at": _now()}},
+        )
+        return StreamingResponse(
+            buf,
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{safe}.zip"'},
+        )
+
+    @router.get("/files/folder-zip")
+    async def files_folder_zip_admin(
+        prefix: str = Query(..., description="Folder prefix to ZIP (admin only)"),
+        _user: dict = Depends(require_role("admin")),
+    ):
+        from fastapi.responses import StreamingResponse
+        if not prefix.endswith("/"):
+            prefix += "/"
+        keys = await _collect_folder_keys(prefix)
+        if not keys:
+            raise HTTPException(404, detail="Folder is empty")
+        buf = _stream_zip(keys, prefix.rstrip("/").rsplit("/", 1)[-1])
+        leaf = prefix.rstrip("/").rsplit("/", 1)[-1] or "folder"
+        safe = leaf.replace('"', "")
+        return StreamingResponse(
+            buf,
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{safe}.zip"'},
+        )
 
     return router
