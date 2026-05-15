@@ -73,26 +73,26 @@ export default function RecentFilesStrip({ viewMode = "list", onOpenFile, onDown
     <div className="bg-white border-2 border-stone-900 rounded-2xl overflow-hidden mb-4 shadow-sm" data-testid="recent-strip">
       <button onClick={() => setOpen((o) => !o)}
         data-testid="recent-strip-toggle"
-        className={`w-full px-5 py-3 flex items-center justify-between transition-colors ${open ? "bg-stone-950 text-white" : "bg-[#DEDD0C] hover:brightness-95"}`}>
+        className="w-full px-5 py-3 flex items-center justify-between bg-[#EEEE86] hover:brightness-95 transition-[filter]">
         <div className="flex items-center gap-2.5">
-          <div className={`w-7 h-7 rounded-md flex items-center justify-center ${open ? "bg-[#D4FF00]" : "bg-stone-950"}`}>
-            <Sparkles className={`w-4 h-4 ${open ? "text-stone-950" : "text-[#D4FF00]"}`} />
+          <div className="w-7 h-7 rounded-md flex items-center justify-center bg-stone-950">
+            <Sparkles className="w-4 h-4 text-[#DEDD0C]" />
           </div>
-          <span className={`text-sm font-display font-bold tracking-tight ${open ? "text-white" : "text-stone-950"}`}>
+          <span className="text-sm font-display font-bold tracking-tight text-stone-950">
             Recently added
           </span>
-          <span className={`text-[11px] uppercase tracking-[0.2em] font-bold ${open ? "text-stone-400" : "text-stone-800"}`}>
+          <span className="text-[11px] uppercase tracking-[0.2em] font-bold text-stone-800">
             · last 30 days
           </span>
           {items && (
-            <span className={`px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md tabular-nums ${open ? "bg-[#D4FF00] text-stone-950" : "bg-stone-950 text-[#D4FF00]"}`}>
+            <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md tabular-nums bg-stone-950 text-[#DEDD0C]">
               {count}
             </span>
           )}
         </div>
         <div className="flex items-center gap-2">
-          {loading && <Loader2 className={`w-3.5 h-3.5 animate-spin ${open ? "text-stone-400" : "text-stone-700"}`} />}
-          <span className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md flex items-center gap-1 ${open ? "bg-white/10 text-white hover:bg-white/20" : "bg-stone-950 text-white"}`}>
+          {loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-stone-700" />}
+          <span className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md flex items-center gap-1 bg-stone-950 text-white">
             {open
               ? <><ChevronUp className="w-3 h-3" /> Hide</>
               : <><ChevronDown className="w-3 h-3" /> Show recent files</>}
