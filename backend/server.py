@@ -642,16 +642,27 @@ async def dashboard_stats(_: dict = Depends(require_role("admin"))):
     territories = await db.territories.count_documents({})
     last_migration = await db.migration_runs.find_one({}, sort=[("run_at", -1)])
 
-    # Mandate breakdown across active franchisees only
+    # Mandate breakdown across active franchisees only — reads live
+    # `gocardless_mandate_status` (kept in sync via the GoCardless API).
     mandate_pipeline = [
         {"$match": {"tags": "Franchisee"}},
-        {"$group": {"_id": "$mandate", "count": {"$sum": 1}}},
+        {"$group": {"_id": "$gocardless_mandate_status", "count": {"$sum": 1}}},
         {"$sort": {"count": -1}},
     ]
-    mandate_breakdown = await db.franchisees.aggregate(mandate_pipeline).to_list(20)
+    mandate_breakdown_raw = await db.franchisees.aggregate(mandate_pipeline).to_list(20)
+    _MANDATE_LABEL = {
+        "active": "Live",
+        "pending_submission": "Pending submission",
+        "pending_customer_approval": "Awaiting approval",
+        "submitted": "Submitted",
+        "cancelled": "Cancelled",
+        "expired": "Expired",
+        "failed": "Failed",
+    }
     mandate_breakdown = [
-        {"value": (m["_id"] if isinstance(m["_id"], str) else (m["_id"][0] if isinstance(m["_id"], list) and m["_id"] else None)) or "Not set", "count": m["count"]}
-        for m in mandate_breakdown
+        {"value": _MANDATE_LABEL.get(m["_id"], m["_id"]) if m["_id"] else "Not set",
+         "count": m["count"]}
+        for m in mandate_breakdown_raw
     ]
 
     # Pipeline funnel (active sales pipeline only — records with in_pipeline=true)
