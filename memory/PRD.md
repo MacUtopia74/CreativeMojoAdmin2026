@@ -30,6 +30,21 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
 
 ## What's Implemented (2026-05-15)
 
+### Phase 3 — Iteration 18 (2026-05-15) ✅ Folder operations + Recents + Folder share + Franchisee Files panel
+- **Admin folder operations** (`POST /files/folder/rename`, `POST /files/folder/move`, `DELETE /files/folder`): rename inline, move via tree-picker, soft-delete (moves contents under `.trash/<ISO-ts>/...` — kept for future cron-purge after 30 days). All admin-only.
+- **`GET /files/recent?days=30`**: returns files uploaded/imported in the last 30 days, scoped to `franchisee` + `shared` only (admin-only folders intentionally excluded — safe for the future franchisee portal). New sidebar entry `Recently added · 30 days` in FilesPage with badge counts and franchisee labels.
+- **Folder Share** (`POST /files/folder-share`, public `GET /files/folder-share/{token}` + `/zip`): admin generates a 1–30 day link; recipient lands on `/share/folder/:token` with a clean public page listing every file with individual download buttons AND a "Download All as ZIP" button. No size cap (in-memory ZIP — fine up to ~100MB folder size as user confirmed).
+- **Admin ZIP** (`GET /files/folder-zip?prefix=...`): authenticated download of any folder as a ZIP for in-app workflows.
+- **FranchiseeFilesPanel**: reusable component embedded in `FranchiseeDetailPage` — shows a franchisee's own R2 folder with breadcrumb navigation + per-file download + "Download this folder as ZIP". Same component will be the primary view for Phase-3 franchisee portal users.
+- **Hygiene**: `/files/scope-tree` and `/files/tree` (root) now exclude the `.trash/` prefix so soft-deleted items don't pollute the admin sidebar or root browser.
+- **New frontend modules**: `components/files/FolderActionsMenu.jsx`, `FolderMovePicker.jsx`, `FolderShareModal.jsx`, `FranchiseeFilesPanel.jsx`, `pages/PublicFolderSharePage.jsx`.
+- **Testing**: 15/15 regression tests pass (iter17 + iter18 at `/app/backend/tests/`).
+
+**Deferred (per user) — not in this iteration:**
+- Auto-create franchisee folder structure (`Artwork / Franchise Agreement / Territory`) on franchisee creation — user said "DON'T DO YET". Will be picked up in a follow-up.
+- Drag-and-drop folder move — defer (kebab-menu + tree-picker is the chosen UX).
+- ZIP streaming via `zipstream-ng` — in-memory ZIP is fine for the stated 50–100MB cap; revisit if folders grow.
+
 ### Phase 3 — Iteration 17 (2026-05-15) ✅ File browser UX fixes
 Fixed 6 issues reported by user on the FilesPage in iteration 16:
 - **Folder visibility bug**: `GET /api/files/tree` now considers hidden `.keep` placeholders when deriving sub-folders so empty/newly-created folders surface, but still excludes them from the user-facing `files` array.

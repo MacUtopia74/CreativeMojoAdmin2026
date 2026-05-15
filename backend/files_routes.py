@@ -146,6 +146,10 @@ def build_router(db, require_role) -> APIRouter:
             q["franchisee_id"] = franchisee_id
         if prefix:
             q["key"] = {"$regex": f"^{re.escape(prefix)}"}
+        else:
+            # Root listing — hide the .trash/ container so soft-deleted
+            # folders don't appear as a normal folder in the admin browser.
+            q["key"] = {"$not": re.compile(r"^\.trash/")}
         # Note: do NOT filter out hidden=.keep placeholders here — we need
         # them so that empty folders still surface in `folders`. We exclude
         # the .keep entries from the user-facing `files` list further down.
@@ -621,7 +625,8 @@ def build_router(db, require_role) -> APIRouter:
         leaf = src.rstrip("/").rsplit("/", 1)[-1]
         new_prefix = f"{dst_parent}{leaf}/"
         result = await _move_prefix(src, new_prefix, reason="move", user_email=user.get("email"))
-        return {"moved": True, **result}
+        # Keep `moved` as the int count (from _move_prefix). Wrap with `ok`.
+        return {"ok": True, **result}
 
     @router.delete("/files/folder")
     async def files_folder_soft_delete(
