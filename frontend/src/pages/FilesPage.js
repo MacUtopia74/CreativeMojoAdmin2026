@@ -659,12 +659,25 @@ export default function FilesPage() {
                 {(scopeTree?.franchisees || []).length === 0 && (
                   <div className="px-3 py-4 text-xs text-stone-500">No franchisees yet</div>
                 )}
-                {(scopeTree?.franchisees || []).map((f) => (
+                {[...(scopeTree?.franchisees || [])]
+                  .sort((a, b) => {
+                    // Numerical sort by franchise_number; missing numbers
+                    // get sent to the bottom.
+                    const an = parseInt(a.franchise_number, 10);
+                    const bn = parseInt(b.franchise_number, 10);
+                    if (isNaN(an) && isNaN(bn)) return 0;
+                    if (isNaN(an)) return 1;
+                    if (isNaN(bn)) return -1;
+                    return an - bn;
+                  })
+                  .map((f) => (
                   <button key={f.franchisee_id} onClick={() => { setTrashMode(false); setPrefix("franchisees/"); }}
-                    className="w-full px-3 py-2 text-left text-xs hover:bg-stone-50 flex items-center justify-between"
+                    className="w-full px-3 py-2 text-left text-xs hover:bg-stone-50 flex items-center gap-2"
                     data-testid={`scope-franchisee-${f.franchisee_id}`}>
-                    <span className="flex items-center gap-2 truncate"><Users className="w-3 h-3 text-emerald-600" /> {f.franchise_number || "—"} · {f.organisation || f.name}</span>
-                    <span className="text-[10px] text-stone-500 tabular-nums">{f.files}</span>
+                    <Users className="w-3 h-3 text-emerald-600 shrink-0" />
+                    <span className="tabular-nums font-semibold text-stone-700 shrink-0">{f.franchise_number || "—"}</span>
+                    <span className="truncate flex-1 text-stone-600">{f.organisation || f.name}</span>
+                    <span className="text-[10px] text-stone-500 tabular-nums shrink-0">{f.files}</span>
                   </button>
                 ))}
               </div>
