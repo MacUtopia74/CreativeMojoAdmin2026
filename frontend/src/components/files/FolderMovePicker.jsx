@@ -5,6 +5,7 @@
 import { useEffect, useState, useCallback } from "react";
 import api from "@/lib/api";
 import { ChevronRight, ChevronDown, Folder, X, Loader2, Home } from "lucide-react";
+import { prettyFolderName } from "@/utils/folderName";
 
 function Node({ prefix, name, depth, expanded, onToggle, selected, onSelect, isDescendantOfSrc }) {
   return (
@@ -76,7 +77,7 @@ export default function FolderMovePicker({ open, sourcePrefix, onClose, onConfir
           expanded={isExp} onToggle={toggle}
           selected={selected} onSelect={(p) => !isDescendant(p) && setSelected(p)}
           isDescendantOfSrc={isDescendant(prefix)} />
-        {isExp && (cache[prefix]?.folders || []).map((f) => renderNode(f.key, f.name.replace(/-/g, " "), depth + 1))}
+        {isExp && (cache[prefix]?.folders || []).map((f) => renderNode(f.key, prettyFolderName(f.name), depth + 1))}
         {isExp && cache[prefix]?.loading && (
           <div className="flex items-center gap-2 text-[11px] text-stone-400 pl-8 py-1">
             <Loader2 className="w-3 h-3 animate-spin" /> Loading…
@@ -109,7 +110,7 @@ export default function FolderMovePicker({ open, sourcePrefix, onClose, onConfir
             className={`w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded-md text-left ${selected === "" ? "bg-stone-900 text-white" : "hover:bg-stone-100 text-stone-800"}`}>
             <Home className="w-3.5 h-3.5" /> Root (/)
           </button>
-          {(cache[""]?.folders || []).map((f) => renderNode(f.key, f.name.replace(/-/g, " "), 0))}
+          {(cache[""]?.folders || []).map((f) => renderNode(f.key, prettyFolderName(f.name), 0))}
         </div>
         {err && <div className="px-5 py-2 text-xs text-red-700 bg-red-50 border-t border-red-200">{err}</div>}
         <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-stone-100">

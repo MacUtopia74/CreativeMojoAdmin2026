@@ -4,6 +4,7 @@
 import { useState, useEffect, useCallback } from "react";
 import api from "@/lib/api";
 import { Share2, X, Loader2, Copy, CheckCircle2 } from "lucide-react";
+import { prettyFolderName } from "@/utils/folderName";
 
 export default function FolderShareModal({ folder, onClose }) {
   const [days, setDays] = useState(30);
@@ -43,7 +44,7 @@ export default function FolderShareModal({ folder, onClose }) {
         </div>
         <div className="px-5 py-4 space-y-3">
           <div>
-            <div className="text-sm font-semibold text-stone-950 truncate">{folder.name.replace(/-/g, " ")}</div>
+            <div className="text-sm font-semibold text-stone-950 truncate">{prettyFolderName(folder.name)}</div>
             <div className="text-[11px] text-stone-500 truncate font-mono">{folder.key}</div>
             <div className="text-[11px] text-stone-500 mt-0.5">{folder.files} files · {fmtBytes(folder.bytes)}</div>
           </div>

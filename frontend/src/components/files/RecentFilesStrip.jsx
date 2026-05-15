@@ -12,6 +12,7 @@ import {
   Folder, List, LayoutGrid,
 } from "lucide-react";
 import FileThumbnail from "@/components/files/FileThumbnail";
+import { prettyFolderName } from "@/utils/folderName";
 
 function fmtBytes(b) {
   if (b == null) return "—";
@@ -160,7 +161,7 @@ export default function RecentFilesStrip({ onOpenFile, onDownload, onOpenFolder 
                         <Folder className="w-10 h-10 text-amber-600 group-hover:scale-105 transition-transform" />
                       </div>
                       <div className="p-2">
-                        <div className="text-[11px] font-semibold text-stone-900 truncate" title={f.name}>{f.name.replace(/-/g, " ")}</div>
+                        <div className="text-[11px] font-semibold text-stone-900 truncate" title={f.name}>{prettyFolderName(f.name)}</div>
                         <div className="text-[10px] text-stone-500 tabular-nums mt-0.5">+{f.file_count} files · {fmtBytes(f.bytes)}</div>
                       </div>
                     </button>
@@ -193,7 +194,7 @@ export default function RecentFilesStrip({ onOpenFile, onDownload, onOpenFolder 
                     <div className="flex items-center gap-3 truncate flex-1 min-w-0">
                       <Folder className="w-4 h-4 text-amber-600 shrink-0" />
                       <div className="truncate min-w-0">
-                        <div className="text-sm text-stone-900 truncate">{f.name.replace(/-/g, " ")}</div>
+                        <div className="text-sm text-stone-900 truncate">{prettyFolderName(f.name)}</div>
                         <div className="text-[11px] text-stone-500 truncate">
                           <ScopeChip scope={f.scope} label={f.franchisee_label} />
                           {f.latest_at ? ` · last update ${new Date(f.latest_at).toLocaleDateString()}` : ""}

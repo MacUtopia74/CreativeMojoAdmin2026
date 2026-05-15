@@ -13,6 +13,7 @@ import api, { API_BASE } from "@/lib/api";
 import {
   MoreVertical, Pencil, MoveRight, Share2, Download, Trash2, Loader2,
 } from "lucide-react";
+import { prettyFolderName } from "@/utils/folderName";
 
 const MENU_WIDTH = 192; // matches min-w-[192px] below
 const MENU_HEIGHT_ESTIMATE = 220; // 5 items + divider + paddings
@@ -62,7 +63,7 @@ export default function FolderActionsMenu({ folder, onChanged, onMove, onShare }
 
   const rename = async () => {
     setOpen(false);
-    const current = folder.name.replace(/-/g, " ");
+    const current = prettyFolderName(folder.name);
     const next = window.prompt("Rename folder to:", current);
     if (!next || next.trim() === current) return;
     setBusy(true);

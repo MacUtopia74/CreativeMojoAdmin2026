@@ -22,6 +22,7 @@ import FolderShareModal from "@/components/files/FolderShareModal";
 import RecentFilesStrip from "@/components/files/RecentFilesStrip";
 import TrashView from "@/components/files/TrashView";
 import FileThumbnail from "@/components/files/FileThumbnail";
+import { prettyFolderName } from "@/utils/folderName";
 
 function fmtBytes(b) {
   if (b == null) return "—";
@@ -87,7 +88,7 @@ function Breadcrumb({ prefix, onJump }) {
           <span key={i} className="flex items-center gap-2">
             <ChevronRight className="w-4 h-4 text-stone-400" />
             <button onClick={() => onJump(upto)} className="font-display text-xl text-stone-700 hover:text-stone-950 hover:underline">
-              {seg.replace(/-/g, " ")}
+              {prettyFolderName(seg)}
             </button>
           </span>
         );
@@ -631,7 +632,7 @@ export default function FilesPage() {
                 {(scopeTree?.shared_folders || []).map((f) => (
                   <button key={f.folder} onClick={() => { setTrashMode(false); setPrefix(`shared/${f.folder}/`); }}
                     className={`w-full px-3 py-2 text-left text-xs hover:bg-stone-50 flex items-center justify-between ${prefix === `shared/${f.folder}/` && !trashMode ? "bg-blue-50" : ""}`}>
-                    <span className="flex items-center gap-2 truncate"><Globe className="w-3 h-3 text-blue-600" /> {f.folder.replace(/-/g, " ")}</span>
+                    <span className="flex items-center gap-2 truncate"><Globe className="w-3 h-3 text-blue-600" /> {prettyFolderName(f.folder)}</span>
                     <span className="text-[10px] text-stone-500 tabular-nums">{f.files}</span>
                   </button>
                 ))}
@@ -641,7 +642,7 @@ export default function FilesPage() {
                 {(scopeTree?.admin_folders || []).map((f) => (
                   <button key={f.folder} onClick={() => { setTrashMode(false); setPrefix(`admin/${f.folder}/`); }}
                     className={`w-full px-3 py-2 text-left text-xs hover:bg-stone-50 flex items-center justify-between ${prefix === `admin/${f.folder}/` && !trashMode ? "bg-amber-50" : ""}`}>
-                    <span className="flex items-center gap-2 truncate"><Lock className="w-3 h-3 text-amber-600" /> {f.folder.replace(/-/g, " ")}</span>
+                    <span className="flex items-center gap-2 truncate"><Lock className="w-3 h-3 text-amber-600" /> {prettyFolderName(f.folder)}</span>
                     <span className="text-[10px] text-stone-500 tabular-nums">{f.files}</span>
                   </button>
                 ))}
@@ -778,7 +779,7 @@ export default function FilesPage() {
                             </button>
                             <div className="p-2.5 flex items-start justify-between gap-2">
                               <button onClick={() => setPrefix(f.key)} className="text-left min-w-0 flex-1">
-                                <div className="text-xs font-semibold text-stone-900 truncate">{f.name.replace(/-/g, " ")}</div>
+                                <div className="text-xs font-semibold text-stone-900 truncate">{prettyFolderName(f.name)}</div>
                                 <div className="text-[10px] text-stone-500 tabular-nums mt-0.5">{f.files} files · {fmtBytes(f.bytes)}</div>
                               </button>
                               <FolderActionsMenu folder={f}
@@ -826,7 +827,7 @@ export default function FilesPage() {
                           <button onClick={() => setPrefix(f.key)}
                             className="flex items-center gap-3 truncate text-left flex-1">
                             <Folder className="w-4 h-4 text-amber-600 shrink-0" />
-                            <span className="text-sm text-stone-900 truncate">{f.name.replace(/-/g, " ")}</span>
+                            <span className="text-sm text-stone-900 truncate">{prettyFolderName(f.name)}</span>
                           </button>
                           <span className="text-xs text-stone-500 tabular-nums">{f.files} files · {fmtBytes(f.bytes)}</span>
                           <FolderActionsMenu folder={f}

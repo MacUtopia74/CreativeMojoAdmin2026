@@ -10,6 +10,7 @@ import {
   Folder, File as FileIcon, FileText, FileAudio, FileVideo, FileArchive, Image as ImageIcon,
   Download, Loader2, AlertCircle, CloudUpload, ChevronRight, Package, Share2, FolderPlus,
 } from "lucide-react";
+import { prettyFolderName } from "@/utils/folderName";
 
 function fmtBytes(b) {
   if (b == null) return "—";
@@ -121,7 +122,7 @@ export default function FranchiseeFilesPanel({ franchisee, canUpload = true }) {
             return (
               <span key={i} className="flex items-center gap-1">
                 <ChevronRight className="w-3 h-3 text-stone-400" />
-                <button onClick={() => setPrefix(upto)} className="hover:underline">{s.replace(/-/g, " ")}</button>
+                <button onClick={() => setPrefix(upto)} className="hover:underline">{prettyFolderName(s)}</button>
               </span>
             );
           })}
@@ -164,7 +165,7 @@ export default function FranchiseeFilesPanel({ franchisee, canUpload = true }) {
               testid={`fr-folder-${f.name}`}>
               <div className="flex items-center gap-2.5 min-w-0">
                 <Folder className="w-4 h-4 text-amber-600 shrink-0" />
-                <span className="text-sm text-stone-900 truncate">{f.name.replace(/-/g, " ")}</span>
+                <span className="text-sm text-stone-900 truncate">{prettyFolderName(f.name)}</span>
               </div>
               <span className="text-xs text-stone-500 tabular-nums shrink-0">{f.files} files · {fmtBytes(f.bytes)}</span>
             </Row>
