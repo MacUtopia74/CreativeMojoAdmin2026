@@ -122,16 +122,33 @@ class FileCampClient:
 # Planning
 # ---------------------------------------------------------------------------
 async def _build_franchisee_lookup(db) -> dict[str, dict]:
-    """franchise_number (zero-padded 4-digit) → franchisee record."""
+    """franchise_number (zero-padded 4-digit) → franchisee record.
+
+    EX-Franchisees are excluded so the FileCamp 8GB migration only
+    brings across folders belonging to currently active franchisees.
+    For numbers shared by both an active and an ex-franchisee (e.g.
+    #0024 Coventry & Nuneaton: Max Adams [ex] + Annette Falkingham
+    [active]), the active record wins — they receive the folder."""
     out: dict[str, dict] = {}
-    cur = db.franchisees.find({}, {"_id": 0, "id": 1, "franchise_number": 1,
-                                     "organisation": 1, "first_name": 1, "last_name": 1})
+    cur = db.franchisees.find(
+        {},
+        {"_id": 0, "id": 1, "franchise_number": 1, "organisation": 1,
+         "first_name": 1, "last_name": 1, "tags": 1, "lifecycle_status": 1},
+    )
     async for f in cur:
         fn = f.get("franchise_number")
         if fn is None or fn == "":
             continue
+        # Skip ex-franchisees entirely. Active wins on number collision.
+        tags = f.get("tags") or []
+        if isinstance(tags, str):
+            tags = [tags]
+        if "EX-Franchisee" in tags or f.get("lifecycle_status") == "ex_franchisee":
+            continue
         key = str(int(fn)).zfill(4) if str(fn).isdigit() else str(fn).strip().zfill(4)
-        out[key] = f
+        # If an active is already in the map, leave it. Otherwise insert.
+        if key not in out:
+            out[key] = f
     return out
 
 
@@ -176,16 +193,17 @@ def plan_entry(entry: dict, by_num: dict[str, dict]) -> dict:
         franchisee_folder = parts[1]
         match = _classify_franchisee_folder(franchisee_folder, by_num)
         if not match:
-            # No matching DB record — park in admin/orphan-franchisees/...
-            inner = "/".join(parts[1:])
+            # No matching ACTIVE franchisee. This happens in two cases:
+            # (1) The folder belongs to an ex-franchisee whose record
+            #     was filtered out of `by_num` — we skip these entirely
+            #     per user instruction (ex-franchisee data does not get
+            #     migrated to R2).
+            # (2) The folder has a leading number that doesn't match
+            #     any franchisee in the DB at all — these are stale
+            #     archives. Same treatment: skip.
             return {
-                "skip": False,
-                "scope": SCOPE_ADMIN,
-                "franchisee_id": None,
-                "key": f"admin/orphan-franchisees/{inner}",
-                "size": entry["size"],
-                "is_dir": entry["is_dir"],
-                "orphan": True,
+                "skip": True,
+                "reason": "ex-franchisee or unmapped",
                 "source_path": href,
             }
         # Mapped
