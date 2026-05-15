@@ -70,7 +70,7 @@ export default function RecentFilesStrip({ viewMode = "list", onOpenFile, onDown
   const count = items?.length || 0;
 
   return (
-    <div className="bg-white border-2 border-stone-900 rounded-2xl overflow-hidden mb-4 shadow-sm" data-testid="recent-strip">
+    <div className="bg-white border-2 border-stone-900/50 rounded-2xl overflow-hidden mb-4 shadow-sm" data-testid="recent-strip">
       <button onClick={() => setOpen((o) => !o)}
         data-testid="recent-strip-toggle"
         className="w-full px-5 py-3 flex items-center justify-between bg-[#EEEE86] hover:brightness-95 transition-[filter]">
