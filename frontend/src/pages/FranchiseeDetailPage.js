@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useParams, Link } from "react-router-dom";
 import api from "@/lib/api";
 import { formatDate, daysFromToday } from "@/lib/date";
-import { ArrowLeft, MapPin, AlertCircle, User, FileText, Map, MessageSquare, Pencil, Check, X as XIcon, Clock, ShieldCheck, ShieldAlert, Globe, Facebook, CreditCard, RefreshCw, AlertTriangle } from "lucide-react";
+import { ArrowLeft, MapPin, AlertCircle, User, FileText, Map, MessageSquare, Pencil, Check, X as XIcon, Clock, ShieldCheck, ShieldAlert, Globe, Facebook, CreditCard, RefreshCw, AlertTriangle, Power, PowerOff, BellRing } from "lucide-react";
 
 // Live GoCardless mandate status pill (read from cached franchisee fields)
 const MANDATE_STYLES = {
@@ -229,6 +229,7 @@ export default function FranchiseeDetailPage() {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({});
   const [saving, setSaving] = useState(false);
+  const [lifecycleBusy, setLifecycleBusy] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -239,6 +240,33 @@ export default function FranchiseeDetailPage() {
       finally { setLoading(false); }
     })();
   }, [id]);
+
+  const setFranchisee = (fresh) => setData((d) => ({ ...d, franchisee: fresh }));
+
+  const toggleLifecycle = async (target) => {
+    const isDeactivate = target === "ex_franchisee";
+    const prompt = isDeactivate
+      ? `Deactivate ${data.franchisee.first_name || "this franchisee"}? They'll be tagged EX-Franchisee and excluded from active operations.`
+      : `Reactivate ${data.franchisee.first_name || "this franchisee"}? They'll be tagged Franchisee again and you'll be reminded to set up their Direct Debit mandate.`;
+    if (!window.confirm(prompt)) return;
+    const reason = isDeactivate
+      ? (window.prompt("Optional — note the reason for deactivation (visible in audit log):", "") || "").trim()
+      : (window.prompt("Optional — note the reason for reactivation:", "") || "").trim();
+    setLifecycleBusy(true);
+    try {
+      const { data: res } = await api.patch(`/franchisees/${id}/lifecycle`, { status: target, reason });
+      setFranchisee(res.franchisee);
+    } catch (e) {
+      alert(e?.response?.data?.detail || "Could not change status.");
+    } finally { setLifecycleBusy(false); }
+  };
+
+  const clearMandateReminder = async () => {
+    try {
+      await api.post(`/franchisees/${id}/clear-mandate-reminder`);
+      setFranchisee({ ...data.franchisee, needs_mandate_setup: false });
+    } catch (e) { /* noop */ }
+  };
 
   const startEdit = () => {
     const f = data.franchisee;
@@ -308,6 +336,22 @@ export default function FranchiseeDetailPage() {
           <h1 className="font-display text-xl text-stone-950" data-testid="franchisee-detail-name">{fullName || f.organisation || "—"}</h1>
         </div>
         <div className="flex items-center gap-2">
+          {!editing && (
+            (() => {
+              const isEx = (f.lifecycle_status === "ex_franchisee") || (f.tags || []).includes("EX-Franchisee");
+              return isEx ? (
+                <button onClick={() => toggleLifecycle("active")} disabled={lifecycleBusy} data-testid="reactivate-franchisee"
+                  className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 rounded-lg flex items-center gap-1.5 disabled:opacity-50">
+                  <Power className="w-3.5 h-3.5" /> {lifecycleBusy ? "Working…" : "Reactivate"}
+                </button>
+              ) : (
+                <button onClick={() => toggleLifecycle("ex_franchisee")} disabled={lifecycleBusy} data-testid="deactivate-franchisee"
+                  className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider border border-stone-300 bg-white text-stone-700 hover:bg-red-50 hover:text-red-700 hover:border-red-200 rounded-lg flex items-center gap-1.5 disabled:opacity-50">
+                  <PowerOff className="w-3.5 h-3.5" /> {lifecycleBusy ? "Working…" : "Make Ex-Franchisee"}
+                </button>
+              );
+            })()
+          )}
           {!editing ? (
             <button onClick={startEdit} data-testid="edit-franchisee"
               className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider border border-stone-300 bg-white text-stone-900 hover:bg-stone-50 rounded-lg flex items-center gap-1.5">
@@ -329,6 +373,23 @@ export default function FranchiseeDetailPage() {
       </div>
 
       <div className="p-8 max-w-[1400px] space-y-6">
+        {/* Reactivation reminder — appears when a franchisee was reactivated and their mandate isn't active */}
+        {f.needs_mandate_setup && (
+          <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 flex items-start gap-3" data-testid="mandate-reminder">
+            <BellRing className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <div className="text-sm font-bold text-amber-900">Set up Direct Debit mandate</div>
+              <div className="text-xs text-amber-800 mt-0.5">
+                {f.first_name || "This franchisee"} was reactivated{f.reactivated_at ? ` on ${formatDate(f.reactivated_at)}` : ""}. Their previous GoCardless mandate is no longer active. Once you've set up a new mandate at <a className="underline" href="https://manage.gocardless.com" target="_blank" rel="noreferrer">gocardless.com</a>, run the bulk sync from the Franchisees page (or click "Refresh from GoCardless" below) and this reminder will clear automatically.
+              </div>
+            </div>
+            <button onClick={clearMandateReminder} data-testid="dismiss-mandate-reminder"
+              className="shrink-0 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border border-amber-300 bg-white text-amber-900 hover:bg-amber-100 rounded-md">
+              Dismiss
+            </button>
+          </div>
+        )}
+
         {/* HERO */}
         <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr_auto] gap-6 items-start">
           <div>

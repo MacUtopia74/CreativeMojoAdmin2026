@@ -264,17 +264,19 @@ def build_router(db, require_role) -> APIRouter:
         for fid, picked in best.items():
             rec = picked["rec"]
             ms = rec["mandate"]
-            updates.append({
-                "franchisee_id": fid,
-                "update": {
-                    "gocardless_customer_id": rec["gc_customer_id"],
-                    "gocardless_mandate_id": ms.get("mandate_id"),
-                    "gocardless_mandate_status": ms.get("status"),
-                    "gocardless_mandate_reference": ms.get("reference"),
-                    "gocardless_mandate_scheme": ms.get("scheme"),
-                    "gocardless_synced_at": _now_iso(),
-                },
-            })
+            upd: dict = {
+                "gocardless_customer_id": rec["gc_customer_id"],
+                "gocardless_mandate_id": ms.get("mandate_id"),
+                "gocardless_mandate_status": ms.get("status"),
+                "gocardless_mandate_reference": ms.get("reference"),
+                "gocardless_mandate_scheme": ms.get("scheme"),
+                "gocardless_synced_at": _now_iso(),
+            }
+            # If we now see an active mandate, auto-dismiss any "needs mandate
+            # setup" reminder that was set during a reactivation.
+            if ms.get("status") == "active":
+                upd["needs_mandate_setup"] = False
+            updates.append({"franchisee_id": fid, "update": upd})
 
         committed = 0
         if not dry_run:

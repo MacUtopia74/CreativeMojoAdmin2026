@@ -821,6 +821,88 @@ async def update_franchisee(franchisee_id: str, body: dict, user: dict = Depends
     return {"ok": True, "franchisee": fresh}
 
 
+@api.patch("/franchisees/{franchisee_id}/lifecycle")
+async def update_franchisee_lifecycle(
+    franchisee_id: str,
+    body: dict,
+    user: dict = Depends(require_role("admin")),
+):
+    """Toggle a franchisee between active and ex-franchisee status. This is a
+    deliberate action distinct from generic field updates because it has
+    knock-on effects (tag swap, audit timestamp, reminder banner)."""
+    f = await db.franchisees.find_one({"id": franchisee_id}, {"_id": 0})
+    if not f:
+        raise HTTPException(status_code=404, detail="Franchisee not found")
+    target = (body or {}).get("status")
+    if target not in {"active", "ex_franchisee"}:
+        raise HTTPException(status_code=400, detail="status must be 'active' or 'ex_franchisee'")
+    reason = ((body or {}).get("reason") or "").strip()[:500]
+
+    tags = list(f.get("tags") or [])
+    # Strip both possible tags first, then add the right one back
+    tags = [t for t in tags if t not in ("Franchisee", "EX-Franchisee")]
+    tags.append("Franchisee" if target == "active" else "EX-Franchisee")
+
+    now = datetime.now(timezone.utc).isoformat()
+    update = {
+        "lifecycle_status": target,
+        "lifecycle_changed_at": now,
+        "lifecycle_changed_by": user.get("email"),
+        "tags": tags,
+        "updated_at": now,
+        "updated_by": user.get("email"),
+    }
+    if reason:
+        update["lifecycle_change_reason"] = reason
+
+    # When deactivating: capture the previous mandate snapshot so it's clear
+    # what state they left in.
+    if target == "ex_franchisee":
+        update["deactivated_at"] = now
+        if f.get("gocardless_mandate_status"):
+            update["last_mandate_status_at_deactivation"] = f["gocardless_mandate_status"]
+    # When reactivating: clear the deactivation markers and flag for mandate
+    # re-setup. The UI uses `needs_mandate_setup` to show a reminder banner
+    # until the next successful GoCardless sync clears it.
+    if target == "active":
+        update["reactivated_at"] = now
+        update["deactivated_at"] = None
+        # Only flag mandate-setup if their current GoCardless mandate is NOT active
+        if f.get("gocardless_mandate_status") != "active":
+            update["needs_mandate_setup"] = True
+            update["needs_mandate_setup_since"] = now
+
+    await db.franchisees.update_one({"id": franchisee_id}, {"$set": update})
+    # Audit log row
+    await db.franchisee_lifecycle_log.insert_one({
+        "franchisee_id": franchisee_id,
+        "previous_status": f.get("lifecycle_status") or ("active" if "Franchisee" in (f.get("tags") or []) else "ex_franchisee"),
+        "new_status": target,
+        "reason": reason or None,
+        "changed_by": user.get("email"),
+        "changed_at": now,
+    })
+    fresh = await db.franchisees.find_one({"id": franchisee_id}, {"_id": 0})
+    return {"ok": True, "franchisee": fresh}
+
+
+@api.post("/franchisees/{franchisee_id}/clear-mandate-reminder")
+async def clear_mandate_reminder(
+    franchisee_id: str,
+    _user: dict = Depends(require_role("admin")),
+):
+    """Manually dismiss the 'needs mandate setup' reminder (in case the
+    operator has set it up outside GoCardless)."""
+    r = await db.franchisees.update_one(
+        {"id": franchisee_id},
+        {"$set": {"needs_mandate_setup": False,
+                   "mandate_reminder_cleared_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    if not r.matched_count:
+        raise HTTPException(status_code=404, detail="Franchisee not found")
+    return {"ok": True}
+
+
 @api.post("/contacts/{contact_id}/convert-to-franchisee")
 async def convert_contact_to_franchisee(contact_id: str, user: dict = Depends(require_role("admin"))):
     """Create a franchisee/licencee record from an existing contact and mark the contact 'converted'.
