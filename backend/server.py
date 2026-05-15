@@ -1692,6 +1692,12 @@ async def on_shutdown():
 from gocardless_integration import build_router as build_gocardless_router  # noqa: E402
 api.include_router(build_gocardless_router(db, require_role))
 
+# Phase 3 — FileCamp → R2 migration + admin file browser
+from filecamp_migration import build_router as build_migration_router  # noqa: E402
+from files_routes import build_router as build_files_router  # noqa: E402
+api.include_router(build_migration_router(db, require_role))
+api.include_router(build_files_router(db, require_role))
+
 app.include_router(api)
 
 # Serve cached franchisee photos (downloaded from Airtable at migration time so they
