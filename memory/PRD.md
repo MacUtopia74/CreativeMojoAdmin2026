@@ -30,6 +30,14 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
 
 ## What's Implemented (2026-05-15)
 
+### Phase 3 — Iteration 22 (2026-05-15) ✅ Auto-folder bootstrap (Artwork / Franchise Agreement / Territory)
+- **`backend/franchisee_folders.py`**: new helper `ensure_franchisee_folders(db, franchisee, user_email)` — idempotent. Builds the canonical R2 prefix from the franchisee's `franchise_number` + `organisation` + `first_name` + `last_name` slug, then creates a hidden `.keep` placeholder under each of the three standard folders (`Artwork`, `Franchise Agreement`, `Territory`). Skips folders that already have any object.
+- **Auto-bootstrap on conversion**: `convert_contact_to_franchisee` (Phase 1.7) now calls the helper immediately after `insert_one`, so newly-converted franchisees land with their three sub-folders ready.
+- **Admin endpoint**: `POST /api/franchisees/{id}/bootstrap-folders` — single-franchisee idempotent rerun (useful for franchisees imported from Airtable before this feature existed).
+- **Bulk backfill**: `POST /api/franchisees/bootstrap-folders/all` — runs the helper across every active franchisee, returning a summary `{processed, created_total, skipped_total, without_prefix, results[]}`. One-shot used 2026-05-15 to bootstrap **84 of 88 active franchisees, creating 250 folders** (the 14 skipped already had migration content).
+- **Frontend**: `FranchiseeFilesPanel` empty-state now offers a one-click **"Create standard folders"** button (admin only sees it because the panel is in admin-protected pages; franchisees see folders directly).
+- **Bug fix while here**: `PortalLoginPage` was missing the `isReset` state declaration after the previous iteration's edit. Now declared correctly and the "Set a new password / Submit new password" flow renders cleanly after an admin reset.
+
 ### Phase 3 — Iteration 21 (2026-05-15) ✅ Franchisee Portal Logins
 - **No-email flow per user request**: admin meets franchisees in person, shares URL. First-time visitor → email → "Set your password" → in. Returning → email → password → in. Forgot password → admin one-click reset on detail page.
 - **New backend endpoints**:

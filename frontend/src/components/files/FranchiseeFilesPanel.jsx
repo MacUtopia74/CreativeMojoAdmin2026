@@ -8,7 +8,7 @@ import { useEffect, useState, useCallback } from "react";
 import api, { API_BASE } from "@/lib/api";
 import {
   Folder, File as FileIcon, FileText, FileAudio, FileVideo, FileArchive, Image as ImageIcon,
-  Download, Loader2, AlertCircle, CloudUpload, ChevronRight, Package, Share2,
+  Download, Loader2, AlertCircle, CloudUpload, ChevronRight, Package, Share2, FolderPlus,
 } from "lucide-react";
 
 function fmtBytes(b) {
@@ -146,8 +146,12 @@ export default function FranchiseeFilesPanel({ franchisee, canUpload = true }) {
         </div>
       )}
       {!loading && !err && !rootPrefix && (
-        <div className="px-4 py-8 text-center text-sm text-stone-500" data-testid="franchisee-files-empty">
-          No R2 folder mapped to this franchisee yet. New uploads under <span className="font-mono">franchisees/&lt;slug&gt;/</span> will appear here.
+        <div className="px-4 py-8 text-center space-y-3" data-testid="franchisee-files-empty">
+          <Folder className="w-10 h-10 text-stone-300 mx-auto" />
+          <div className="text-sm text-stone-500">
+            No R2 folder mapped to this franchisee yet.
+          </div>
+          <BootstrapFoldersButton franchiseeId={franchisee.id} onCreated={fetchRoot} />
         </div>
       )}
       {!loading && !err && rootPrefix && tree && (

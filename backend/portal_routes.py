@@ -75,15 +75,19 @@ def build_portal_router(
         if not franchisee or not franchisee.get("portal_enabled"):
             # Don't leak whether the email exists — same response for
             # unknown or not-enabled. Helps mitigate enumeration.
-            return {"exists": False, "needs_password_setup": False}
+            return {"exists": False, "needs_password_setup": False, "is_reset": False}
 
         # Find linked user doc (if any)
         user = await db.users.find_one(
             {"franchisee_id": franchisee["id"], "role": "franchisee"},
-            {"_id": 0, "password_hash": 1},
+            {"_id": 0, "password_hash": 1, "password_reset_at": 1},
         )
         needs_setup = not user or not user.get("password_hash")
-        return {"exists": True, "needs_password_setup": needs_setup}
+        # `is_reset` distinguishes "first ever activation" (user is None)
+        # from "admin wiped my password" (user exists but no hash). Lets
+        # the UI swap "Create account" for "Submit new password".
+        is_reset = bool(user) and not user.get("password_hash")
+        return {"exists": True, "needs_password_setup": needs_setup, "is_reset": is_reset}
 
     @router.post("/portal/set-password")
     async def portal_set_password(

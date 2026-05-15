@@ -15,6 +15,7 @@ export default function PortalLoginPage() {
   const navigate = useNavigate();
 
   const [step, setStep] = useState("email"); // email | setup | login
+  const [isReset, setIsReset] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -33,6 +34,7 @@ export default function PortalLoginPage() {
       if (!data.exists) {
         setErr("We couldn't find a portal account for that email. Please check the address or contact your administrator.");
       } else if (data.needs_password_setup) {
+        setIsReset(!!data.is_reset);
         setStep("setup");
       } else {
         setStep("login");
@@ -90,12 +92,14 @@ export default function PortalLoginPage() {
           <div className="text-[11px] uppercase tracking-[0.3em] font-bold text-stone-500 mb-2">Franchisee Portal</div>
           <h2 className="font-display text-3xl text-stone-950 mb-1">
             {step === "email" && "Welcome"}
-            {step === "setup" && "Create your password"}
+            {step === "setup" && (isReset ? "Set a new password" : "Create your password")}
             {step === "login" && "Welcome back"}
           </h2>
           <p className="text-sm text-stone-500 mb-8">
             {step === "email" && "Enter your Creative Mojo email to begin."}
-            {step === "setup" && `First time signing in. Choose a password for ${email}.`}
+            {step === "setup" && (isReset
+              ? `Your administrator has reset your password. Choose a new one for ${email}.`
+              : `First time signing in. Choose a password for ${email}.`)}
             {step === "login" && `Signed in as ${email}.`}
           </p>
 
@@ -152,7 +156,11 @@ export default function PortalLoginPage() {
               )}
               <button type="submit" disabled={busy || !password} data-testid="portal-pw-submit"
                 className="w-full px-4 py-2.5 bg-stone-950 text-white text-xs font-bold uppercase tracking-wider rounded-lg flex items-center justify-center gap-2 hover:bg-stone-800 disabled:opacity-50">
-                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : (step === "setup" ? "Create account" : "Sign in")}
+                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : (
+                  step === "setup"
+                    ? (isReset ? "Submit new password" : "Create account")
+                    : "Sign in"
+                )}
                 {!busy && <ArrowRight className="w-3.5 h-3.5" />}
               </button>
               {step === "login" && (

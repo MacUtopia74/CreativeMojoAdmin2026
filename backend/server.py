@@ -864,6 +864,54 @@ async def franchisee_portal_reset(
     return {"ok": True, "reset": result.matched_count > 0}
 
 
+@api.post("/franchisees/{franchisee_id}/bootstrap-folders")
+async def franchisee_bootstrap_folders(
+    franchisee_id: str,
+    user: dict = Depends(require_role("admin")),
+):
+    """Idempotently create the standard R2 folder structure (Artwork /
+    Franchise Agreement / Territory) for a single franchisee. Safe to
+    rerun — folders that already exist are skipped."""
+    from franchisee_folders import ensure_franchisee_folders
+    f = await db.franchisees.find_one({"id": franchisee_id}, {"_id": 0})
+    if not f:
+        raise HTTPException(404, detail="Franchisee not found")
+    result = await ensure_franchisee_folders(db, f, user_email=user.get("email"))
+    return {"ok": True, **result}
+
+
+@api.post("/franchisees/bootstrap-folders/all")
+async def franchisees_bootstrap_folders_all(
+    user: dict = Depends(require_role("admin")),
+):
+    """Bulk-bootstrap standard folders for every active franchisee that
+    doesn't already have them. Safe to rerun — skips existing folders."""
+    from franchisee_folders import ensure_franchisee_folders
+    cur = db.franchisees.find(
+        {"$or": [{"status": "Active"}, {"status": {"$exists": False}}]},
+        {"_id": 0},
+    )
+    items = await cur.to_list(5000)
+    summary = {"processed": 0, "created_total": 0, "skipped_total": 0,
+               "without_prefix": 0, "results": []}
+    for f in items:
+        result = await ensure_franchisee_folders(db, f, user_email=user.get("email"))
+        summary["processed"] += 1
+        if not result.get("prefix"):
+            summary["without_prefix"] += 1
+            continue
+        summary["created_total"] += len(result.get("created", []))
+        summary["skipped_total"] += len(result.get("skipped", []))
+        if result.get("created"):
+            summary["results"].append({
+                "franchisee_id": f.get("id"),
+                "franchise_number": f.get("franchise_number"),
+                "organisation": f.get("organisation"),
+                "created": result["created"],
+            })
+    return summary
+
+
 @api.get("/portal/me")
 async def portal_me(user: dict = Depends(require_role("franchisee"))):
     """Returns the logged-in franchisee's own profile + key data their
@@ -1025,6 +1073,13 @@ async def convert_contact_to_franchisee(contact_id: str, user: dict = Depends(re
         "territory_ids": [],
     }
     await db.franchisees.insert_one(franchisee_doc)
+    # Bootstrap their standard R2 folders (Artwork / Franchise Agreement
+    # / Territory) so the portal Files panel isn't empty on first login.
+    try:
+        from franchisee_folders import ensure_franchisee_folders
+        await ensure_franchisee_folders(db, franchisee_doc, user_email=user.get("email"))
+    except Exception:  # noqa: BLE001
+        logger.exception("Failed to bootstrap R2 folders for franchisee %s", f_id)
     # Mark contact as converted — remove from the pipeline (the conversion is
     # tracked by `converted_to_franchisee_id`, NOT by a pipeline stage, so they
     # don't pollute the renamed "Territory Map" column).
