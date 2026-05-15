@@ -2,8 +2,9 @@ import { useEffect, useState, useMemo } from "react";
 import { useParams, Link } from "react-router-dom";
 import api from "@/lib/api";
 import { formatDate, daysFromToday } from "@/lib/date";
-import { ArrowLeft, MapPin, AlertCircle, User, FileText, Map, MessageSquare, Pencil, Check, X as XIcon, Clock, ShieldCheck, ShieldAlert, Globe, Facebook, CreditCard, RefreshCw, AlertTriangle, Power, PowerOff, BellRing, FolderOpen } from "lucide-react";
+import { ArrowLeft, MapPin, AlertCircle, User, FileText, Map, MessageSquare, Pencil, Check, X as XIcon, Clock, ShieldCheck, ShieldAlert, Globe, Facebook, CreditCard, RefreshCw, AlertTriangle, Power, PowerOff, BellRing, FolderOpen, LockKeyhole } from "lucide-react";
 import FranchiseeFilesPanel from "@/components/files/FranchiseeFilesPanel";
+import FranchiseePortalControls from "@/components/franchisee/FranchiseePortalControls";
 
 // Live GoCardless mandate status pill (read from cached franchisee fields)
 const MANDATE_STYLES = {
@@ -494,6 +495,18 @@ export default function FranchiseeDetailPage() {
             they don't need to bounce to the global Files menu. */}
         <Panel icon={FolderOpen} title="Files" testid="panel-files">
           <FranchiseeFilesPanel franchisee={f} />
+        </Panel>
+
+        {/* Portal access — enable/disable login + reset password */}
+        <Panel icon={LockKeyhole} title="Portal Access" testid="panel-portal">
+          <FranchiseePortalControls franchisee={f}
+            onChanged={async () => {
+              // refresh franchisee data so toggle reflects immediately
+              try {
+                const { data } = await api.get(`/franchisees/${f.id}`);
+                setData((d) => ({ ...d, franchisee: data }));
+              } catch (e) { /* ignore */ }
+            }} />
         </Panel>
 
         {/* Side-by-side details + map placeholder */}

@@ -30,6 +30,26 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
 
 ## What's Implemented (2026-05-15)
 
+### Phase 3 — Iteration 21 (2026-05-15) ✅ Franchisee Portal Logins
+- **No-email flow per user request**: admin meets franchisees in person, shares URL. First-time visitor → email → "Set your password" → in. Returning → email → password → in. Forgot password → admin one-click reset on detail page.
+- **New backend endpoints**:
+  - `POST /api/portal/login-check {email}` (public): `{exists, needs_password_setup}`
+  - `POST /api/portal/set-password {email, password}` (public, idempotent — 409 if already set)
+  - `POST /api/portal/login {email, password}` (public, brute-force protected, shares `login_attempts` collection with admin login)
+  - `POST /api/franchisees/{id}/portal-toggle {enabled}` (admin)
+  - `POST /api/franchisees/{id}/portal-reset` (admin) — wipes password_hash
+  - `GET /api/portal/me` (franchisee) — slim profile + user info for dashboard
+- **New `franchisee` role**: users collection holds both admin and franchisee records; franchisee users link to franchisees collection via `franchisee_id`. `user_to_public` now returns `franchisee_id` for portal users so the frontend can scope its UI.
+- **File API auto-scoping**: `/api/files/tree`, `/api/files/download`, `/api/files/proxy`, `/api/files/folder-zip` now accept both admin + franchisee roles. For franchisees they auto-scope to `franchisees/<their slug>/...` and `shared/...` — cross-franchisee access returns 403/404.
+- **Routes**:
+  - `/portal/login` (public, branded entry page with hero side panel)
+  - `/portal` (protected, role=franchisee) — dashboard
+  - `ProtectedRoute` now accepts a `role` prop and bounces wrong-role users to their correct home.
+- **New frontend modules**: `pages/PortalLoginPage.jsx`, `pages/PortalDashboardPage.jsx`, `components/franchisee/FranchiseePortalControls.jsx`.
+- **Phase-4 placeholder card** on the dashboard: "Your territory / Map & postcode lookup — Coming in Phase 4".
+- **Demo account**: `sandra@creativemojo.co.uk / Test1234!` for franchise #0000. See `/app/memory/test_credentials.md`.
+- **Verified end-to-end**: 7/7 backend scenarios pass via curl (portal toggle, login-check, set-password, idempotency 409, login, wrong-pw 401, cross-franchisee 403, admin reset, post-reset re-setup). Frontend smoke test confirms welcome→setup→dashboard flow renders correctly.
+
 ### Phase 3 — Iteration 20 (2026-05-15) ✅ Thumbnails + Recent folders + Recent strip enhancements
 - **Real thumbnails for images and PDFs** in both the Recents strip grid and the main file grid view. Implementation:
   - **Images**: `<img>` with lazy loading + object-cover, served directly from R2 via 1h-signed inline URLs.

@@ -15,6 +15,8 @@ import FilesPage from "@/pages/FilesPage";
 import ContactsPage from "@/pages/ContactsPage";
 import FormIntakePage from "@/pages/FormIntakePage";
 import PublicFolderSharePage from "@/pages/PublicFolderSharePage";
+import PortalLoginPage from "@/pages/PortalLoginPage";
+import PortalDashboardPage from "@/pages/PortalDashboardPage";
 
 export default function App() {
   return (
@@ -23,10 +25,14 @@ export default function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/portal/login" element={<PortalLoginPage />} />
+            <Route path="/portal" element={
+              <ProtectedRoute role="franchisee"><PortalDashboardPage /></ProtectedRoute>
+            } />
             <Route path="/share/folder/:token" element={<PublicFolderSharePage />} />
             <Route
               element={
-                <ProtectedRoute>
+                <ProtectedRoute role="admin">
                   <Layout />
                 </ProtectedRoute>
               }

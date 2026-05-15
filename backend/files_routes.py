@@ -170,16 +170,57 @@ def build_router(db, require_role) -> APIRouter:
         }
 
     # -----------------------------------------------------------------
+    # Helper: enforce per-franchisee scope on file queries. Returns a
+    # MongoDB filter clause (or None for admin = no restriction).
+    async def _franchisee_scope_filter(user: dict) -> Optional[dict]:
+        if user.get("role") != "franchisee":
+            return None
+        fid = user.get("franchisee_id")
+        if not fid:
+            raise HTTPException(403, detail="Portal account missing franchisee link")
+        # They can see their own files (matched by franchisee_id) and
+        # the global shared/ tree (matched by scope or key prefix).
+        return {
+            "$or": [
+                {"franchisee_id": fid},
+                {"scope": SCOPE_SHARED},
+                {"key": {"$regex": r"^shared/"}},
+            ],
+        }
+
+    def _franchisee_allowed_key(user: dict, key: str, fr_keys: set[str]) -> bool:
+        """Returns True if a franchisee user is allowed to access a key.
+        Admins always pass."""
+        if user.get("role") != "franchisee":
+            return True
+        if key.startswith("shared/"):
+            return True
+        return key in fr_keys
+
+    async def _franchisee_key_set(franchisee_id: str) -> set[str]:
+        cur = db.files_index.find(
+            {"franchisee_id": franchisee_id}, {"_id": 0, "key": 1},
+        )
+        items = await cur.to_list(50000)
+        return {it["key"] for it in items}
+
+    # -----------------------------------------------------------------
     @router.get("/files/tree")
     async def files_tree(
         prefix: str = Query("", description="R2 key prefix (e.g. 'franchisees/0046-…/'); empty for root"),
         franchisee_id: Optional[str] = Query(None, description="Filter to a single franchisee"),
-        _user: dict = Depends(require_role("admin")),
+        user: dict = Depends(require_role("admin", "franchisee")),
     ):
         """List the next level inside a prefix. Aggregates immediate
-        sub-folders + direct files."""
+        sub-folders + direct files.
+
+        Franchisee users are auto-scoped to their own files + the shared
+        tree; the `franchisee_id` query param is ignored for them."""
         q: dict = {}
-        if franchisee_id:
+        scope_clause = await _franchisee_scope_filter(user)
+        if scope_clause:
+            q.update(scope_clause)
+        elif franchisee_id:
             q["franchisee_id"] = franchisee_id
         if prefix:
             q["key"] = {"$regex": f"^{re.escape(prefix)}"}
@@ -284,11 +325,17 @@ def build_router(db, require_role) -> APIRouter:
     async def files_download(
         key: str = Query(...),
         attachment: bool = Query(True, description="If true, force download (Content-Disposition: attachment)"),
-        _user: dict = Depends(require_role("admin")),
+        user: dict = Depends(require_role("admin", "franchisee")),
     ):
         existing = await db.files_index.find_one({"key": key}, {"_id": 0})
         if not existing:
             raise HTTPException(404, detail="File not found in index")
+        if user.get("role") == "franchisee":
+            fid = user.get("franchisee_id")
+            if not (key.startswith("shared/")
+                    or existing.get("franchisee_id") == fid
+                    or existing.get("scope") == SCOPE_SHARED):
+                raise HTTPException(403, detail="Not allowed")
         safe = existing["name"].replace('"', "")
         # Force a useful disposition either way — `inline` ensures PDFs render
         # in the browser instead of being downloaded by some viewers.
@@ -1049,12 +1096,24 @@ def build_router(db, require_role) -> APIRouter:
 
     @router.get("/files/folder-zip")
     async def files_folder_zip_admin(
-        prefix: str = Query(..., description="Folder prefix to ZIP (admin only)"),
-        _user: dict = Depends(require_role("admin")),
+        prefix: str = Query(..., description="Folder prefix to ZIP"),
+        user: dict = Depends(require_role("admin", "franchisee")),
     ):
         from fastapi.responses import StreamingResponse
         if not prefix.endswith("/"):
             prefix += "/"
+        if user.get("role") == "franchisee":
+            fid = user.get("franchisee_id")
+            # Franchisees may only ZIP their own folder tree or anything
+            # under shared/. Look up at least one file's franchisee_id
+            # under this prefix to verify ownership.
+            if not prefix.startswith("shared/"):
+                sample = await db.files_index.find_one(
+                    {"key": {"$regex": f"^{re.escape(prefix)}"}, "franchisee_id": fid},
+                    {"_id": 0, "key": 1},
+                )
+                if not sample:
+                    raise HTTPException(403, detail="Not allowed")
         keys = await _collect_folder_keys(prefix)
         if not keys:
             raise HTTPException(404, detail="Folder is empty")

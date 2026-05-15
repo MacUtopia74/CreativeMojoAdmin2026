@@ -124,13 +124,16 @@ def clear_auth_cookies(response: Response) -> None:
 
 
 def user_to_public(doc: dict) -> dict:
-    return {
+    out = {
         "id": doc["id"],
         "email": doc["email"],
-        "name": doc.get("name", ""),
+        "name": doc.get("name") or doc.get("full_name") or "",
         "role": doc.get("role", "admin"),
         "created_at": doc["created_at"],
     }
+    if doc.get("role") == "franchisee" and doc.get("franchisee_id"):
+        out["franchisee_id"] = doc["franchisee_id"]
+    return out
 
 
 async def get_current_user(request: Request) -> dict:
@@ -819,6 +822,71 @@ async def update_franchisee(franchisee_id: str, body: dict, user: dict = Depends
     await db.franchisees.update_one({"id": franchisee_id}, {"$set": updates})
     fresh = await db.franchisees.find_one({"id": franchisee_id}, {"_id": 0})
     return {"ok": True, "franchisee": fresh}
+
+
+@api.post("/franchisees/{franchisee_id}/portal-toggle")
+async def franchisee_portal_toggle(
+    franchisee_id: str, body: dict,
+    user: dict = Depends(require_role("admin")),
+):
+    """Turn portal access on/off for a franchisee. When turned off, any
+    existing session is left alone (will fail on next /me call once
+    enforced)."""
+    enabled = bool((body or {}).get("enabled"))
+    f = await db.franchisees.find_one({"id": franchisee_id}, {"_id": 0, "id": 1})
+    if not f:
+        raise HTTPException(404, detail="Franchisee not found")
+    await db.franchisees.update_one(
+        {"id": franchisee_id},
+        {"$set": {
+            "portal_enabled": enabled,
+            "portal_toggled_at": datetime.now(timezone.utc).isoformat(),
+            "portal_toggled_by": user.get("email"),
+        }},
+    )
+    return {"ok": True, "portal_enabled": enabled}
+
+
+@api.post("/franchisees/{franchisee_id}/portal-reset")
+async def franchisee_portal_reset(
+    franchisee_id: str,
+    user: dict = Depends(require_role("admin")),
+):
+    """Wipe the portal password for this franchisee so they're forced
+    to set a new one on next login. Use when they've forgotten it or
+    when handing the account to someone new."""
+    result = await db.users.update_one(
+        {"franchisee_id": franchisee_id, "role": "franchisee"},
+        {"$unset": {"password_hash": ""},
+         "$set": {"password_reset_at": datetime.now(timezone.utc).isoformat(),
+                  "password_reset_by": user.get("email")}},
+    )
+    return {"ok": True, "reset": result.matched_count > 0}
+
+
+@api.get("/portal/me")
+async def portal_me(user: dict = Depends(require_role("franchisee"))):
+    """Returns the logged-in franchisee's own profile + key data their
+    dashboard needs (contact info, tenure, mandate snapshot). Files are
+    fetched via the existing /api/files/* endpoints (scoped server-side)."""
+    fid = user.get("franchisee_id")
+    if not fid:
+        raise HTTPException(400, detail="Franchisee link missing")
+    f = await db.franchisees.find_one({"id": fid}, {"_id": 0})
+    if not f:
+        raise HTTPException(404, detail="Franchisee record not found")
+    # Build a slim, read-only view (drop admin-only audit fields)
+    keep = {
+        "id", "franchise_number", "organisation", "first_name", "last_name",
+        "full_name", "email", "primary_email", "contact_email", "mojo_email",
+        "phone", "mobile", "address", "postcode", "city", "county",
+        "country", "website", "facebook_url",
+        "start_date", "end_date", "lifecycle_status",
+        "gocardless_mandate_status", "gocardless_last_payment_at",
+        "photo_url", "photos", "territory_postcodes", "territory_geojson",
+    }
+    profile = {k: f.get(k) for k in keep if k in f}
+    return {"profile": profile, "user": user_to_public(user)}
 
 
 @api.patch("/franchisees/{franchisee_id}/lifecycle")
@@ -1777,8 +1845,14 @@ api.include_router(build_gocardless_router(db, require_role))
 # Phase 3 — FileCamp → R2 migration + admin file browser
 from filecamp_migration import build_router as build_migration_router  # noqa: E402
 from files_routes import build_router as build_files_router  # noqa: E402
+from portal_routes import build_portal_router  # noqa: E402
 api.include_router(build_migration_router(db, require_role))
 api.include_router(build_files_router(db, require_role))
+api.include_router(build_portal_router(
+    db, hash_password, verify_password, create_access_token,
+    create_refresh_token, set_auth_cookies,
+    check_lockout, record_failure, clear_failures, user_to_public,
+))
 
 app.include_router(api)
 
