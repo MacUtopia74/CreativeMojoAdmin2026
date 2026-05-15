@@ -13,7 +13,8 @@ import {
   Folder, FolderOpen, File as FileIcon, ChevronRight, Search,
   Download, Loader2, AlertCircle, CloudUpload, Database, Users, Lock, Globe,
   RefreshCw, ChevronUp, ChevronDown, X, ExternalLink, Share2, Copy, CheckCircle2,
-  FolderPlus, Trash2, Eye,
+  FolderPlus, Trash2, Eye, LayoutGrid, List, FileText, Image as ImageIcon,
+  FileAudio, FileVideo, FileArchive,
 } from "lucide-react";
 
 function fmtBytes(b) {
@@ -29,6 +30,32 @@ const SCOPE_BADGE = {
   shared:     { label: "ALL",        icon: Globe, cls: "bg-blue-100 text-blue-800 border-blue-300" },
   admin:      { label: "ADMIN",      icon: Lock,  cls: "bg-amber-100 text-amber-900 border-amber-300" },
 };
+
+// Pick a sensible Lucide icon for a file based on its content_type / extension.
+function fileIcon(file) {
+  const ct = (file.content_type || "").toLowerCase();
+  const ext = (file.name?.split(".").pop() || "").toLowerCase();
+  if (ct.startsWith("image/") || ["jpg","jpeg","png","gif","webp","svg","heic"].includes(ext)) return ImageIcon;
+  if (ct === "application/pdf" || ext === "pdf") return FileText;
+  if (ct.startsWith("audio/") || ["mp3","wav","m4a","aac","ogg","flac","aif","aiff"].includes(ext)) return FileAudio;
+  if (ct.startsWith("video/") || ["mp4","mov","webm","mkv","avi","wmv"].includes(ext)) return FileVideo;
+  if (["zip","rar","7z","tar","gz"].includes(ext)) return FileArchive;
+  if (["doc","docx","txt","rtf","md"].includes(ext) || ct.startsWith("text/")) return FileText;
+  return FileIcon;
+}
+
+// Tailwind background tint per file kind — used by the grid thumbnail tiles
+// so the eye can sort by type at a glance.
+function fileTint(file) {
+  const ct = (file.content_type || "").toLowerCase();
+  const ext = (file.name?.split(".").pop() || "").toLowerCase();
+  if (ct.startsWith("image/") || ["jpg","jpeg","png","gif","webp","svg","heic"].includes(ext)) return "bg-rose-50 text-rose-700 border-rose-200";
+  if (ct === "application/pdf" || ext === "pdf") return "bg-red-50 text-red-700 border-red-200";
+  if (ct.startsWith("audio/") || ["mp3","wav","m4a","aac","ogg","flac","aif","aiff"].includes(ext)) return "bg-purple-50 text-purple-700 border-purple-200";
+  if (ct.startsWith("video/") || ["mp4","mov","webm","mkv","avi","wmv"].includes(ext)) return "bg-indigo-50 text-indigo-700 border-indigo-200";
+  if (["doc","docx","txt","rtf","md"].includes(ext)) return "bg-sky-50 text-sky-700 border-sky-200";
+  return "bg-stone-50 text-stone-600 border-stone-200";
+}
 
 function ScopeBadge({ scope }) {
   const s = SCOPE_BADGE[scope] || SCOPE_BADGE.admin;
@@ -211,17 +238,24 @@ function MigrationPanel({ db, onMigrationDone }) {
 
 // ---------------------------------------------------------------------------
 // Preview modal — handles images, PDFs, audio, video inline. Anything else
-// just gets a "Download" button.
+// just gets a "Download" button. The header now carries a permanent
+// Download button so any file can be saved with one click.
 function PreviewModal({ file, onClose }) {
   const [url, setUrl] = useState(null);
+  const [dlUrl, setDlUrl] = useState(null);
   const [err, setErr] = useState("");
   useEffect(() => {
     if (!file) return;
-    setUrl(null); setErr("");
+    setUrl(null); setDlUrl(null); setErr("");
     (async () => {
       try {
-        const { data } = await api.get("/files/download", { params: { key: file.key, attachment: false } });
-        setUrl(data.url);
+        // Inline preview URL (Content-Disposition: inline → renders PDFs etc.)
+        const previewReq = api.get("/files/download", { params: { key: file.key, attachment: false } });
+        // Force-download URL (attachment) for the Download button
+        const dlReq = api.get("/files/download", { params: { key: file.key, attachment: true } });
+        const [{ data: pv }, { data: dl }] = await Promise.all([previewReq, dlReq]);
+        setUrl(pv.url);
+        setDlUrl(dl.url);
       } catch (e) { setErr(e?.response?.data?.detail || "Could not load preview."); }
     })();
   }, [file]);
@@ -237,24 +271,53 @@ function PreviewModal({ file, onClose }) {
     <div onClick={onClose} className="fixed inset-0 z-[60] bg-stone-950/80 backdrop-blur-sm flex items-center justify-center p-6" data-testid="preview-modal">
       <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         <div className="flex items-center justify-between px-5 py-3 border-b border-stone-200">
-          <div className="truncate">
+          <div className="truncate min-w-0">
             <div className="text-sm font-bold text-stone-950 truncate">{file.name}</div>
             <div className="text-[11px] text-stone-500 truncate font-mono">{file.key}</div>
           </div>
-          <button onClick={onClose} data-testid="preview-close" className="w-9 h-9 flex items-center justify-center hover:bg-stone-100 rounded-lg shrink-0"><X className="w-4 h-4" /></button>
+          <div className="flex items-center gap-2 shrink-0">
+            {dlUrl && (
+              <a href={dlUrl} target="_blank" rel="noreferrer" data-testid="preview-download"
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-[10px] font-bold uppercase tracking-wider bg-[#D4FF00] text-stone-950 hover:bg-[#BDE600] rounded-lg">
+                <Download className="w-3.5 h-3.5" /> Download
+              </a>
+            )}
+            {url && (
+              <a href={url} target="_blank" rel="noreferrer" title="Open in new tab"
+                className="w-9 h-9 flex items-center justify-center hover:bg-stone-100 rounded-lg" data-testid="preview-open-tab">
+                <ExternalLink className="w-4 h-4" />
+              </a>
+            )}
+            <button onClick={onClose} data-testid="preview-close" className="w-9 h-9 flex items-center justify-center hover:bg-stone-100 rounded-lg"><X className="w-4 h-4" /></button>
+          </div>
         </div>
         <div className="flex-1 overflow-auto bg-stone-50 flex items-center justify-center p-4">
           {!url && !err && <Loader2 className="w-6 h-6 animate-spin text-stone-400" />}
           {err && <div className="text-sm text-red-700 flex items-center gap-2"><AlertCircle className="w-4 h-4" /> {err}</div>}
           {url && isImg && <img src={url} alt={file.name} className="max-w-full max-h-[70vh] object-contain rounded" />}
-          {url && isPdf && <iframe title={file.name} src={url} className="w-full h-[75vh] bg-white border border-stone-200 rounded" />}
+          {url && isPdf && (
+            // <object> with <embed> fallback. Most reliable cross-browser PDF
+            // preview pattern; the iframe approach was failing on some
+            // browsers because of how R2 served the Content-Disposition.
+            <object data={`${url}#view=FitH`} type="application/pdf" className="w-full h-[75vh] bg-white border border-stone-200 rounded" data-testid="preview-pdf">
+              <embed src={`${url}#view=FitH`} type="application/pdf" className="w-full h-[75vh]" />
+              <div className="text-center p-6">
+                <FileIcon className="w-12 h-12 text-stone-300 mx-auto mb-3" />
+                <div className="text-sm text-stone-600 mb-3">Your browser can&apos;t display this PDF inline.</div>
+                <a href={url} target="_blank" rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-lg">
+                  <ExternalLink className="w-3.5 h-3.5" /> Open in a new tab
+                </a>
+              </div>
+            </object>
+          )}
           {url && isAudio && <audio src={url} controls className="w-full max-w-2xl" />}
           {url && isVideo && <video src={url} controls className="max-w-full max-h-[70vh] rounded" />}
           {url && !isImg && !isPdf && !isAudio && !isVideo && (
             <div className="text-center">
               <FileIcon className="w-12 h-12 text-stone-300 mx-auto mb-3" />
               <div className="text-sm text-stone-600 mb-3">Preview not supported for this file type.</div>
-              <a href={url} target="_blank" rel="noreferrer"
+              <a href={dlUrl || url} target="_blank" rel="noreferrer"
                 className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-lg">
                 <Download className="w-3.5 h-3.5" /> Download
               </a>
@@ -267,10 +330,15 @@ function PreviewModal({ file, onClose }) {
 }
 
 // ---------------------------------------------------------------------------
-// Share modal — produces a 7-day signed URL ready for e-shots.
+// Share modal — creates a stable app-side share token that resolves to a
+// fresh signed R2 URL on each click. Lets us offer up to 30 days even
+// though R2's underlying signed URLs cap at 7 days. Use for ad-hoc external
+// sharing (e-shots, sales PDFs to prospects). For franchisees, they get
+// their own portal login (permanent access).
 function ShareModal({ file, onClose }) {
-  const [days, setDays] = useState(7);
+  const [days, setDays] = useState(30);
   const [url, setUrl] = useState(null);
+  const [expiresAt, setExpiresAt] = useState(null);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [err, setErr] = useState("");
@@ -278,8 +346,9 @@ function ShareModal({ file, onClose }) {
   const generate = useCallback(async (d) => {
     setBusy(true); setErr(""); setUrl(null); setCopied(false);
     try {
-      const { data } = await api.get("/files/share-link", { params: { key: file.key, days: d } });
+      const { data } = await api.post("/files/share-link", { key: file.key, days: d });
       setUrl(data.url);
+      setExpiresAt(data.expires_at);
     } catch (e) { setErr(e?.response?.data?.detail || "Could not generate link."); }
     finally { setBusy(false); }
   }, [file]);
@@ -306,15 +375,14 @@ function ShareModal({ file, onClose }) {
             <div className="text-sm font-semibold text-stone-950 truncate">{file.name}</div>
             <div className="text-[11px] text-stone-500 truncate font-mono">{file.key}</div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Expires in</span>
-            {[1, 3, 7].map((d) => (
+            {[1, 7, 14, 30].map((d) => (
               <button key={d} onClick={() => { setDays(d); generate(d); }} data-testid={`share-days-${d}`}
                 className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md border ${days === d ? "bg-stone-950 text-white border-stone-950" : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"}`}>
                 {d} {d === 1 ? "day" : "days"}
               </button>
             ))}
-            <span className="text-[11px] text-stone-400 ml-1">(R2 max: 7 days)</span>
           </div>
           {busy && <div className="text-sm text-stone-500 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Generating…</div>}
           {err && <div className="text-xs text-red-700 bg-red-50 border border-red-200 px-3 py-2 rounded-lg">{err}</div>}
@@ -328,7 +396,10 @@ function ShareModal({ file, onClose }) {
                   {copied ? <><CheckCircle2 className="w-3.5 h-3.5" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy</>}
                 </button>
               </div>
-              <div className="text-[11px] text-stone-500">Paste this into an email, Slack, anywhere. Anyone with the link can download — no login required. Link auto-expires after {days} day{days === 1 ? "" : "s"}.</div>
+              <div className="text-[11px] text-stone-500">
+                Paste into an email or e-shot. Anyone with the link can open or download — no login required.
+                {expiresAt ? ` Auto-expires ${new Date(expiresAt).toLocaleString()}.` : ""}
+              </div>
             </div>
           )}
         </div>
@@ -338,34 +409,41 @@ function ShareModal({ file, onClose }) {
 }
 
 // ---------------------------------------------------------------------------
-// Upload manager (drag-drop + button). Uses presigned PUT direct to R2 so
-// large files don't go via our proxy.
+// Upload manager (drag-drop + button). Server-proxied multipart upload —
+// the file is POSTed to /api/files/upload which streams the body to R2 and
+// indexes it. This bypasses the need for R2 bucket CORS (our API token
+// scope doesn't permit setting CORS).
 function UploadButton({ prefix, onUploaded }) {
   const inputRef = useRef(null);
   const [progress, setProgress] = useState(null); // { current, total, name, pct }
 
   const uploadFile = useCallback(async (file, current, total) => {
     setProgress({ current, total, name: file.name, pct: 0 });
-    const { data: up } = await api.post("/files/upload-url", {
-      prefix: prefix || "admin/uploads/",
-      filename: file.name,
-      content_type: file.type || "application/octet-stream",
-    });
-    // PUT direct to R2 with progress
+    const form = new FormData();
+    form.append("file", file);
+    form.append("prefix", prefix || "admin/uploads/");
+    const backendBase = process.env.REACT_APP_BACKEND_URL || "";
     await new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      xhr.open("PUT", up.url);
-      if (file.type) xhr.setRequestHeader("Content-Type", file.type);
+      xhr.open("POST", `${backendBase}/api/files/upload`);
+      xhr.withCredentials = true;
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
           setProgress((p) => p ? { ...p, pct: Math.round((e.loaded / e.total) * 100) } : p);
         }
       };
-      xhr.onload = () => xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`R2 PUT failed: ${xhr.status}`));
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) return resolve();
+        let msg = `Upload failed: ${xhr.status}`;
+        try {
+          const body = JSON.parse(xhr.responseText || "{}");
+          if (body.detail) msg = body.detail;
+        } catch { /* ignore parse error */ }
+        reject(new Error(msg));
+      };
       xhr.onerror = () => reject(new Error("Network error during upload"));
-      xhr.send(file);
+      xhr.send(form);
     });
-    await api.post("/files/upload-complete", { key: up.key });
   }, [prefix]);
 
   const handleFiles = async (fileList) => {
@@ -380,6 +458,7 @@ function UploadButton({ prefix, onUploaded }) {
     } finally {
       setProgress(null);
       onUploaded?.();
+      if (inputRef.current) inputRef.current.value = "";
     }
   };
 
@@ -436,6 +515,16 @@ export default function FilesPage() {
   const [downloadingKey, setDownloadingKey] = useState(null);
   const [preview, setPreview] = useState(null);
   const [share, setShare] = useState(null);
+  // View mode persists per browser. "list" = compact admin rows; "grid" =
+  // FileCamp-style large thumbnail tiles (better for franchisees / visual
+  // browsing of artwork & PDFs).
+  const [viewMode, setViewMode] = useState(() => {
+    try { return localStorage.getItem("filesViewMode") || "list"; }
+    catch { return "list"; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("filesViewMode", viewMode); } catch { /* ignore */ }
+  }, [viewMode]);
 
   const reloadScopes = useCallback(async () => {
     try { const { data } = await api.get("/files/scope-tree"); setScopeTree(data); }
@@ -596,6 +685,19 @@ export default function FilesPage() {
                 <div className="bg-white border border-stone-200 rounded-2xl px-4 py-3 flex items-center justify-between gap-3 flex-wrap" data-testid="files-tree">
                   <Breadcrumb prefix={prefix} onJump={setPrefix} />
                   <div className="flex items-center gap-2 relative">
+                    {/* View mode toggle — list/grid */}
+                    <div className="flex items-center bg-stone-100 rounded-lg p-0.5" data-testid="view-toggle">
+                      <button onClick={() => setViewMode("list")} data-testid="view-list"
+                        title="List view"
+                        className={`px-2 py-1 rounded-md flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider transition-all ${viewMode === "list" ? "bg-white text-stone-950 shadow-sm" : "text-stone-500 hover:text-stone-900"}`}>
+                        <List className="w-3.5 h-3.5" /> List
+                      </button>
+                      <button onClick={() => setViewMode("grid")} data-testid="view-grid"
+                        title="Grid view"
+                        className={`px-2 py-1 rounded-md flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider transition-all ${viewMode === "grid" ? "bg-white text-stone-950 shadow-sm" : "text-stone-500 hover:text-stone-900"}`}>
+                        <LayoutGrid className="w-3.5 h-3.5" /> Grid
+                      </button>
+                    </div>
                     <NewFolderButton prefix={prefix} onCreated={() => { reloadTree(prefix); reloadScopes(); }} />
                     <UploadButton prefix={prefix} onUploaded={() => { reloadTree(prefix); reloadScopes(); }} />
                   </div>
@@ -617,6 +719,53 @@ export default function FilesPage() {
                     </div>
                   )}
                   {!busy && tree && (tree.folders.length > 0 || tree.files.length > 0) && (
+                    viewMode === "grid" ? (
+                      <div className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3" data-testid="files-grid">
+                        {tree.folders.map((f) => (
+                          <button key={f.key} onClick={() => setPrefix(f.key)} data-testid={`folder-grid-${f.name}`}
+                            className="group flex flex-col items-stretch border border-stone-200 hover:border-stone-400 hover:shadow-md transition-all rounded-xl overflow-hidden text-left bg-white">
+                            <div className="aspect-square bg-amber-50 flex items-center justify-center border-b border-amber-100">
+                              <Folder className="w-14 h-14 text-amber-600 group-hover:scale-105 transition-transform" />
+                            </div>
+                            <div className="p-2.5">
+                              <div className="text-xs font-semibold text-stone-900 truncate">{f.name.replace(/-/g, " ")}</div>
+                              <div className="text-[10px] text-stone-500 tabular-nums mt-0.5">{f.files} files · {fmtBytes(f.bytes)}</div>
+                            </div>
+                          </button>
+                        ))}
+                        {tree.files.map((it) => {
+                          const Icon = fileIcon(it);
+                          const tint = fileTint(it);
+                          return (
+                            <div key={it.key} className="group flex flex-col items-stretch border border-stone-200 hover:border-stone-400 hover:shadow-md transition-all rounded-xl overflow-hidden bg-white relative" data-testid={`file-grid-${it.key}`}>
+                              <button onClick={() => setPreview(it)} data-testid={`preview-grid-${it.key}`}
+                                className={`aspect-square flex items-center justify-center border-b ${tint}`}>
+                                <Icon className="w-14 h-14 opacity-80 group-hover:scale-105 transition-transform" />
+                              </button>
+                              <div className="p-2.5 flex-1 flex flex-col">
+                                <div className="text-xs font-semibold text-stone-900 truncate" title={it.name}>{it.name}</div>
+                                <div className="flex items-center justify-between mt-1">
+                                  <span className="text-[10px] text-stone-500 tabular-nums">{fmtBytes(it.size)}</span>
+                                  <ScopeBadge scope={it.scope} />
+                                </div>
+                                <div className="flex items-center gap-1 mt-2">
+                                  <button onClick={() => setShare(it)} data-testid={`share-grid-${it.key}`}
+                                    title="Share link"
+                                    className="flex-1 px-1.5 py-1 text-[9px] font-bold uppercase tracking-wider bg-white border border-stone-300 hover:bg-stone-50 text-stone-700 rounded-md flex items-center justify-center gap-1">
+                                    <Share2 className="w-3 h-3" /> Share
+                                  </button>
+                                  <button onClick={() => download(it.key)} disabled={downloadingKey === it.key}
+                                    data-testid={`download-grid-${it.key}`}
+                                    className="flex-1 px-1.5 py-1 text-[9px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-md flex items-center justify-center gap-1 disabled:opacity-50">
+                                    {downloadingKey === it.key ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
                     <div className="divide-y divide-stone-100">
                       {tree.folders.map((f) => (
                         <button key={f.key} onClick={() => setPrefix(f.key)}
@@ -651,6 +800,7 @@ export default function FilesPage() {
                         </div>
                       ))}
                     </div>
+                    )
                   )}
                 </div>
               </>

@@ -1,0 +1,47 @@
+{
+  "summary": "Phase 3 Files (folder create, multipart upload, share-links up to 30 days, public share redirect, PDF preview + Download lozenge, List/Grid view toggle) tested end-to-end. 7/7 backend pytest cases pass; all 4 frontend flows pass via Playwright against the public preview URL. One minor server bug found in days clamping (days=0 silently becomes 30 instead of 1).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/files/share-link",
+        "issue": "When the client sends days=0, the response returns days=30 instead of the spec'd lower clamp of 1. Root cause: `days = int(body.get('days') or 30)` treats 0 as falsy and substitutes the default 30 before the max(1, ...) clamp runs. Negative ints (e.g. -5) DO clamp to 1 correctly because non-zero ints are truthy. Suggest: `raw = body.get('days'); days = int(raw if raw is not None else 30); days = max(1, min(days, 30))`."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "verified_results": {
+    "pytest_iter17": "7/7 PASSED in 7.30s (folder create + .keep hidden from files[], multipart upload + indexed in files_index + visible in tree, share-link POST days=30 returns app-URL token, share-link clamps days>30 to 30 and days<1 to 1 (negative path), share-link GET back-compat days=14, share/{token} 302 -> R2 with response-content-disposition=inline + 404 on bogus token, download attachment=false sets inline / attachment=true sets attachment)",
+    "frontend_view_toggle": "[data-testid=view-grid] swaps to files-grid layout; [data-testid=view-list] returns to files-tree + list rows. Persists in localStorage as 'filesViewMode' (verified by code review)",
+    "frontend_new_folder": "[data-testid=new-folder-btn] -> window.prompt('Playwright Test') -> POST /api/files/folder -> folder appears in BOTH list ([data-testid=folder-Playwright Test]) and grid ([data-testid=folder-grid-Playwright Test])",
+    "frontend_upload": "Clicked into new folder, set_input_files on [data-testid=upload-input], file pw_upload.pdf appeared in the file row listing within ~3s and was indexed into db.files_index (verified via subsequent GET tree)",
+    "frontend_preview_modal": "Click PDF row -> [data-testid=preview-modal] visible. After async dlUrl resolves, [data-testid=preview-download] (the yellow 'Download' lozenge) is rendered with href pointing at R2 and including response-content-disposition=attachment. [data-testid=preview-pdf] <object> tag also present.",
+    "frontend_share_modal": "[data-testid=share-btn-...] -> [data-testid=share-modal] -> click [data-testid=share-days-30] -> [data-testid=share-url] populated with 'https://licensee-vault.preview.emergentagent.com/api/files/share/<token>' as required."
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter17_files.py",
+    "/app/test_reports/pytest/iter17_files.xml"
+  ],
+  "action_items": [
+    "(Optional, minor) Fix the days=0 clamp edge-case in files_routes.py::files_share_create — use `is None` check instead of `or 30`. Functionally low impact because the UI only offers 1/7/14/30 buttons."
+  ],
+  "critical_code_review_comments": [
+    "POST /files/upload reads the entire upload into memory (await file.read()) before pushing to R2. Fine for the stated <50MB PDFs/photos/audio in Phase 3, but for larger franchise audio files (60-200MB) consider streaming via multipart UploadFile.read(chunk) and boto3 upload_fileobj to avoid worker memory spikes.",
+    "GET /files/share/{token} regenerates a fresh signed URL on every hit (good for 30-day links), but does not check object existence — if the underlying R2 object was deleted, users still get a 302 to a signed URL that 404s on click. Minor: head_object(rec['key']) before redirect to return a friendlier 410.",
+    "files_routes.py is now ~493 lines — still under the 700-line guideline. No action required.",
+    "Share token uses secrets.token_urlsafe(18) which is ~24 chars — sufficient entropy (>140 bits). Good."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter17_files.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@creativemojo.co.uk / CreativeMojo2026! — used from /app/memory/test_credentials.md successfully throughout.",
+  "seed_data_creation": "All test artifacts (folder 'Playwright Test/.keep' + uploaded files under admin/test-iter17-<ts>/ and under 'Playwright Test/') were cleaned up via DELETE /api/files at the end of the run. Verified empty via subsequent tree query.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase 3 Files functionality is fully working end-to-end. Backend test file /app/backend/tests/test_iter17_files.py is the regression suite for: folder create, multipart upload, share-link (POST + GET back-compat), 30-day clamp, public share redirect (302 to R2 with response-content-disposition=inline), 404 on bad token, and download disposition inline/attachment. Note the one minor `days=0 -> 30` bug if you intend to add a 'custom days' input later. All UI testids in FilesPage.js are stable: files-page, files-tree, files-grid, view-list, view-grid, new-folder-btn, upload-btn, upload-input, preview-modal, preview-pdf, preview-download, preview-close, share-modal, share-days-{1|7|14|30}, share-url, share-close, folder-<name>, folder-grid-<name>, file-row-<key>, file-grid-<key>, preview-file-<key>, share-btn-<key>, download-grid-<key>."
+}

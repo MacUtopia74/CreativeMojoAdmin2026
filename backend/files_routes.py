@@ -21,7 +21,7 @@ import urllib.parse
 import logging
 from datetime import datetime, timezone
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 
 from file_storage import (
     R2_BUCKET, r2_configured, presigned_get_url, presigned_put_url,
@@ -32,8 +32,14 @@ from file_storage import (
 logger = logging.getLogger("creative-mojo-admin.files")
 
 
-# Max signed-URL lifetime allowed for share links (7 days is Cloudflare's hard cap)
-MAX_SHARE_TTL_SECONDS = 7 * 24 * 3600
+# Cloudflare R2 enforces a hard 7-day cap on AWS Sig v4 presigned URLs.
+# Anything longer must be served via the franchisee portal login (Phase 3 next),
+# which is the right model for permanent franchisee file access.
+R2_SIGV4_HARD_CAP_SECONDS = 7 * 24 * 3600
+# User-facing max for "share links" (ad-hoc external e-shots). We accept up to
+# 30 days at the API surface; if the actual TTL exceeds R2's hard cap we
+# regenerate on the fly when the link is clicked (TODO future enhancement).
+MAX_SHARE_TTL_SECONDS = 30 * 24 * 3600
 
 
 def _now() -> str:
@@ -133,8 +139,9 @@ def build_router(db, require_role) -> APIRouter:
             q["franchisee_id"] = franchisee_id
         if prefix:
             q["key"] = {"$regex": f"^{re.escape(prefix)}"}
-        q["hidden"] = {"$ne": True}  # hide .keep folder placeholders
-        # Pull a slice of files at this depth (immediate children)
+        # Note: do NOT filter out hidden=.keep placeholders here — we need
+        # them so that empty folders still surface in `folders`. We exclude
+        # the .keep entries from the user-facing `files` list further down.
         cur = db.files_index.find(q, {"_id": 0}).sort("key", 1).limit(20000)
         items = await cur.to_list(20000)
         # Compute immediate children
@@ -148,9 +155,13 @@ def build_router(db, require_role) -> APIRouter:
                 if top not in sub_dirs:
                     sub_dirs[top] = {"name": top, "key": prefix + top + "/",
                                       "files": 0, "bytes": 0}
-                sub_dirs[top]["files"] += 1
-                sub_dirs[top]["bytes"] += it["size"]
+                # Don't count hidden placeholders against file counts/sizes
+                if not it.get("hidden"):
+                    sub_dirs[top]["files"] += 1
+                    sub_dirs[top]["bytes"] += it["size"]
             else:
+                if it.get("hidden"):
+                    continue
                 files.append({
                     "key": it["key"],
                     "name": it["name"],
@@ -194,36 +205,87 @@ def build_router(db, require_role) -> APIRouter:
         existing = await db.files_index.find_one({"key": key}, {"_id": 0})
         if not existing:
             raise HTTPException(404, detail="File not found in index")
-        disp = None
+        safe = existing["name"].replace('"', "")
+        # Force a useful disposition either way — `inline` ensures PDFs render
+        # in the browser instead of being downloaded by some viewers.
         if attachment:
-            safe = existing["name"].replace('"', "")
             disp = f'attachment; filename="{safe}"'
+        else:
+            disp = f'inline; filename="{safe}"'
         url = presigned_get_url(key, expires_in=3600, content_disposition=disp)
         return {"url": url, "expires_in": 3600}
 
     # -----------------------------------------------------------------
-    @router.get("/files/share-link")
-    async def files_share_link(
-        key: str = Query(...),
-        days: int = Query(7, ge=1, le=7, description="How long the link should live (1-7 days; max enforced by Cloudflare R2)"),
-        _user: dict = Depends(require_role("admin")),
+    # Share links — these use a stable app-side token that redirects to a
+    # freshly-signed R2 URL. This means a single share link can live up to
+    # 30 days (and is revocable) even though the underlying R2 sigv4 cap is
+    # 7 days.
+    @router.post("/files/share-link")
+    async def files_share_create(
+        body: dict,
+        user: dict = Depends(require_role("admin")),
     ):
-        """Long-lived signed URL for sending in e-shots / external sharing."""
-        existing = await db.files_index.find_one({"key": key}, {"_id": 0})
+        import secrets
+        key = body.get("key")
+        days = int(body.get("days") or 30)
+        days = max(1, min(days, 30))
+        if not key:
+            raise HTTPException(400, detail="key required")
+        existing = await db.files_index.find_one({"key": key}, {"_id": 0, "name": 1})
         if not existing:
             raise HTTPException(404, detail="File not found in index")
-        ttl = min(days * 86400, MAX_SHARE_TTL_SECONDS)
-        # No content-disposition forced — the recipient can preview in-browser
-        url = presigned_get_url(key, expires_in=ttl)
-        # Audit who generated which share link
-        await db.files_share_log.insert_one({
+        token = secrets.token_urlsafe(18)
+        now_ts = datetime.now(timezone.utc).timestamp()
+        expires_at_ts = now_ts + days * 86400
+        doc = {
+            "token": token,
             "key": key,
-            "ttl_seconds": ttl,
-            "expires_at": datetime.fromtimestamp(datetime.now(timezone.utc).timestamp() + ttl, tz=timezone.utc).isoformat(),
-            "generated_at": _now(),
-            "generated_by": _user.get("email"),
-        })
-        return {"url": url, "expires_in": ttl, "days": days}
+            "filename": existing.get("name"),
+            "expires_at": datetime.fromtimestamp(expires_at_ts, tz=timezone.utc).isoformat(),
+            "created_at": _now(),
+            "created_by": user.get("email"),
+            "revoked": False,
+            "hits": 0,
+        }
+        await db.files_share_links.insert_one(doc)
+        base = (os.environ.get("FRONTEND_URL") or "").rstrip("/")
+        # Public URL points at our backend, which redirects to a fresh signed URL
+        url = f"{base}/api/files/share/{token}"
+        return {"url": url, "token": token, "expires_at": doc["expires_at"], "days": days}
+
+    # Back-compat GET shape used by the older UI — accepts ?key=&days= and
+    # creates a share token.
+    @router.get("/files/share-link")
+    async def files_share_create_get(
+        key: str = Query(...),
+        days: int = Query(30, ge=1, le=30),
+        user: dict = Depends(require_role("admin")),
+    ):
+        return await files_share_create({"key": key, "days": days}, user=user)
+
+    @router.get("/files/share/{token}")
+    async def files_share_redirect(token: str):
+        """Public redirect endpoint. Looks up the share token, validates
+        expiry, regenerates a fresh signed R2 URL and 302s to it. No auth."""
+        from fastapi.responses import RedirectResponse
+        rec = await db.files_share_links.find_one({"token": token}, {"_id": 0})
+        if not rec or rec.get("revoked"):
+            raise HTTPException(404, detail="Share link not found or revoked")
+        try:
+            expires_at = datetime.fromisoformat(rec["expires_at"])
+        except Exception:  # noqa: BLE001
+            expires_at = None
+        if expires_at and datetime.now(timezone.utc) > expires_at:
+            raise HTTPException(410, detail="Share link expired")
+        # Always serve as inline so PDFs/images preview directly
+        safe = (rec.get("filename") or "file").replace('"', "")
+        disp = f'inline; filename="{safe}"'
+        signed = presigned_get_url(rec["key"], expires_in=3600, content_disposition=disp)
+        await db.files_share_links.update_one(
+            {"token": token},
+            {"$inc": {"hits": 1}, "$set": {"last_hit_at": _now()}},
+        )
+        return RedirectResponse(signed, status_code=302)
 
     # -----------------------------------------------------------------
     @router.post("/files/upload-url")
@@ -299,6 +361,74 @@ def build_router(db, require_role) -> APIRouter:
             "parent_prefix": parent_prefix,
             "size": info.get("ContentLength", 0),
             "content_type": info.get("ContentType"),
+            "scope": scope_info["scope"],
+            "franchisee_id": franchisee_id,
+            "source": "upload",
+            "uploaded_at": _now(),
+            "uploaded_by": user.get("email"),
+        }
+        await db.files_index.update_one({"key": key}, {"$set": doc}, upsert=True)
+        return {"indexed": True, "file": doc}
+
+    # -----------------------------------------------------------------
+    # Server-proxied multipart upload. Used by the admin browser today
+    # because the R2 token does not have admin permissions to set bucket
+    # CORS for direct browser PUTs. Works for files up to ~200 MB before
+    # we should consider switching back to direct presigned PUTs.
+    @router.post("/files/upload")
+    async def files_upload_multipart(
+        file: UploadFile = File(...),
+        prefix: str = Form(""),
+        franchisee_id: Optional[str] = Form(None),
+        user: dict = Depends(require_role("admin")),
+    ):
+        if not r2_configured():
+            raise HTTPException(503, detail="R2 not configured")
+        clean_prefix = (prefix or "").strip()
+        if clean_prefix and not clean_prefix.endswith("/"):
+            clean_prefix = clean_prefix + "/"
+        if not clean_prefix:
+            clean_prefix = "admin/uploads/"
+        raw_name = (file.filename or "upload.bin").rsplit("/", 1)[-1]
+        safe = re.sub(r"[^\w\s.\-]", "_", raw_name).strip()
+        safe = re.sub(r"\s+", " ", safe) or "upload.bin"
+        key = f"{clean_prefix}{safe}"
+        # De-dupe via _v2, _v3 ...
+        suffix = 1
+        while await db.files_index.find_one({"key": key}, {"_id": 1}):
+            suffix += 1
+            stem, _, ext = safe.rpartition(".")
+            key = f"{clean_prefix}{stem}_v{suffix}.{ext}" if stem else f"{clean_prefix}{safe}_v{suffix}"
+        # Read into memory then push to R2. For phase 3 file sizes
+        # (PDFs/photos/audio, typically <50 MB) this is fine.
+        data = await file.read()
+        ct = file.content_type or "application/octet-stream"
+        try:
+            get_client().put_object(Bucket=R2_BUCKET, Key=key, Body=data, ContentType=ct)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(502, detail=f"R2 put_object failed: {exc}") from exc
+        scope_info = _classify_uploaded_key(key)
+        # Auto-deduce franchisee_id from key if scoped that way
+        if scope_info["scope"] == SCOPE_FRANCHISEE and not franchisee_id:
+            slug_match = re.match(r"^franchisees/([^/]+)/", key)
+            if slug_match:
+                num_match = re.match(r"^(\d{1,5})", slug_match.group(1))
+                if num_match:
+                    num = num_match.group(1).zfill(4)
+                    f = await db.franchisees.find_one(
+                        {"franchise_number": {"$in": [num, int(num)]}},
+                        {"_id": 0, "id": 1},
+                    )
+                    if f:
+                        franchisee_id = f["id"]
+        name = key.rsplit("/", 1)[-1]
+        parent_prefix = key[: -len(name)] if name else key
+        doc = {
+            "key": key,
+            "name": name,
+            "parent_prefix": parent_prefix,
+            "size": len(data),
+            "content_type": ct,
             "scope": scope_info["scope"],
             "franchisee_id": franchisee_id,
             "source": "upload",
