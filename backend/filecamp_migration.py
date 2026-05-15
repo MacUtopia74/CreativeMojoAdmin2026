@@ -472,6 +472,8 @@ def build_router(db, require_role) -> APIRouter:
         background: BackgroundTasks,
         confirm: str = Query(..., description="must equal MIGRATE for safety"),
         max_items: Optional[int] = Query(None, description="cap for partial test runs"),
+        scope: Optional[str] = Query(None, description="Filter: only 'shared' / 'admin' / 'franchisee'"),
+        franchisee_id: Optional[str] = Query(None, description="Filter: only one franchisee_id"),
         user: dict = Depends(require_role("admin")),
     ):
         if confirm != "MIGRATE":
@@ -482,8 +484,14 @@ def build_router(db, require_role) -> APIRouter:
         if not plan or not plan.get("items"):
             raise HTTPException(400, detail="No plan found — run /files/migration/plan first.")
         items = plan["items"]
+        if scope:
+            items = [i for i in items if i.get("scope") == scope]
+        if franchisee_id:
+            items = [i for i in items if i.get("franchisee_id") == franchisee_id]
         if max_items:
             items = items[:max_items]
+        if not items:
+            raise HTTPException(400, detail="Filters matched 0 items.")
         background.add_task(_migrate_items, db, items, user.get("email", ""))
         return {"started": True, "queued": len(items)}
 
