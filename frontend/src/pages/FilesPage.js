@@ -75,14 +75,19 @@ function ScopeBadge({ scope }) {
 function Breadcrumb({ prefix, onJump }) {
   const segs = useMemo(() => prefix.split("/").filter(Boolean), [prefix]);
   return (
-    <div className="flex items-center gap-1 text-sm text-stone-600 flex-wrap" data-testid="files-breadcrumb">
-      <button onClick={() => onJump("")} className="hover:underline font-bold text-stone-800">All Files</button>
+    <div className="flex items-center gap-2 flex-wrap" data-testid="files-breadcrumb">
+      <Folder className="w-4 h-4 text-amber-600 shrink-0" />
+      <button onClick={() => onJump("")} className="font-display text-xl text-stone-950 hover:underline">
+        All Files
+      </button>
       {segs.map((seg, i) => {
         const upto = segs.slice(0, i + 1).join("/") + "/";
         return (
-          <span key={i} className="flex items-center gap-1">
-            <ChevronRight className="w-3 h-3 text-stone-400" />
-            <button onClick={() => onJump(upto)} className="hover:underline">{seg.replace(/-/g, " ")}</button>
+          <span key={i} className="flex items-center gap-2">
+            <ChevronRight className="w-4 h-4 text-stone-400" />
+            <button onClick={() => onJump(upto)} className="font-display text-xl text-stone-700 hover:text-stone-950 hover:underline">
+              {seg.replace(/-/g, " ")}
+            </button>
           </span>
         );
       })}
@@ -711,7 +716,7 @@ export default function FilesPage() {
                 <RecentFilesStrip viewMode={viewMode}
                   onOpenFile={(it) => setPreview(it)}
                   onDownload={(key) => download(key)} />
-                <div className="bg-white border border-stone-200 rounded-2xl px-4 py-3 flex items-center justify-between gap-3 flex-wrap" data-testid="files-tree">
+                <div className="bg-white border-2 border-stone-900 rounded-2xl px-5 py-4 flex items-center justify-between gap-3 flex-wrap shadow-sm" data-testid="files-tree">
                   <Breadcrumb prefix={prefix} onJump={setPrefix} />
                   <div className="flex items-center gap-2 relative">
                     {/* View mode toggle — list/grid */}

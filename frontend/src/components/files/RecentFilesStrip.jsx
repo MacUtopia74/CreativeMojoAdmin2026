@@ -42,10 +42,11 @@ function tint(file) {
 }
 
 export default function RecentFilesStrip({ viewMode = "list", onOpenFile, onDownload }) {
-  // Collapse state persisted in localStorage.
+  // Collapse state persisted in localStorage. Default = closed so it
+  // doesn't push the file browser down on every visit.
   const [open, setOpen] = useState(() => {
-    try { return localStorage.getItem("recentStripOpen") !== "false"; }
-    catch { return true; }
+    try { return localStorage.getItem("recentStripOpen") === "true"; }
+    catch { return false; }
   });
   useEffect(() => {
     try { localStorage.setItem("recentStripOpen", String(open)); } catch { /* ignore */ }
@@ -63,19 +64,25 @@ export default function RecentFilesStrip({ viewMode = "list", onOpenFile, onDown
     finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { if (open) load(); }, [open, load]);
+  // Always fetch the count even when collapsed (so the badge is accurate)
+  useEffect(() => { load(); }, [load]);
 
   const count = items?.length || 0;
 
   return (
-    <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden mb-4" data-testid="recent-strip">
+    <div className="bg-white border-2 border-stone-900 rounded-2xl overflow-hidden mb-4 shadow-sm" data-testid="recent-strip">
       <button onClick={() => setOpen((o) => !o)}
         data-testid="recent-strip-toggle"
-        className="w-full px-5 py-3 flex items-center justify-between hover:bg-stone-50">
-        <div className="flex items-center gap-2">
-          <Sparkles className="w-3.5 h-3.5 text-stone-700" />
-          <span className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-700">
-            Recently added · last 30 days
+        className={`w-full px-5 py-3 flex items-center justify-between transition-colors ${open ? "bg-stone-950 text-white" : "bg-stone-50 hover:bg-stone-100"}`}>
+        <div className="flex items-center gap-2.5">
+          <div className={`w-7 h-7 rounded-md flex items-center justify-center ${open ? "bg-[#D4FF00]" : "bg-[#D4FF00]"}`}>
+            <Sparkles className="w-4 h-4 text-stone-950" />
+          </div>
+          <span className={`text-sm font-display font-bold tracking-tight ${open ? "text-white" : "text-stone-950"}`}>
+            Recently added
+          </span>
+          <span className={`text-[11px] uppercase tracking-[0.2em] font-bold ${open ? "text-stone-400" : "text-stone-500"}`}>
+            · last 30 days
           </span>
           {items && (
             <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[#D4FF00] text-stone-950 rounded-md tabular-nums">
@@ -84,8 +91,12 @@ export default function RecentFilesStrip({ viewMode = "list", onOpenFile, onDown
           )}
         </div>
         <div className="flex items-center gap-2">
-          {loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-stone-400" />}
-          {open ? <ChevronUp className="w-4 h-4 text-stone-500" /> : <ChevronDown className="w-4 h-4 text-stone-500" />}
+          {loading && <Loader2 className={`w-3.5 h-3.5 animate-spin ${open ? "text-stone-400" : "text-stone-500"}`} />}
+          <span className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md flex items-center gap-1 ${open ? "bg-white/10 text-white hover:bg-white/20" : "bg-stone-950 text-white"}`}>
+            {open
+              ? <><ChevronUp className="w-3 h-3" /> Hide</>
+              : <><ChevronDown className="w-3 h-3" /> Show recent files</>}
+          </span>
         </div>
       </button>
 
