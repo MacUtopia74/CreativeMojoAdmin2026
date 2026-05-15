@@ -30,7 +30,7 @@ function fmtBytes(b) {
   return `${(b / 1024 ** 3).toFixed(2)} GB`;
 }
 
-const BRAND_ROOT = "shared/";
+const BRAND_ROOT = "shared/files-for-all-franchisees/";
 
 export default function FranchiseeFilesPanel({ franchisee, canUpload = true }) {
   const [tab, setTab] = useState("own"); // "own" | "brand"

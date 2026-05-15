@@ -183,12 +183,19 @@ def build_router(db, require_role) -> APIRouter:
         if not fid:
             raise HTTPException(403, detail="Portal account missing franchisee link")
         # They can see their own files (matched by franchisee_id) and
-        # the global shared/ tree (matched by scope or key prefix).
+        # the global shared/ tree — EXCEPT folders that are HQ-internal
+        # (e.g. shared/meeting-audio-files/ which are private to admins).
+        franchisee_shared_clause = {
+            "$and": [
+                {"$or": [{"scope": SCOPE_SHARED},
+                          {"key": {"$regex": r"^shared/"}}]},
+                {"key": {"$not": re.compile(r"^shared/meeting-audio-files/")}},
+            ],
+        }
         return {
             "$or": [
                 {"franchisee_id": fid},
-                {"scope": SCOPE_SHARED},
-                {"key": {"$regex": r"^shared/"}},
+                franchisee_shared_clause,
             ],
         }
 
@@ -197,6 +204,8 @@ def build_router(db, require_role) -> APIRouter:
         Admins always pass."""
         if user.get("role") != "franchisee":
             return True
+        if key.startswith("shared/meeting-audio-files/"):
+            return False
         if key.startswith("shared/"):
             return True
         return key in fr_keys
@@ -313,6 +322,8 @@ def build_router(db, require_role) -> APIRouter:
         # Enforce franchisee scope: must be shared/ or owned by the user
         if user.get("role") == "franchisee":
             fid = user.get("franchisee_id")
+            if key.startswith("shared/meeting-audio-files/"):
+                raise HTTPException(403, detail="Forbidden")
             if not (key.startswith("shared/") or existing.get("franchisee_id") == fid
                     or existing.get("scope") == SCOPE_SHARED):
                 raise HTTPException(403, detail="Forbidden")
@@ -349,6 +360,8 @@ def build_router(db, require_role) -> APIRouter:
             raise HTTPException(404, detail="File not found in index")
         if user.get("role") == "franchisee":
             fid = user.get("franchisee_id")
+            if key.startswith("shared/meeting-audio-files/"):
+                raise HTTPException(403, detail="Not allowed")
             if not (key.startswith("shared/")
                     or existing.get("franchisee_id") == fid
                     or existing.get("scope") == SCOPE_SHARED):
