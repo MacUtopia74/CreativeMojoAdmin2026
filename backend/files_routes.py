@@ -28,6 +28,7 @@ from file_storage import (
     delete_object, head_object,
     SCOPE_FRANCHISEE, SCOPE_SHARED, SCOPE_ADMIN, get_client,
 )
+from franchisee_folders import derive_franchisee_prefix
 
 logger = logging.getLogger("creative-mojo-admin.files")
 
@@ -131,7 +132,8 @@ def build_router(db, require_role) -> APIRouter:
         f_ids = [r["_id"] for r in f_rows]
         f_lookup = {f["id"]: f for f in await db.franchisees.find(
             {"id": {"$in": f_ids}},
-            {"_id": 0, "id": 1, "franchise_number": 1, "organisation": 1, "first_name": 1, "last_name": 1, "photos": 1},
+            {"_id": 0, "id": 1, "franchise_number": 1, "organisation": 1,
+             "first_name": 1, "last_name": 1, "photos": 1},
         ).to_list(1000)}
 
         franchisees_view = []
@@ -139,12 +141,14 @@ def build_router(db, require_role) -> APIRouter:
             f = f_lookup.get(r["_id"])
             if not f:
                 continue
+            base_prefix = derive_franchisee_prefix(f)
             franchisees_view.append({
                 "franchisee_id": r["_id"],
                 "franchise_number": f.get("franchise_number"),
                 "organisation": f.get("organisation"),
                 "name": f"{f.get('first_name','')} {f.get('last_name','')}".strip(),
                 "photo": (f.get("photos") or [{}])[0].get("url"),
+                "prefix": base_prefix,
                 "files": r["files"],
                 "bytes": r["bytes"],
             })

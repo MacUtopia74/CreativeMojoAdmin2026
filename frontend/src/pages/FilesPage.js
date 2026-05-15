@@ -671,7 +671,7 @@ export default function FilesPage() {
                     return an - bn;
                   })
                   .map((f) => (
-                  <button key={f.franchisee_id} onClick={() => { setTrashMode(false); setPrefix("franchisees/"); }}
+                  <button key={f.franchisee_id} onClick={() => { setTrashMode(false); setPrefix(f.prefix || "franchisees/"); }}
                     className="w-full px-3 py-2 text-left text-xs hover:bg-stone-50 flex items-center gap-2"
                     data-testid={`scope-franchisee-${f.franchisee_id}`}>
                     <Users className="w-3 h-3 text-emerald-600 shrink-0" />
