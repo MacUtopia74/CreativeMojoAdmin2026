@@ -58,6 +58,10 @@ class TerritoryPlanIn(BaseModel):
     notes: Optional[str] = None
 
 
+class FranchiseeTerritoryIn(BaseModel):
+    sectors: List[str] = Field(default_factory=list)
+
+
 def build_territory_router(db, require_role):  # noqa: D401
     router = APIRouter()
 
@@ -307,6 +311,51 @@ def build_territory_router(db, require_role):  # noqa: D401
         if not res.deleted_count:
             raise HTTPException(404, detail="Plan not found")
         return {"ok": True}
+
+    # --------------------------- franchisee territory save (admin lock-down)
+    @router.put("/franchisees/{franchisee_id}/territory")
+    async def save_franchisee_territory(
+        franchisee_id: str,
+        body: FranchiseeTerritoryIn,
+        user: dict = Depends(require_role("admin")),
+    ):
+        # Normalise: uppercase, single-space, dedupe
+        seen: List[str] = []
+        for s in body.sectors:
+            v = " ".join(s.upper().split())
+            if v and v not in seen:
+                seen.append(v)
+        # Refresh authoritative home count from CQC index
+        homes = 0
+        if seen:
+            homes = await db.cqc_locations.count_documents({"postcode_sector": {"$in": seen}})
+        res = await db.franchisees.update_one(
+            {"id": franchisee_id},
+            {"$set": {
+                "territory_sectors": seen,
+                "territory_home_count": homes,
+                "territory_updated_at": datetime.now(timezone.utc),
+                "territory_updated_by": user.get("email"),
+            }},
+        )
+        if not res.matched_count:
+            raise HTTPException(404, detail="Franchisee not found")
+        return {"sectors": seen, "home_count": homes}
+
+    @router.get("/franchisees/{franchisee_id}/territory")
+    async def get_franchisee_territory(
+        franchisee_id: str,
+        _user: dict = Depends(require_role("admin")),
+    ):
+        f = await db.franchisees.find_one(
+            {"id": franchisee_id},
+            {"_id": 0, "id": 1, "postcode": 1, "territory_sectors": 1,
+             "territory_home_count": 1, "territory_updated_at": 1,
+             "territory_updated_by": 1, "organisation": 1, "franchise_number": 1},
+        )
+        if not f:
+            raise HTTPException(404, detail="Franchisee not found")
+        return f
 
     # ----------------------------------------------- franchisee summary (R/O)
     @router.get("/territory/franchisee-summary")

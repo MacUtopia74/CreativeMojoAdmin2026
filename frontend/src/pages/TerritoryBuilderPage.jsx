@@ -22,6 +22,7 @@ export default function TerritoryBuilderPage() {
   const [params] = useSearchParams();
   const contactId = params.get("contact_id") || null;
   const planId = params.get("plan_id") || null;
+  const franchiseeId = params.get("franchisee_id") || null;
 
   const [postcode, setPostcode] = useState("");
   const [centre, setCentre] = useState(null);
@@ -37,6 +38,8 @@ export default function TerritoryBuilderPage() {
   const [contact, setContact] = useState(null);
   const [existingPlans, setExistingPlans] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [franchisee, setFranchisee] = useState(null);
+  const [territorySavedAt, setTerritorySavedAt] = useState(null);
 
   // Load contact details + existing plans if contact_id is provided
   useEffect(() => {
@@ -52,6 +55,30 @@ export default function TerritoryBuilderPage() {
       } catch {/* ignore */}
     })();
   }, [contactId]);
+
+  // Hydrate existing franchisee territory
+  useEffect(() => {
+    if (!franchiseeId) return;
+    (async () => {
+      try {
+        const { data } = await api.get(`/franchisees/${franchiseeId}/territory`);
+        setFranchisee(data);
+        setSelected(data.territory_sectors || []);
+        setTerritorySavedAt(data.territory_updated_at);
+        if (data.postcode) {
+          setPostcode(data.postcode);
+          // Auto-lookup so map centres on HQ
+          try {
+            const r = await api.get("/territory/postcode-lookup", { params: { postcode: data.postcode } });
+            if (r.data.latitude != null) {
+              setCentre({ lat: r.data.latitude, lng: r.data.longitude });
+              setCentreLabel(`${data.organisation || ""} · ${r.data.postcode}`);
+            }
+          } catch {/* ignore */}
+        }
+      } catch {/* ignore */}
+    })();
+  }, [franchiseeId]);
 
   // Hydrate an existing plan
   useEffect(() => {
@@ -123,25 +150,32 @@ export default function TerritoryBuilderPage() {
   const progress = Math.min(100, Math.round((homeCount.count / TARGET_HOMES) * 100));
 
   const save = async () => {
-    if (!selected.length || !centre) { setErr("Pick a postcode and at least one sector first."); return; }
+    if (!selected.length || (!centre && !franchiseeId)) { setErr("Pick a postcode and at least one sector first."); return; }
     setSaving(true); setErr("");
     try {
-      const body = {
-        contact_id: contactId,
-        name: name || (centreLabel ? `Territory near ${centreLabel}` : `Territory plan`),
-        centre_postcode: postcode || null,
-        centre_lat: centre.lat,
-        centre_lng: centre.lng,
-        sectors: selected,
-        home_count: homeCount.count,
-        notes,
-      };
-      if (savedPlan?.id) {
-        const { data } = await api.patch(`/territory-plans/${savedPlan.id}`, body);
-        setSavedPlan(data);
+      if (franchiseeId) {
+        // Locking a franchisee's official territory
+        const { data } = await api.put(`/franchisees/${franchiseeId}/territory`, { sectors: selected });
+        setTerritorySavedAt(new Date().toISOString());
+        setFranchisee((cur) => cur ? { ...cur, territory_sectors: data.sectors, territory_home_count: data.home_count } : cur);
       } else {
-        const { data } = await api.post("/territory-plans", body);
-        setSavedPlan(data);
+        const body = {
+          contact_id: contactId,
+          name: name || (centreLabel ? `Territory near ${centreLabel}` : `Territory plan`),
+          centre_postcode: postcode || null,
+          centre_lat: centre.lat,
+          centre_lng: centre.lng,
+          sectors: selected,
+          home_count: homeCount.count,
+          notes,
+        };
+        if (savedPlan?.id) {
+          const { data } = await api.patch(`/territory-plans/${savedPlan.id}`, body);
+          setSavedPlan(data);
+        } else {
+          const { data } = await api.post("/territory-plans", body);
+          setSavedPlan(data);
+        }
       }
     } catch (e) {
       setErr(e?.response?.data?.detail || "Could not save");
@@ -165,12 +199,19 @@ export default function TerritoryBuilderPage() {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <div className="flex items-center gap-2 text-xs uppercase tracking-[0.3em] font-bold text-stone-500 mb-1">
-            <Target className="w-3.5 h-3.5" /> Territory Builder
+            <Target className="w-3.5 h-3.5" /> {franchiseeId ? "Lock franchisee territory" : "Territory Builder"}
           </div>
           <h1 className="font-display text-3xl text-stone-950">
-            {contact ? `Plan a territory for ${contact.first_name} ${contact.last_name}` : "Build a prospect territory"}
+            {franchiseeId
+              ? (franchisee ? `Set territory for ${franchisee.organisation || ("#" + franchisee.franchise_number)}` : "Set franchisee territory")
+              : contact ? `Plan a territory for ${contact.first_name} ${contact.last_name}` : "Build a prospect territory"}
           </h1>
-          {contact && (
+          {franchiseeId && (
+            <Link to={`/franchisees/${franchiseeId}`} className="text-xs text-stone-500 hover:underline inline-flex items-center gap-1 mt-1">
+              <ArrowLeft className="w-3 h-3" /> Back to franchisee
+            </Link>
+          )}
+          {contact && !franchiseeId && (
             <Link to={`/contacts/${contact.id}`} className="text-xs text-stone-500 hover:underline inline-flex items-center gap-1 mt-1">
               <ArrowLeft className="w-3 h-3" /> Back to contact
             </Link>
@@ -179,11 +220,11 @@ export default function TerritoryBuilderPage() {
         <div className="bg-white border border-stone-200 rounded-xl p-4 flex items-center gap-5">
           <div>
             <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">Homes</div>
-            <div className="font-display text-3xl text-stone-950 tabular-nums" data-testid="home-count">{homeCount.count} <span className="text-stone-400 text-lg">/ {TARGET_HOMES}</span></div>
+            <div className="font-display text-3xl text-stone-950 tabular-nums" data-testid="home-count">{homeCount.count}{!franchiseeId && <span className="text-stone-400 text-lg"> / {TARGET_HOMES}</span>}</div>
           </div>
           <div className="w-40">
             <div className="h-2 bg-stone-100 rounded-full overflow-hidden">
-              <div className="h-full transition-all bg-emerald-500" style={{ width: `${progress}%` }} />
+              <div className="h-full transition-all bg-emerald-500" style={{ width: franchiseeId ? "100%" : `${progress}%` }} />
             </div>
             <div className="text-[10px] text-stone-500 mt-1">{selected.length} sector{selected.length === 1 ? "" : "s"} selected</div>
           </div>
@@ -257,20 +298,29 @@ export default function TerritoryBuilderPage() {
         {/* Side panel */}
         <div className="space-y-4">
           <div className="bg-white border border-stone-200 rounded-2xl p-4">
-            <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500 mb-2">Plan details</div>
-            <input value={name} onChange={(e) => setName(e.target.value)} data-testid="plan-name"
-              placeholder="Plan name (e.g. Exeter & Mid Devon proposal)"
-              className="w-full px-3 py-2 text-sm bg-stone-50 border border-stone-200 rounded-lg mb-2" />
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} data-testid="plan-notes"
-              rows={3} placeholder="Notes (optional)"
-              className="w-full px-3 py-2 text-sm bg-stone-50 border border-stone-200 rounded-lg" />
+            <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500 mb-2">{franchiseeId ? "Franchisee territory" : "Plan details"}</div>
+            {!franchiseeId && (
+              <>
+                <input value={name} onChange={(e) => setName(e.target.value)} data-testid="plan-name"
+                  placeholder="Plan name (e.g. Exeter & Mid Devon proposal)"
+                  className="w-full px-3 py-2 text-sm bg-stone-50 border border-stone-200 rounded-lg mb-2" />
+                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} data-testid="plan-notes"
+                  rows={3} placeholder="Notes (optional)"
+                  className="w-full px-3 py-2 text-sm bg-stone-50 border border-stone-200 rounded-lg" />
+              </>
+            )}
+            {franchiseeId && (
+              <div className="text-xs text-stone-600 leading-relaxed">
+                Pick every postcode sector that belongs to this franchisee. Saving overwrites their official territory — they'll see it on their portal map immediately, and the public website lookup will route those postcodes here.
+              </div>
+            )}
             <div className="flex items-center gap-2 mt-3">
               <button onClick={save} disabled={saving || !selected.length} data-testid="save-plan"
                 className="flex-1 px-3 py-2 text-xs font-bold uppercase tracking-wider bg-[#D4FF00] text-stone-950 hover:bg-[#BDE600] rounded-lg disabled:opacity-50 flex items-center justify-center gap-1.5">
                 {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                {savedPlan ? "Update plan" : "Save plan"}
+                {franchiseeId ? "Lock territory" : (savedPlan ? "Update plan" : "Save plan")}
               </button>
-              {savedPlan && (
+              {savedPlan && !franchiseeId && (
                 <button onClick={deletePlan} className="px-3 py-2 text-xs font-bold rounded-lg border border-red-300 text-red-700 hover:bg-red-50" data-testid="delete-plan">
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -279,9 +329,14 @@ export default function TerritoryBuilderPage() {
                 <RotateCcw className="w-3.5 h-3.5" />
               </button>
             </div>
-            {savedPlan && (
+            {savedPlan && !franchiseeId && (
               <div className="mt-3 px-3 py-2 text-[11px] bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg flex items-center gap-1.5">
                 <CheckCircle2 className="w-3.5 h-3.5" /> Saved · last update {new Date(savedPlan.updated_at || savedPlan.created_at).toLocaleString()}
+              </div>
+            )}
+            {franchiseeId && territorySavedAt && (
+              <div className="mt-3 px-3 py-2 text-[11px] bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Locked · {new Date(territorySavedAt).toLocaleString()}
               </div>
             )}
           </div>

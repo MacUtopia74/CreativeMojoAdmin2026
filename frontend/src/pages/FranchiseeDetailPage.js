@@ -5,6 +5,7 @@ import { formatDate, daysFromToday } from "@/lib/date";
 import { ArrowLeft, MapPin, AlertCircle, User, FileText, Map, MessageSquare, Pencil, Check, X as XIcon, Clock, ShieldCheck, ShieldAlert, Globe, Facebook, CreditCard, RefreshCw, AlertTriangle, Power, PowerOff, BellRing, FolderOpen, LockKeyhole } from "lucide-react";
 import FranchiseeFilesPanel from "@/components/files/FranchiseeFilesPanel";
 import FranchiseePortalControls from "@/components/franchisee/FranchiseePortalControls";
+import FranchiseeTerritoryWidget from "@/components/territory/FranchiseeTerritoryWidget";
 
 // Live GoCardless mandate status pill (read from cached franchisee fields)
 const MANDATE_STYLES = {
@@ -549,30 +550,20 @@ export default function FranchiseeDetailPage() {
             </div>
           </Panel>
 
-          {/* Territory map placeholder — actual Mapbox map arrives in Phase 4 */}
-          <Panel icon={Map} title={`Territory Map (${territories.length} postcode sectors)`} testid="panel-map">
-            <div className="aspect-[16/9] bg-stone-100 border border-stone-200 rounded-xl flex flex-col items-center justify-center gap-2 relative overflow-hidden">
-              {/* faint dot grid to suggest 'map' */}
-              <div className="absolute inset-0 opacity-30" style={{
-                backgroundImage: "radial-gradient(#a8a29e 1px, transparent 1px)",
-                backgroundSize: "16px 16px",
-              }} />
-              <Map className="w-8 h-8 text-stone-400 relative" />
-              <div className="text-xs text-stone-600 text-center relative max-w-xs">
-                Live Mapbox territory map arrives in <strong>Phase 4</strong>.
-                Will support postcode lookup and embed on the public site.
-              </div>
-            </div>
-            {territories.length > 0 && (
-              <div className="mt-4">
-                <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-2">All postcode sectors</div>
-                <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto">
-                  {territories.map((t) => (
-                    <span key={t.id} className="px-2 py-0.5 bg-stone-100 text-xs text-stone-800 tabular-nums rounded-md">{t.postcode}</span>
-                  ))}
-                </div>
-              </div>
-            )}
+          {/* Territory map — live Mapbox (Phase 4) */}
+          <Panel
+            icon={Map}
+            title="Territory Map"
+            testid="panel-map"
+            action={
+              <Link to={`/territory-builder?franchisee_id=${f.id}`}
+                data-testid="edit-territory-btn"
+                className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-md flex items-center gap-1.5">
+                <Pencil className="w-3 h-3" /> {(f.territory_sectors || []).length ? "Edit territory" : "Set territory"}
+              </Link>
+            }
+          >
+            <FranchiseeTerritoryWidget franchiseeId={f.id} />
           </Panel>
 
           <Panel icon={MessageSquare} title="Notes" testid="panel-notes">

@@ -948,6 +948,7 @@ async def portal_me(user: dict = Depends(require_role("franchisee"))):
         "start_date", "end_date", "lifecycle_status",
         "gocardless_mandate_status", "gocardless_last_payment_at",
         "photo_url", "photos", "territory_postcodes", "territory_geojson",
+        "territory_sectors", "territory_home_count",
     }
     profile = {k: f.get(k) for k in keep if k in f}
     # Fallback: if Airtable didn't carry over a start_date, derive it
