@@ -59,7 +59,25 @@ class CqcDefinition(BaseModel):
 
 
 def definition_to_mongo_filter(d: CqcDefinition) -> dict:
-    """Translates the rule into a MongoDB filter on `cqc_locations_live`."""
+    """Translates the rule into a MongoDB filter on `cqc_locations_live`.
+
+    If the admin hasn't set ANY positive inclusion criterion (no service
+    types, specialisms, regulated activities, care-home flag, beds minimum,
+    or rating requirement), we return an impossible filter so the count is
+    0. Otherwise an unconfigured page would silently match every Registered
+    CQC location (~120k incl. dentists, GPs, ambulances) — confusing and
+    dangerous for the territory home counters.
+    """
+    has_inclusion = bool(
+        d.include_service_types
+        or d.include_specialisms
+        or d.include_regulated_activities
+        or d.require_care_home
+        or d.min_beds
+        or d.require_rating
+    )
+    if not has_inclusion:
+        return {"_no_rule_defined": True}  # matches nothing
     f: dict = {}
     if d.registration_statuses:
         f["registrationStatus"] = {"$in": d.registration_statuses}

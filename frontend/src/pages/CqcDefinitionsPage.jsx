@@ -268,7 +268,7 @@ export default function CqcDefinitionsPage() {
         </div>
 
         {/* Live preview */}
-        <PreviewPanel preview={preview} previewing={previewing} />
+        <PreviewPanel preview={preview} previewing={previewing} def={def} />
       </div>
     </div>
   );
@@ -313,7 +313,15 @@ function SyncBanner({ sync, onStart }) {
   );
 }
 
-function PreviewPanel({ preview, previewing }) {
+function PreviewPanel({ preview, previewing, def }) {
+  const hasInclusion = !!(
+    def.include_service_types.length ||
+    def.include_specialisms.length ||
+    def.include_regulated_activities.length ||
+    def.require_care_home ||
+    def.min_beds ||
+    (def.require_rating || []).length
+  );
   return (
     <div className="bg-white border border-stone-200 rounded-2xl p-5 sticky top-4 self-start" data-testid="def-preview">
       <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500 mb-1">Live preview</div>
@@ -322,6 +330,12 @@ function PreviewPanel({ preview, previewing }) {
         <span className="text-sm text-stone-600">homes match</span>
         {previewing && <Loader2 className="w-3.5 h-3.5 animate-spin text-stone-400" />}
       </div>
+      {!hasInclusion && (
+        <div className="mt-2 px-3 py-2 text-xs bg-amber-50 border border-amber-200 text-amber-900 rounded-lg flex items-start gap-1.5" data-testid="preview-empty-rule">
+          <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+          <span>Pick at least one service type, specialism, regulated activity, care-home flag, beds minimum or rating to define your rule.</span>
+        </div>
+      )}
       {preview?.error && (
         <div className="mt-2 px-3 py-2 text-xs bg-red-50 border border-red-200 text-red-800 rounded-lg flex items-start gap-1.5" data-testid="preview-error">
           <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" /> <span>{preview.error}</span>
