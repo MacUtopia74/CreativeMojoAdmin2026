@@ -78,7 +78,7 @@ function Breadcrumb({ prefix, onJump }) {
   const segs = useMemo(() => prefix.split("/").filter(Boolean), [prefix]);
   return (
     <div className="flex items-center gap-2 flex-wrap" data-testid="files-breadcrumb">
-      <Folder className="w-4 h-4 text-amber-600 shrink-0" />
+      <Folder className="w-4 h-4 text-[#14532D] shrink-0" />
       <button onClick={() => onJump("")} className="font-display text-xl text-stone-950 hover:underline">
         All Files
       </button>
@@ -774,8 +774,8 @@ export default function FilesPage() {
                         {tree.folders.map((f) => (
                           <div key={f.key} className="group flex flex-col items-stretch border border-stone-200 hover:border-stone-400 hover:shadow-md transition-all rounded-xl overflow-hidden text-left bg-white relative">
                             <button onClick={() => setPrefix(f.key)} data-testid={`folder-grid-${f.name}`}
-                              className="aspect-square bg-amber-50 flex items-center justify-center border-b border-amber-100">
-                              <Folder className="w-14 h-14 text-amber-600 group-hover:scale-105 transition-transform" />
+                              className="aspect-square bg-[#D4FF00]/15 flex items-center justify-center border-b border-[#D4FF00]/30">
+                              <Folder className="w-14 h-14 text-[#14532D] group-hover:scale-105 transition-transform" />
                             </button>
                             <div className="p-2.5 flex items-start justify-between gap-2">
                               <button onClick={() => setPrefix(f.key)} className="text-left min-w-0 flex-1">
@@ -826,7 +826,7 @@ export default function FilesPage() {
                           className="w-full px-4 py-2 hover:bg-stone-50 flex items-center justify-between gap-3 group">
                           <button onClick={() => setPrefix(f.key)}
                             className="flex items-center gap-3 truncate text-left flex-1">
-                            <Folder className="w-4 h-4 text-amber-600 shrink-0" />
+                            <Folder className="w-4 h-4 text-[#14532D] shrink-0" />
                             <span className="text-sm text-stone-900 truncate">{prettyFolderName(f.name)}</span>
                           </button>
                           <span className="text-xs text-stone-500 tabular-nums">{f.files} files · {fmtBytes(f.bytes)}</span>
