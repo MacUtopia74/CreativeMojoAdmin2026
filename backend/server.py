@@ -1986,8 +1986,20 @@ async def anniversaries_today(
                 continue
             f = await db.franchisees.find_one(
                 {"id": c.get("franchisee_id")},
-                {"_id": 0, "first_name": 1, "last_name": 1, "organisation": 1, "mojo_email": 1, "id": 1},
+                {"_id": 0, "first_name": 1, "last_name": 1, "organisation": 1,
+                 "mojo_email": 1, "id": 1, "lifecycle_status": 1, "tags": 1},
             )
+            # Skip ex-franchisees — their contract anniversaries are historic
+            # and shouldn't clutter the active dashboard.
+            if not f:
+                continue
+            if f.get("lifecycle_status") == "ex_franchisee":
+                continue
+            if "Franchisee" not in (f.get("tags") or []):
+                continue
+            # Strip the internal flags from the response — UI doesn't need them.
+            f.pop("lifecycle_status", None)
+            f.pop("tags", None)
             out.append({
                 "contract": c,
                 "franchisee": f,
