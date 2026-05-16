@@ -14,7 +14,7 @@ import TerritoryMap from "@/components/territory/TerritoryMap";
 import {
   Search, Loader2, Target, Save, Trash2, MapPin, Plus, RotateCcw,
   Users, AlertCircle, CheckCircle2, Pencil, ChevronRight, ArrowLeft,
-  ClipboardPaste,
+  ClipboardPaste, Layers, Eye, EyeOff,
 } from "lucide-react";
 
 const TARGET_HOMES = 150;
@@ -45,6 +45,11 @@ export default function TerritoryBuilderPage() {
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [pastePreview, setPastePreview] = useState(null);
+  // Overlay: every active franchisee's locked territory. Loaded once on mount,
+  // refreshed whenever the lock-target changes so the franchisee being edited
+  // isn't duplicated in the background.
+  const [overlay, setOverlay] = useState({ franchisees: [], geojson: null });
+  const [showOverlay, setShowOverlay] = useState(true);
 
   // Load contact details + existing plans if contact_id is provided
   useEffect(() => {
@@ -105,6 +110,21 @@ export default function TerritoryBuilderPage() {
       } catch {/* ignore */}
     })();
   }, [planId]);
+
+  // Load every active franchisee's locked territory so admins can draw
+  // prospect plans against existing boundaries. Re-fetches when the lock
+  // target changes so we never duplicate the franchisee being edited in
+  // both the active layer and the background overlay.
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await api.get("/territory/all-franchisees", {
+          params: franchiseeId ? { exclude_id: franchiseeId } : {},
+        });
+        setOverlay({ franchisees: data.franchisees || [], geojson: data.geojson || null });
+      } catch {/* ignore — overlay is non-critical */}
+    })();
+  }, [franchiseeId]);
 
   // Refresh sectors-near when centre or radius changes. When in
   // franchisee-lock mode, also fetch the geometry of every owned sector
@@ -308,7 +328,39 @@ export default function TerritoryBuilderPage() {
 
       <div className="grid lg:grid-cols-3 gap-5">
         {/* Map */}
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2 space-y-3">
+          {/* Overlay toggle + scroll-shy legend so admins can see which colour
+              belongs to which franchisee without leaving the map. */}
+          <div className="bg-white border border-stone-200 rounded-2xl p-3 flex items-start gap-3 flex-wrap">
+            <button
+              onClick={() => setShowOverlay((v) => !v)}
+              data-testid="toggle-franchisee-overlay"
+              className={`px-3 py-2 text-[11px] font-bold uppercase tracking-wider rounded-lg border flex items-center gap-1.5 shrink-0 ${showOverlay ? "bg-stone-950 text-white border-stone-950" : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"}`}
+              title={showOverlay ? "Hide every franchisee's territory" : "Show every franchisee's territory"}
+            >
+              {showOverlay ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+              <Layers className="w-3.5 h-3.5" />
+              {overlay.franchisees.length} live franchisee{overlay.franchisees.length === 1 ? "" : "s"}
+            </button>
+            {showOverlay && overlay.franchisees.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 flex-1" data-testid="franchisee-legend">
+                {overlay.franchisees.map((f) => (
+                  <button
+                    key={f.id}
+                    onClick={() => {
+                      if (f.hq_lat != null && f.hq_lng != null) setCentre({ lat: f.hq_lat, lng: f.hq_lng });
+                    }}
+                    title={`Jump to ${f.name}${f.postcode ? " · " + f.postcode : ""}`}
+                    className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold rounded-md border border-stone-200 bg-stone-50 hover:bg-stone-100 max-w-[200px]"
+                    data-testid={`legend-${f.id}`}
+                  >
+                    <span className="w-2.5 h-2.5 rounded-full border border-white shadow-sm shrink-0" style={{ background: f.color }} />
+                    <span className="truncate">{f.franchise_number ? `#${f.franchise_number} ` : ""}{f.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <TerritoryMap
             sectors={sectors}
             selected={selected}
@@ -316,13 +368,15 @@ export default function TerritoryBuilderPage() {
             centreLabel={centreLabel}
             onToggleSector={toggleSector}
             height={620}
+            franchiseeOverlay={showOverlay ? overlay : null}
           />
           <div className="text-[11px] text-stone-500 mt-2 flex items-center gap-3 flex-wrap">
             <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-[#D4FF00] border border-[#14532D]" /> Selected sector</span>
             <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-stone-200 border border-stone-400" /> Available sector</span>
             <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-red-500 border-2 border-white shadow" /> Contact's postcode</span>
+            <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-indigo-500 border-2 border-white shadow" /> Existing franchisee HQ</span>
             <span className="text-stone-400">·</span>
-            <span>Zoom in to see each sector code and its live CQC home count</span>
+            <span>Click a coloured area or pin to identify the franchisee</span>
           </div>
         </div>
 

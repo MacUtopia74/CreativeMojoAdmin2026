@@ -30,6 +30,14 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
 
 ## What's Implemented (2026-05-16)
 
+### Phase 4 — Iteration 25 (2026-05-16) ✅ Admin master territory overlay
+**Live franchisees overlay on the Territory Builder map**
+- New backend `GET /api/territory/all-franchisees` (admin-only) returns every active franchisee's locked territory as a single GeoJSON FeatureCollection plus per-franchisee metadata (name, franchise number, HQ postcode, deterministic 24-colour palette index, sector list, resolved HQ lat/lng). HQ coords are bulk-resolved through `postcodes.io` (100/call) and cached for future requests, so all 26 active franchisees show pins on first load.
+- `TerritoryMap.jsx` accepts a `franchiseeOverlay={franchisees,geojson}` prop and renders the overlay UNDER the active builder layers: a `fill` painted by `feature.properties.color` and a 2.5px `line` outline in the same colour so each franchisee's edge contrasts against its neighbours. Clicking any coloured sector pops a `<owner · sector>` popup so admins can identify overlaps instantly.
+- Per-franchisee HQ pins (coloured dot with `#franchise_number`) with a rich popup (name, HQ postcode, sector count). `onFranchiseeClick` hook for future "edit territory" deep-links.
+- `TerritoryBuilderPage.jsx` fetches the overlay on mount, passes `exclude_id` when locking a franchisee so the active franchisee isn't double-drawn, and adds a top-of-map legend (clickable colour chips that recentre the map on each franchisee's HQ) plus a one-click Eye/EyeOff toggle to hide the overlay if it gets in the way during prospect drawing.
+- Smoke test: 26 franchisees · 1915 polygons rendered · all 26 HQ pins resolved.
+
 ### Phase 4 — Iteration 24 (2026-05-16) ✅ Admin + portal upgrades
 **Franchisee admin polish**
 - **Photo upload** — admin-only camera overlay on the franchisee detail page hero photo. POST `/api/franchisees/{id}/photo` accepts a multipart image (≤ 8 MB), stores it under `UPLOADS_DIR/franchisees/<id>_<ts>.<ext>`, and rewrites `photos[0]` so the rest of the app picks it up. Previous photos preserved as the tail of the array for audit/revert.

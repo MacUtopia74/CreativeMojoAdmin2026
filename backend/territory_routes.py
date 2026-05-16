@@ -447,6 +447,159 @@ def build_territory_router(db, require_role):  # noqa: D401
             raise HTTPException(404, detail="Franchisee not found")
         return f
 
+    # --------------------------------------- all live franchisees overlay
+    # Admin Territory Builder shows every active franchisee's locked area on
+    # one map so prospects can be drawn against existing boundaries without
+    # accidentally overlapping. Each franchisee gets a deterministic colour
+    # (palette indexed by franchise_number) plus a clickable HQ pin.
+    @router.get("/territory/all-franchisees")
+    async def all_franchisees_territories(
+        exclude_id: Optional[str] = None,
+        _user: dict = Depends(require_role("admin")),
+    ):
+        # Active franchisees only — anyone tagged "Franchisee" and not flagged
+        # as ex-franchisee. Excludes prospects/contacts.
+        q: dict = {
+            "tags": "Franchisee",
+            "lifecycle_status": {"$ne": "ex_franchisee"},
+            "territory_sectors": {"$exists": True, "$ne": []},
+        }
+        if exclude_id:
+            q["id"] = {"$ne": exclude_id}
+        franchisees = await db.franchisees.find(
+            q,
+            {"_id": 0, "id": 1, "organisation": 1, "franchise_number": 1,
+             "postcode": 1, "territory_sectors": 1, "first_name": 1,
+             "last_name": 1, "full_name": 1},
+        ).sort("franchise_number", 1).to_list(500)
+
+        # 24-colour high-contrast palette — distinguishable side-by-side on a
+        # light-style basemap (Mapbox light-v11) and friendly to colour-blind
+        # users (no adjacent reds/greens). Order is deterministic so refreshing
+        # the page keeps each franchisee's colour stable.
+        PALETTE = [
+            "#EF4444", "#F97316", "#F59E0B", "#84CC16", "#10B981", "#06B6D4",
+            "#3B82F6", "#6366F1", "#8B5CF6", "#EC4899", "#14B8A6", "#22C55E",
+            "#0EA5E9", "#A855F7", "#F43F5E", "#65A30D", "#0891B2", "#7C3AED",
+            "#DC2626", "#CA8A04", "#15803D", "#1D4ED8", "#BE185D", "#9333EA",
+        ]
+
+        # Bulk-load every owned sector polygon in one query
+        all_sectors: list[str] = []
+        for f in franchisees:
+            all_sectors.extend(f.get("territory_sectors") or [])
+        poly_map: dict = {}
+        if all_sectors:
+            polys = await db.postcode_sector_polygons.find(
+                {"sector": {"$in": list(set(all_sectors))}},
+                {"_id": 0, "sector": 1, "geometry": 1},
+            ).to_list(20000)
+            poly_map = {p["sector"]: p["geometry"] for p in polys}
+
+        # Bulk-resolve any HQ postcodes not yet in `postcodes_cache` via
+        # postcodes.io (100 per call). Keeps the overlay's HQ pins populated
+        # even for franchisees whose postcode has never been individually
+        # looked up before, and warms the cache for future calls.
+        wanted: dict = {}  # normalised pc -> [fids]
+        for f in franchisees:
+            if not f.get("postcode"):
+                continue
+            n, _, _ = parse_postcode(f["postcode"])
+            if n:
+                wanted.setdefault(n, []).append(f["id"])
+        cached_docs = {}
+        if wanted:
+            cur = db.postcodes_cache.find(
+                {"_id": {"$in": list(wanted.keys())}},
+                {"_id": 1, "latitude": 1, "longitude": 1},
+            )
+            async for c in cur:
+                cached_docs[c["_id"]] = c
+            missing = [pc for pc in wanted if pc not in cached_docs]
+            if missing:
+                try:
+                    async with httpx.AsyncClient(timeout=8.0) as client:
+                        for chunk_start in range(0, len(missing), 100):
+                            chunk = missing[chunk_start:chunk_start + 100]
+                            r = await client.post(
+                                "https://api.postcodes.io/postcodes",
+                                json={"postcodes": chunk},
+                            )
+                            if r.status_code != 200:
+                                continue
+                            for item in (r.json().get("result") or []):
+                                q = item.get("query")
+                                res = item.get("result") or {}
+                                if not q or res.get("latitude") is None:
+                                    continue
+                                doc = {
+                                    "postcode": q,
+                                    "latitude": res.get("latitude"),
+                                    "longitude": res.get("longitude"),
+                                    "admin_district": res.get("admin_district"),
+                                    "region": res.get("region"),
+                                    "country": res.get("country"),
+                                }
+                                await db.postcodes_cache.update_one(
+                                    {"_id": q},
+                                    {"$set": doc | {"_id": q, "cached_at": datetime.now(timezone.utc)}},
+                                    upsert=True,
+                                )
+                                cached_docs[q] = doc
+                except httpx.HTTPError:
+                    pass  # overlay is non-critical — soldier on
+
+        franchisee_meta: list[dict] = []
+        features: list[dict] = []
+        for i, f in enumerate(franchisees):
+            sectors = f.get("territory_sectors") or []
+            if not sectors:
+                continue
+            color = PALETTE[i % len(PALETTE)]
+            name = (
+                f.get("organisation")
+                or f.get("full_name")
+                or " ".join([(f.get("first_name") or ""), (f.get("last_name") or "")]).strip()
+                or f"#{f.get('franchise_number') or '?'}"
+            )
+            hq_lat = None
+            hq_lng = None
+            if f.get("postcode"):
+                n, _, _ = parse_postcode(f["postcode"])
+                if n and n in cached_docs:
+                    hq_lat = cached_docs[n].get("latitude")
+                    hq_lng = cached_docs[n].get("longitude")
+            franchisee_meta.append({
+                "id": f["id"],
+                "name": name,
+                "organisation": f.get("organisation"),
+                "franchise_number": f.get("franchise_number"),
+                "postcode": f.get("postcode"),
+                "color": color,
+                "sectors": sectors,
+                "hq_lat": hq_lat,
+                "hq_lng": hq_lng,
+            })
+            for s in sectors:
+                geom = poly_map.get(s)
+                if not geom:
+                    continue
+                features.append({
+                    "type": "Feature",
+                    "geometry": geom,
+                    "properties": {
+                        "sector": s,
+                        "franchisee_id": f["id"],
+                        "name": name,
+                        "color": color,
+                    },
+                })
+        return {
+            "franchisees": franchisee_meta,
+            "geojson": {"type": "FeatureCollection", "features": features},
+            "count": len(franchisee_meta),
+        }
+
     # ----------------------------------------------- franchisee summary (R/O)
     @router.get("/territory/franchisee-summary")
     async def franchisee_summary(

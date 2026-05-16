@@ -37,12 +37,15 @@ export default function TerritoryMap({
   onMarkerClick = null,  // (idx, home) — typically scrolls the list below
   flyTo = null,          // { lat, lng } — pan-zoom-here trigger, bumps each update
   pinnedPostcode = null, // { postcode, lat, lng, inside } — looked-up postcode pin
+  franchiseeOverlay = null, // { franchisees: [...], geojson: FeatureCollection }
+  onFranchiseeClick = null, // (franchisee) — clicking an HQ pin or a sector
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const centreMarkerRef = useRef(null);
   const homeMarkersRef = useRef([]);
   const pinnedMarkerRef = useRef(null);
+  const franchiseeHqMarkersRef = useRef([]);
   const [ready, setReady] = useState(false);
 
   // ----------------- one-shot map init -----------------
@@ -60,6 +63,42 @@ export default function TerritoryMap({
     mapRef.current = map;
 
     map.on("load", () => {
+      // ----- Background: existing franchisee territories (multi-colour) -----
+      // Added FIRST so the active builder layers always paint on top of them.
+      map.addSource("franchisee-territories", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+      map.addLayer({
+        id: "franchisee-fill",
+        type: "fill",
+        source: "franchisee-territories",
+        paint: {
+          "fill-color": ["coalesce", ["get", "color"], "#94A3B8"],
+          "fill-opacity": [
+            "case",
+            ["boolean", ["feature-state", "hover"], false], 0.55,
+            0.30,
+          ],
+        },
+      });
+      // Thick outline drawn per-franchisee so each territory's edge pops.
+      // Mapbox doesn't natively dissolve features by property, so we draw a
+      // 3px line on every sector boundary in the franchisee's colour — the
+      // shared internal lines overlap visually, but the OUTSIDE edge is what
+      // stands out (different colour from neighbouring franchisees).
+      map.addLayer({
+        id: "franchisee-outline",
+        type: "line",
+        source: "franchisee-territories",
+        paint: {
+          "line-color": ["coalesce", ["get", "color"], "#475569"],
+          "line-width": 2.5,
+          "line-opacity": 0.95,
+        },
+      });
+
+      // ----- Active builder layers (selection / available sectors) -----
       map.addSource("sectors", {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
@@ -147,6 +186,24 @@ export default function TerritoryMap({
           onToggleSector(f.properties.sector);
         });
       }
+
+      // Franchisee territory click — surfaces the owner above the active
+      // sectors-fill so admins can identify overlaps even when "available"
+      // sectors are stacked on top.
+      map.on("click", "franchisee-fill", (e) => {
+        const f = e.features?.[0];
+        if (!f) return;
+        const html = `
+          <div style="font-family:Inter,system-ui;font-size:12px;line-height:1.35">
+            <strong>${(f.properties.name || "").replace(/</g, "&lt;")}</strong><br/>
+            <span style="color:#57534e">Sector ${(f.properties.sector || "").replace(/</g, "&lt;")}</span>
+          </div>`;
+        new mapboxgl.Popup({ offset: 12, closeButton: true })
+          .setLngLat(e.lngLat)
+          .setHTML(html)
+          .addTo(map);
+      });
+      map.on("mouseenter", "franchisee-fill", () => { map.getCanvas().style.cursor = "pointer"; });
 
       setReady(true);
     });
@@ -288,6 +345,55 @@ export default function TerritoryMap({
     pinnedMarkerRef.current = marker;
     mapRef.current.flyTo({ center: [pinnedPostcode.lng, pinnedPostcode.lat], zoom: 12, speed: 1.4 });
   }, [pinnedPostcode, ready]);
+
+  // ----------------- franchisee overlay: territory polygons + HQ pins -----
+  useEffect(() => {
+    if (!ready || !mapRef.current) return;
+    const src = mapRef.current.getSource("franchisee-territories");
+    if (src) {
+      src.setData(franchiseeOverlay?.geojson || { type: "FeatureCollection", features: [] });
+    }
+    // Clear previous HQ markers
+    franchiseeHqMarkersRef.current.forEach((m) => m.remove());
+    franchiseeHqMarkersRef.current = [];
+    const franchisees = franchiseeOverlay?.franchisees || [];
+    franchisees.forEach((f) => {
+      if (f.hq_lat == null || f.hq_lng == null) return;
+      const el = document.createElement("div");
+      el.className = "cm-franchisee-pin";
+      el.title = f.name;
+      el.style.cssText = `
+        width:22px;height:22px;border-radius:50%;
+        background:${f.color};border:3px solid #fff;
+        box-shadow:0 2px 5px rgba(0,0,0,.45);cursor:pointer;
+        display:flex;align-items:center;justify-content:center;
+        color:#fff;font:700 9px/1 Inter,system-ui,sans-serif;
+        text-shadow:0 1px 1px rgba(0,0,0,.35);`;
+      el.textContent = f.franchise_number ? `#${f.franchise_number}` : "";
+      const popupHtml = `
+        <div style="font-family:Inter,system-ui;font-size:12px;line-height:1.4">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
+            <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${f.color};border:1px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.2)"></span>
+            <strong>${(f.name || "").replace(/</g, "&lt;")}</strong>
+          </div>
+          ${f.franchise_number ? `<div style="color:#78716c">Franchise #${f.franchise_number}</div>` : ""}
+          ${f.postcode ? `<div style="color:#78716c">HQ ${String(f.postcode).replace(/</g, "&lt;")}</div>` : ""}
+          <div style="color:#78716c">${f.sectors?.length || 0} sector${f.sectors?.length === 1 ? "" : "s"}</div>
+        </div>`;
+      const marker = new mapboxgl.Marker({ element: el, anchor: "center" })
+        .setLngLat([f.hq_lng, f.hq_lat])
+        .setPopup(new mapboxgl.Popup({ offset: 16, closeButton: true }).setHTML(popupHtml))
+        .addTo(mapRef.current);
+      if (onFranchiseeClick) {
+        el.addEventListener("click", (ev) => { ev.stopPropagation(); onFranchiseeClick(f); });
+      }
+      franchiseeHqMarkersRef.current.push(marker);
+    });
+    return () => {
+      franchiseeHqMarkersRef.current.forEach((m) => m.remove());
+      franchiseeHqMarkersRef.current = [];
+    };
+  }, [franchiseeOverlay, ready, onFranchiseeClick]);
 
   if (!TOKEN) {
     return (
