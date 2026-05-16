@@ -31,6 +31,8 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from cqc_routes import CqcDefinition, definition_to_mongo_filter, DEFAULT_DEFINITION_ID
+
 logger = logging.getLogger("creative-mojo-admin.territory")
 
 _POSTCODE_RE = re.compile(r"^\s*([A-Z]{1,2}\d[A-Z\d]?)\s*(\d)([A-Z]{2})\s*$", re.I)
@@ -64,6 +66,21 @@ class FranchiseeTerritoryIn(BaseModel):
 
 def build_territory_router(db, require_role):  # noqa: D401
     router = APIRouter()
+
+    async def _homes_filter() -> dict:
+        """Returns the current `cqc_homes` query filter merging the
+        admin-defined inclusion/exclusion rule. Live collection is
+        preferred when populated, falling back to the legacy spreadsheet
+        import."""
+        doc = await db.cqc_definition.find_one({"_id": DEFAULT_DEFINITION_ID}, {"_id": 0})
+        d = CqcDefinition(**doc) if doc else CqcDefinition()
+        return definition_to_mongo_filter(d)
+
+    async def _homes_collection():
+        # Prefer live CQC collection once any sync has populated it.
+        if await db.cqc_locations_live.count_documents({}, limit=1):
+            return db.cqc_locations_live
+        return db.cqc_locations
 
     # ------------------------------------------------------------- geocoding
     @router.get("/territory/postcode-lookup")
@@ -210,10 +227,13 @@ def build_territory_router(db, require_role):  # noqa: D401
                     "longitude": d_lon,
                     "distance_km": round(dist, 2),
                 }
-        # Home counts
+        # Home counts — use live CQC collection filtered by the
+        # admin-defined "what counts as one of our homes" rule.
         if sector_map:
-            counts = await db.cqc_locations.aggregate([
-                {"$match": {"postcode_sector": {"$in": list(sector_map.keys())}}},
+            homes_coll = await _homes_collection()
+            base_filter = await _homes_filter()
+            counts = await homes_coll.aggregate([
+                {"$match": {**base_filter, "postcode_sector": {"$in": list(sector_map.keys())}}},
                 {"$group": {"_id": "$postcode_sector", "n": {"$sum": 1}}},
             ]).to_list(5000)
             for c in counts:
@@ -248,8 +268,10 @@ def build_territory_router(db, require_role):  # noqa: D401
             {"sector": {"$in": codes}}, {"_id": 0, "sector": 1, "latitude": 1, "longitude": 1},
         ).to_list(5000)
         pc_map = {p["sector"]: p for p in pcs}
-        counts = await db.cqc_locations.aggregate([
-            {"$match": {"postcode_sector": {"$in": codes}}},
+        homes_coll = await _homes_collection()
+        base_filter = await _homes_filter()
+        counts = await homes_coll.aggregate([
+            {"$match": {**base_filter, "postcode_sector": {"$in": codes}}},
             {"$group": {"_id": "$postcode_sector", "n": {"$sum": 1}}},
         ]).to_list(5000)
         c_map = {c["_id"]: c["n"] for c in counts}
@@ -276,8 +298,10 @@ def build_territory_router(db, require_role):  # noqa: D401
         sector_list = [s.strip().upper() for s in sectors.split(",") if s.strip()]
         if not sector_list:
             return {"homes": [], "count": 0}
-        cur = db.cqc_locations.find(
-            {"postcode_sector": {"$in": sector_list}},
+        homes_coll = await _homes_collection()
+        base_filter = await _homes_filter()
+        cur = homes_coll.find(
+            {**base_filter, "postcode_sector": {"$in": sector_list}},
             {"_id": 0},
         ).limit(limit)
         homes = await cur.to_list(limit)
@@ -291,8 +315,10 @@ def build_territory_router(db, require_role):  # noqa: D401
         sector_list = [s.strip().upper() for s in sectors.split(",") if s.strip()]
         if not sector_list:
             return {"count": 0, "per_sector": {}}
-        per = await db.cqc_locations.aggregate([
-            {"$match": {"postcode_sector": {"$in": sector_list}}},
+        homes_coll = await _homes_collection()
+        base_filter = await _homes_filter()
+        per = await homes_coll.aggregate([
+            {"$match": {**base_filter, "postcode_sector": {"$in": sector_list}}},
             {"$group": {"_id": "$postcode_sector", "n": {"$sum": 1}}},
         ]).to_list(5000)
         per_map = {p["_id"]: p["n"] for p in per}
@@ -379,7 +405,9 @@ def build_territory_router(db, require_role):  # noqa: D401
                 good.append(sec)
         homes = 0
         if good:
-            homes = await db.cqc_locations.count_documents({"postcode_sector": {"$in": good}})
+            homes_coll = await _homes_collection()
+            base_filter = await _homes_filter()
+            homes = await homes_coll.count_documents({**base_filter, "postcode_sector": {"$in": good}})
         return {"sectors": good, "unrecognised": bad, "home_count": homes}
 
     # --------------------------- franchisee territory save (admin lock-down)
@@ -395,10 +423,12 @@ def build_territory_router(db, require_role):  # noqa: D401
             v = " ".join(s.upper().split())
             if v and v not in seen:
                 seen.append(v)
-        # Refresh authoritative home count from CQC index
+        # Refresh authoritative home count from CQC live data + definition
         homes = 0
         if seen:
-            homes = await db.cqc_locations.count_documents({"postcode_sector": {"$in": seen}})
+            homes_coll = await _homes_collection()
+            base_filter = await _homes_filter()
+            homes = await homes_coll.count_documents({**base_filter, "postcode_sector": {"$in": seen}})
         res = await db.franchisees.update_one(
             {"id": franchisee_id},
             {"$set": {
@@ -447,11 +477,13 @@ def build_territory_router(db, require_role):  # noqa: D401
         if not f:
             raise HTTPException(404, detail="Franchisee not found")
         sectors = f.get("territory_sectors") or []
-        # Home count
+        # Home count via live CQC + active definition
         count = 0
         if sectors:
-            count = await db.cqc_locations.count_documents(
-                {"postcode_sector": {"$in": sectors}},
+            homes_coll = await _homes_collection()
+            base_filter = await _homes_filter()
+            count = await homes_coll.count_documents(
+                {**base_filter, "postcode_sector": {"$in": sectors}},
             )
         # Centre = their HQ postcode if available
         centre = None
