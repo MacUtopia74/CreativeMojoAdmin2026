@@ -373,10 +373,26 @@ def build_cqc_router(db, require_role):  # noqa: D401
         allowed = {"gacServiceTypes.name", "specialisms.name", "regulatedActivities.name", "region"}
         if field not in allowed:
             raise HTTPException(400, detail="Invalid field")
+        # All counts are scoped to the same baseline the preview uses
+        # (registrationStatus = Registered) so the chip totals and the live
+        # preview count are apples-to-apples.
+        base = {"registrationStatus": "Registered"}
         # Aggregate so we also return frequencies
-        pipeline = [{"$unwind": f"${field.split('.')[0]}"}, {"$group": {"_id": f"${field}", "n": {"$sum": 1}}}, {"$sort": {"n": -1}}, {"$limit": 200}]
+        root = field.split(".")[0]
         if field == "region":
-            pipeline = [{"$group": {"_id": "$region", "n": {"$sum": 1}}}, {"$sort": {"n": -1}}]
+            pipeline = [
+                {"$match": base},
+                {"$group": {"_id": "$region", "n": {"$sum": 1}}},
+                {"$sort": {"n": -1}},
+            ]
+        else:
+            pipeline = [
+                {"$match": base},
+                {"$unwind": f"${root}"},
+                {"$group": {"_id": f"${field}", "n": {"$sum": 1}}},
+                {"$sort": {"n": -1}},
+                {"$limit": 200},
+            ]
         rows = await db.cqc_locations_live.aggregate(pipeline).to_list(500)
         return {"values": [{"value": r["_id"], "count": r["n"]} for r in rows if r["_id"]]}
 

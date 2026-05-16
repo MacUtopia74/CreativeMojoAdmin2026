@@ -43,25 +43,22 @@ export default function CqcDefinitionsPage() {
   // Distinct facet values + frequencies
   const [serviceTypes, setServiceTypes] = useState([]);
   const [specialisms, setSpecialisms] = useState([]);
-  const [activities, setActivities] = useState([]);
 
   // Load definition + facets + sync state
   useEffect(() => {
     (async () => {
       try {
-        const [d, s, st, sp, ra] = await Promise.all([
+        const [d, s, st, sp] = await Promise.all([
           api.get("/cqc/definition"),
           api.get("/cqc/sync/status"),
           api.get("/cqc/distinct", { params: { field: "gacServiceTypes.name" } }),
           api.get("/cqc/distinct", { params: { field: "specialisms.name" } }),
-          api.get("/cqc/distinct", { params: { field: "regulatedActivities.name" } }),
         ]);
         setDef(d.data);
         setSaved(d.data);
         setSync(s.data);
         setServiceTypes(st.data.values || []);
         setSpecialisms(sp.data.values || []);
-        setActivities(ra.data.values || []);
       } catch (e) {
         setErr(e?.response?.data?.detail || "Could not load");
       } finally { setBusy(false); }
@@ -217,15 +214,6 @@ export default function CqcDefinitionsPage() {
             testid="facet-exclude-specialisms"
             tone="red"
           />
-          <Facet
-            title="Regulated activities — INCLUDE"
-            help="Optional. The activities CQC licenses each home to perform."
-            icon={Stethoscope}
-            options={activities}
-            selected={def.include_regulated_activities}
-            onChange={(arr) => setDef((d) => ({ ...d, include_regulated_activities: arr }))}
-            testid="facet-include-regulated-activities"
-          />
 
           <div className="bg-white border border-stone-200 rounded-2xl p-4 grid sm:grid-cols-3 gap-3">
             <div>
@@ -329,6 +317,9 @@ function PreviewPanel({ preview, previewing, def }) {
         <span className="font-display text-4xl text-stone-950 tabular-nums">{(preview?.count || 0).toLocaleString()}</span>
         <span className="text-sm text-stone-600">homes match</span>
         {previewing && <Loader2 className="w-3.5 h-3.5 animate-spin text-stone-400" />}
+      </div>
+      <div className="text-[11px] text-stone-500 leading-snug">
+        Unique CQC-Registered locations that match your rule. A single home can carry many tags, so the per-row counts on the left don't sum to this number — overlap is removed in the final total.
       </div>
       {!hasInclusion && (
         <div className="mt-2 px-3 py-2 text-xs bg-amber-50 border border-amber-200 text-amber-900 rounded-lg flex items-start gap-1.5" data-testid="preview-empty-rule">
