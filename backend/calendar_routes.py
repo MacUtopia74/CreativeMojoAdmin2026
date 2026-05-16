@@ -216,21 +216,25 @@ def attach(api, db, require_role):
     @router.get("/calendar/events")
     async def list_events(
         days_ahead: int = Query(60, ge=1, le=365),
-        days_back: int = Query(7, ge=0, le=90),
+        days_back: int = Query(7, ge=0, le=3650),
+        time_min: Optional[str] = Query(None, description="Override window start (RFC3339)"),
+        time_max: Optional[str] = Query(None, description="Override window end (RFC3339)"),
         _: dict = Depends(require_role("admin")),
     ):
         _, _, calendar_id = _env_or_raise()
         service = await _service()
         from datetime import timedelta
         now = datetime.now(timezone.utc)
-        time_min = (now - timedelta(days=days_back)).isoformat()
-        time_max = (now + timedelta(days=days_ahead)).isoformat()
+        # Explicit overrides win — used by the front-end month grid so admins
+        # can browse historic and future months without missing events.
+        effective_min = time_min or (now - timedelta(days=days_back)).isoformat()
+        effective_max = time_max or (now + timedelta(days=days_ahead)).isoformat()
         try:
             res = service.events().list(
                 calendarId=calendar_id,
-                timeMin=time_min,
-                timeMax=time_max,
-                maxResults=250,
+                timeMin=effective_min,
+                timeMax=effective_max,
+                maxResults=2500,
                 singleEvents=True,
                 orderBy="startTime",
             ).execute()

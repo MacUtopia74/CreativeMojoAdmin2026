@@ -200,7 +200,7 @@ export default function DashboardPage() {
                         const mailto = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
                         return (
                           <div key={r.id} className="px-3 py-2 flex items-center gap-3 hover:bg-stone-50" data-testid={`todo-renewal-${r.id}`}>
-                            <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-md tabular-nums ${r.days_remaining <= 30 ? "bg-red-100 text-red-800 border-red-300" : "bg-amber-100 text-amber-900 border-amber-300"}`}>{r.days_remaining}d left</span>
+                            <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-md tabular-nums ${r.days_remaining <= 30 ? "bg-red-100 text-red-800 border-red-300" : "bg-amber-100 text-amber-900 border-amber-300"}`}>{r.days_remaining} {r.days_remaining === 1 ? "Day" : "Days"} Left</span>
                             <Link to={`/franchisees/${f.id || ""}`} className="text-sm font-semibold text-stone-900 hover:underline flex-1 truncate">
                               {org}
                               <span className="text-xs text-stone-500 font-normal ml-2">· {[f.first_name, f.last_name].filter(Boolean).join(" ")}</span>
@@ -254,7 +254,7 @@ export default function DashboardPage() {
                       <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md tabular-nums ${
                         isToday ? "bg-[#D4FF00] text-stone-950" : "bg-stone-100 text-stone-700"
                       }`}>
-                        {isToday ? "Today" : `In ${days_until}d`}
+                        {isToday ? "Today" : `In ${days_until} ${days_until === 1 ? "Day" : "Days"}`}
                       </span>
                       <span className="text-[11px] text-stone-500 tabular-nums">{dateLabel}</span>
                     </div>

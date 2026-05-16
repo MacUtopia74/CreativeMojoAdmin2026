@@ -124,7 +124,7 @@ function CurrentContractCard({ contract }) {
           : tier === "soon" ? "bg-blue-200 text-blue-900"
           : "bg-emerald-200 text-emerald-900"
         }`}>
-          {tier === "expired" ? `Expired ${Math.abs(daysLeft)}d ago` : daysLeft != null ? `${daysLeft} days remaining` : "Active"}
+          {tier === "expired" ? `Expired ${Math.abs(daysLeft)} ${Math.abs(daysLeft) === 1 ? "Day" : "Days"} Ago` : daysLeft != null ? `${daysLeft} ${daysLeft === 1 ? "Day" : "Days"} Remaining` : "Active"}
         </div>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-5">

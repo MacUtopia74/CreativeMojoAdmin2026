@@ -47,6 +47,7 @@ export default function CalendarPage() {
   const [status, setStatus] = useState(null);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [err, setErr] = useState("");
   const [modal, setModal] = useState(null); // null | { event? }
   const [refreshTick, setRefreshTick] = useState(0);
@@ -69,16 +70,27 @@ export default function CalendarPage() {
     }
   };
 
-  const loadEvents = async () => {
-    setLoading(true); setErr("");
+  const loadEvents = async (range = null) => {
+    // First load = blocking spinner; subsequent navigations = silent refresh
+    // so the FullCalendar grid doesn't disappear every time the admin clicks
+    // prev / next.
+    setEvents((prev) => prev); // no-op to keep dep tidy
+    if (events.length === 0) setLoading(true);
+    else setRefreshing(true);
+    setErr("");
     try {
-      const { data } = await api.get("/calendar/events");
+      const params = range
+        ? { time_min: range.start.toISOString(), time_max: range.end.toISOString() }
+        : { days_back: 365, days_ahead: 365 };
+      const { data } = await api.get("/calendar/events", { params });
       setEvents(data.events || []);
     } catch (e) {
       const detail = e?.response?.data?.detail || "Could not load events";
-      // 401 = not connected; surface gently
       setEvents([]); setErr(detail);
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   };
 
   useEffect(() => {
@@ -247,6 +259,16 @@ export default function CalendarPage() {
                 eventClick={(info) => {
                   info.jsEvent.preventDefault();
                   setModal({ event: info.event.extendedProps });
+                }}
+                datesSet={(info) => {
+                  // Whenever the user clicks prev/next or switches view we
+                  // refetch the visible window plus a 7-day buffer so events
+                  // that start just before / after the boundary still show.
+                  const start = new Date(info.start);
+                  start.setDate(start.getDate() - 7);
+                  const end = new Date(info.end);
+                  end.setDate(end.getDate() + 7);
+                  loadEvents({ start, end });
                 }}
                 dateClick={(info) => {
                   // Click a day cell → open new-event modal pre-filled to that

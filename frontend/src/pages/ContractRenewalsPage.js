@@ -50,7 +50,9 @@ function buildReminderMailto(row) {
 
 function CountdownPill({ days, bucket }) {
   const style = BUCKETS.find((b) => b.key === bucket)?.chip || "bg-stone-100 text-stone-700 border-stone-300";
-  const label = days < 0 ? `Expired ${Math.abs(days)}d ago` : `${days}d left`;
+  const label = days < 0
+    ? `Expired ${Math.abs(days)} ${Math.abs(days) === 1 ? "Day" : "Days"} Ago`
+    : `${days} ${days === 1 ? "Day" : "Days"} Left`;
   return (
     <span className={`inline-block px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-md tabular-nums ${style}`}
       data-testid={`countdown-${bucket}`}>{label}</span>
