@@ -14,8 +14,12 @@ import {
   Stethoscope,
   CalendarDays,
   LogOut,
+  Wrench,
+  ChevronDown,
 } from "lucide-react";
+import { useState } from "react";
 
+// Primary nav — appears at the top of the sidebar.
 const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, testid: "nav-dashboard" },
   { to: "/franchisees", label: "Franchisees", icon: Users, testid: "nav-franchisees" },
@@ -25,14 +29,51 @@ const NAV = [
   { to: "/contacts", label: "Sales & Contacts", icon: Contact, testid: "nav-contacts" },
   { to: "/territory-builder", label: "Territory Builder", icon: Target, testid: "nav-territory-builder" },
   { to: "/cqc-definitions", label: "CQC Definitions", icon: Stethoscope, testid: "nav-cqc-definitions" },
+];
+
+// Secondary "Admin" nav — power-user tools, tucked away in a collapsible
+// group at the bottom of the sidebar so they don't clutter the day-to-day list.
+const ADMIN_NAV = [
   { to: "/form-intake", label: "Form Intake", icon: Inbox, testid: "nav-form-intake" },
   { to: "/airtable-inspector", label: "Airtable Inspector", icon: Database, testid: "nav-airtable-inspector" },
   { to: "/migration-plan", label: "Migration Plan", icon: ClipboardList, testid: "nav-migration-plan" },
 ];
 
+function NavItem({ to, label, icon: Icon, testid }) {
+  return (
+    <NavLink
+      to={to}
+      end={to === "/"}
+      data-testid={testid}
+      className={({ isActive }) =>
+        `flex items-center gap-3 px-6 py-2.5 text-sm font-semibold transition-colors duration-150 border-l-2 ${
+          isActive
+            ? "bg-white text-stone-950 border-l-[#D4FF00]"
+            : "text-stone-600 hover:text-stone-950 border-l-transparent hover:bg-white/50"
+        }`
+      }
+    >
+      <Icon className="w-4 h-4" strokeWidth={2} />
+      {label}
+    </NavLink>
+  );
+}
+
 export default function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  // Admin section is collapsible & persisted — power-user tools stay tucked
+  // away until needed without forcing the user to expand them every visit.
+  const [adminOpen, setAdminOpen] = useState(() => {
+    try { return localStorage.getItem("cm.sidebar.adminOpen") === "1"; }
+    catch { return false; }
+  });
+  const toggleAdmin = () => {
+    setAdminOpen((v) => {
+      try { localStorage.setItem("cm.sidebar.adminOpen", v ? "0" : "1"); } catch {/* ignore */}
+      return !v;
+    });
+  };
 
   const handleLogout = async () => {
     await logout();
@@ -48,25 +89,36 @@ export default function Layout() {
           <div className="text-[10px] uppercase tracking-[0.2em] text-stone-500 font-bold pl-1">Admin Console</div>
         </div>
 
-        <nav className="flex-1 py-4">
-          {NAV.map(({ to, label, icon: Icon, testid }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={to === "/"}
-              data-testid={testid}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-6 py-2.5 text-sm font-semibold transition-colors duration-150 border-l-2 ${
-                  isActive
-                    ? "bg-white text-stone-950 border-l-[#D4FF00]"
-                    : "text-stone-600 hover:text-stone-950 border-l-transparent hover:bg-white/50"
-                }`
-              }
-            >
-              <Icon className="w-4 h-4" strokeWidth={2} />
-              {label}
-            </NavLink>
+        <nav className="flex-1 py-4 overflow-y-auto">
+          {NAV.map((item) => (
+            <NavItem key={item.to} {...item} />
           ))}
+
+          {/* Admin group — collapsible, sits at the bottom of the nav list */}
+          <div className="mt-6 border-t border-stone-200 pt-3" data-testid="admin-nav-group">
+            <button
+              onClick={toggleAdmin}
+              data-testid="admin-nav-toggle"
+              aria-expanded={adminOpen}
+              className="w-full flex items-center justify-between px-6 py-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 hover:text-stone-950 transition-colors"
+            >
+              <span className="flex items-center gap-2">
+                <Wrench className="w-3.5 h-3.5" strokeWidth={2} />
+                Admin
+              </span>
+              <ChevronDown
+                className={`w-3.5 h-3.5 transition-transform ${adminOpen ? "rotate-180" : ""}`}
+                strokeWidth={2}
+              />
+            </button>
+            {adminOpen && (
+              <div className="mt-1">
+                {ADMIN_NAV.map((item) => (
+                  <NavItem key={item.to} {...item} />
+                ))}
+              </div>
+            )}
+          </div>
         </nav>
 
         <div className="p-4 border-t border-stone-200 space-y-3">
