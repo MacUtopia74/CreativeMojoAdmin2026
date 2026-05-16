@@ -106,6 +106,11 @@ export default function PortalDashboardPage() {
     } catch { return "medium"; }
   });
   useEffect(() => { try { localStorage.setItem("portal.fontScale", fontScale); } catch (_) { /* noop */ } }, [fontScale]);
+  const [filesOpen, setFilesOpen] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("portal.filesOpen") ?? "true"); }
+    catch { return true; }
+  });
+  useEffect(() => { try { localStorage.setItem("portal.filesOpen", JSON.stringify(filesOpen)); } catch (_) { /* noop */ } }, [filesOpen]);
 
   // Compose the full address from any of the field-name variants Airtable
   // / the migrator may have stored under.
@@ -268,20 +273,32 @@ export default function PortalDashboardPage() {
               </button>
             )}
 
-            {/* Files */}
-            <div className="bg-white border border-stone-200 rounded-2xl p-6" data-testid="portal-files">
-              <div className="flex items-center gap-2 mb-5">
-                <FolderOpen className="w-4 h-4 text-stone-700" />
-                <span className="text-xs uppercase tracking-[0.3em] font-bold text-stone-700">Your files</span>
-              </div>
-              {/* Live recents — last 30 days of activity scoped to this
-                  franchisee's own folder + shared brand files. */}
-              <RecentFilesStrip
-                onOpenFile={(f) => setPreviewFile(f)}
-                onDownload={downloadRecent}
-                onOpenFolder={() => { /* the panel below is the browser */ }}
-              />
-              <FranchiseeFilesPanel franchisee={profile} />
+            {/* Files — primary daily-use tool. Collapsible like the other
+                two panels so the franchisee can shrink it on small screens
+                or when they want a quick map-only view. Default open. */}
+            <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid="portal-files">
+              <button onClick={() => setFilesOpen((v) => !v)} data-testid="toggle-files"
+                className="w-full flex items-center justify-between gap-3 hover:bg-stone-50 transition-colors px-6 py-4">
+                <div className="flex items-center gap-2">
+                  <FolderOpen className="w-4 h-4 text-stone-700" />
+                  <span className="text-xs uppercase tracking-[0.3em] font-bold text-stone-700">Your files</span>
+                </div>
+                <span className={`w-7 h-7 rounded-full border flex items-center justify-center transition-colors ${filesOpen ? "border-stone-300 bg-white" : "border-stone-950 bg-stone-950 text-white"}`}>
+                  {filesOpen ? <ChevronUp className="w-3.5 h-3.5 text-stone-600" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                </span>
+              </button>
+              {filesOpen && (
+                <div className="px-6 pb-6">
+                  {/* Live recents — last 30 days of activity scoped to this
+                      franchisee's own folder + shared brand files. */}
+                  <RecentFilesStrip
+                    onOpenFile={(f) => setPreviewFile(f)}
+                    onDownload={downloadRecent}
+                    onOpenFolder={() => { /* the panel below is the browser */ }}
+                  />
+                  <FranchiseeFilesPanel franchisee={profile} />
+                </div>
+              )}
             </div>
           </>
         )}
