@@ -15,15 +15,18 @@ import {
   Clock, ChevronDown, ChevronUp, Type, FileText,
 } from "lucide-react";
 
-// Font size preference — applied as a wrapper class so every text element
-// inside the portal scales together. We tweak the root `font-size` of a
-// wrapping div so Tailwind's `rem`-based utilities (text-base etc.) all
-// follow along.
+// Font size preference — applied via CSS `zoom` on the portal wrapper.
+// Earlier attempt used a Tailwind `text-*` class on the wrapper, which
+// silently did nothing because every nested Tailwind utility (text-base,
+// text-sm…) is `rem`-relative to the document root and overrides whatever
+// is inherited. `zoom` is now broadly supported (Chrome, Safari, Firefox
+// 126+) and scales icons, the map, and font sizes together — exactly what
+// a franchisee who wants "make everything bigger" expects.
 const FONT_SCALES = {
-  small: { label: "Small", className: "text-[14px]" },
-  medium: { label: "Medium", className: "text-[16px]" }, // browser default
-  large: { label: "Large", className: "text-[18px]" },
-  xlarge: { label: "Extra large", className: "text-[20px]" },
+  small: { label: "Small", zoom: 0.9 },
+  medium: { label: "Medium", zoom: 1 },
+  large: { label: "Large", zoom: 1.15 },
+  xlarge: { label: "Extra large", zoom: 1.3 },
 };
 
 function yearsBetween(iso) {
@@ -131,26 +134,28 @@ export default function PortalDashboardPage() {
   };
 
   return (
-    <div className={`min-h-screen bg-[#FBFAF8] ${FONT_SCALES[fontScale].className}`} data-testid="portal-dashboard">
+    <div className="min-h-screen bg-[#FBFAF8]" style={{ zoom: FONT_SCALES[fontScale].zoom }} data-testid="portal-dashboard">
       {/* Top bar */}
       <header className="bg-white border-b border-stone-200">
         <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between gap-3">
           <Logo className="h-10" />
           <div className="flex items-center gap-4">
-            {/* Font size cycler — bumps through S → M → L → XL.  Tooltip
-                shows current size for clarity. */}
+            {/* Font size cycler — bumps through S → M → L → XL via CSS
+                `zoom`, which scales every visual element (text, icons,
+                map labels) in one go. */}
             <button
               onClick={() => {
                 const order = ["small", "medium", "large", "xlarge"];
                 const next = order[(order.indexOf(fontScale) + 1) % order.length];
                 setFontScale(next);
               }}
-              title={`Text size: ${FONT_SCALES[fontScale].label} — click for larger`}
+              title={`Text size: ${FONT_SCALES[fontScale].label} — click for the next size`}
               data-testid="portal-font-size"
-              className="px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider border border-stone-300 hover:bg-stone-50 rounded-lg flex items-center gap-1.5"
+              className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider border border-stone-300 hover:bg-stone-50 rounded-lg flex items-center gap-1.5"
             >
-              <Type className="w-3 h-3" />
-              <span className="hidden sm:inline">{FONT_SCALES[fontScale].label}</span>
+              <Type className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Change font size · {FONT_SCALES[fontScale].label}</span>
+              <span className="sm:hidden">{FONT_SCALES[fontScale].label}</span>
             </button>
             <div className="text-right hidden sm:block">
               <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Signed in as</div>
