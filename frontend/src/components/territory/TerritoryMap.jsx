@@ -39,6 +39,9 @@ export default function TerritoryMap({
   pinnedPostcode = null, // { postcode, lat, lng, inside } — looked-up postcode pin
   franchiseeOverlay = null, // { franchisees: [...], geojson: FeatureCollection }
   onFranchiseeClick = null, // (franchisee) — clicking an HQ pin or a sector
+  basemap = "light",        // "light" | "streets" — toggleable basemap. Streets
+                            //   shows full road network + labels; light is the
+                            //   minimalist default that keeps the territory pop.
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -47,14 +50,20 @@ export default function TerritoryMap({
   const pinnedMarkerRef = useRef(null);
   const franchiseeHqMarkersRef = useRef([]);
   const [ready, setReady] = useState(false);
+  // Bumped each time the basemap finishes (re)loading so the data effects
+  // re-run and repopulate the freshly-created sources.
+  const [styleVersion, setStyleVersion] = useState(0);
 
   // ----------------- one-shot map init -----------------
   useEffect(() => {
     if (!containerRef.current || mapRef.current || !TOKEN) return;
     mapboxgl.accessToken = TOKEN;
+    const initialStyle = basemap === "streets"
+      ? "mapbox://styles/mapbox/streets-v12"
+      : "mapbox://styles/mapbox/light-v11";
     const map = new mapboxgl.Map({
       container: containerRef.current,
-      style: "mapbox://styles/mapbox/light-v11",
+      style: initialStyle,
       center: centre ? [centre.lng, centre.lat] : [-2.5, 53.4],
       zoom: centre ? 9 : 5.4,
     });
@@ -62,7 +71,10 @@ export default function TerritoryMap({
     map.addControl(new mapboxgl.ScaleControl({ maxWidth: 100, unit: "imperial" }), "bottom-left");
     mapRef.current = map;
 
-    map.on("load", () => {
+    map.on("style.load", () => {
+      // Runs on the initial style load AND every time `setStyle` swaps the
+      // basemap. We re-add every source/layer because Mapbox wipes them when
+      // the style changes.
       // ----- Background: existing franchisee territories (multi-colour) -----
       // Added FIRST so the active builder layers always paint on top of them.
       map.addSource("franchisee-territories", {
@@ -237,11 +249,27 @@ export default function TerritoryMap({
       map.on("mouseenter", "franchisee-fill", () => { map.getCanvas().style.cursor = "pointer"; });
 
       setReady(true);
+      setStyleVersion((v) => v + 1);
     });
 
     return () => { map.remove(); mapRef.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ----------------- basemap swap (light ↔ streets) -----------------
+  // Skip the first run — the map is constructed with the right initial
+  // style. Subsequent prop changes call `setStyle`, which fires `style.load`
+  // and triggers our data-effects (gated on `styleVersion`) to repopulate.
+  const initialBasemapRef = useRef(basemap);
+  useEffect(() => {
+    if (!mapRef.current || !ready) return;
+    if (basemap === initialBasemapRef.current) return;
+    initialBasemapRef.current = basemap;
+    const styleUrl = basemap === "streets"
+      ? "mapbox://styles/mapbox/streets-v12"
+      : "mapbox://styles/mapbox/light-v11";
+    mapRef.current.setStyle(styleUrl);
+  }, [basemap, ready]);
 
   // ----------------- update features when props change -----------------
   useEffect(() => {
@@ -287,7 +315,7 @@ export default function TerritoryMap({
         );
       }
     }
-  }, [sectors, selected, ready, interactive]);
+  }, [sectors, selected, ready, interactive, styleVersion]);
 
   // ----------------- HQ marker -----------------
   useEffect(() => {
@@ -429,7 +457,7 @@ export default function TerritoryMap({
       franchiseeHqMarkersRef.current.forEach((m) => m.remove());
       franchiseeHqMarkersRef.current = [];
     };
-  }, [franchiseeOverlay, ready, onFranchiseeClick]);
+  }, [franchiseeOverlay, ready, onFranchiseeClick, styleVersion]);
 
   if (!TOKEN) {
     return (

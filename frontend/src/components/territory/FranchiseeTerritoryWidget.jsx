@@ -14,6 +14,7 @@ import TerritoryMap from "@/components/territory/TerritoryMap";
 import TerritoryHomesList from "@/components/territory/TerritoryHomesList";
 import {
   Loader2, Map as MapIcon, Search, CheckCircle2, XCircle, AlertCircle,
+  Route,
 } from "lucide-react";
 
 export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 560 }) {
@@ -31,6 +32,15 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
   // The lat/lng we drop a "you-pinned-this" marker for (any postcode the
   // franchisee just typed — colour depends on whether it's inside).
   const [pinnedPostcode, setPinnedPostcode] = useState(null);
+  // Basemap preference — "light" hides roads (default, clearer territory),
+  // "streets" turns on the full road network + labels. Persisted per-user.
+  const [basemap, setBasemap] = useState(() => {
+    try { return localStorage.getItem("cm.portal.basemap") || "light"; }
+    catch { return "light"; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("cm.portal.basemap", basemap); } catch {/* noop */}
+  }, [basemap]);
 
   useEffect(() => {
     (async () => {
@@ -127,6 +137,15 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
           </div>
           {hasTerritory && (
             <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={() => setBasemap((b) => (b === "streets" ? "light" : "streets"))}
+                data-testid="portal-basemap-toggle"
+                title={basemap === "streets" ? "Hide road layer" : "Show road layer"}
+                className={`px-3 py-2 text-xs font-bold uppercase tracking-wider rounded-lg border flex items-center gap-1.5 transition ${basemap === "streets" ? "bg-stone-950 text-white border-stone-950" : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"}`}
+              >
+                <Route className="w-3.5 h-3.5" />
+                {basemap === "streets" ? "Roads on" : "Show roads"}
+              </button>
               <input value={check} onChange={(e) => setCheck(e.target.value)} data-testid="portal-postcode-check"
                 onKeyDown={(e) => { if (e.key === "Enter") runCheck(); }}
                 placeholder="Check a postcode (e.g. EX12 3AB)"
@@ -168,6 +187,7 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
             }}
             flyTo={flyTo}
             pinnedPostcode={pinnedPostcode}
+            basemap={basemap}
           />
         ) : (
           <div className="text-sm text-stone-500 bg-stone-50 border border-dashed border-stone-300 rounded-xl px-4 py-6 text-center">
