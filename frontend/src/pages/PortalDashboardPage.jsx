@@ -12,7 +12,7 @@ import FilePreviewModal from "@/components/files/FilePreviewModal";
 import {
   LogOut, Phone, Mail, Globe, MapPin, Calendar, ShieldCheck, ShieldAlert,
   FolderOpen, User as UserIcon, Loader2, AlertCircle, Smartphone,
-  Clock,
+  Clock, ChevronDown, ChevronUp,
 } from "lucide-react";
 
 function yearsBetween(iso) {
@@ -74,6 +74,20 @@ export default function PortalDashboardPage() {
 
   const profile = data?.profile;
   const years = yearsBetween(profile?.start_date);
+
+  // Collapsible state for the two "supporting" panels — Files is the daily
+  // tool, so we let the franchisee tuck these away to give Files the room.
+  // Persisted to localStorage so we remember their preference across visits.
+  const [detailsOpen, setDetailsOpen] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("portal.detailsOpen") ?? "true"); }
+    catch { return true; }
+  });
+  const [territoryOpen, setTerritoryOpen] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("portal.territoryOpen") ?? "true"); }
+    catch { return true; }
+  });
+  useEffect(() => { try { localStorage.setItem("portal.detailsOpen", JSON.stringify(detailsOpen)); } catch (_) { /* noop */ } }, [detailsOpen]);
+  useEffect(() => { try { localStorage.setItem("portal.territoryOpen", JSON.stringify(territoryOpen)); } catch (_) { /* noop */ } }, [territoryOpen]);
 
   // Compose the full address from any of the field-name variants Airtable
   // / the migrator may have stored under.
@@ -158,40 +172,68 @@ export default function PortalDashboardPage() {
               </div>
             </div>
 
-            {/* Two-column grid */}
-            <div className="grid lg:grid-cols-3 gap-6">
-              {/* Contact info */}
-              <div className="bg-white border border-stone-200 rounded-2xl p-6 lg:col-span-1" data-testid="portal-contact">
-                <div className="flex items-center gap-2 mb-5">
-                  <UserIcon className="w-4 h-4 text-stone-700" />
-                  <span className="text-xs uppercase tracking-[0.3em] font-bold text-stone-700">Your details</span>
-                </div>
-                <div className="space-y-4">
-                  <Field icon={Mail} label="Email" value={profile.mojo_email || profile.email} href={`mailto:${profile.mojo_email || profile.email}`} />
-                  <Field icon={Phone} label="Phone" value={profile.phone} href={`tel:${profile.phone}`} />
-                  <Field icon={Smartphone} label="Mobile" value={profile.mobile} href={`tel:${profile.mobile}`} />
-                  <Field icon={Globe} label="Website" value={profile.website} href={profile.website} />
-                  {addressLines.length > 0 && (
-                    <div data-testid="portal-address">
-                      <div className="flex items-start gap-3">
-                        <MapPin className="w-4 h-4 text-stone-400 mt-0.5 shrink-0" />
-                        <div className="min-w-0">
-                          <div className="text-[11px] uppercase tracking-[0.2em] font-bold text-stone-500">Address</div>
-                          <div className="text-base text-stone-900 leading-relaxed">
-                            {addressLines.join(", ")}
+            {/* Two-column grid — both supporting panels are collapsible so
+                the files section below can take centre stage. */}
+            <div className={`grid gap-6 ${detailsOpen ? "lg:grid-cols-3" : "lg:grid-cols-1"}`}>
+              {/* Contact info — collapsible */}
+              <div className={`bg-white border border-stone-200 rounded-2xl ${detailsOpen ? "lg:col-span-1 p-6" : "p-0"}`} data-testid="portal-contact">
+                <button onClick={() => setDetailsOpen((v) => !v)} data-testid="toggle-details"
+                  className={`w-full flex items-center justify-between gap-3 hover:bg-stone-50 transition-colors ${detailsOpen ? "mb-5" : "px-6 py-4 rounded-2xl"}`}>
+                  <div className="flex items-center gap-2">
+                    <UserIcon className="w-4 h-4 text-stone-700" />
+                    <span className="text-xs uppercase tracking-[0.3em] font-bold text-stone-700">Your details</span>
+                  </div>
+                  <span className={`w-7 h-7 rounded-full border flex items-center justify-center transition-colors ${detailsOpen ? "border-stone-300 bg-white" : "border-stone-950 bg-stone-950 text-white"}`}>
+                    {detailsOpen ? <ChevronUp className="w-3.5 h-3.5 text-stone-600" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </span>
+                </button>
+                {detailsOpen && (
+                  <div className="space-y-4">
+                    <Field icon={Mail} label="Email" value={profile.mojo_email || profile.email} href={`mailto:${profile.mojo_email || profile.email}`} />
+                    <Field icon={Phone} label="Phone" value={profile.phone} href={`tel:${profile.phone}`} />
+                    <Field icon={Smartphone} label="Mobile" value={profile.mobile} href={`tel:${profile.mobile}`} />
+                    <Field icon={Globe} label="Website" value={profile.website} href={profile.website} />
+                    {addressLines.length > 0 && (
+                      <div data-testid="portal-address">
+                        <div className="flex items-start gap-3">
+                          <MapPin className="w-4 h-4 text-stone-400 mt-0.5 shrink-0" />
+                          <div className="min-w-0">
+                            <div className="text-[11px] uppercase tracking-[0.2em] font-bold text-stone-500">Address</div>
+                            <div className="text-base text-stone-900 leading-relaxed">
+                              {addressLines.join(", ")}
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  )}
-                  <Field icon={Calendar} label="Start date" value={profile.start_date ? new Date(profile.start_date).toLocaleDateString("en-GB") : null} />
-                  {profile.end_date && <Field icon={Clock} label="End date" value={new Date(profile.end_date).toLocaleDateString("en-GB")} />}
-                </div>
+                    )}
+                    <Field icon={Calendar} label="Start date" value={profile.start_date ? new Date(profile.start_date).toLocaleDateString("en-GB") : null} />
+                    {profile.end_date && <Field icon={Clock} label="End date" value={new Date(profile.end_date).toLocaleDateString("en-GB")} />}
+                  </div>
+                )}
               </div>
 
-              {/* Territory widget (real Mapbox map + postcode lookup) */}
-              <div className="lg:col-span-2">
-                <FranchiseeTerritoryWidget />
+              {/* Territory widget — also collapsible to free vertical space */}
+              <div className={`${detailsOpen ? "lg:col-span-2" : "lg:col-span-1"}`}>
+                {territoryOpen ? (
+                  <div className="relative">
+                    <button onClick={() => setTerritoryOpen(false)} data-testid="toggle-territory"
+                      className="absolute top-5 right-5 z-10 w-7 h-7 rounded-full border border-stone-300 bg-white hover:bg-stone-100 flex items-center justify-center" aria-label="Hide territory">
+                      <ChevronUp className="w-3.5 h-3.5 text-stone-600" />
+                    </button>
+                    <FranchiseeTerritoryWidget />
+                  </div>
+                ) : (
+                  <button onClick={() => setTerritoryOpen(true)} data-testid="toggle-territory"
+                    className="w-full bg-white border border-stone-200 rounded-2xl px-6 py-4 flex items-center justify-between gap-3 hover:bg-stone-50 transition-colors">
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-stone-700" />
+                      <span className="text-xs uppercase tracking-[0.3em] font-bold text-stone-700">Your territory</span>
+                    </div>
+                    <span className="w-7 h-7 rounded-full border border-stone-950 bg-stone-950 text-white flex items-center justify-center">
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    </span>
+                  </button>
+                )}
               </div>
             </div>
 

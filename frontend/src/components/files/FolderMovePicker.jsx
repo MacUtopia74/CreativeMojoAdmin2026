@@ -25,7 +25,7 @@ function Node({ prefix, name, depth, expanded, onToggle, selected, onSelect, isD
           ? <ChevronDown className="w-3 h-3" />
           : <ChevronRight className="w-3 h-3" />}
       </span>
-      <Folder className={`w-3.5 h-3.5 shrink-0 ${selected === prefix ? "text-amber-300" : "text-amber-600"}`} />
+      <Folder className={`w-3.5 h-3.5 shrink-0 ${selected === prefix ? "text-[#D4FF00]" : "text-[#14532D]"}`} />
       <span className="truncate">{name}</span>
     </button>
   );

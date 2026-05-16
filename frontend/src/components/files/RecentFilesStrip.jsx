@@ -159,8 +159,8 @@ export default function RecentFilesStrip({ onOpenFile, onDownload, onOpenFolder,
                     <button key={f.key} onClick={() => onOpenFolder?.(f.key)}
                       data-testid={`recent-folder-tile-${f.key}`}
                       className="group flex flex-col items-stretch border border-stone-200 hover:border-stone-400 hover:shadow-sm transition-all rounded-xl overflow-hidden bg-white text-left">
-                      <div className="aspect-square bg-amber-50 flex items-center justify-center border-b border-amber-100">
-                        <Folder className="w-10 h-10 text-amber-600 group-hover:scale-105 transition-transform" />
+                      <div className="aspect-square bg-[#D4FF00]/15 flex items-center justify-center border-b border-[#D4FF00]/30">
+                        <Folder className="w-10 h-10 text-[#14532D] group-hover:scale-105 transition-transform" />
                       </div>
                       <div className="p-2">
                         <div className="text-[11px] font-semibold text-stone-900 truncate" title={f.name}>{prettyFolderName(f.name)}</div>
@@ -194,7 +194,7 @@ export default function RecentFilesStrip({ onOpenFile, onDownload, onOpenFolder,
                     data-testid={`recent-folder-row-${f.key}`}
                     className="w-full px-4 py-2 flex items-center justify-between gap-3 hover:bg-stone-50 text-left">
                     <div className="flex items-center gap-3 truncate flex-1 min-w-0">
-                      <Folder className="w-4 h-4 text-amber-600 shrink-0" />
+                      <Folder className="w-4 h-4 text-[#14532D] shrink-0" />
                       <div className="truncate min-w-0">
                         <div className="text-sm text-stone-900 truncate">{prettyFolderName(f.name)}</div>
                         <div className="text-[11px] text-stone-500 truncate">

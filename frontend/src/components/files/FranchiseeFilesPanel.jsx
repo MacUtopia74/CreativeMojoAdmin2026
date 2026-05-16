@@ -253,8 +253,8 @@ function TreeGrid({ tree, onOpenFolder, onPreview, onDownload, downloadingKey })
       {tree.folders.map((f) => (
         <button key={f.key} onClick={() => onOpenFolder(f.key)} data-testid={`ff-folder-${f.name}`}
           className="group flex flex-col items-stretch border border-stone-200 hover:border-stone-500 hover:shadow-md transition-all rounded-xl overflow-hidden bg-white text-left">
-          <div className="aspect-square bg-amber-50 flex items-center justify-center border-b border-amber-100">
-            <Folder className="w-16 h-16 text-amber-600 group-hover:scale-105 transition-transform" />
+          <div className="aspect-square bg-[#D4FF00]/15 flex items-center justify-center border-b border-[#D4FF00]/30">
+            <Folder className="w-16 h-16 text-[#14532D] group-hover:scale-105 transition-transform" />
           </div>
           <div className="p-3">
             <div className="text-sm font-semibold text-stone-900 truncate" title={f.name}>{prettyFolderName(f.name)}</div>
@@ -279,7 +279,7 @@ function TreeList({ tree, onOpenFolder, onPreview, onDownload, downloadingKey })
         <button key={f.key} onClick={() => onOpenFolder(f.key)} data-testid={`ff-folder-${f.name}`}
           className="w-full px-4 py-3 flex items-center justify-between gap-3 hover:bg-stone-50 text-left">
           <div className="flex items-center gap-3 min-w-0">
-            <Folder className="w-5 h-5 text-amber-600 shrink-0" />
+            <Folder className="w-5 h-5 text-[#14532D] shrink-0" />
             <span className="text-sm text-stone-900 truncate">{prettyFolderName(f.name)}</span>
           </div>
           <span className="text-xs text-stone-500 tabular-nums shrink-0">{f.files} files · {fmtBytes(f.bytes)}</span>
