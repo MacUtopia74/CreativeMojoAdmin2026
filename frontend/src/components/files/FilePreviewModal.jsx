@@ -1,11 +1,13 @@
 // Preview modal shared between the admin Files page and the franchisee
-// portal. Handles images, PDFs, audio, video inline; everything else
-// falls back to a Download button. Header carries a permanent Download
-// button so any file can be saved with one click.
+// portal. Handles images, PDFs, audio, video and plain text inline (PDFs
+// via PDF.js so we don't depend on the browser's native PDF viewer — Chrome
+// users with "Download PDFs" enabled would otherwise see a save dialog).
+// Anything the browser can't render inline (DOCX, XLSX, ZIP, AI, PSD, …)
+// gets a clear "no preview" message and a Download button.
 import { useEffect, useState } from "react";
 import api, { API_BASE } from "@/lib/api";
 import {
-  Download, X, ExternalLink, Loader2, AlertCircle, File as FileIcon,
+  Download, X, Loader2, AlertCircle, File as FileIcon,
 } from "lucide-react";
 import PdfJsViewer from "@/components/files/PdfJsViewer";
 
@@ -67,12 +69,6 @@ export default function FilePreviewModal({ file, onClose }) {
               <a href={dlUrl} target="_blank" rel="noreferrer" data-testid="preview-download"
                 className="inline-flex items-center gap-1.5 px-3 py-2 text-[10px] font-bold uppercase tracking-wider bg-[#D4FF00] text-stone-950 hover:bg-[#BDE600] rounded-lg">
                 <Download className="w-3.5 h-3.5" /> Download
-              </a>
-            )}
-            {url && browserCanPreview && (
-              <a href={url} target="_blank" rel="noreferrer" title="Open this file in a new browser tab"
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-[10px] font-bold uppercase tracking-wider border border-stone-300 bg-white text-stone-900 hover:bg-stone-50 rounded-lg" data-testid="preview-open-tab">
-                <ExternalLink className="w-3.5 h-3.5" /> Full page preview
               </a>
             )}
             <button onClick={onClose} data-testid="preview-close" className="w-9 h-9 flex items-center justify-center hover:bg-stone-100 rounded-lg"><X className="w-4 h-4" /></button>
