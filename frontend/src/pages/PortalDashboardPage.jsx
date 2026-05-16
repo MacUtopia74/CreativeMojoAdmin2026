@@ -7,10 +7,12 @@ import api from "@/lib/api";
 import Logo from "@/components/Logo";
 import FranchiseeFilesPanel from "@/components/files/FranchiseeFilesPanel";
 import FranchiseeTerritoryWidget from "@/components/territory/FranchiseeTerritoryWidget";
+import RecentFilesStrip from "@/components/files/RecentFilesStrip";
+import FilePreviewModal from "@/components/files/FilePreviewModal";
 import {
   LogOut, Phone, Mail, Globe, MapPin, Calendar, ShieldCheck, ShieldAlert,
   FolderOpen, User as UserIcon, Loader2, AlertCircle, Smartphone,
-  CreditCard, Clock,
+  Clock,
 } from "lucide-react";
 
 function yearsBetween(iso) {
@@ -59,6 +61,7 @@ export default function PortalDashboardPage() {
   const { user, logout } = useAuth();
   const [data, setData] = useState(null);
   const [err, setErr] = useState("");
+  const [previewFile, setPreviewFile] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -71,6 +74,24 @@ export default function PortalDashboardPage() {
 
   const profile = data?.profile;
   const years = yearsBetween(profile?.start_date);
+
+  // Compose the full address from any of the field-name variants Airtable
+  // / the migrator may have stored under.
+  const addressLines = profile ? [
+    profile.address || profile.address_street,
+    profile.address_line2,
+    profile.city || profile.town,
+    profile.county,
+    profile.postcode,
+    profile.country,
+  ].filter(Boolean) : [];
+
+  const downloadRecent = async (key) => {
+    try {
+      const { data: dl } = await api.get("/files/download", { params: { key, attachment: true } });
+      window.location.href = dl.url;
+    } catch (e) { /* noop */ }
+  };
 
   return (
     <div className="min-h-screen bg-[#FBFAF8]" data-testid="portal-dashboard">
@@ -150,9 +171,21 @@ export default function PortalDashboardPage() {
                   <Field icon={Phone} label="Phone" value={profile.phone} href={`tel:${profile.phone}`} />
                   <Field icon={Smartphone} label="Mobile" value={profile.mobile} href={`tel:${profile.mobile}`} />
                   <Field icon={Globe} label="Website" value={profile.website} href={profile.website} />
-                  <Field icon={MapPin} label="Address" value={[profile.address, profile.city, profile.county, profile.postcode].filter(Boolean).join(", ")} />
-                  <Field icon={Calendar} label="Start date" value={profile.start_date ? new Date(profile.start_date).toLocaleDateString() : null} />
-                  {profile.end_date && <Field icon={Clock} label="End date" value={new Date(profile.end_date).toLocaleDateString()} />}
+                  {addressLines.length > 0 && (
+                    <div data-testid="portal-address">
+                      <div className="flex items-start gap-3">
+                        <MapPin className="w-4 h-4 text-stone-400 mt-0.5 shrink-0" />
+                        <div className="min-w-0">
+                          <div className="text-[11px] uppercase tracking-[0.2em] font-bold text-stone-500">Address</div>
+                          <div className="text-base text-stone-900 leading-relaxed">
+                            {addressLines.join(", ")}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  <Field icon={Calendar} label="Start date" value={profile.start_date ? new Date(profile.start_date).toLocaleDateString("en-GB") : null} />
+                  {profile.end_date && <Field icon={Clock} label="End date" value={new Date(profile.end_date).toLocaleDateString("en-GB")} />}
                 </div>
               </div>
 
@@ -168,11 +201,19 @@ export default function PortalDashboardPage() {
                 <FolderOpen className="w-4 h-4 text-stone-700" />
                 <span className="text-xs uppercase tracking-[0.3em] font-bold text-stone-700">Your files</span>
               </div>
+              {/* Live recents — last 30 days of activity scoped to this
+                  franchisee's own folder + shared brand files. */}
+              <RecentFilesStrip
+                onOpenFile={(f) => setPreviewFile(f)}
+                onDownload={downloadRecent}
+                onOpenFolder={() => { /* the panel below is the browser */ }}
+              />
               <FranchiseeFilesPanel franchisee={profile} />
             </div>
           </>
         )}
       </main>
+      {previewFile && <FilePreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />}
     </div>
   );
 }

@@ -990,8 +990,13 @@ async def portal_me(user: dict = Depends(require_role("franchisee"))):
     keep = {
         "id", "franchise_number", "organisation", "first_name", "last_name",
         "full_name", "email", "primary_email", "contact_email", "mojo_email",
-        "phone", "mobile", "address", "postcode", "city", "county",
-        "country", "website", "facebook_url",
+        "phone", "mobile",
+        # Address — Airtable used both `address` (legacy) and `address_street`.
+        # We expose both so the dashboard can fall back cleanly.
+        "address", "address_street", "address_line2",
+        "city", "town", "county", "postcode", "country",
+        "website", "facebook_url",
+        "date_added",  # legacy "started with us" date — fallback for tenure
         "start_date", "end_date", "lifecycle_status",
         "gocardless_mandate_status", "gocardless_last_payment_at",
         "photo_url", "photos", "territory_postcodes", "territory_geojson",
@@ -999,15 +1004,17 @@ async def portal_me(user: dict = Depends(require_role("franchisee"))):
     }
     profile = {k: f.get(k) for k in keep if k in f}
     # Fallback: if Airtable didn't carry over a start_date, derive it
-    # from the earliest known contract for this franchisee.
+    # from the earliest known contract, then `date_added`.
     if not profile.get("start_date"):
         earliest = await db.contracts.find_one(
-            {"franchisee_id": fid, "start_date": {"$ne": None}},
-            {"_id": 0, "start_date": 1},
-            sort=[("start_date", 1)],
+            {"franchisee_id": fid, "commencement_date": {"$ne": None}},
+            {"_id": 0, "commencement_date": 1},
+            sort=[("commencement_date", 1)],
         )
-        if earliest and earliest.get("start_date"):
-            profile["start_date"] = earliest["start_date"]
+        if earliest and earliest.get("commencement_date"):
+            profile["start_date"] = earliest["commencement_date"]
+        elif profile.get("date_added"):
+            profile["start_date"] = profile["date_added"]
     return {"profile": profile, "user": user_to_public(user)}
 
 
