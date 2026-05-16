@@ -152,16 +152,24 @@ export default function CalendarPage() {
 
   return (
     <div className="px-8 py-7 max-w-7xl mx-auto" data-testid="calendar-page">
-      <div className="flex items-center justify-between gap-3 mb-7">
+      <div className="flex items-center justify-between gap-3 mb-7 flex-wrap">
         <div>
           <h1 className="font-display text-4xl text-stone-950 flex items-center gap-3">
             <CalendarDays className="w-7 h-7" /> Calendar
           </h1>
           <p className="text-sm text-stone-600 mt-1">Live view of the shared Creative Mojo Google Calendar.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {status?.connected && (
             <>
+              <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-900" data-testid="cal-connected-pill">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span className="font-mono text-[11px]">{status.calendar_id}</span>
+                <button onClick={disconnect} title="Disconnect Google Calendar"
+                  data-testid="cal-disconnect" className="ml-1 text-stone-500 hover:text-red-700">
+                  <PowerOff className="w-3 h-3" />
+                </button>
+              </div>
               <div className="inline-flex border border-stone-300 rounded-lg overflow-hidden" data-testid="cal-view-toggle">
                 <button onClick={() => setView("grid")} data-testid="cal-view-grid"
                   className={`px-3 py-2 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${view === "grid" ? "bg-stone-950 text-white" : "bg-white text-stone-700 hover:bg-stone-50"}`}>
@@ -209,17 +217,6 @@ export default function CalendarPage() {
       {/* Connected — events list */}
       {status?.connected && (
         <>
-          <div className="mb-4 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between gap-3 flex-wrap text-sm">
-            <div className="flex items-center gap-2 text-emerald-900">
-              <CheckCircle2 className="w-4 h-4" />
-              Connected to <strong className="font-mono text-xs ml-1">{status.calendar_id}</strong>
-              <span className="text-emerald-700">· authorised by {status.connected_email}</span>
-            </div>
-            <button onClick={disconnect} data-testid="cal-disconnect" className="text-[10px] uppercase tracking-wider font-bold text-stone-600 hover:text-red-700 flex items-center gap-1">
-              <PowerOff className="w-3 h-3" /> Disconnect
-            </button>
-          </div>
-
           {loading ? (
             <div className="flex items-center gap-2 text-sm text-stone-500"><Loader2 className="w-4 h-4 animate-spin" /> Loading events…</div>
           ) : err ? (
@@ -238,7 +235,8 @@ export default function CalendarPage() {
                   right: "dayGridMonth,timeGridWeek,timeGridDay",
                 }}
                 events={fcEvents}
-                height="auto"
+                height={780}
+                contentHeight={780}
                 firstDay={1}                 // Monday-first for UK
                 weekNumbers={false}
                 dayMaxEventRows={4}
