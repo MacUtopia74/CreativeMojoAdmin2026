@@ -46,6 +46,13 @@ export default function FilePreviewModal({ file, onClose }) {
   const isPdf = ct === "application/pdf" || ext === "pdf";
   const isAudio = ct.startsWith("audio/") || ["mp3","wav","m4a","aac","ogg","flac","aif","aiff"].includes(ext);
   const isVideo = ct.startsWith("video/") || ["mp4","mov","webm","mkv","avi","wmv"].includes(ext);
+  const isText = ct.startsWith("text/") || ["txt","md","csv","log","json","xml","html","htm","js","css","yml","yaml"].includes(ext);
+  // The browser can only render these types in a new tab. For everything
+  // else (.docx, .xlsx, .zip, .ai, .psd, etc.) opening the URL just
+  // triggers the OS save dialog — so we hide the "Full page preview"
+  // button entirely and offer Download instead. This is the third-time
+  // fix for the "Open in new tab tries to save the file" bug.
+  const browserCanPreview = isImg || isPdf || isAudio || isVideo || isText;
 
   return (
     <div onClick={onClose} className="fixed inset-0 z-[60] bg-stone-950/80 backdrop-blur-sm flex items-center justify-center p-6" data-testid="preview-modal">
@@ -62,8 +69,8 @@ export default function FilePreviewModal({ file, onClose }) {
                 <Download className="w-3.5 h-3.5" /> Download
               </a>
             )}
-            {url && (
-              <a href={url} target="_blank" rel="noreferrer" title="Open in new tab"
+            {url && browserCanPreview && (
+              <a href={url} target="_blank" rel="noreferrer" title="Open this file in a new browser tab"
                 className="inline-flex items-center gap-1.5 px-3 py-2 text-[10px] font-bold uppercase tracking-wider border border-stone-300 bg-white text-stone-900 hover:bg-stone-50 rounded-lg" data-testid="preview-open-tab">
                 <ExternalLink className="w-3.5 h-3.5" /> Full page preview
               </a>
@@ -78,13 +85,15 @@ export default function FilePreviewModal({ file, onClose }) {
           {url && isPdf && <PdfJsViewer url={url} />}
           {url && isAudio && <audio src={url} controls className="w-full max-w-2xl" />}
           {url && isVideo && <video src={url} controls className="max-w-full max-h-[70vh] rounded" />}
-          {url && !isImg && !isPdf && !isAudio && !isVideo && (
-            <div className="text-center">
+          {url && isText && <iframe src={url} title={file.name} className="w-full h-[70vh] bg-white rounded border border-stone-200" />}
+          {url && !browserCanPreview && (
+            <div className="text-center max-w-md">
               <FileIcon className="w-12 h-12 text-stone-300 mx-auto mb-3" />
-              <div className="text-sm text-stone-600 mb-3">Preview not supported for this file type.</div>
-              <a href={dlUrl || url} target="_blank" rel="noreferrer"
+              <div className="text-sm font-semibold text-stone-900 mb-1">No in-browser preview for {ext.toUpperCase() || "this file type"}</div>
+              <div className="text-xs text-stone-600 mb-4">Office docs, archives and design files can't be rendered inside a browser — download to open with your local app.</div>
+              <a href={dlUrl || url} target="_blank" rel="noreferrer" data-testid="preview-download-fallback"
                 className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-lg">
-                <Download className="w-3.5 h-3.5" /> Download
+                <Download className="w-3.5 h-3.5" /> Download {file.name}
               </a>
             </div>
           )}
