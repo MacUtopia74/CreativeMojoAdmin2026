@@ -9,10 +9,14 @@
 //
 // Events optionally carry a `meeting_url` (typically an MS Teams join link).
 // We render it as a "Join meeting" button on each row.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import api from "@/lib/api";
-import { CalendarDays, ExternalLink, Loader2, Plus, RefreshCw, Trash2, AlertCircle, CheckCircle2, X, Save, Link as LinkIcon, MapPin, Clock, Pencil, PowerOff, Video } from "lucide-react";
+import FullCalendar from "@fullcalendar/react";
+import dayGridPlugin from "@fullcalendar/daygrid";
+import timeGridPlugin from "@fullcalendar/timegrid";
+import interactionPlugin from "@fullcalendar/interaction";
+import { CalendarDays, ExternalLink, Loader2, Plus, RefreshCw, Trash2, AlertCircle, CheckCircle2, X, Save, Link as LinkIcon, MapPin, Clock, Pencil, PowerOff, Video, LayoutGrid, LayoutList } from "lucide-react";
 
 function formatDateRange(start, end, allDay) {
   if (!start) return "";
@@ -46,6 +50,13 @@ export default function CalendarPage() {
   const [err, setErr] = useState("");
   const [modal, setModal] = useState(null); // null | { event? }
   const [refreshTick, setRefreshTick] = useState(0);
+  // View mode persists across visits so each admin lands back where they left.
+  const [view, setView] = useState(() => {
+    try { return localStorage.getItem("calendar.view") || "grid"; }
+    catch { return "grid"; }
+  });
+  useEffect(() => { try { localStorage.setItem("calendar.view", view); } catch (_) { /* noop */ } }, [view]);
+  const fcRef = useRef(null);
 
   const loadStatus = async () => {
     try {
@@ -123,8 +134,24 @@ export default function CalendarPage() {
     return [...buckets.entries()];
   }, [events]);
 
+  // FullCalendar event shape — translates our normalised event list.
+  // For all-day events Google returns YYYY-MM-DD which FC handles natively;
+  // timed events come back as ISO 8601 with tz offset, also fine.
+  const fcEvents = useMemo(() => events.map((e) => ({
+    id: e.id,
+    title: e.title,
+    start: e.start,
+    end: e.end,
+    allDay: !!e.all_day,
+    extendedProps: e,
+    // Brand-friendly colouring — translucent lime fill, dark green border
+    backgroundColor: "rgba(212, 255, 0, 0.35)",
+    borderColor: "#14532D",
+    textColor: "#14532D",
+  })), [events]);
+
   return (
-    <div className="px-8 py-7 max-w-6xl mx-auto" data-testid="calendar-page">
+    <div className="px-8 py-7 max-w-7xl mx-auto" data-testid="calendar-page">
       <div className="flex items-center justify-between gap-3 mb-7">
         <div>
           <h1 className="font-display text-4xl text-stone-950 flex items-center gap-3">
@@ -135,6 +162,16 @@ export default function CalendarPage() {
         <div className="flex items-center gap-2">
           {status?.connected && (
             <>
+              <div className="inline-flex border border-stone-300 rounded-lg overflow-hidden" data-testid="cal-view-toggle">
+                <button onClick={() => setView("grid")} data-testid="cal-view-grid"
+                  className={`px-3 py-2 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${view === "grid" ? "bg-stone-950 text-white" : "bg-white text-stone-700 hover:bg-stone-50"}`}>
+                  <LayoutGrid className="w-3.5 h-3.5" /> Calendar
+                </button>
+                <button onClick={() => setView("list")} data-testid="cal-view-list"
+                  className={`px-3 py-2 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${view === "list" ? "bg-stone-950 text-white" : "bg-white text-stone-700 hover:bg-stone-50"}`}>
+                  <LayoutList className="w-3.5 h-3.5" /> List
+                </button>
+              </div>
               <button onClick={() => setRefreshTick((t) => t + 1)} className="px-3 py-2 text-xs font-bold uppercase tracking-wider border border-stone-300 bg-white hover:bg-stone-50 rounded-lg flex items-center gap-1.5" data-testid="cal-refresh">
                 <RefreshCw className="w-3.5 h-3.5" /> Refresh
               </button>
@@ -189,6 +226,40 @@ export default function CalendarPage() {
             <div className="px-4 py-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-2xl flex items-center gap-2">
               <AlertCircle className="w-4 h-4" /> {err}
             </div>
+          ) : view === "grid" ? (
+            <div className="bg-white border border-stone-200 rounded-2xl p-4" data-testid="cal-grid">
+              <FullCalendar
+                ref={fcRef}
+                plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+                initialView="dayGridMonth"
+                headerToolbar={{
+                  left: "prev,next today",
+                  center: "title",
+                  right: "dayGridMonth,timeGridWeek,timeGridDay",
+                }}
+                events={fcEvents}
+                height="auto"
+                firstDay={1}                 // Monday-first for UK
+                weekNumbers={false}
+                dayMaxEventRows={4}
+                nowIndicator
+                buttonText={{ today: "Today", month: "Month", week: "Week", day: "Day" }}
+                eventTimeFormat={{ hour: "2-digit", minute: "2-digit", meridiem: false }}
+                slotLabelFormat={{ hour: "2-digit", minute: "2-digit", meridiem: false }}
+                eventClick={(info) => {
+                  info.jsEvent.preventDefault();
+                  setModal({ event: info.event.extendedProps });
+                }}
+                dateClick={(info) => {
+                  // Click a day cell → open new-event modal pre-filled to that
+                  // date at 09:00–10:00 local
+                  const d = new Date(info.dateStr);
+                  const pad = (n) => String(n).padStart(2, "0");
+                  const dateBase = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+                  setModal({ event: null, defaults: { start: `${dateBase}T09:00`, end: `${dateBase}T10:00` } });
+                }}
+              />
+            </div>
           ) : events.length === 0 ? (
             <div className="bg-white border border-dashed border-stone-300 rounded-2xl px-6 py-12 text-center">
               <CalendarDays className="w-10 h-10 mx-auto text-stone-300" />
@@ -214,6 +285,7 @@ export default function CalendarPage() {
       {modal && (
         <EventModal
           event={modal.event}
+          defaults={modal.defaults}
           onClose={() => setModal(null)}
           onSaved={() => { setModal(null); setRefreshTick((t) => t + 1); }}
         />
@@ -257,14 +329,14 @@ function EventRow({ event, onEdit, onDelete }) {
   );
 }
 
-function EventModal({ event, onClose, onSaved }) {
+function EventModal({ event, defaults, onClose, onSaved }) {
   const [title, setTitle] = useState(event?.title || "");
   const [description, setDescription] = useState(event?.description || "");
   const [location, setLocation] = useState(event?.location || "");
   const [meetingUrl, setMeetingUrl] = useState(event?.meeting_url || "");
   const [allDay, setAllDay] = useState(!!event?.all_day);
-  const [start, setStart] = useState(event?.start ? event.start.slice(0, 16) : todayLocal());
-  const [end, setEnd] = useState(event?.end ? event.end.slice(0, 16) : todayLocal(60));
+  const [start, setStart] = useState(event?.start ? event.start.slice(0, 16) : (defaults?.start || todayLocal()));
+  const [end, setEnd] = useState(event?.end ? event.end.slice(0, 16) : (defaults?.end || todayLocal(60)));
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
