@@ -68,18 +68,25 @@ export default function CqcDefinitionsPage() {
     })();
   }, []);
 
-  // Live preview (debounced) — translates the rule to query params
-  const previewParams = useMemo(() => ({
-    include_service_types: def.include_service_types.join(","),
-    exclude_service_types: def.exclude_service_types.join(","),
-    include_specialisms: def.include_specialisms.join(","),
-    exclude_specialisms: def.exclude_specialisms.join(","),
-    include_regulated_activities: def.include_regulated_activities.join(","),
-    require_care_home: def.require_care_home || "",
-    registration_statuses: (def.registration_statuses || []).join(","),
-    min_beds: def.min_beds || "",
-    require_rating: (def.require_rating || []).join(","),
-  }), [def]);
+  // Live preview (debounced) — translates the rule to query params. Empty
+  // values are stripped so FastAPI's int/str coercion doesn't 422 on
+  // `min_beds=` etc., which previously made the count silently stick at 0.
+  const previewParams = useMemo(() => {
+    const raw = {
+      include_service_types: def.include_service_types.join(","),
+      exclude_service_types: def.exclude_service_types.join(","),
+      include_specialisms: def.include_specialisms.join(","),
+      exclude_specialisms: def.exclude_specialisms.join(","),
+      include_regulated_activities: def.include_regulated_activities.join(","),
+      require_care_home: def.require_care_home || "",
+      registration_statuses: (def.registration_statuses || []).join(","),
+      min_beds: def.min_beds || "",
+      require_rating: (def.require_rating || []).join(","),
+    };
+    return Object.fromEntries(
+      Object.entries(raw).filter(([, v]) => v !== "" && v != null),
+    );
+  }, [def]);
 
   const refreshPreview = useCallback(async () => {
     setPreviewing(true);
@@ -315,6 +322,11 @@ function PreviewPanel({ preview, previewing }) {
         <span className="text-sm text-stone-600">homes match</span>
         {previewing && <Loader2 className="w-3.5 h-3.5 animate-spin text-stone-400" />}
       </div>
+      {preview?.error && (
+        <div className="mt-2 px-3 py-2 text-xs bg-red-50 border border-red-200 text-red-800 rounded-lg flex items-start gap-1.5" data-testid="preview-error">
+          <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" /> <span>{preview.error}</span>
+        </div>
+      )}
       <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500 mt-4 mb-2">By region</div>
       <div className="space-y-1">
         {(preview?.by_region || []).map((r) => (

@@ -309,13 +309,17 @@ def build_cqc_router(db, require_role):  # noqa: D401
         include_regulated_activities: Optional[str] = Query(None),
         require_care_home: Optional[str] = Query(None),
         registration_statuses: Optional[str] = Query(None),
-        min_beds: Optional[int] = Query(None),
+        min_beds: Optional[str] = Query(None),  # accept "" gracefully; parsed below
         require_rating: Optional[str] = Query(None),
         _user: dict = Depends(require_role("admin")),
     ):
         """Live preview of a definition without saving."""
         def split(v):
             return [x.strip() for x in (v or "").split(",") if x.strip()]
+        try:
+            min_beds_int = int(min_beds) if (min_beds and min_beds.strip()) else None
+        except (TypeError, ValueError):
+            min_beds_int = None
         d = CqcDefinition(
             include_service_types=split(include_service_types),
             exclude_service_types=split(exclude_service_types),
@@ -324,7 +328,7 @@ def build_cqc_router(db, require_role):  # noqa: D401
             include_regulated_activities=split(include_regulated_activities),
             require_care_home=require_care_home if require_care_home in ("Y", "N") else None,
             registration_statuses=split(registration_statuses) or ["Registered"],
-            min_beds=min_beds,
+            min_beds=min_beds_int,
             require_rating=split(require_rating),
         )
         f = definition_to_mongo_filter(d)
