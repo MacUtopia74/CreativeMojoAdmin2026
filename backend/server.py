@@ -2087,6 +2087,10 @@ api.include_router(build_portal_router(
 api.include_router(build_territory_router(db, require_role))
 api.include_router(build_cqc_router(db, require_role))
 
+# Phase 5 — Google Calendar
+from calendar_routes import attach as build_calendar_router  # noqa: E402
+api.include_router(build_calendar_router(api, db, require_role))
+
 app.include_router(api)
 
 # Serve cached franchisee photos (downloaded from Airtable at migration time so they

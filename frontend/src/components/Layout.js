@@ -12,12 +12,14 @@ import {
   FolderOpen,
   Target,
   Stethoscope,
+  CalendarDays,
   LogOut,
 } from "lucide-react";
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, testid: "nav-dashboard" },
   { to: "/franchisees", label: "Franchisees", icon: Users, testid: "nav-franchisees" },
+  { to: "/calendar", label: "Calendar", icon: CalendarDays, testid: "nav-calendar" },
   { to: "/renewals", label: "Renewals", icon: BellRing, testid: "nav-renewals" },
   { to: "/files", label: "Files", icon: FolderOpen, testid: "nav-files" },
   { to: "/contacts", label: "Sales & Contacts", icon: Contact, testid: "nav-contacts" },

@@ -18,6 +18,7 @@ import PublicFolderSharePage from "@/pages/PublicFolderSharePage";
 import PortalLoginPage from "@/pages/PortalLoginPage";
 import TerritoryBuilderPage from "@/pages/TerritoryBuilderPage";
 import CqcDefinitionsPage from "@/pages/CqcDefinitionsPage";
+import CalendarPage from "@/pages/CalendarPage";
 import PortalDashboardPage from "@/pages/PortalDashboardPage";
 
 export default function App() {
@@ -47,6 +48,7 @@ export default function App() {
               <Route path="/files" element={<FilesPage />} />
               <Route path="/territory-builder" element={<TerritoryBuilderPage />} />
               <Route path="/cqc-definitions" element={<CqcDefinitionsPage />} />
+              <Route path="/calendar" element={<CalendarPage />} />
               <Route path="/contacts" element={<ContactsPage />} />
               <Route path="/form-intake" element={<FormIntakePage />} />
               <Route path="/airtable-inspector" element={<AirtableInspectorPage />} />
