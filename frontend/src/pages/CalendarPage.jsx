@@ -192,8 +192,30 @@ export default function CalendarPage() {
                   <LayoutList className="w-3.5 h-3.5" /> List
                 </button>
               </div>
-              <button onClick={() => setRefreshTick((t) => t + 1)} className="px-3 py-2 text-xs font-bold uppercase tracking-wider border border-stone-300 bg-white hover:bg-stone-50 rounded-lg flex items-center gap-1.5" data-testid="cal-refresh">
-                <RefreshCw className="w-3.5 h-3.5" /> Refresh
+              <button
+                onClick={() => {
+                  // Refresh the currently visible window (grid view) — pull
+                  // exactly the month/week/day FullCalendar is showing so the
+                  // user immediately sees fresh data for the dates in front
+                  // of them, not just "around today".
+                  const fcApi = fcRef.current?.getApi?.();
+                  if (view === "grid" && fcApi) {
+                    const v = fcApi.view;
+                    const start = new Date(v.activeStart);
+                    start.setDate(start.getDate() - 7);
+                    const end = new Date(v.activeEnd);
+                    end.setDate(end.getDate() + 7);
+                    loadEvents({ start, end });
+                  } else {
+                    loadEvents();
+                  }
+                }}
+                disabled={refreshing || loading}
+                className="px-3 py-2 text-xs font-bold uppercase tracking-wider border border-stone-300 bg-white hover:bg-stone-50 rounded-lg flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
+                data-testid="cal-refresh"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
+                {refreshing ? "Refreshing…" : "Refresh"}
               </button>
               <button onClick={() => setModal({ event: null })} data-testid="cal-new-event"
                 className="px-3 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-lg flex items-center gap-1.5">
