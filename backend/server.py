@@ -1015,6 +1015,25 @@ async def portal_me(user: dict = Depends(require_role("franchisee"))):
             profile["start_date"] = earliest["commencement_date"]
         elif profile.get("date_added"):
             profile["start_date"] = profile["date_added"]
+    # Current contract — the active (non-cancelled) contract with the latest
+    # renewal date. We surface its commencement_date, renewal_date and term
+    # length so the portal can show "Current contract: X yrs, started Y,
+    # renews Z" without exposing the full contracts list.
+    current_contract = await db.contracts.find_one(
+        {"franchisee_id": fid, "cancelled_early": {"$ne": True}},
+        {"_id": 0, "ref": 1, "commencement_date": 1, "renewal_date": 1,
+         "contract_term_years": 1, "start_date": 1, "end_date": 1},
+        sort=[("renewal_date", -1)],
+    )
+    if current_contract:
+        # Legacy contracts may use start_date/end_date instead of the
+        # commencement/renewal fields — fall back so older data still shows.
+        profile["current_contract"] = {
+            "ref": current_contract.get("ref"),
+            "commencement_date": current_contract.get("commencement_date") or current_contract.get("start_date"),
+            "renewal_date": current_contract.get("renewal_date") or current_contract.get("end_date"),
+            "contract_term_years": current_contract.get("contract_term_years"),
+        }
     return {"profile": profile, "user": user_to_public(user)}
 
 

@@ -12,7 +12,7 @@ import FilePreviewModal from "@/components/files/FilePreviewModal";
 import {
   LogOut, Phone, Mail, Globe, MapPin, Calendar, ShieldCheck, ShieldAlert,
   FolderOpen, User as UserIcon, Loader2, AlertCircle, Smartphone,
-  Clock, ChevronDown, ChevronUp, Type,
+  Clock, ChevronDown, ChevronUp, Type, FileText,
 } from "lucide-react";
 
 // Font size preference — applied as a wrapper class so every text element
@@ -230,8 +230,24 @@ export default function PortalDashboardPage() {
                   <Field icon={Phone} label="Phone" value={profile.phone} href={`tel:${profile.phone}`} />
                   <Field icon={Smartphone} label="Mobile" value={profile.mobile} href={`tel:${profile.mobile}`} />
                   <Field icon={Globe} label="Website" value={profile.website} href={profile.website} />
-                  <Field icon={Calendar} label="Start date" value={profile.start_date ? new Date(profile.start_date).toLocaleDateString("en-GB") : null} />
+                  <Field icon={Calendar} label="Started with us" value={profile.start_date ? new Date(profile.start_date).toLocaleDateString("en-GB") : null} />
                   {profile.end_date && <Field icon={Clock} label="End date" value={new Date(profile.end_date).toLocaleDateString("en-GB")} />}
+                  {/* Current contract — only renders if we have something on
+                      file. Three side-by-side fields keep this readable on
+                      both desktop and tablet widths. */}
+                  {profile.current_contract && (
+                    <div className="sm:col-span-2 lg:col-span-3 mt-2 pt-4 border-t border-stone-200">
+                      <div className="flex items-center gap-2 mb-3">
+                        <FileText className="w-3.5 h-3.5 text-stone-400" />
+                        <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Current contract</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-3">
+                        <Field icon={Calendar} label="Started" value={profile.current_contract.commencement_date ? new Date(profile.current_contract.commencement_date).toLocaleDateString("en-GB") : "—"} />
+                        <Field icon={Clock} label="Expires" value={profile.current_contract.renewal_date ? new Date(profile.current_contract.renewal_date).toLocaleDateString("en-GB") : "—"} />
+                        <Field icon={FileText} label="Term" value={profile.current_contract.contract_term_years ? `${profile.current_contract.contract_term_years} year${profile.current_contract.contract_term_years === 1 ? "" : "s"}` : "—"} />
+                      </div>
+                    </div>
+                  )}
                   {addressLines.length > 0 && (
                     <div className="sm:col-span-2 lg:col-span-3" data-testid="portal-address">
                       <div className="flex items-start gap-3">
