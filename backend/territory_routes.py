@@ -631,6 +631,13 @@ def build_territory_router(db, require_role):  # noqa: D401
                 or " ".join([(f.get("first_name") or ""), (f.get("last_name") or "")]).strip()
                 or f"#{f.get('franchise_number') or '?'}"
             )
+            # Separate "person owning the franchise" so the map can show both
+            # the business name and the human being.
+            owner_name = (
+                f.get("full_name")
+                or " ".join([(f.get("first_name") or ""), (f.get("last_name") or "")]).strip()
+                or ""
+            )
             hq_lat = None
             hq_lng = None
             if f.get("postcode"):
@@ -641,6 +648,7 @@ def build_territory_router(db, require_role):  # noqa: D401
             franchisee_meta.append({
                 "id": f["id"],
                 "name": name,
+                "owner_name": owner_name,
                 "organisation": f.get("organisation"),
                 "franchise_number": f.get("franchise_number"),
                 "postcode": f.get("postcode"),
@@ -660,6 +668,8 @@ def build_territory_router(db, require_role):  # noqa: D401
                         "sector": s,
                         "franchisee_id": f["id"],
                         "name": name,
+                        "owner_name": owner_name,
+                        "franchise_number": f.get("franchise_number") or "",
                         "color": color,
                     },
                 })

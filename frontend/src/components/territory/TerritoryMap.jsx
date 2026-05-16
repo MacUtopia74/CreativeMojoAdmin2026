@@ -221,10 +221,13 @@ export default function TerritoryMap({
       map.on("click", "franchisee-fill", (e) => {
         const f = e.features?.[0];
         if (!f) return;
+        const p = f.properties || {};
+        const fnum = p.franchise_number ? `#${String(p.franchise_number).replace(/</g, "&lt;")} ` : "";
         const html = `
-          <div style="font-family:Inter,system-ui;font-size:12px;line-height:1.35">
-            <strong>${(f.properties.name || "").replace(/</g, "&lt;")}</strong><br/>
-            <span style="color:#57534e">Sector ${(f.properties.sector || "").replace(/</g, "&lt;")}</span>
+          <div style="font-family:Inter,system-ui;font-size:12px;line-height:1.4;min-width:180px">
+            <strong>${fnum}${(p.name || "").replace(/</g, "&lt;")}</strong>
+            ${p.owner_name ? `<div style="color:#0c0a09;margin-top:2px">${String(p.owner_name).replace(/</g, "&lt;")}</div>` : ""}
+            <div style="color:#78716c;margin-top:3px">Sector ${(p.sector || "").replace(/</g, "&lt;")}</div>
           </div>`;
         new mapboxgl.Popup({ offset: 12, closeButton: true })
           .setLngLat(e.lngLat)
@@ -403,11 +406,12 @@ export default function TerritoryMap({
         text-shadow:0 1px 1px rgba(0,0,0,.35);`;
       el.textContent = f.franchise_number ? `#${f.franchise_number}` : "";
       const popupHtml = `
-        <div style="font-family:Inter,system-ui;font-size:12px;line-height:1.4">
+        <div style="font-family:Inter,system-ui;font-size:12px;line-height:1.4;min-width:180px">
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
             <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${f.color};border:1px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.2)"></span>
             <strong>${(f.name || "").replace(/</g, "&lt;")}</strong>
           </div>
+          ${f.owner_name ? `<div style="color:#0c0a09">${String(f.owner_name).replace(/</g, "&lt;")}</div>` : ""}
           ${f.franchise_number ? `<div style="color:#78716c">Franchise #${f.franchise_number}</div>` : ""}
           ${f.postcode ? `<div style="color:#78716c">HQ ${String(f.postcode).replace(/</g, "&lt;")}</div>` : ""}
           <div style="color:#78716c">${f.sectors?.length || 0} sector${f.sectors?.length === 1 ? "" : "s"}</div>

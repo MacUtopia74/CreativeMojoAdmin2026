@@ -14,7 +14,7 @@ import TerritoryMap from "@/components/territory/TerritoryMap";
 import {
   Search, Loader2, Target, Save, Trash2, MapPin, Plus, RotateCcw,
   Users, AlertCircle, CheckCircle2, Pencil, ChevronRight, ArrowLeft,
-  ClipboardPaste, Layers, Eye, EyeOff,
+  ClipboardPaste, Layers, Eye, EyeOff, ChevronDown, ChevronUp,
 } from "lucide-react";
 
 const TARGET_HOMES = 150;
@@ -50,6 +50,16 @@ export default function TerritoryBuilderPage() {
   // isn't duplicated in the background.
   const [overlay, setOverlay] = useState({ franchisees: [], geojson: null, outlines: null });
   const [showOverlay, setShowOverlay] = useState(true);
+  // Legend panel is collapsible — admins who already know the colours can
+  // tuck it away to give the map more vertical real estate. Persisted across
+  // sessions so the preference sticks.
+  const [legendOpen, setLegendOpen] = useState(() => {
+    try { return localStorage.getItem("cm.tb.legendOpen") !== "0"; }
+    catch { return true; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("cm.tb.legendOpen", legendOpen ? "1" : "0"); } catch {/* ignore */}
+  }, [legendOpen]);
 
   // Load contact details + existing plans if contact_id is provided
   useEffect(() => {
@@ -333,29 +343,42 @@ export default function TerritoryBuilderPage() {
       <div className="grid lg:grid-cols-3 gap-5">
         {/* Map */}
         <div className="lg:col-span-2 space-y-3">
-          {/* Overlay toggle + scroll-shy legend so admins can see which colour
-              belongs to which franchisee without leaving the map. */}
-          <div className="bg-white border border-stone-200 rounded-2xl p-3 flex items-start gap-3 flex-wrap">
-            <button
-              onClick={() => setShowOverlay((v) => !v)}
-              data-testid="toggle-franchisee-overlay"
-              className={`px-3 py-2 text-[11px] font-bold uppercase tracking-wider rounded-lg border flex items-center gap-1.5 shrink-0 ${showOverlay ? "bg-stone-950 text-white border-stone-950" : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"}`}
-              title={showOverlay ? "Hide every franchisee's territory" : "Show every franchisee's territory"}
-            >
-              {showOverlay ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-              <Layers className="w-3.5 h-3.5" />
-              {overlay.franchisees.length} live franchisee{overlay.franchisees.length === 1 ? "" : "s"}
-            </button>
-            {showOverlay && overlay.franchisees.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 flex-1" data-testid="franchisee-legend">
+          {/* Overlay toggle + collapsible legend so admins can see which
+              colour belongs to which franchisee. Header stays slim; the
+              chip grid below collapses to give the map more room. */}
+          <div className="bg-white border border-stone-200 rounded-2xl">
+            <div className="p-3 flex items-center gap-3 flex-wrap">
+              <button
+                onClick={() => setShowOverlay((v) => !v)}
+                data-testid="toggle-franchisee-overlay"
+                className={`px-3 py-2 text-[11px] font-bold uppercase tracking-wider rounded-lg border flex items-center gap-1.5 shrink-0 ${showOverlay ? "bg-stone-950 text-white border-stone-950" : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"}`}
+                title={showOverlay ? "Hide every franchisee's territory" : "Show every franchisee's territory"}
+              >
+                {showOverlay ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                <Layers className="w-3.5 h-3.5" />
+                {overlay.franchisees.length} live franchisee{overlay.franchisees.length === 1 ? "" : "s"}
+              </button>
+              {showOverlay && overlay.franchisees.length > 0 && (
+                <button
+                  onClick={() => setLegendOpen((v) => !v)}
+                  data-testid="toggle-legend"
+                  className="ml-auto text-[11px] font-bold uppercase tracking-wider text-stone-600 hover:text-stone-950 flex items-center gap-1.5 px-2 py-1.5 rounded-md hover:bg-stone-50"
+                >
+                  {legendOpen ? "Hide legend" : "Show legend"}
+                  {legendOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                </button>
+              )}
+            </div>
+            {showOverlay && legendOpen && overlay.franchisees.length > 0 && (
+              <div className="px-3 pb-3 grid grid-cols-2 md:grid-cols-3 gap-1.5" data-testid="franchisee-legend">
                 {overlay.franchisees.map((f) => (
                   <button
                     key={f.id}
                     onClick={() => {
                       if (f.hq_lat != null && f.hq_lng != null) setCentre({ lat: f.hq_lat, lng: f.hq_lng });
                     }}
-                    title={`Jump to ${f.name}${f.postcode ? " · " + f.postcode : ""}`}
-                    className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold rounded-md border border-stone-200 bg-stone-50 hover:bg-stone-100 max-w-[200px]"
+                    title={`Jump to ${f.name}${f.owner_name ? " · " + f.owner_name : ""}${f.postcode ? " · " + f.postcode : ""}`}
+                    className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold rounded-md border border-stone-200 bg-stone-50 hover:bg-stone-100 min-w-0"
                     data-testid={`legend-${f.id}`}
                   >
                     <span className="w-2.5 h-2.5 rounded-full border border-white shadow-sm shrink-0" style={{ background: f.color }} />
