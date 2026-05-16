@@ -48,6 +48,21 @@ def parse_postcode(raw: Optional[str]) -> tuple[Optional[str], Optional[str], Op
     return f"{out} {sec_digit}{unit}", f"{out} {sec_digit}", out
 
 
+def _normalise_sector(raw: str) -> Optional[str]:
+    """Normalise a raw sector string into "OUTCODE D" form (single space).
+    Returns None for unparseable input.
+
+    Examples:  "co7 0" → "CO7 0",  "ex151" → "EX15 1",  "AB10 1" → "AB10 1".
+    """
+    if not raw:
+        return None
+    s = re.sub(r"\s+", "", raw.upper())
+    m = re.match(r"^([A-Z]{1,2}\d[A-Z\d]?)(\d)$", s)
+    if not m:
+        return None
+    return f"{m.group(1)} {m.group(2)}"
+
+
 class TerritoryPlanIn(BaseModel):
     contact_id: Optional[str] = None
     franchisee_id: Optional[str] = None
@@ -132,142 +147,104 @@ def build_territory_router(db, require_role):  # noqa: D401
         radius_km: float = Query(10.0, ge=0.5, le=80.0),
         _user: dict = Depends(require_role("admin", "franchisee")),
     ):
-        """Returns CQC postcode sectors whose centroid lies within `radius_km`
-        of the provided lat/lon, each with its CQC home count and an
-        approximate centre point (sampled from postcodes.io).
+        """Returns every postcode sector whose ONS polygon intersects a
+        circle of `radius_km` around (lat, lon), with each sector's real
+        boundary geometry and current CQC home count.
 
-        Implementation uses a coarse bounding-box filter over a sample of
-        postcodes within each sector — we don't store geometry for sectors
-        themselves, so we approximate each sector's location by sampling
-        one of its CQC home postcodes (cached via postcodes_cache).
+        Source data: `postcode_sector_polygons` (GeoLytix/ONS 2012, imported
+        via ``scripts/import_postcode_sectors.py``). The 2dsphere index on
+        `geometry` makes this a millisecond-scale spatial query — no
+        per-postcode geocoding, no Voronoi.
         """
-        # Convert radius to degrees. 1° lat ≈ 111 km always, 1° lon depends on lat.
         import math
+        # Build a circle (polygon) for $geoIntersects. MongoDB requires a
+        # closed polygon ring; we approximate the great-circle disc with 36
+        # vertices, which is more than enough at any UK scale.
         deg_lat = radius_km / 111.0
         deg_lon = radius_km / (111.0 * max(0.1, math.cos(math.radians(lat))))
-        # Find any cached postcodes in the bounding box, group by sector
-        box_query = {
-            "latitude": {"$gte": lat - deg_lat, "$lte": lat + deg_lat},
-            "longitude": {"$gte": lon - deg_lon, "$lte": lon + deg_lon},
-        }
-        cached_pcs = await db.postcodes_cache.find(box_query, {"_id": 0}).to_list(2000)
-        seen_sectors = {pc["sector"] for pc in cached_pcs if pc.get("sector")}
-        # Cold-start: if we don't yet have many cached postcodes in this area,
-        # geocode a sample of CQC homes whose districts match cached districts.
-        sample_districts = list({pc.get("district") for pc in cached_pcs if pc.get("district")})
-        # Even colder: if the cache is completely empty in this area, fall back
-        # to looking up districts geographically by sampling all CQC districts
-        # — we'll attempt a few unique sectors and see which fall in the bbox.
-        if not sample_districts:
-            # Take 200 random CQC sectors and geocode their first postcode.
-            random_sectors = await db.cqc_locations.aggregate([
-                {"$sample": {"size": 250}},
-                {"$group": {"_id": "$postcode_sector"}},
-            ]).to_list(250)
-            candidate_seed = [s["_id"] for s in random_sectors if s["_id"]]
-        else:
-            candidate_seed = await db.cqc_locations.distinct(
-                "postcode_sector", {"postcode_district": {"$in": sample_districts}},
-            )
-        # For sectors we don't have a centroid for yet, geocode one sample
-        missing = [s for s in candidate_seed if s and s not in seen_sectors]
-        for sec in missing[:120]:  # cap geocoding per request
-            sample = await db.cqc_locations.find_one(
-                {"postcode_sector": sec}, {"_id": 0, "postcode": 1},
-            )
-            if not sample or not sample.get("postcode"):
-                continue
-            try:
-                async with httpx.AsyncClient(timeout=5.0) as client:
-                    r = await client.get(
-                        f"https://api.postcodes.io/postcodes/"
-                        f"{sample['postcode'].replace(' ', '%20')}",
-                    )
-                    if r.status_code == 200:
-                        res = r.json().get("result") or {}
-                        if res.get("latitude") and res.get("longitude"):
-                            pc_doc = {
-                                "_id": sample["postcode"],
-                                "postcode": sample["postcode"],
-                                "sector": sec,
-                                "district": sec.split(" ")[0],
-                                "latitude": res["latitude"],
-                                "longitude": res["longitude"],
-                                "cached_at": datetime.now(timezone.utc),
-                            }
-                            await db.postcodes_cache.update_one(
-                                {"_id": sample["postcode"]},
-                                {"$set": pc_doc},
-                                upsert=True,
-                            )
-                            cached_pcs.append(pc_doc)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Postcodes.io lookup failed for %s: %s", sec, exc)
-        # Now group: one centroid per sector, plus home count
-        sector_map: dict[str, dict] = {}
-        for pc in cached_pcs:
-            sec = pc.get("sector")
-            if not sec:
-                continue
-            d_lat = pc.get("latitude")
-            d_lon = pc.get("longitude")
-            if d_lat is None or d_lon is None:
-                continue
-            # Distance check (simple equirectangular approximation)
-            import math
-            dx = (d_lon - lon) * math.cos(math.radians(lat)) * 111.0
-            dy = (d_lat - lat) * 111.0
-            dist = math.sqrt(dx * dx + dy * dy)
-            if dist > radius_km:
-                continue
-            if sec not in sector_map or dist < sector_map[sec]["distance_km"]:
-                sector_map[sec] = {
-                    "sector": sec,
-                    "latitude": d_lat,
-                    "longitude": d_lon,
-                    "distance_km": round(dist, 2),
-                }
-        # Home counts — use live CQC collection filtered by the
-        # admin-defined "what counts as one of our homes" rule.
-        if sector_map:
-            homes_coll = await _homes_collection()
-            base_filter = await _homes_filter()
-            counts = await homes_coll.aggregate([
-                {"$match": {**base_filter, "postcode_sector": {"$in": list(sector_map.keys())}}},
-                {"$group": {"_id": "$postcode_sector", "n": {"$sum": 1}}},
-            ]).to_list(5000)
-            for c in counts:
-                if c["_id"] in sector_map:
-                    sector_map[c["_id"]]["home_count"] = c["n"]
-        # Attach Voronoi polygon geometries (one per sector)
-        if sector_map:
-            geoms = await db.sector_geometries.find(
-                {"sector": {"$in": list(sector_map.keys())}},
-                {"_id": 0, "sector": 1, "geometry": 1},
-            ).to_list(5000)
-            for g in geoms:
-                if g["sector"] in sector_map:
-                    sector_map[g["sector"]]["geometry"] = g["geometry"]
-        result = sorted(sector_map.values(), key=lambda x: x["distance_km"])
-        for r in result:
-            r.setdefault("home_count", 0)
-        return {"sectors": result, "count": len(result)}
+        ring = []
+        for i in range(36):
+            a = 2 * math.pi * i / 36
+            ring.append([lon + deg_lon * math.cos(a), lat + deg_lat * math.sin(a)])
+        ring.append(ring[0])
+        circle = {"type": "Polygon", "coordinates": [ring]}
 
-    @router.get("/territory/sector-geometries")
-    async def sector_geometries(
+        docs = await db.postcode_sector_polygons.find(
+            {"geometry": {"$geoIntersects": {"$geometry": circle}}},
+            {"_id": 0, "sector": 1, "district": 1, "geometry": 1, "ref_postcode": 1},
+        ).to_list(2000)
+        if not docs:
+            return {"sectors": [], "count": 0}
+
+        sector_codes = [d["sector"] for d in docs]
+        # Home counts from live CQC + active definition
+        homes_coll = await _homes_collection()
+        base_filter = await _homes_filter()
+        counts = await homes_coll.aggregate([
+            {"$match": {**base_filter, "postcode_sector": {"$in": sector_codes}}},
+            {"$group": {"_id": "$postcode_sector", "n": {"$sum": 1}}},
+        ]).to_list(5000)
+        c_map = {c["_id"]: c["n"] for c in counts}
+
+        # Distance from request centre to each sector's reference postcode
+        # (approximate — used purely for sorting & display, not selection).
+        ref_pcs = [d["ref_postcode"] for d in docs if d.get("ref_postcode")]
+        pc_lookup = {}
+        if ref_pcs:
+            pcs = await db.postcodes_cache.find(
+                {"_id": {"$in": ref_pcs}},
+                {"_id": 1, "latitude": 1, "longitude": 1},
+            ).to_list(5000)
+            pc_lookup = {p["_id"]: p for p in pcs}
+
+        out = []
+        for d in docs:
+            ref = pc_lookup.get(d.get("ref_postcode") or "", {})
+            d_lat = ref.get("latitude")
+            d_lon = ref.get("longitude")
+            if d_lat is None or d_lon is None:
+                # Approximate sector centroid from the first ring vertex
+                try:
+                    if d["geometry"]["type"] == "Polygon":
+                        coords = d["geometry"]["coordinates"][0][0]
+                    else:
+                        coords = d["geometry"]["coordinates"][0][0][0]
+                    d_lon, d_lat = coords[0], coords[1]
+                except Exception:  # noqa: BLE001
+                    d_lat = d_lon = None
+            if d_lat is not None:
+                dx = (d_lon - lon) * math.cos(math.radians(lat)) * 111.0
+                dy = (d_lat - lat) * 111.0
+                dist = round(math.sqrt(dx * dx + dy * dy), 2)
+            else:
+                dist = 0.0
+            out.append({
+                "sector": d["sector"],
+                "geometry": d["geometry"],
+                "latitude": d_lat,
+                "longitude": d_lon,
+                "distance_km": dist,
+                "home_count": c_map.get(d["sector"], 0),
+            })
+        out.sort(key=lambda x: x["distance_km"])
+        return {"sectors": out, "count": len(out)}
+
+    @router.get("/territory/sector-polygons")
+    async def sector_polygons(
         sectors: str = Query(..., description="Comma-separated sector codes"),
         _user: dict = Depends(require_role("admin", "franchisee")),
     ):
-        codes = [s.strip().upper() for s in sectors.split(",") if s.strip()]
+        """Return real ONS boundary polygons for the requested sectors plus
+        their live CQC home counts. Replaces the legacy
+        ``/territory/sector-geometries`` Voronoi endpoint."""
+        codes = [_normalise_sector(s) for s in sectors.split(",") if s.strip()]
+        codes = [c for c in codes if c]
         if not codes:
-            return {"sectors": []}
-        geoms = await db.sector_geometries.find(
-            {"sector": {"$in": codes}}, {"_id": 0},
+            return {"sectors": [], "count": 0}
+        docs = await db.postcode_sector_polygons.find(
+            {"sector": {"$in": codes}},
+            {"_id": 0, "sector": 1, "geometry": 1, "district": 1},
         ).to_list(5000)
-        pcs = await db.postcodes_cache.find(
-            {"sector": {"$in": codes}}, {"_id": 0, "sector": 1, "latitude": 1, "longitude": 1},
-        ).to_list(5000)
-        pc_map = {p["sector"]: p for p in pcs}
         homes_coll = await _homes_collection()
         base_filter = await _homes_filter()
         counts = await homes_coll.aggregate([
@@ -275,18 +252,31 @@ def build_territory_router(db, require_role):  # noqa: D401
             {"$group": {"_id": "$postcode_sector", "n": {"$sum": 1}}},
         ]).to_list(5000)
         c_map = {c["_id"]: c["n"] for c in counts}
-        out = []
-        for g in geoms:
-            sec = g["sector"]
-            centre = pc_map.get(sec, {})
-            out.append({
-                "sector": sec,
-                "geometry": g.get("geometry"),
-                "latitude": centre.get("latitude"),
-                "longitude": centre.get("longitude"),
-                "home_count": c_map.get(sec, 0),
-            })
+        out = [
+            {
+                "sector": d["sector"],
+                "geometry": d["geometry"],
+                "district": d.get("district"),
+                "home_count": c_map.get(d["sector"], 0),
+            }
+            for d in docs
+        ]
+        # Sectors with no polygon (e.g. NI postcodes — not in GB dataset) are
+        # still returned with a null geometry so the UI can flag them.
+        found = {d["sector"] for d in docs}
+        for c in codes:
+            if c not in found:
+                out.append({"sector": c, "geometry": None, "district": c.split(" ")[0], "home_count": c_map.get(c, 0)})
         return {"sectors": out, "count": len(out)}
+
+    # Back-compat alias for any old frontend caches still hitting the
+    # legacy endpoint name — same payload, just reads from the new collection.
+    @router.get("/territory/sector-geometries")
+    async def sector_geometries_alias(
+        sectors: str = Query(...),
+        _user: dict = Depends(require_role("admin", "franchisee")),
+    ):
+        return await sector_polygons(sectors=sectors, _user=_user)  # type: ignore[arg-type]
 
     # ------------------------------------------------------------------ homes
     @router.get("/territory/homes")

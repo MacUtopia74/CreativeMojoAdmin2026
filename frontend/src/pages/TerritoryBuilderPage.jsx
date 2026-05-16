@@ -124,7 +124,7 @@ export default function TerritoryBuilderPage() {
       let owned = [];
       const ownedCodes = (franchiseeId && franchisee?.territory_sectors) || [];
       if (ownedCodes.length) {
-        const { data } = await api.get("/territory/sector-geometries", {
+        const { data } = await api.get("/territory/sector-polygons", {
           params: { sectors: ownedCodes.join(",") },
         });
         owned = data.sectors || [];
@@ -318,11 +318,11 @@ export default function TerritoryBuilderPage() {
             height={620}
           />
           <div className="text-[11px] text-stone-500 mt-2 flex items-center gap-3 flex-wrap">
-            <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-stone-950" /> Selected</span>
-            <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-white border-2 border-stone-400" /> Available</span>
+            <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-[#D4FF00] border border-[#14532D]" /> Selected sector</span>
+            <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-stone-200 border border-stone-400" /> Available sector</span>
             <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-red-500 border-2 border-white shadow" /> Contact's postcode</span>
             <span className="text-stone-400">·</span>
-            <span>Numbers on each dot are CQC home counts in that sector</span>
+            <span>Zoom in to see each sector code and its live CQC home count</span>
           </div>
         </div>
 

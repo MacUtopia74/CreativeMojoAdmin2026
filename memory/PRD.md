@@ -28,6 +28,21 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
 - **Phase 4** Territory mapping tool + public find-a-class embed (replaces DaD Postcode Lookup)
 - **Phase 5** Licensee portal + 8-download/month quota + optional GoCardless webhook
 
+## What's Implemented (2026-05-16)
+
+### Phase 4 — Iteration 23 (2026-05-16) ✅ Real ONS postcode-sector boundaries
+- **Removed all generated polygons** (Voronoi, convex hulls, centroid joins). The map now renders the true Royal Mail / GeoLytix postcode-sector boundaries imported from the Edinburgh DataShare / ONS Open Geography release of 2014 GeoLytix data (OGL licence). 9 232 sectors covering Great Britain (England, Wales, Scotland).
+- **New collection** `postcode_sector_polygons` keyed by `sector` (e.g. ``"CO15 1"``, ``"AB10 1"``). 25 MB total in Mongo with a 2dsphere index for fast `$geoIntersects` queries.
+- **New importer** `backend/scripts/import_postcode_sectors.py` — reads `data/GB_Postcodes/PostalSector.shp`, reprojects EPSG:27700 → WGS84 with pyproj, applies a 0.0003° Douglas-Peucker simplify (~30 m, invisible at city zoom), upserts into Mongo, builds indexes.
+- **New endpoint** `GET /api/territory/sector-polygons?sectors=A,B,C` returns a `FeatureCollection`-style list filtered to the requested codes with live CQC home counts attached. Accepts mixed spacings (`co70`, `CO7 0`, `ex151`) and normalises them.
+- **Rewritten** `GET /api/territory/sectors-near` to use a real spatial query (`$geoIntersects` against a 36-vertex circle ring) instead of per-postcode geocoding. Millisecond-scale, exact selection, no postcodes.io chatter.
+- **TerritoryMap.jsx** rewritten — single GeoJSON source, one fill layer (translucent `#D4FF00` brand-yellow for selected, light stone for available), one outline layer (`#14532D` dark green), one label layer (`zoom ≥ 9`). Internal sector boundaries are preserved (no merging). Added `interactive={false}` mode for read-only widgets (auto-fits bounds to the selected sectors).
+- **Deleted** `backend/build_sector_voronoi.py` and dropped the `sector_geometries` collection (7 171 legacy Voronoi polygons purged). Removed the 180 MB source zip from `/app/backend/data/`; shapefile remains for re-import.
+- **Back-compat alias** `GET /api/territory/sector-geometries` kept (delegates to `sector-polygons`) so any cached frontend bundle keeps working.
+- **Edge case**: Northern Ireland (`BT…`) sectors aren't in the GB dataset — the endpoint returns the row with `geometry: null` so the UI can flag/skip gracefully. Scotland (`EH…`, `FK…`, `IV…`, etc.) is fully covered, though CQC is England-only so home counts are 0 for now (Care Inspectorate / RQIA integration is still backlog).
+- **Tests**: 5/5 in `backend/tests/test_postcode_sectors.py` pass (geometry validity, input normalisation, spatial $geoIntersects against Colchester, null-geometry for unknown sectors, legacy alias).
+- **Visual verification**: admin Territory Builder for franchise #0094 (Axminster–Weymouth, 59 sectors) and franchisee portal map for Sandra (Creative Mojo NW Devon, 5 sectors) both render the real postcode-sector polygons exactly as specified.
+
 ## What's Implemented (2026-05-15)
 
 ### Phase 3 — Iteration 22 (2026-05-15) ✅ Auto-folder bootstrap (Artwork / Franchise Agreement / Territory)

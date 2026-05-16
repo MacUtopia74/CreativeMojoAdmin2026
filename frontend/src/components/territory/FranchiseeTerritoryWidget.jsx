@@ -28,12 +28,11 @@ export default function FranchiseeTerritoryWidget({ franchiseeId }) {
         setSummary(data);
         const list = data.sectors || [];
         if (list.length) {
-          // Pull every owned sector's polygon + home count in one shot.
-          const { data: geoms } = await api.get("/territory/sector-geometries", {
+          // Pull every owned sector's real ONS polygon + live home count.
+          const { data: geoms } = await api.get("/territory/sector-polygons", {
             params: { sectors: list.join(",") },
           });
-          const owned = (geoms.sectors || []).map((s) => ({ ...s, owned: true }));
-          setSectors(owned);
+          setSectors(geoms.sectors || []);
         } else {
           setSectors([]);
         }
@@ -122,7 +121,7 @@ export default function FranchiseeTerritoryWidget({ franchiseeId }) {
           centre={summary.centre}
           centreLabel={summary.franchisee?.organisation || summary.franchisee?.postcode || ""}
           height={420}
-          mode="merged"
+          interactive={false}
         />
       ) : (
         <div className="text-sm text-stone-500 bg-stone-50 border border-dashed border-stone-300 rounded-xl px-4 py-6 text-center">
