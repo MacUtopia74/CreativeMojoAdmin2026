@@ -1,11 +1,14 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
 import api from "@/lib/api";
 import { formatDate, daysFromToday } from "@/lib/date";
-import { ArrowLeft, MapPin, AlertCircle, User, FileText, Map, MessageSquare, Pencil, Check, X as XIcon, Clock, ShieldCheck, ShieldAlert, Globe, Facebook, CreditCard, RefreshCw, AlertTriangle, Power, PowerOff, BellRing, FolderOpen, LockKeyhole } from "lucide-react";
+import { ArrowLeft, MapPin, AlertCircle, User, FileText, Map, MessageSquare, Pencil, Check, X as XIcon, Clock, ShieldCheck, ShieldAlert, Globe, Facebook, CreditCard, RefreshCw, AlertTriangle, Power, PowerOff, BellRing, FolderOpen, LockKeyhole, Calendar, Camera, Loader2 } from "lucide-react";
 import FranchiseeFilesPanel from "@/components/files/FranchiseeFilesPanel";
 import FranchiseePortalControls from "@/components/franchisee/FranchiseePortalControls";
 import FranchiseeTerritoryWidget from "@/components/territory/FranchiseeTerritoryWidget";
+import RecentFilesStrip from "@/components/files/RecentFilesStrip";
+import FilePreviewModal from "@/components/files/FilePreviewModal";
+import AddContractModal from "@/components/franchisee/AddContractModal";
 
 // Live GoCardless mandate status pill (read from cached franchisee fields)
 const MANDATE_STYLES = {
@@ -233,6 +236,10 @@ export default function FranchiseeDetailPage() {
   const [draft, setDraft] = useState({});
   const [saving, setSaving] = useState(false);
   const [lifecycleBusy, setLifecycleBusy] = useState(false);
+  const [previewFile, setPreviewFile] = useState(null);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const fileInputRef = useRef(null);
+  const [contractModal, setContractModal] = useState(null); // null | "new" | {previous}
 
   useEffect(() => {
     (async () => {
@@ -271,6 +278,36 @@ export default function FranchiseeDetailPage() {
     } catch (e) { /* noop */ }
   };
 
+  const handlePhotoPick = () => fileInputRef.current?.click();
+  const handlePhotoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const { data: res } = await api.post(`/franchisees/${id}/photo`, fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      setFranchisee({ ...data.franchisee, photos: res.photos, photo_url: res.photo_url });
+    } catch (err) {
+      alert(err?.response?.data?.detail || "Could not upload photo");
+    } finally {
+      setPhotoBusy(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  // Open a recent file inside the existing preview modal. We need to add an
+  // R2 download URL because the strip rows don't carry one.
+  const openRecentFile = async (file) => setPreviewFile(file);
+  const downloadRecent = async (key) => {
+    try {
+      const { data: dl } = await api.get("/files/download", { params: { key, attachment: true } });
+      window.location.href = dl.url;
+    } catch (err) { alert(err?.response?.data?.detail || "Could not download."); }
+  };
+
   const startEdit = () => {
     const f = data.franchisee;
     setDraft({
@@ -301,6 +338,24 @@ export default function FranchiseeDetailPage() {
       String(b.renewal_date || "").localeCompare(String(a.renewal_date || "")));
     const cur = sorted.find((c) => !c.cancelled_early) || null;
     return { current: cur, history: sorted.filter((c) => c.id !== cur?.id) };
+  }, [data]);
+
+  // Years as franchisee — derived from the EARLIEST contract commencement
+  // date on file (so renewals don't reset the clock). Falls back to
+  // `date_added` / `created_at` for legacy records without contracts.
+  const yearsAsFranchisee = useMemo(() => {
+    if (!data) return null;
+    const f = data.franchisee || {};
+    const starts = (data.contracts || [])
+      .map((c) => c.commencement_date)
+      .filter(Boolean)
+      .sort();
+    const earliest = starts[0] || f.date_added || f.created_at || null;
+    if (!earliest) return null;
+    const start = new Date(earliest);
+    if (Number.isNaN(start.getTime())) return null;
+    const diff = (Date.now() - start.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
+    return { years: diff, since: earliest };
   }, [data]);
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-stone-500 text-sm uppercase tracking-widest">Loading…</div>;
@@ -395,7 +450,7 @@ export default function FranchiseeDetailPage() {
 
         {/* HERO */}
         <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr_auto] gap-6 items-start">
-          <div>
+          <div className="relative group">
             {photo ? (
               <img src={photo} alt={fullName} className="w-full aspect-square object-cover border border-stone-200 rounded-2xl" />
             ) : (
@@ -403,6 +458,14 @@ export default function FranchiseeDetailPage() {
                 {(f.first_name?.[0] || "?") + (f.last_name?.[0] || "")}
               </div>
             )}
+            {/* Admin-only photo upload overlay */}
+            <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePhotoUpload}
+              data-testid="photo-input" className="hidden" />
+            <button onClick={handlePhotoPick} disabled={photoBusy} data-testid="upload-photo"
+              className="absolute bottom-2 right-2 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-stone-950/85 text-white hover:bg-stone-950 rounded-md flex items-center gap-1.5 backdrop-blur-sm disabled:opacity-60">
+              {photoBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Camera className="w-3 h-3" />}
+              {photoBusy ? "Uploading…" : (photo ? "Replace" : "Upload photo")}
+            </button>
           </div>
           <div className="space-y-3">
             <div className="flex items-center gap-2 flex-wrap">
@@ -414,10 +477,23 @@ export default function FranchiseeDetailPage() {
               <h2 className="font-display text-4xl text-stone-950">{fullName || f.organisation}</h2>
               {f.organisation && fullName && <div className="text-base text-stone-600 mt-1">{f.organisation}</div>}
             </div>
-            <div className="text-sm text-stone-700 flex items-center gap-1.5">
-              <MapPin className="w-3.5 h-3.5 text-stone-400" />
-              {[f.city, f.county, f.postcode].filter(Boolean).join(" · ") || "—"}
+            {/* Full address — line 1, city, county, postcode, country */}
+            <div className="text-sm text-stone-700 flex items-start gap-1.5" data-testid="hero-address">
+              <MapPin className="w-3.5 h-3.5 text-stone-400 mt-0.5 shrink-0" />
+              <div className="leading-relaxed">
+                {[f.address || f.address_street, f.city, f.county, f.postcode, f.country]
+                  .filter(Boolean).join(", ") || "—"}
+              </div>
             </div>
+            {yearsAsFranchisee && (
+              <div className="text-sm text-stone-700 flex items-center gap-1.5" data-testid="hero-years">
+                <Calendar className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                <span>
+                  <strong className="text-stone-950">{yearsAsFranchisee.years.toFixed(1)} years</strong> as a franchisee
+                  <span className="text-stone-500"> · since {formatDate(yearsAsFranchisee.since)}</span>
+                </span>
+              </div>
+            )}
             {otherTags.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
                 {otherTags.map((t) => <span key={t} className="px-2 py-0.5 bg-stone-100 text-xs text-stone-700 rounded-md">{t}</span>)}
@@ -443,9 +519,18 @@ export default function FranchiseeDetailPage() {
         </div>
 
         {/* CONTRACTS — full-width prominent */}
-        <Panel icon={FileText} title={`Contracts (${contracts.length})`} testid="panel-contracts">
+        <Panel icon={FileText} title={`Contracts (${contracts.length})`} testid="panel-contracts"
+          action={
+            <button onClick={() => setContractModal(contracts.length ? { previous: current } : "new")}
+              data-testid="add-contract-btn"
+              className="text-[10px] uppercase tracking-widest font-bold text-stone-700 hover:text-stone-950 flex items-center gap-1 px-2.5 py-1 border border-stone-300 hover:bg-stone-50 rounded-md">
+              <FileText className="w-3 h-3" /> {contracts.length ? "Add / Renew contract" : "Add first contract"}
+            </button>
+          }>
           {contracts.length === 0 ? (
-            <div className="text-sm text-stone-500 text-center py-6">No contracts on file.</div>
+            <div className="text-sm text-stone-500 text-center py-6">
+              No contracts on file. Click <strong>Add first contract</strong> above to start the term.
+            </div>
           ) : (
             <div className="space-y-5">
               {current && <CurrentContractCard contract={current} />}
@@ -495,6 +580,14 @@ export default function FranchiseeDetailPage() {
             users land here as their primary view. Admins see it inline so
             they don't need to bounce to the global Files menu. */}
         <Panel icon={FolderOpen} title="Files" testid="panel-files">
+          {/* Live recents — last 30 days of activity scoped to this
+              franchisee's own folder + shared brand files. */}
+          <RecentFilesStrip
+            franchiseeId={f.id}
+            onOpenFile={openRecentFile}
+            onDownload={downloadRecent}
+            onOpenFolder={() => { /* the FranchiseeFilesPanel below is the browser */ }}
+          />
           <FranchiseeFilesPanel franchisee={f} />
         </Panel>
 
@@ -592,6 +685,24 @@ export default function FranchiseeDetailPage() {
           </Panel>
         )}
       </div>
+      {previewFile && <FilePreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />}
+      {contractModal && (
+        <AddContractModal
+          franchisee={data.franchisee}
+          previous={contractModal === "new" ? null : contractModal.previous}
+          onClose={() => setContractModal(null)}
+          onSaved={async (newContract) => {
+            setContractModal(null);
+            // refresh contracts list — re-fetch the franchisee detail
+            try {
+              const { data: fresh } = await api.get(`/franchisees/${id}`);
+              setData(fresh);
+            } catch (e) {
+              setData((d) => ({ ...d, contracts: [...(d.contracts || []), newContract] }));
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

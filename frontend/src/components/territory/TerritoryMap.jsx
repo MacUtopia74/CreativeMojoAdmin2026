@@ -33,10 +33,14 @@ export default function TerritoryMap({
   height = 520,
   onToggleSector = () => {},
   interactive = true,    // false → no click-toggle (read-only widgets)
+  homes = [],            // optional: numbered markers on the map
+  onMarkerClick = null,  // (idx, home) — typically scrolls the list below
+  flyTo = null,          // { lat, lng } — pan-zoom-here trigger, bumps each update
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const centreMarkerRef = useRef(null);
+  const homeMarkersRef = useRef([]);
   const [ready, setReady] = useState(false);
 
   // ----------------- one-shot map init -----------------
@@ -212,6 +216,46 @@ export default function TerritoryMap({
       }
     }
   }, [centre, centreLabel, ready, interactive]);
+
+  // ----------------- numbered home markers -----------------
+  useEffect(() => {
+    if (!ready || !mapRef.current) return;
+    // Remove previous markers
+    homeMarkersRef.current.forEach((m) => m.remove());
+    homeMarkersRef.current = [];
+    if (!homes.length) return;
+    homes.forEach((home, i) => {
+      if (home.latitude == null || home.longitude == null) return;
+      const el = document.createElement("div");
+      el.className = "cm-home-marker";
+      el.textContent = String(i + 1);
+      el.style.cssText = "background:#14532D;color:#fff;font-size:11px;font-weight:700;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);cursor:pointer;font-family:Inter,system-ui,sans-serif;";
+      const marker = new mapboxgl.Marker(el)
+        .setLngLat([home.longitude, home.latitude])
+        .setPopup(new mapboxgl.Popup({ offset: 16, closeButton: false }).setHTML(
+          `<div style="font-family:Inter,system-ui;font-size:12px;line-height:1.35">
+            <strong>${i + 1}. ${(home.name || "").replace(/</g, "&lt;")}</strong><br/>
+            <span style="color:#57534e">${(home.postalAddressTownCity || home.postcode_district || "").replace(/</g, "&lt;")} · ${(home.postalCode || "").replace(/</g, "&lt;")}</span>
+          </div>`,
+        ))
+        .addTo(mapRef.current);
+      if (onMarkerClick) {
+        el.addEventListener("click", () => onMarkerClick(i, home));
+      }
+      homeMarkersRef.current.push(marker);
+    });
+    return () => {
+      homeMarkersRef.current.forEach((m) => m.remove());
+      homeMarkersRef.current = [];
+    };
+  }, [homes, ready, onMarkerClick]);
+
+  // ----------------- pan-to (used by "Zoom map here" buttons in the list)
+  useEffect(() => {
+    if (!ready || !mapRef.current || !flyTo) return;
+    if (flyTo.lat == null || flyTo.lng == null) return;
+    mapRef.current.flyTo({ center: [flyTo.lng, flyTo.lat], zoom: 14, speed: 1.6 });
+  }, [flyTo, ready]);
 
   if (!TOKEN) {
     return (

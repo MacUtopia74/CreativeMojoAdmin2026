@@ -50,7 +50,7 @@ function ScopeChip({ scope, label }) {
   return <span className="inline-flex items-center gap-1 text-[11px] text-stone-500 truncate"><Users className="w-2.5 h-2.5 text-emerald-600" /> {label || "Franchisee"}</span>;
 }
 
-export default function RecentFilesStrip({ onOpenFile, onDownload, onOpenFolder }) {
+export default function RecentFilesStrip({ onOpenFile, onDownload, onOpenFolder, franchiseeId = null }) {
   // Collapse state. Default = closed.
   const [open, setOpen] = useState(() => {
     try { return localStorage.getItem("recentStripOpen") === "true"; }
@@ -76,11 +76,13 @@ export default function RecentFilesStrip({ onOpenFile, onDownload, onOpenFolder 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await api.get("/files/recent", { params: { days: 30, limit: 200 } });
+      const params = { days: 30, limit: 200 };
+      if (franchiseeId) params.franchisee_id = franchiseeId;
+      const { data } = await api.get("/files/recent", { params });
       setData(data);
     } catch (e) { setData({ items: [], folders: [], days: 30 }); }
     finally { setLoading(false); }
-  }, []);
+  }, [franchiseeId]);
 
   // Always fetch so the count badge is accurate even when collapsed.
   useEffect(() => { load(); }, [load]);

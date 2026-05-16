@@ -152,10 +152,26 @@ async def _fetch_with_retry(http: httpx.AsyncClient, url: str, headers: dict, at
 def _shape_location(raw: dict) -> dict:
     """Reduce a CQC payload to the fields we actually store."""
     sec, dist = _sector(raw.get("postalCode"))
+    # Registration managers — CQC may return as `registrationManagers` (list)
+    # OR (rarely) a flat `registrationManagerName` string. Normalise to one.
+    managers = raw.get("registrationManagers") or []
+    manager_name = None
+    if managers and isinstance(managers, list):
+        first = managers[0] or {}
+        manager_name = " ".join(filter(None, [first.get("title"), first.get("givenName"), first.get("familyName")])).strip() or None
+    # Address — CQC has multiple line fields; we keep what's populated.
+    addr_lines = [
+        raw.get("postalAddressLine1"),
+        raw.get("postalAddressLine2"),
+        raw.get("postalAddressTownCity"),
+        raw.get("postalAddressCounty"),
+        raw.get("postalCode"),
+    ]
     return {
         "locationId": raw.get("locationId"),
         "name": raw.get("name"),
         "providerId": raw.get("providerId"),
+        "providerName": raw.get("providerName"),
         "type": raw.get("type"),
         "organisationType": raw.get("organisationType"),
         "careHome": raw.get("careHome"),
@@ -165,7 +181,10 @@ def _shape_location(raw: dict) -> dict:
         "postcode_sector": sec,
         "postcode_district": dist,
         "postalAddressLine1": raw.get("postalAddressLine1"),
+        "postalAddressLine2": raw.get("postalAddressLine2"),
         "postalAddressTownCity": raw.get("postalAddressTownCity"),
+        "postalAddressCounty": raw.get("postalAddressCounty"),
+        "fullAddress": ", ".join([s for s in addr_lines if s]),
         "localAuthority": raw.get("localAuthority"),
         "region": raw.get("region"),
         "constituency": raw.get("constituency"),
@@ -181,6 +200,10 @@ def _shape_location(raw: dict) -> dict:
         "currentRatings": raw.get("currentRatings"),
         "lastInspection": raw.get("lastInspection"),
         "website": raw.get("website"),
+        "mainPhoneNumber": raw.get("mainPhoneNumber"),
+        "registrationManagers": managers,
+        "registrationManagerName": manager_name,
+        "locationURL": f"https://www.cqc.org.uk/location/{raw.get('locationId')}" if raw.get("locationId") else None,
         "synced_at": datetime.now(timezone.utc),
     }
 

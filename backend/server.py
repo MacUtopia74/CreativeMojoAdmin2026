@@ -13,7 +13,7 @@ import jwt
 import httpx
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Literal
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, Query, UploadFile, File
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, EmailStr, Field, ConfigDict
@@ -770,6 +770,53 @@ async def refresh_franchisee_photos(user: dict = Depends(require_role("admin")))
     return {"ok": True, "stats": stats, "refreshed": len(updated)}
 
 
+@api.post("/franchisees/{franchisee_id}/photo")
+async def upload_franchisee_photo(
+    franchisee_id: str,
+    file: UploadFile = File(...),
+    user: dict = Depends(require_role("admin")),
+):
+    """Admin-only: upload (or replace) a franchisee's profile photo.
+
+    Stored on disk under `UPLOADS_DIR/franchisees/<id>_<ts>.<ext>` and served
+    via `/api/uploads/...`. The franchisee's `photos[0].url` is rewritten so
+    the rest of the app (detail page, listings, portal greeting) picks it up
+    immediately. Existing photos are preserved as `photos[1..n]` so we can
+    revert if needed."""
+    from migration import FRANCHISEE_PHOTOS_DIR
+    FRANCHISEE_PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
+    f = await db.franchisees.find_one({"id": franchisee_id}, {"_id": 0})
+    if not f:
+        raise HTTPException(404, detail="Franchisee not found")
+    ct = (file.content_type or "").lower()
+    if not ct.startswith("image/"):
+        raise HTTPException(415, detail="Only image uploads are accepted")
+    # Pick an extension we trust — never echo the user-supplied filename.
+    ext = {"image/jpeg": "jpg", "image/jpg": "jpg", "image/png": "png",
+           "image/webp": "webp", "image/gif": "gif"}.get(ct, "jpg")
+    ts = int(datetime.now(timezone.utc).timestamp())
+    fname = f"{franchisee_id}_{ts}.{ext}"
+    dest = FRANCHISEE_PHOTOS_DIR / fname
+    payload = await file.read()
+    if len(payload) > 8 * 1024 * 1024:
+        raise HTTPException(413, detail="Photo too large (max 8 MB)")
+    dest.write_bytes(payload)
+    new_url = f"/api/uploads/franchisees/{fname}"
+    new_entry = {"url": new_url, "uploaded": True,
+                 "uploaded_by": user.get("email"),
+                 "uploaded_at": datetime.now(timezone.utc).isoformat()}
+    existing = f.get("photos") or []
+    # Keep existing as fallback at the tail so we can audit / revert later.
+    photos = [new_entry] + [p for p in existing if p.get("url") != new_url]
+    await db.franchisees.update_one({"id": franchisee_id}, {"$set": {
+        "photos": photos,
+        "photo_url": new_url,
+        "updated_at": datetime.now(timezone.utc),
+        "updated_by": user.get("email"),
+    }})
+    return {"photo_url": new_url, "photos": photos}
+
+
 # ----------------------------------------------------------------------------
 # CRM — Franchisees
 # ----------------------------------------------------------------------------
@@ -1220,6 +1267,99 @@ async def get_contract(contract_id: str, _: dict = Depends(require_role("admin")
         raise HTTPException(status_code=404, detail="Contract not found")
     f = await db.franchisees.find_one({"id": c.get("franchisee_id")}, {"_id": 0}) if c.get("franchisee_id") else None
     return {"contract": c, "franchisee": f}
+
+
+class ContractIn(BaseModel):
+    franchisee_id: str
+    contract_term_years: int = Field(..., ge=1, le=10)
+    commencement_date: str  # YYYY-MM-DD
+    initial_starting_fee: Optional[float] = None
+    monthly_fee: Optional[float] = None
+    notes: Optional[str] = None
+
+
+def _next_contract_ref(existing_max: Optional[int]) -> int:
+    return (existing_max or 0) + 1
+
+
+@api.post("/contracts")
+async def create_contract(body: ContractIn, user: dict = Depends(require_role("admin"))):
+    """Admin-only — create a new contract for a franchisee. The renewal
+    date is auto-computed from `commencement_date + contract_term_years`.
+    Used both for a brand-new franchisee's first contract and for
+    renewals once the previous one expires."""
+    # Validate franchisee exists
+    f = await db.franchisees.find_one({"id": body.franchisee_id}, {"_id": 0, "id": 1, "first_name": 1, "last_name": 1, "email": 1, "organisation": 1})
+    if not f:
+        raise HTTPException(404, detail="Franchisee not found")
+    try:
+        start = datetime.strptime(body.commencement_date[:10], "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise HTTPException(400, detail="commencement_date must be YYYY-MM-DD") from exc
+    # Renewal date = start + N years (calendar maths, leap-year safe)
+    try:
+        renewal = start.replace(year=start.year + body.contract_term_years)
+    except ValueError:
+        # 29 Feb → 28 Feb in non-leap target year
+        renewal = start.replace(month=2, day=28, year=start.year + body.contract_term_years)
+
+    # Generate next ref number
+    last = await db.contracts.find_one({}, {"_id": 0, "ref": 1}, sort=[("ref", -1)])
+    next_ref = _next_contract_ref(last.get("ref") if last else 0)
+
+    contract_id = str(uuid.uuid4())
+    doc = {
+        "id": contract_id,
+        "ref": next_ref,
+        "franchisee_id": body.franchisee_id,
+        "contract_term_years": body.contract_term_years,
+        "commencement_date": start.isoformat(),
+        "renewal_date": renewal.isoformat(),
+        "initial_starting_fee": body.initial_starting_fee,
+        "monthly_fee": body.monthly_fee,
+        "notes": body.notes,
+        "cancelled_early": False,
+        "first_name_rollup": f.get("first_name") or "",
+        "last_name_rollup": f.get("last_name") or "",
+        "email_rollup": (f.get("email") or "").lower(),
+        "organisation_rollup": f.get("organisation") or "",
+        "created_at": datetime.now(timezone.utc),
+        "created_by": user.get("email"),
+    }
+    await db.contracts.insert_one(doc)
+    doc.pop("_id", None)
+    return {"contract": doc}
+
+
+@api.patch("/contracts/{contract_id}")
+async def update_contract(contract_id: str, body: dict, user: dict = Depends(require_role("admin"))):
+    """Update an editable subset of a contract's fields. Re-derives the
+    renewal date if commencement_date or contract_term_years change."""
+    allowed = {"contract_term_years", "commencement_date", "initial_starting_fee",
+               "monthly_fee", "notes", "cancelled_early"}
+    update = {k: v for k, v in (body or {}).items() if k in allowed and v is not None}
+    if not update:
+        raise HTTPException(400, detail="Nothing to update")
+    existing = await db.contracts.find_one({"id": contract_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(404, detail="Contract not found")
+    if "commencement_date" in update or "contract_term_years" in update:
+        start_str = update.get("commencement_date", existing.get("commencement_date"))
+        years = int(update.get("contract_term_years", existing.get("contract_term_years") or 1))
+        try:
+            start = datetime.strptime(str(start_str)[:10], "%Y-%m-%d").date()
+            try:
+                renewal = start.replace(year=start.year + years)
+            except ValueError:
+                renewal = start.replace(month=2, day=28, year=start.year + years)
+            update["renewal_date"] = renewal.isoformat()
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(400, detail=f"Invalid date/term: {exc}") from exc
+    update["updated_at"] = datetime.now(timezone.utc)
+    update["updated_by"] = user.get("email")
+    await db.contracts.update_one({"id": contract_id}, {"$set": update})
+    fresh = await db.contracts.find_one({"id": contract_id}, {"_id": 0})
+    return {"contract": fresh}
 
 
 # ----------------------------------------------------------------------------

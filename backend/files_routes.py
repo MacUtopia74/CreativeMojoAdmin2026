@@ -335,9 +335,14 @@ def build_router(db, require_role) -> APIRouter:
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(502, detail=f"R2 fetch failed: {exc}") from exc
         body = obj["Body"]
+        # Use the original filename so the browser shows it correctly when
+        # opened in a new tab (otherwise it falls back to "proxy" — the URL
+        # path — and triggers a save dialog instead of inline preview).
+        original_name = (existing.get("name") or "file").replace('"', "")
         headers = {
             "Content-Type": existing.get("content_type") or obj.get("ContentType") or "application/octet-stream",
             "Content-Length": str(obj.get("ContentLength") or existing.get("size") or 0),
+            "Content-Disposition": f'inline; filename="{original_name}"',
             # Cache aggressively — these objects are immutable once
             # uploaded (any change creates a new key).
             "Cache-Control": "private, max-age=3600",
@@ -712,11 +717,12 @@ def build_router(db, require_role) -> APIRouter:
     async def files_recent(
         days: int = Query(30, ge=1, le=365),
         limit: int = Query(200, le=500),
-        _user: dict = Depends(require_role("admin")),
+        franchisee_id: Optional[str] = Query(None, description="Restrict to this franchisee's own files (+ shared)"),
+        user: dict = Depends(require_role("admin", "franchisee")),
     ):
         from datetime import timedelta
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-        q = {
+        q: dict = {
             "scope": {"$in": [SCOPE_FRANCHISEE, SCOPE_SHARED]},
             "hidden": {"$ne": True},
             "key": {"$not": re.compile(r"^\.trash/")},
@@ -726,6 +732,26 @@ def build_router(db, require_role) -> APIRouter:
                 {"last_modified": {"$gte": cutoff}},
             ],
         }
+        # Scope: franchisees auto-restrict to their own files + shared.
+        # Admins can pass `franchisee_id` to narrow to one franchisee's
+        # detail page recents.
+        if user.get("role") == "franchisee":
+            fid = user.get("franchisee_id")
+            q["$and"] = [{
+                "$or": [
+                    {"franchisee_id": fid},
+                    {"scope": SCOPE_SHARED},
+                ],
+            }]
+            # Hide the meeting-audio shared subfolder from franchisees
+            q["key"] = {"$not": re.compile(r"^(\.trash/|shared/meeting-audio-files/)")}
+        elif franchisee_id:
+            q["$and"] = [{
+                "$or": [
+                    {"franchisee_id": franchisee_id},
+                    {"scope": SCOPE_SHARED},
+                ],
+            }]
         cur = (db.files_index
                .find(q, {"_id": 0})
                .sort([("uploaded_at", -1), ("imported_at", -1), ("last_modified", -1)])

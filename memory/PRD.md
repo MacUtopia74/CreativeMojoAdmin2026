@@ -30,6 +30,24 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
 
 ## What's Implemented (2026-05-16)
 
+### Phase 4 — Iteration 24 (2026-05-16) ✅ Admin + portal upgrades
+**Franchisee admin polish**
+- **Photo upload** — admin-only camera overlay on the franchisee detail page hero photo. POST `/api/franchisees/{id}/photo` accepts a multipart image (≤ 8 MB), stores it under `UPLOADS_DIR/franchisees/<id>_<ts>.<ext>`, and rewrites `photos[0]` so the rest of the app picks it up. Previous photos preserved as the tail of the array for audit/revert.
+- **Hero info upgrade** — full address (line 1 + line 2 + town + county + postcode + country) rendered with a `MapPin` icon, plus a derived "X years a franchisee · since DD/MM/YYYY" badge computed from the earliest contract `commencement_date` (falls back to `date_added` / `created_at`).
+- **Recent files panel** scoped per-franchisee — `RecentFilesStrip` now accepts a `franchiseeId` prop, and `GET /api/files/recent` accepts a matching query param for admins. Franchisees auto-restrict to their own scope as before.
+- **File preview "Open in new tab"** relabelled to **"Full page preview"** with a real text button. The proxy endpoint now returns `Content-Disposition: inline; filename="<real name>"` so PDFs render inline in the browser tab instead of triggering a "proxy" save dialog.
+
+**Contracts CRUD (admin-only)**
+- `POST /api/contracts` — create a new contract. Body: `franchisee_id`, `contract_term_years` (1–10), `commencement_date` (YYYY-MM-DD), `initial_starting_fee` (£, optional), `monthly_fee` (£, optional), `notes`. Auto-derives `renewal_date` (leap-year safe), allocates the next sequential `ref` number, and copies the franchisee's name/email/org as rollups so listings render fast.
+- `PATCH /api/contracts/{id}` — edits term/date/fees/notes; re-derives `renewal_date` if term or commencement change.
+- Frontend `AddContractModal` — pill-style 1/2/3/4-year term selector, native date picker, live renewal-date preview, £-prefixed fee inputs, free-text notes. Renamed to "Renew contract" when called with a `previous` prop and pre-fills `commencement_date = previous.renewal_date`. Wired into the franchisee detail page Contracts panel header as "Add / Renew contract".
+
+**Franchisee portal map upgrade**
+- `TerritoryMap` now accepts a `homes` array and draws a **numbered green marker** (1, 2, 3…) for each home with a hover popup showing name + town + postcode. Click → `onMarkerClick(i)` so the list below scrolls to the matching row.
+- New `TerritoryHomesList` component — a collapsible card per home with rating badge, address, manager, phone (tel: link), email status, website (clickable), latest inspection date, provider, beds, specialism chips, **"Open CQC page"** (external `locationURL`) and **"Zoom map here"** buttons. Built-in search bar filters by name / town / postcode / manager / provider; numbering stays stable to the full list.
+- `_shape_location()` in `cqc_routes.py` now stores `providerName`, `mainPhoneNumber`, `registrationManagers[]`, `registrationManagerName`, `postalAddressLine2`, `postalAddressCounty`, `fullAddress` (joined string), `locationURL` (`https://www.cqc.org.uk/location/<id>`). Existing 38,180 records back-filled with `fullAddress` + `locationURL`; manager/phone will populate as the in-flight full sync touches each location detail endpoint.
+- Tests: contract CRUD round-trip verified via curl (POST 2-yr contract → PATCH to 4-yr → renewal_date auto-recomputed); 5/5 territory regression tests still pass.
+
 ### Phase 4 — Iteration 23 (2026-05-16) ✅ Real ONS postcode-sector boundaries
 - **Removed all generated polygons** (Voronoi, convex hulls, centroid joins). The map now renders the true Royal Mail / GeoLytix postcode-sector boundaries imported from the Edinburgh DataShare / ONS Open Geography release of 2014 GeoLytix data (OGL licence). 9 232 sectors covering Great Britain (England, Wales, Scotland).
 - **New collection** `postcode_sector_polygons` keyed by `sector` (e.g. ``"CO15 1"``, ``"AB10 1"``). 25 MB total in Mongo with a 2dsphere index for fast `$geoIntersects` queries.

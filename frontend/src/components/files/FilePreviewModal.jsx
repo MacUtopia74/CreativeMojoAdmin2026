@@ -64,8 +64,8 @@ export default function FilePreviewModal({ file, onClose }) {
             )}
             {url && (
               <a href={url} target="_blank" rel="noreferrer" title="Open in new tab"
-                className="w-9 h-9 flex items-center justify-center hover:bg-stone-100 rounded-lg" data-testid="preview-open-tab">
-                <ExternalLink className="w-4 h-4" />
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-[10px] font-bold uppercase tracking-wider border border-stone-300 bg-white text-stone-900 hover:bg-stone-50 rounded-lg" data-testid="preview-open-tab">
+                <ExternalLink className="w-3.5 h-3.5" /> Full page preview
               </a>
             )}
             <button onClick={onClose} data-testid="preview-close" className="w-9 h-9 flex items-center justify-center hover:bg-stone-100 rounded-lg"><X className="w-4 h-4" /></button>
