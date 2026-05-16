@@ -36,11 +36,13 @@ export default function TerritoryMap({
   homes = [],            // optional: numbered markers on the map
   onMarkerClick = null,  // (idx, home) — typically scrolls the list below
   flyTo = null,          // { lat, lng } — pan-zoom-here trigger, bumps each update
+  pinnedPostcode = null, // { postcode, lat, lng, inside } — looked-up postcode pin
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const centreMarkerRef = useRef(null);
   const homeMarkersRef = useRef([]);
+  const pinnedMarkerRef = useRef(null);
   const [ready, setReady] = useState(false);
 
   // ----------------- one-shot map init -----------------
@@ -256,6 +258,36 @@ export default function TerritoryMap({
     if (flyTo.lat == null || flyTo.lng == null) return;
     mapRef.current.flyTo({ center: [flyTo.lng, flyTo.lat], zoom: 14, speed: 1.6 });
   }, [flyTo, ready]);
+
+  // ----------------- pinned postcode (typed by the franchisee in "Check a
+  // postcode"). Distinct from the HQ marker — uses a teardrop shape with a
+  // tick if inside the territory and a cross if outside.
+  useEffect(() => {
+    if (!ready || !mapRef.current) return;
+    if (pinnedMarkerRef.current) { pinnedMarkerRef.current.remove(); pinnedMarkerRef.current = null; }
+    if (!pinnedPostcode || pinnedPostcode.lat == null || pinnedPostcode.lng == null) return;
+    const inside = !!pinnedPostcode.inside;
+    const bg = inside ? "#059669" : "#B91C1C"; // emerald-600 / red-700
+    const icon = inside ? "✓" : "✕";
+    const el = document.createElement("div");
+    el.style.cssText = `width:34px;height:42px;position:relative;cursor:pointer;`;
+    el.innerHTML = `
+      <div style="position:absolute;inset:0;background:${bg};border:3px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 3px 8px rgba(0,0,0,.4);"></div>
+      <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:14px;font-family:Inter,system-ui,sans-serif;padding-bottom:6px;">${icon}</div>
+    `;
+    const marker = new mapboxgl.Marker({ element: el, anchor: "bottom" })
+      .setLngLat([pinnedPostcode.lng, pinnedPostcode.lat])
+      .setPopup(new mapboxgl.Popup({ offset: 24, closeButton: false }).setHTML(
+        `<div style="font-family:Inter,system-ui;font-size:12px;line-height:1.35;text-align:center">
+          <strong>${(pinnedPostcode.postcode || "").replace(/</g, "&lt;")}</strong><br/>
+          <span style="color:${inside ? "#059669" : "#B91C1C"};font-weight:600">${inside ? "Inside your territory" : "Outside your territory"}</span>
+        </div>`,
+      ))
+      .addTo(mapRef.current);
+    marker.togglePopup();
+    pinnedMarkerRef.current = marker;
+    mapRef.current.flyTo({ center: [pinnedPostcode.lng, pinnedPostcode.lat], zoom: 12, speed: 1.4 });
+  }, [pinnedPostcode, ready]);
 
   if (!TOKEN) {
     return (

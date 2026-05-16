@@ -722,15 +722,17 @@ def build_router(db, require_role) -> APIRouter:
     ):
         from datetime import timedelta
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        # "Recent" means a *real user* uploaded the file. We deliberately
+        # exclude `imported_at` and `last_modified` because both fields are
+        # set to the migration date by the FileCamp → R2 importer, which
+        # would otherwise flood every franchisee's portal with the entire
+        # legacy archive as "recent". Once a franchisee uploads a new file
+        # via the portal it'll have `uploaded_at` and show up here.
         q: dict = {
             "scope": {"$in": [SCOPE_FRANCHISEE, SCOPE_SHARED]},
             "hidden": {"$ne": True},
             "key": {"$not": re.compile(r"^\.trash/")},
-            "$or": [
-                {"uploaded_at": {"$gte": cutoff}},
-                {"imported_at": {"$gte": cutoff}},
-                {"last_modified": {"$gte": cutoff}},
-            ],
+            "uploaded_at": {"$gte": cutoff},
         }
         # Scope: franchisees auto-restrict to their own files + shared.
         # Admins can pass `franchisee_id` to narrow to one franchisee's

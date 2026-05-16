@@ -130,9 +130,8 @@ export default function DashboardPage() {
         )}
 
         {/* KPIs */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" data-testid="dashboard-kpis">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4" data-testid="dashboard-kpis">
           <KPI label="Active Franchisees" value={stats?.active_franchisees} hint={`of ${stats?.franchisees_migrated || 0} total`} to="/franchisees" testid="kpi-franchisees" />
-          <KPI label="Active Contracts" value={stats?.active_contracts} hint={`of ${stats?.contracts_migrated || 0} total`} to="/contracts" testid="kpi-contracts" />
           <KPI label="Enquiries" value={stats?.web_form_contacts} hint={`${conversionRate}% converted lifetime`} to="/contacts" testid="kpi-contacts" />
           <KPI label="Territory Postcodes" value={stats?.territories_migrated} hint="DaD bridge → Phase 4" testid="kpi-territories" />
         </div>

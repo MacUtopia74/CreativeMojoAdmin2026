@@ -28,6 +28,9 @@ export default function FranchiseeTerritoryWidget({ franchiseeId }) {
   const [check, setCheck] = useState("");
   const [checkResult, setCheckResult] = useState(null);
   const [checking, setChecking] = useState(false);
+  // The lat/lng we drop a "you-pinned-this" marker for (any postcode the
+  // franchisee just typed — colour depends on whether it's inside).
+  const [pinnedPostcode, setPinnedPostcode] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -72,8 +75,20 @@ export default function FranchiseeTerritoryWidget({ franchiseeId }) {
         district: data.district,
         admin_district: data.admin_district,
       });
+      // Drop a distinct marker on the map for this postcode (lat/lng come
+      // from postcodes.io). The map auto-pans to it.
+      if (data.latitude != null && data.longitude != null) {
+        setPinnedPostcode({
+          postcode: data.postcode || check.trim().toUpperCase(),
+          lat: data.latitude,
+          lng: data.longitude,
+          inside,
+          _t: Date.now(),
+        });
+      }
     } catch (e) {
       setCheckResult({ error: e?.response?.data?.detail || "Could not look up" });
+      setPinnedPostcode(null);
     } finally { setChecking(false); }
   };
 
@@ -152,6 +167,7 @@ export default function FranchiseeTerritoryWidget({ franchiseeId }) {
               if (row) row.scrollIntoView({ behavior: "smooth", block: "center" });
             }}
             flyTo={flyTo}
+            pinnedPostcode={pinnedPostcode}
           />
         ) : (
           <div className="text-sm text-stone-500 bg-stone-50 border border-dashed border-stone-300 rounded-xl px-4 py-6 text-center">
