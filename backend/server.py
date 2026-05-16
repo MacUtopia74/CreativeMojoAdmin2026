@@ -1089,6 +1089,32 @@ async def update_franchisee_lifecycle(
             update["needs_mandate_setup_since"] = now
 
     await db.franchisees.update_one({"id": franchisee_id}, {"$set": update})
+    # Cascade lifecycle change onto the franchisee's contracts so renewals,
+    # anniversaries and other reminders silence themselves automatically when
+    # a franchisee is parked. Reactivation reverses it.
+    if target == "ex_franchisee":
+        await db.contracts.update_many(
+            {"franchisee_id": franchisee_id, "cancelled_early": {"$ne": True}},
+            {"$set": {
+                "cancelled_early": True,
+                "cancelled_at": now,
+                "cancelled_reason": "Franchisee marked as ex-franchisee",
+                "cancelled_by": user.get("email"),
+            }},
+        )
+    else:  # back to active — undo the auto-cancellation we did before
+        await db.contracts.update_many(
+            {
+                "franchisee_id": franchisee_id,
+                "cancelled_early": True,
+                "cancelled_reason": "Franchisee marked as ex-franchisee",
+            },
+            {"$set": {
+                "cancelled_early": False,
+                "cancelled_reactivated_at": now,
+            },
+             "$unset": {"cancelled_at": "", "cancelled_reason": "", "cancelled_by": ""}},
+        )
     # Audit log row
     await db.franchisee_lifecycle_log.insert_one({
         "franchisee_id": franchisee_id,
@@ -1265,16 +1291,37 @@ async def list_contract_renewals(
             bucket = "later"
         rows.append({**c, "days_remaining": days, "bucket": bucket})
 
-    # Attach franchisee photo / mobile / mandate status
+    # Attach franchisee photo / mobile / mandate status / lifecycle
     fids = list({r.get("franchisee_id") for r in rows if r.get("franchisee_id")})
     franchisees_lookup = {
         f["id"]: f for f in await db.franchisees.find(
             {"id": {"$in": fids}},
             {"_id": 0, "id": 1, "first_name": 1, "last_name": 1, "organisation": 1,
              "mojo_email": 1, "email": 1, "mobile_phone": 1, "photos": 1, "postcode": 1,
-             "gocardless_mandate_status": 1, "gocardless_mandate_reference": 1, "tags": 1},
+             "gocardless_mandate_status": 1, "gocardless_mandate_reference": 1,
+             "tags": 1, "lifecycle_status": 1},
         ).to_list(1000)
     }
+    # Drop ex-franchisees entirely — their contracts are historic and should
+    # not surface as upcoming renewals. A franchisee is considered ex if their
+    # lifecycle_status is "ex_franchisee" OR they don't carry the "Franchisee"
+    # tag (legacy data without lifecycle_status set).
+    def _is_active(fdoc: dict | None) -> bool:
+        if not fdoc:
+            return False
+        if fdoc.get("lifecycle_status") == "ex_franchisee":
+            return False
+        tags = fdoc.get("tags") or []
+        # Legacy rows may store `tags` as a single string rather than a list —
+        # normalise so substring checks like "Franchisee" in "EX-Franchisee"
+        # don't false-positive.
+        if isinstance(tags, str):
+            tags = [tags]
+        if "EX-Franchisee" in tags:
+            return False
+        return "Franchisee" in tags
+
+    rows = [r for r in rows if _is_active(franchisees_lookup.get(r.get("franchisee_id")))]
     for r in rows:
         r["franchisee"] = franchisees_lookup.get(r.get("franchisee_id"))
 
