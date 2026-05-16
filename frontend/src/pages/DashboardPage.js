@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import api from "@/lib/api";
-import { RefreshCw, AlertCircle, Calendar, ArrowRight, Activity, TrendingUp, Users, FileText, Contact, MapPin, CreditCard, AlertTriangle, CheckCircle2, BellRing, Mail } from "lucide-react";
+import { RefreshCw, AlertCircle, Calendar, ArrowRight, Activity, TrendingUp, Users, FileText, Contact, MapPin, CreditCard, AlertTriangle, CheckCircle2, BellRing, Mail, CalendarDays, Cake, Video, Clock } from "lucide-react";
 
 const PIPELINE_STAGES = [
   { key: "new", label: "New", color: "bg-stone-400" },
@@ -49,6 +49,7 @@ export default function DashboardPage() {
   const [anniversaries, setAnniversaries] = useState(null);
   const [gcAlerts, setGcAlerts] = useState(null);
   const [renewals, setRenewals] = useState(null);
+  const [calendarEvents, setCalendarEvents] = useState(null);
   const [error, setError] = useState("");
   const [migrating, setMigrating] = useState(false);
   const [migrateResult, setMigrateResult] = useState(null);
@@ -59,7 +60,7 @@ export default function DashboardPage() {
       setStats(data);
     } catch (e) { setError("Could not load dashboard."); }
     try {
-      const { data } = await api.get("/anniversaries/today");
+      const { data } = await api.get("/anniversaries/today", { params: { upcoming_days: 30 } });
       setAnniversaries(data);
     } catch (e) { /* noop */ }
     try {
@@ -67,12 +68,23 @@ export default function DashboardPage() {
       setGcAlerts(data);
     } catch (e) { /* GoCardless optional */ }
     try {
-      // Phase 1.8 — To-Do panel sources contracts expiring in ≤90 days (the
-      // "reminder zone") plus an overdue count. We cap the window at 180d so
-      // the panel stays focused; the full list lives on /renewals.
-      const { data } = await api.get("/contracts/renewals", { params: { within_days: 180 } });
+      // Cap renewals at 365 days so the dashboard buckets can show ≤90d /
+      // 91–180d / 181–365d. Anything beyond a year doesn't need to be on
+      // the dashboard yet — that lives on /renewals.
+      const { data } = await api.get("/contracts/renewals", { params: { within_days: 365 } });
       setRenewals(data);
     } catch (e) { /* renewals optional */ }
+    try {
+      // Phase 5 — only attempt if Google Calendar is connected; otherwise
+      // hide the panel silently.
+      const { data: st } = await api.get("/calendar/status");
+      if (st?.connected) {
+        const { data } = await api.get("/calendar/events", { params: { days_ahead: 5, days_back: 0 } });
+        setCalendarEvents(data.events || []);
+      } else {
+        setCalendarEvents(null);
+      }
+    } catch (e) { setCalendarEvents(null); }
   };
 
   useEffect(() => { refresh(); }, []);
@@ -148,21 +160,18 @@ export default function DashboardPage() {
           ) : (() => {
             const reminderItems = renewals.items.filter((r) => r.days_remaining >= 0 && r.days_remaining <= 90);
             const expiringSoon = renewals.items.filter((r) => r.days_remaining > 90 && r.days_remaining <= 180);
-            if (reminderItems.length === 0 && expiringSoon.length === 0) {
+            const expiringLater = renewals.items.filter((r) => r.days_remaining > 180 && r.days_remaining <= 365);
+            if (reminderItems.length === 0 && expiringSoon.length === 0 && expiringLater.length === 0) {
               return (
                 <div className="flex items-center gap-2 text-sm text-emerald-700 py-1">
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>Nothing to chase right now — no renewals in the next 180 days.</span>
+                  <span>Nothing to chase right now — no renewals in the next 365 days.</span>
                 </div>
               );
             }
             return (
               <div className="space-y-4">
                 <div className="grid grid-cols-3 gap-3">
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-3" data-testid="todo-zone-overdue">
-                    <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-red-700">Already Expired</div>
-                    <div className="font-display text-2xl text-red-900 mt-1 tabular-nums">{renewals.counts.overdue || 0}</div>
-                  </div>
                   <div className="bg-amber-50 border border-amber-200 rounded-lg p-3" data-testid="todo-zone-remind">
                     <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-amber-700">≤ 90 Days · Remind</div>
                     <div className="font-display text-2xl text-amber-900 mt-1 tabular-nums">{reminderItems.length}</div>
@@ -170,6 +179,10 @@ export default function DashboardPage() {
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3" data-testid="todo-zone-180">
                     <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-blue-700">91 — 180 Days</div>
                     <div className="font-display text-2xl text-blue-900 mt-1 tabular-nums">{expiringSoon.length}</div>
+                  </div>
+                  <div className="bg-stone-100 border border-stone-200 rounded-lg p-3" data-testid="todo-zone-365">
+                    <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-700">181 Days — 1 Year</div>
+                    <div className="font-display text-2xl text-stone-900 mt-1 tabular-nums">{expiringLater.length}</div>
                   </div>
                 </div>
                 {reminderItems.length > 0 && (
@@ -217,6 +230,94 @@ export default function DashboardPage() {
           })()}
         </Panel>
 
+        {/* Upcoming franchise anniversaries — full width, sits ABOVE the
+            sales funnel so it's the first thing HQ sees after their renewal
+            to-dos. Today's anniversaries lead with a celebratory badge,
+            followed by everything coming up in the next 30 days. */}
+        <Panel icon={Cake} title="Anniversaries · Today + next 30 days" testid="panel-anniversaries">
+          {!anniversaries ? (
+            <div className="text-sm text-stone-500">Checking…</div>
+          ) : anniversaries.upcoming_count === 0 ? (
+            <div className="text-sm text-stone-500">No franchise anniversaries in the next 30 days.</div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3" data-testid="anniversaries-list">
+              {anniversaries.anniversaries.slice(0, 12).map(({ contract, franchisee, anniversary_date, days_until }) => {
+                const isToday = days_until === 0;
+                const dateLabel = anniversary_date
+                  ? new Date(anniversary_date).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })
+                  : "";
+                const fname = [franchisee?.first_name, franchisee?.last_name].filter(Boolean).join(" ");
+                return (
+                  <Link key={contract.id} to={`/franchisees/${franchisee?.id || ""}`}
+                    className={`block border rounded-xl p-3 hover:shadow-md transition-all ${isToday ? "bg-[#D4FF00]/10 border-[#14532D]/40" : "bg-white border-stone-200 hover:border-stone-400"}`}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md tabular-nums ${
+                        isToday ? "bg-[#D4FF00] text-stone-950" : "bg-stone-100 text-stone-700"
+                      }`}>
+                        {isToday ? "Today" : `In ${days_until}d`}
+                      </span>
+                      <span className="text-[11px] text-stone-500 tabular-nums">{dateLabel}</span>
+                    </div>
+                    <div className="text-sm font-semibold text-stone-950 truncate">{franchisee?.organisation || "—"}</div>
+                    {fname && <div className="text-xs text-stone-500 truncate">{fname}</div>}
+                  </Link>
+                );
+              })}
+              {anniversaries.anniversaries.length > 12 && (
+                <Link to="/renewals" className="border border-dashed border-stone-300 rounded-xl p-3 flex items-center justify-center text-xs text-stone-600 hover:bg-stone-50 hover:border-stone-400">
+                  + {anniversaries.anniversaries.length - 12} more
+                </Link>
+              )}
+            </div>
+          )}
+        </Panel>
+
+        {/* Phase 5 — Calendar feed: next 5 days of events from Google Calendar */}
+        {calendarEvents !== null && (
+          <Panel icon={CalendarDays} title="Calendar · Next 5 days"
+            action={
+              <Link to="/calendar" className="text-xs font-bold uppercase tracking-wider text-stone-700 hover:text-stone-950 flex items-center gap-1" data-testid="dash-open-calendar">
+                Open Calendar <ArrowRight className="w-3 h-3" />
+              </Link>
+            } testid="panel-calendar-next">
+            {calendarEvents.length === 0 ? (
+              <div className="flex items-center gap-2 text-sm text-stone-500">
+                <CalendarDays className="w-4 h-4" />
+                <span>No events in the next 5 days. Add one from <Link to="/calendar" className="underline">Calendar</Link>.</span>
+              </div>
+            ) : (
+              <div className="divide-y divide-stone-100" data-testid="calendar-next-list">
+                {calendarEvents.slice(0, 12).map((e) => {
+                  const start = e.start ? new Date(e.start) : null;
+                  const end = e.end ? new Date(e.end) : null;
+                  const day = start ? start.toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" }) : "—";
+                  const timeStr = e.all_day || !start
+                    ? "All day"
+                    : `${start.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}${end ? ` – ${end.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}` : ""}`;
+                  return (
+                    <div key={e.id} className="py-2.5 flex items-center gap-3" data-testid={`cal-next-${e.id}`}>
+                      <div className="w-24 shrink-0">
+                        <div className="text-[10px] uppercase tracking-wider font-bold text-stone-500">{day}</div>
+                        <div className="text-xs text-stone-700 tabular-nums">{timeStr}</div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold text-stone-950 truncate">{e.title}</div>
+                        {e.location && <div className="text-xs text-stone-500 truncate">{e.location}</div>}
+                      </div>
+                      {e.meeting_url && (
+                        <a href={e.meeting_url} target="_blank" rel="noreferrer" data-testid={`cal-next-join-${e.id}`}
+                          className="shrink-0 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-md inline-flex items-center gap-1">
+                          <Video className="w-3 h-3" /> Join
+                        </a>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Panel>
+        )}
+
         {/* Sales pipeline funnel - full width */}
         <Panel icon={TrendingUp} title="Sales Pipeline · Enquiry Funnel" action={
           <Link to="/contacts" className="text-xs font-bold uppercase tracking-wider text-stone-700 hover:text-stone-950 flex items-center gap-1">
@@ -240,31 +341,8 @@ export default function DashboardPage() {
           </div>
         </Panel>
 
-        {/* Mid grid: Anniversaries + Mandate breakdown + Recent enquiries */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <Panel icon={Calendar} title="Today's Anniversaries" testid="panel-anniversaries">
-            {!anniversaries ? (
-              <div className="text-sm text-stone-500">Checking…</div>
-            ) : anniversaries.count === 0 ? (
-              <div>
-                <div className="font-display text-2xl text-stone-950">None today</div>
-                <div className="text-xs text-stone-500 mt-2">Daily check for contract anniversaries. Auto-emails wire up once an email provider (SendGrid/Resend) is connected.</div>
-              </div>
-            ) : (
-              <div>
-                <div className="font-display text-2xl text-stone-950">{anniversaries.count} today</div>
-                <ul className="mt-3 space-y-1.5">
-                  {anniversaries.anniversaries.map(({ contract, franchisee }) => (
-                    <li key={contract.id} className="text-sm">
-                      <div className="font-semibold text-stone-900">{franchisee?.organisation || "—"}</div>
-                      <div className="text-xs text-stone-500">Contract #{contract.ref}</div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </Panel>
-
+        {/* Mid grid: Mandate breakdown + Recent enquiries (anniversaries moved up) */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Panel icon={Activity} title="Mandate Status · Active Franchisees" testid="panel-mandates">
             {!stats?.mandate_breakdown || stats.mandate_breakdown.length === 0 ? (
               <div className="text-sm text-stone-500">No mandate data.</div>

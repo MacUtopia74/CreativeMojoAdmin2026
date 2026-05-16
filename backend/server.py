@@ -1934,28 +1934,57 @@ async def list_territories(franchisee_id: Optional[str] = None, _: dict = Depend
 # Anniversary Reminders (Phase 1 scaffold)
 # ----------------------------------------------------------------------------
 @api.get("/anniversaries/today")
-async def anniversaries_today(_: dict = Depends(require_role("admin"))):
-    """Returns contracts whose anniversary falls in the next 7 days."""
+async def anniversaries_today(
+    upcoming_days: int = Query(0, ge=0, le=60, description="Also include anniversaries falling in the next N days"),
+    _: dict = Depends(require_role("admin")),
+):
+    """Returns contracts whose anniversary falls today, optionally extended
+    with the next `upcoming_days` calendar days. The dashboard panel uses
+    `upcoming_days=14` to fill its full-width strip with two weeks ahead."""
     now = datetime.now(timezone.utc)
-    today_mmdd = now.strftime("%m-%d")
+    today = now.date()
     contracts = await db.contracts.find(
         {"anniversary_reminder": {"$exists": True, "$ne": None}, "cancelled_early": {"$ne": True}},
         {"_id": 0},
     ).to_list(2000)
-    upcoming = []
+    out = []
     for c in contracts:
         anniv = c.get("anniversary_reminder")
         if not anniv:
             continue
         try:
-            # Anniversary is stored as a date string like "2026-05-13"
-            mmdd = str(anniv)[5:10]
-            if mmdd == today_mmdd:
-                f = await db.franchisees.find_one({"id": c.get("franchisee_id")}, {"_id": 0, "first_name": 1, "last_name": 1, "organisation": 1, "mojo_email": 1, "id": 1})
-                upcoming.append({"contract": c, "franchisee": f})
+            mmdd = str(anniv)[5:10]  # "MM-DD"
+            month, day = int(mmdd[:2]), int(mmdd[3:5])
+            # Find the next occurrence ≥ today (this year or next)
+            try:
+                this_year = today.replace(month=month, day=day)
+            except ValueError:
+                # 29 Feb in non-leap year
+                this_year = today.replace(month=month, day=28)
+            next_anniv = this_year if this_year >= today else this_year.replace(year=today.year + 1)
+            days_until = (next_anniv - today).days
+            if days_until > upcoming_days:
+                continue
+            f = await db.franchisees.find_one(
+                {"id": c.get("franchisee_id")},
+                {"_id": 0, "first_name": 1, "last_name": 1, "organisation": 1, "mojo_email": 1, "id": 1},
+            )
+            out.append({
+                "contract": c,
+                "franchisee": f,
+                "anniversary_date": next_anniv.isoformat(),
+                "days_until": days_until,
+            })
         except Exception:
             continue
-    return {"today": today_mmdd, "count": len(upcoming), "anniversaries": upcoming}
+    out.sort(key=lambda x: x["days_until"])
+    today_count = sum(1 for x in out if x["days_until"] == 0)
+    return {
+        "today": today.strftime("%m-%d"),
+        "count": today_count,           # backwards-compat: today-only count
+        "upcoming_count": len(out),
+        "anniversaries": out,
+    }
 
 
 @api.get("/health")
