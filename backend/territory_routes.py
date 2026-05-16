@@ -551,11 +551,80 @@ def build_territory_router(db, require_role):  # noqa: D401
 
         franchisee_meta: list[dict] = []
         features: list[dict] = []
-        for i, f in enumerate(franchisees):
+        # Build a shapely union per franchisee so we can (a) detect which pairs
+        # share a border and (b) emit a single dissolved outline per franchisee
+        # for a much clearer "edge of territory" line on the map.
+        from shapely.geometry import shape, mapping
+        from shapely.ops import unary_union
+
+        unions: dict = {}  # franchisee_id -> shapely geom
+        ordered: list = []  # [(fid, name, sectors, raw_franchisee)]
+        for f in franchisees:
             sectors = f.get("territory_sectors") or []
             if not sectors:
                 continue
-            color = PALETTE[i % len(PALETTE)]
+            geoms = [shape(poly_map[s]) for s in sectors if s in poly_map]
+            if not geoms:
+                continue
+            try:
+                u = unary_union(geoms).buffer(0)  # buffer(0) cleans invalid geos
+            except Exception:  # noqa: BLE001
+                u = None
+            unions[f["id"]] = u
+            ordered.append(f)
+
+        # ---------- Welsh-Powell greedy coloring ----------
+        # Adjacency: a pair touches (shares a border) OR intersects (rare for
+        # ONS sectors but possible after buffer-cleaning).
+        adjacency: dict = {f["id"]: set() for f in ordered}
+        fids = list(adjacency.keys())
+        # Pre-compute bounding boxes for a fast reject before the costly geom op
+        bboxes = {fid: (u.bounds if u else None) for fid, u in unions.items()}
+        def _bbox_overlap(a, b):
+            if not a or not b:
+                return False
+            return not (a[2] < b[0] or b[2] < a[0] or a[3] < b[1] or b[3] < a[1])
+
+        for ia in range(len(fids)):
+            for ib in range(ia + 1, len(fids)):
+                a, b = fids[ia], fids[ib]
+                ua, ub = unions.get(a), unions.get(b)
+                if not ua or not ub:
+                    continue
+                if not _bbox_overlap(bboxes[a], bboxes[b]):
+                    continue
+                try:
+                    # `.intersects()` covers touches (shared edge) and any
+                    # overlap. Cheap once bbox-pruned.
+                    if ua.intersects(ub):
+                        adjacency[a].add(b)
+                        adjacency[b].add(a)
+                except Exception:  # noqa: BLE001
+                    continue
+
+        # Order franchisees by descending adjacency degree (Welsh-Powell). Tie
+        # break by franchise_number so colour assignment is stable across
+        # refreshes.
+        by_fid = {f["id"]: f for f in ordered}
+        order = sorted(
+            fids,
+            key=lambda fid: (-len(adjacency[fid]), by_fid[fid].get("franchise_number") or ""),
+        )
+        colour_by_fid: dict = {}
+        for fid in order:
+            used = {colour_by_fid[n] for n in adjacency[fid] if n in colour_by_fid}
+            # Pick the lowest palette index not used by a neighbour
+            chosen = next((c for c in PALETTE if c not in used), None)
+            if chosen is None:
+                # Palette exhausted (would need >24 mutually-adjacent
+                # franchisees — won't happen in the UK). Fall back to index.
+                chosen = PALETTE[len(colour_by_fid) % len(PALETTE)]
+            colour_by_fid[fid] = chosen
+
+        outline_features: list = []
+        for f in ordered:
+            sectors = f.get("territory_sectors") or []
+            color = colour_by_fid.get(f["id"], PALETTE[0])
             name = (
                 f.get("organisation")
                 or f.get("full_name")
@@ -594,9 +663,24 @@ def build_territory_router(db, require_role):  # noqa: D401
                         "color": color,
                     },
                 })
+            # Dissolved outline for the franchisee — drawn thick on the map so
+            # the franchisee's overall edge stands out regardless of fill
+            # colour.
+            u = unions.get(f["id"])
+            if u and not u.is_empty:
+                outline_features.append({
+                    "type": "Feature",
+                    "geometry": mapping(u),
+                    "properties": {
+                        "franchisee_id": f["id"],
+                        "name": name,
+                        "color": color,
+                    },
+                })
         return {
             "franchisees": franchisee_meta,
             "geojson": {"type": "FeatureCollection", "features": features},
+            "outlines": {"type": "FeatureCollection", "features": outline_features},
             "count": len(franchisee_meta),
         }
 

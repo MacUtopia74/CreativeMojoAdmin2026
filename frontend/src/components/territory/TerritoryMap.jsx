@@ -82,19 +82,47 @@ export default function TerritoryMap({
           ],
         },
       });
-      // Thick outline drawn per-franchisee so each territory's edge pops.
-      // Mapbox doesn't natively dissolve features by property, so we draw a
-      // 3px line on every sector boundary in the franchisee's colour — the
-      // shared internal lines overlap visually, but the OUTSIDE edge is what
-      // stands out (different colour from neighbouring franchisees).
+      // Light per-sector boundary so each sector inside a franchisee is still
+      // legible. Drawn thin and slightly dimmer than the dissolved edge.
       map.addLayer({
-        id: "franchisee-outline",
+        id: "franchisee-inner-line",
         type: "line",
         source: "franchisee-territories",
         paint: {
           "line-color": ["coalesce", ["get", "color"], "#475569"],
-          "line-width": 2.5,
-          "line-opacity": 0.95,
+          "line-width": 0.75,
+          "line-opacity": 0.55,
+        },
+      });
+
+      // ----- Dissolved franchisee outline (one ring per franchisee) -----
+      // This is the "thicker keyline around the overall franchise territory"
+      // the user asked for — drawn over the fills so the OUTSIDE edge of each
+      // territory pops, even when neighbours share similar palette colours.
+      map.addSource("franchisee-outlines", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+      // Soft white halo first, then the coloured edge on top — gives the
+      // outline real presence on busy areas.
+      map.addLayer({
+        id: "franchisee-outline-halo",
+        type: "line",
+        source: "franchisee-outlines",
+        paint: {
+          "line-color": "#ffffff",
+          "line-width": 6,
+          "line-opacity": 0.85,
+        },
+      });
+      map.addLayer({
+        id: "franchisee-outline-edge",
+        type: "line",
+        source: "franchisee-outlines",
+        paint: {
+          "line-color": ["coalesce", ["get", "color"], "#0f172a"],
+          "line-width": 3.2,
+          "line-opacity": 1.0,
         },
       });
 
@@ -352,6 +380,10 @@ export default function TerritoryMap({
     const src = mapRef.current.getSource("franchisee-territories");
     if (src) {
       src.setData(franchiseeOverlay?.geojson || { type: "FeatureCollection", features: [] });
+    }
+    const outSrc = mapRef.current.getSource("franchisee-outlines");
+    if (outSrc) {
+      outSrc.setData(franchiseeOverlay?.outlines || { type: "FeatureCollection", features: [] });
     }
     // Clear previous HQ markers
     franchiseeHqMarkersRef.current.forEach((m) => m.remove());

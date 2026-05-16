@@ -38,7 +38,7 @@ export default function LoginPage() {
         <div className="absolute inset-0 bg-gradient-to-br from-stone-950/70 via-stone-900/40 to-stone-900/70" />
         <div className="relative h-full flex flex-col justify-between p-12 text-white">
           <div>
-            <Logo className="h-14" />
+            <Logo className="h-14" variant="white" />
           </div>
           <div className="space-y-4">
             <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-[#D4FF00]">Admin Console</div>

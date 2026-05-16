@@ -48,7 +48,7 @@ export default function TerritoryBuilderPage() {
   // Overlay: every active franchisee's locked territory. Loaded once on mount,
   // refreshed whenever the lock-target changes so the franchisee being edited
   // isn't duplicated in the background.
-  const [overlay, setOverlay] = useState({ franchisees: [], geojson: null });
+  const [overlay, setOverlay] = useState({ franchisees: [], geojson: null, outlines: null });
   const [showOverlay, setShowOverlay] = useState(true);
 
   // Load contact details + existing plans if contact_id is provided
@@ -121,7 +121,11 @@ export default function TerritoryBuilderPage() {
         const { data } = await api.get("/territory/all-franchisees", {
           params: franchiseeId ? { exclude_id: franchiseeId } : {},
         });
-        setOverlay({ franchisees: data.franchisees || [], geojson: data.geojson || null });
+        setOverlay({
+          franchisees: data.franchisees || [],
+          geojson: data.geojson || null,
+          outlines: data.outlines || null,
+        });
       } catch {/* ignore — overlay is non-critical */}
     })();
   }, [franchiseeId]);
