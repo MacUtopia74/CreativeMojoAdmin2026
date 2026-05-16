@@ -12,8 +12,19 @@ import FilePreviewModal from "@/components/files/FilePreviewModal";
 import {
   LogOut, Phone, Mail, Globe, MapPin, Calendar, ShieldCheck, ShieldAlert,
   FolderOpen, User as UserIcon, Loader2, AlertCircle, Smartphone,
-  Clock, ChevronDown, ChevronUp,
+  Clock, ChevronDown, ChevronUp, Type,
 } from "lucide-react";
+
+// Font size preference — applied as a wrapper class so every text element
+// inside the portal scales together. We tweak the root `font-size` of a
+// wrapping div so Tailwind's `rem`-based utilities (text-base etc.) all
+// follow along.
+const FONT_SCALES = {
+  small: { label: "Small", className: "text-[14px]" },
+  medium: { label: "Medium", className: "text-[16px]" }, // browser default
+  large: { label: "Large", className: "text-[18px]" },
+  xlarge: { label: "Extra large", className: "text-[20px]" },
+};
 
 function yearsBetween(iso) {
   if (!iso) return null;
@@ -88,6 +99,13 @@ export default function PortalDashboardPage() {
   });
   useEffect(() => { try { localStorage.setItem("portal.detailsOpen", JSON.stringify(detailsOpen)); } catch (_) { /* noop */ } }, [detailsOpen]);
   useEffect(() => { try { localStorage.setItem("portal.territoryOpen", JSON.stringify(territoryOpen)); } catch (_) { /* noop */ } }, [territoryOpen]);
+  const [fontScale, setFontScale] = useState(() => {
+    try {
+      const v = localStorage.getItem("portal.fontScale");
+      return FONT_SCALES[v] ? v : "medium";
+    } catch { return "medium"; }
+  });
+  useEffect(() => { try { localStorage.setItem("portal.fontScale", fontScale); } catch (_) { /* noop */ } }, [fontScale]);
 
   // Compose the full address from any of the field-name variants Airtable
   // / the migrator may have stored under.
@@ -108,12 +126,27 @@ export default function PortalDashboardPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FBFAF8]" data-testid="portal-dashboard">
+    <div className={`min-h-screen bg-[#FBFAF8] ${FONT_SCALES[fontScale].className}`} data-testid="portal-dashboard">
       {/* Top bar */}
       <header className="bg-white border-b border-stone-200">
         <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between gap-3">
           <Logo className="h-10" />
           <div className="flex items-center gap-4">
+            {/* Font size cycler — bumps through S → M → L → XL.  Tooltip
+                shows current size for clarity. */}
+            <button
+              onClick={() => {
+                const order = ["small", "medium", "large", "xlarge"];
+                const next = order[(order.indexOf(fontScale) + 1) % order.length];
+                setFontScale(next);
+              }}
+              title={`Text size: ${FONT_SCALES[fontScale].label} — click for larger`}
+              data-testid="portal-font-size"
+              className="px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider border border-stone-300 hover:bg-stone-50 rounded-lg flex items-center gap-1.5"
+            >
+              <Type className="w-3 h-3" />
+              <span className="hidden sm:inline">{FONT_SCALES[fontScale].label}</span>
+            </button>
             <div className="text-right hidden sm:block">
               <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Signed in as</div>
               <div className="text-xs text-stone-900 font-mono">{user?.email}</div>
@@ -172,70 +205,68 @@ export default function PortalDashboardPage() {
               </div>
             </div>
 
-            {/* Two-column grid — both supporting panels are collapsible so
-                the files section below can take centre stage. */}
-            <div className={`grid gap-6 ${detailsOpen ? "lg:grid-cols-3" : "lg:grid-cols-1"}`}>
-              {/* Contact info — collapsible */}
-              <div className={`bg-white border border-stone-200 rounded-2xl ${detailsOpen ? "lg:col-span-1 p-6" : "p-0"}`} data-testid="portal-contact">
-                <button onClick={() => setDetailsOpen((v) => !v)} data-testid="toggle-details"
-                  className={`w-full flex items-center justify-between gap-3 hover:bg-stone-50 transition-colors ${detailsOpen ? "mb-5" : "px-6 py-4 rounded-2xl"}`}>
-                  <div className="flex items-center gap-2">
-                    <UserIcon className="w-4 h-4 text-stone-700" />
-                    <span className="text-xs uppercase tracking-[0.3em] font-bold text-stone-700">Your details</span>
-                  </div>
-                  <span className={`w-7 h-7 rounded-full border flex items-center justify-center transition-colors ${detailsOpen ? "border-stone-300 bg-white" : "border-stone-950 bg-stone-950 text-white"}`}>
-                    {detailsOpen ? <ChevronUp className="w-3.5 h-3.5 text-stone-600" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                  </span>
-                </button>
-                {detailsOpen && (
-                  <div className="space-y-4">
-                    <Field icon={Mail} label="Email" value={profile.mojo_email || profile.email} href={`mailto:${profile.mojo_email || profile.email}`} />
-                    <Field icon={Phone} label="Phone" value={profile.phone} href={`tel:${profile.phone}`} />
-                    <Field icon={Smartphone} label="Mobile" value={profile.mobile} href={`tel:${profile.mobile}`} />
-                    <Field icon={Globe} label="Website" value={profile.website} href={profile.website} />
-                    {addressLines.length > 0 && (
-                      <div data-testid="portal-address">
-                        <div className="flex items-start gap-3">
-                          <MapPin className="w-4 h-4 text-stone-400 mt-0.5 shrink-0" />
-                          <div className="min-w-0">
-                            <div className="text-[11px] uppercase tracking-[0.2em] font-bold text-stone-500">Address</div>
-                            <div className="text-base text-stone-900 leading-relaxed">
-                              {addressLines.join(", ")}
-                            </div>
+            {/* Your details — full-width landscape strip across the top.
+                Collapsible so the franchisee can shrink it to a header bar
+                if they want even more room for the map and files below. */}
+            <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid="portal-contact">
+              <button onClick={() => setDetailsOpen((v) => !v)} data-testid="toggle-details"
+                className="w-full flex items-center justify-between gap-3 hover:bg-stone-50 transition-colors px-6 py-4">
+                <div className="flex items-center gap-2">
+                  <UserIcon className="w-4 h-4 text-stone-700" />
+                  <span className="text-xs uppercase tracking-[0.3em] font-bold text-stone-700">Your details</span>
+                </div>
+                <span className={`w-7 h-7 rounded-full border flex items-center justify-center transition-colors ${detailsOpen ? "border-stone-300 bg-white" : "border-stone-950 bg-stone-950 text-white"}`}>
+                  {detailsOpen ? <ChevronUp className="w-3.5 h-3.5 text-stone-600" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                </span>
+              </button>
+              {detailsOpen && (
+                <div className="px-6 pb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
+                  <Field icon={Mail} label="Email" value={profile.mojo_email || profile.email} href={`mailto:${profile.mojo_email || profile.email}`} />
+                  <Field icon={Phone} label="Phone" value={profile.phone} href={`tel:${profile.phone}`} />
+                  <Field icon={Smartphone} label="Mobile" value={profile.mobile} href={`tel:${profile.mobile}`} />
+                  <Field icon={Globe} label="Website" value={profile.website} href={profile.website} />
+                  <Field icon={Calendar} label="Start date" value={profile.start_date ? new Date(profile.start_date).toLocaleDateString("en-GB") : null} />
+                  {profile.end_date && <Field icon={Clock} label="End date" value={new Date(profile.end_date).toLocaleDateString("en-GB")} />}
+                  {addressLines.length > 0 && (
+                    <div className="sm:col-span-2 lg:col-span-3" data-testid="portal-address">
+                      <div className="flex items-start gap-3">
+                        <MapPin className="w-4 h-4 text-stone-400 mt-0.5 shrink-0" />
+                        <div className="min-w-0">
+                          <div className="text-[11px] uppercase tracking-[0.2em] font-bold text-stone-500">Address</div>
+                          <div className="text-base text-stone-900 leading-relaxed">
+                            {addressLines.join(", ")}
                           </div>
                         </div>
                       </div>
-                    )}
-                    <Field icon={Calendar} label="Start date" value={profile.start_date ? new Date(profile.start_date).toLocaleDateString("en-GB") : null} />
-                    {profile.end_date && <Field icon={Clock} label="End date" value={new Date(profile.end_date).toLocaleDateString("en-GB")} />}
-                  </div>
-                )}
-              </div>
-
-              {/* Territory widget — also collapsible to free vertical space */}
-              <div className={`${detailsOpen ? "lg:col-span-2" : "lg:col-span-1"}`}>
-                {territoryOpen ? (
-                  <div className="relative">
-                    <button onClick={() => setTerritoryOpen(false)} data-testid="toggle-territory"
-                      className="absolute top-5 right-5 z-10 w-7 h-7 rounded-full border border-stone-300 bg-white hover:bg-stone-100 flex items-center justify-center" aria-label="Hide territory">
-                      <ChevronUp className="w-3.5 h-3.5 text-stone-600" />
-                    </button>
-                    <FranchiseeTerritoryWidget />
-                  </div>
-                ) : (
-                  <button onClick={() => setTerritoryOpen(true)} data-testid="toggle-territory"
-                    className="w-full bg-white border border-stone-200 rounded-2xl px-6 py-4 flex items-center justify-between gap-3 hover:bg-stone-50 transition-colors">
-                    <div className="flex items-center gap-2">
-                      <MapPin className="w-4 h-4 text-stone-700" />
-                      <span className="text-xs uppercase tracking-[0.3em] font-bold text-stone-700">Your territory</span>
                     </div>
-                    <span className="w-7 h-7 rounded-full border border-stone-950 bg-stone-950 text-white flex items-center justify-center">
-                      <ChevronDown className="w-3.5 h-3.5" />
-                    </span>
-                  </button>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
             </div>
+
+            {/* Territory widget — also full-width, also collapsible. Taller
+                map (`mapHeight=640`) since the details panel above is now a
+                strip rather than a sidebar. */}
+            {territoryOpen ? (
+              <div className="relative">
+                <button onClick={() => setTerritoryOpen(false)} data-testid="toggle-territory"
+                  className="absolute top-5 right-5 z-10 w-7 h-7 rounded-full border border-stone-300 bg-white hover:bg-stone-100 flex items-center justify-center" aria-label="Hide territory">
+                  <ChevronUp className="w-3.5 h-3.5 text-stone-600" />
+                </button>
+                <FranchiseeTerritoryWidget mapHeight={640} />
+              </div>
+            ) : (
+              <button onClick={() => setTerritoryOpen(true)} data-testid="toggle-territory"
+                className="w-full bg-white border border-stone-200 rounded-2xl px-6 py-4 flex items-center justify-between gap-3 hover:bg-stone-50 transition-colors">
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-stone-700" />
+                  <span className="text-xs uppercase tracking-[0.3em] font-bold text-stone-700">Your territory</span>
+                </div>
+                <span className="w-7 h-7 rounded-full border border-stone-950 bg-stone-950 text-white flex items-center justify-center">
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </span>
+              </button>
+            )}
 
             {/* Files */}
             <div className="bg-white border border-stone-200 rounded-2xl p-6" data-testid="portal-files">

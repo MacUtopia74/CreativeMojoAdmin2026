@@ -241,7 +241,7 @@ export default function DashboardPage() {
             <div className="text-sm text-stone-500">No franchise anniversaries in the next 30 days.</div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3" data-testid="anniversaries-list">
-              {anniversaries.anniversaries.slice(0, 12).map(({ contract, franchisee, anniversary_date, days_until }) => {
+              {anniversaries.anniversaries.slice(0, 8).map(({ contract, franchisee, anniversary_date, days_until }) => {
                 const isToday = days_until === 0;
                 const dateLabel = anniversary_date
                   ? new Date(anniversary_date).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })
@@ -263,9 +263,9 @@ export default function DashboardPage() {
                   </Link>
                 );
               })}
-              {anniversaries.anniversaries.length > 12 && (
+              {anniversaries.anniversaries.length > 8 && (
                 <Link to="/renewals" className="border border-dashed border-stone-300 rounded-xl p-3 flex items-center justify-center text-xs text-stone-600 hover:bg-stone-50 hover:border-stone-400">
-                  + {anniversaries.anniversaries.length - 12} more
+                  + {anniversaries.anniversaries.length - 8} more
                 </Link>
               )}
             </div>

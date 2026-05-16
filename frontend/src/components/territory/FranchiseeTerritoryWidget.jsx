@@ -16,7 +16,7 @@ import {
   Loader2, Map as MapIcon, Search, CheckCircle2, XCircle, AlertCircle,
 } from "lucide-react";
 
-export default function FranchiseeTerritoryWidget({ franchiseeId }) {
+export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 560 }) {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -157,7 +157,7 @@ export default function FranchiseeTerritoryWidget({ franchiseeId }) {
             selected={summary.sectors}
             centre={summary.centre}
             centreLabel={summary.franchisee?.organisation || summary.franchisee?.postcode || ""}
-            height={460}
+            height={mapHeight}
             interactive={false}
             homes={homes}
             onMarkerClick={(i) => {
