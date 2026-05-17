@@ -62,7 +62,7 @@ export default function InvoiceSettings() {
   return (
     <div className="space-y-8 max-w-2xl" data-testid="invoice-settings-page">
       <div>
-        <h1 className="text-4xl font-bold tracking-tight font-['Manrope']" data-testid="page-title">
+        <h1 className="text-3xl font-bold tracking-tight" data-testid="page-title">
           Invoice Settings
         </h1>
         <p className="text-muted-foreground mt-1">
@@ -72,7 +72,7 @@ export default function InvoiceSettings() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <Card className="p-6">
-          <h3 className="text-lg font-semibold mb-4 font-['Manrope'] flex items-center gap-2">
+          <h3 className="text-lg font-semibold mb-4  flex items-center gap-2">
             <SettingsIcon className="w-5 h-5" /> Business Details
           </h3>
           <p className="text-sm text-muted-foreground mb-4">These details appear on your invoices.</p>
@@ -101,7 +101,7 @@ export default function InvoiceSettings() {
         </Card>
 
         <Card className="p-6">
-          <h3 className="text-lg font-semibold mb-4 font-['Manrope']">Payment Details</h3>
+          <h3 className="text-lg font-semibold mb-4 ">Payment Details</h3>
           <p className="text-sm text-muted-foreground mb-4">Appear at the bottom of every invoice.</p>
           <div className="space-y-4">
             <div>

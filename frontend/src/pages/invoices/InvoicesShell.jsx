@@ -1,0 +1,67 @@
+// Shared shell for the /invoices/* section. Adds the secondary tab strip
+// the user is used to (Invoices · Clients · Deleted · Settings) plus a
+// prominent "+ New Invoice" CTA. Styled to match the host admin's stone
+// palette so it feels native rather than like an embedded app.
+import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom";
+import {
+  Receipt,
+  Users as UsersIcon,
+  Trash2,
+  Settings as SettingsIcon,
+  Plus,
+} from "lucide-react";
+
+const TABS = [
+  { to: "/invoices", label: "Invoices", icon: Receipt, end: true, testid: "inv-tab-list" },
+  { to: "/invoices/clients", label: "Clients", icon: UsersIcon, testid: "inv-tab-clients" },
+  { to: "/invoices/deleted", label: "Deleted", icon: Trash2, testid: "inv-tab-deleted" },
+  { to: "/invoices/settings", label: "Settings", icon: SettingsIcon, testid: "inv-tab-settings" },
+];
+
+export default function InvoicesShell() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  // Hide the "+ New Invoice" CTA on pages where it doesn't make sense
+  // (the editor itself, the detail view) — those already have their own
+  // primary actions.
+  const showNewInvoice = !/^\/invoices\/[^/]+(\/edit)?$/.test(location.pathname)
+    && location.pathname !== "/invoices/new";
+
+  return (
+    <div className="space-y-6" data-testid="invoices-shell">
+      <div className="flex items-center gap-3 flex-wrap border-b border-stone-200 pb-3">
+        <div className="flex items-center gap-1 flex-wrap" data-testid="invoices-tabs">
+          {TABS.map(({ to, label, icon: Icon, end, testid }) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={end}
+              data-testid={testid}
+              className={({ isActive }) =>
+                `inline-flex items-center gap-2 px-3 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-colors ${
+                  isActive
+                    ? "bg-stone-950 text-white"
+                    : "text-stone-600 hover:bg-stone-100"
+                }`
+              }
+            >
+              <Icon className="w-3.5 h-3.5" />
+              {label}
+            </NavLink>
+          ))}
+        </div>
+        {showNewInvoice && (
+          <button
+            onClick={() => navigate("/invoices/new")}
+            data-testid="inv-new-cta"
+            className="ml-auto inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold uppercase tracking-wider bg-[#D4FF00] text-stone-950 rounded-lg hover:brightness-95 transition"
+          >
+            <Plus className="w-4 h-4" />
+            New Invoice
+          </button>
+        )}
+      </div>
+      <Outlet />
+    </div>
+  );
+}

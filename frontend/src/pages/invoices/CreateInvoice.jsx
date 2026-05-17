@@ -56,7 +56,7 @@ function InvoicePreview({ formData, subtotal, discountAmount, taxAmount, total, 
         <div className="flex-1">
           <div className="flex justify-between items-start mb-6">
             <div>
-              <h2 className="text-3xl font-bold tracking-tight font-['Manrope'] text-slate-900">INVOICE</h2>
+              <h2 className="text-3xl font-bold tracking-tight  text-slate-900">INVOICE</h2>
               <p className="font-mono text-lg mt-1 text-slate-700">{formData.invoice_number || "SCD-000"}</p>
             </div>
             <StatusBadge status={formData.status} />
@@ -283,7 +283,7 @@ function CreateInvoice() {
           <ArrowLeft className="w-4 h-4" />
         </Button>
         <div>
-          <h1 className="text-4xl font-bold tracking-tight font-['Manrope']" data-testid="page-title">Create Invoice</h1>
+          <h1 className="text-3xl font-bold tracking-tight" data-testid="page-title">Create Invoice</h1>
           <p className="text-muted-foreground mt-1">Fill in the details below</p>
         </div>
       </div>
@@ -292,7 +292,7 @@ function CreateInvoice() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-5 space-y-6">
             <Card className="p-6">
-              <h3 className="text-lg font-semibold mb-4 font-['Manrope']">Client</h3>
+              <h3 className="text-lg font-semibold mb-4 ">Client</h3>
               <Label>Select Client</Label>
               <Select value={formData.client_id} onValueChange={handleClientChange}>
                 <SelectTrigger className="h-12 mt-2" data-testid="client-select">
@@ -311,7 +311,7 @@ function CreateInvoice() {
             </Card>
 
             <Card className="p-6">
-              <h3 className="text-lg font-semibold mb-4 font-['Manrope']">Invoice Details</h3>
+              <h3 className="text-lg font-semibold mb-4 ">Invoice Details</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Invoice Number</Label>
@@ -360,7 +360,7 @@ function CreateInvoice() {
 
             <Card className="p-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold font-['Manrope']">Line Items</h3>
+                <h3 className="text-lg font-semibold ">Line Items</h3>
                 <Button type="button" variant="outline" size="sm" onClick={addLineItem} data-testid="add-line-item-btn">
                   <Plus className="w-4 h-4 mr-1" /> Add
                 </Button>
@@ -371,7 +371,7 @@ function CreateInvoice() {
             </Card>
 
             <Card className="p-6">
-              <h3 className="text-lg font-semibold mb-4 font-['Manrope']">Tax & Discount</h3>
+              <h3 className="text-lg font-semibold mb-4 ">Tax & Discount</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Tax Rate (%)</Label>
@@ -385,7 +385,7 @@ function CreateInvoice() {
             </Card>
 
             <Card className="p-6">
-              <h3 className="text-lg font-semibold mb-4 font-['Manrope']">Notes</h3>
+              <h3 className="text-lg font-semibold mb-4 ">Notes</h3>
               <Textarea placeholder="Additional notes..." className="min-h-[80px]" value={formData.notes} onChange={(e) => setFormData(p => ({ ...p, notes: e.target.value }))} data-testid="notes-input" />
             </Card>
 

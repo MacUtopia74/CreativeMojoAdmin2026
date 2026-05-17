@@ -62,22 +62,14 @@ const InvoiceList = () => {
 
   return (
     <div className="space-y-8" data-testid="invoice-list-page">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-4xl font-bold tracking-tight font-['Manrope']" data-testid="page-title">
-            Invoices
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Manage and track your invoices
-          </p>
-        </div>
-        <Link to="/invoices/new">
-          <Button className="gap-2 rounded-full px-6" data-testid="new-invoice-btn">
-            <Plus className="w-4 h-4" />
-            Create Invoice
-          </Button>
-        </Link>
+      {/* Page header — shell already provides the tab strip + New CTA. */}
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight" data-testid="page-title">
+          Invoices
+        </h1>
+        <p className="text-stone-500 mt-1 text-sm">
+          {stats?.total_invoices ?? 0} total · {stats?.outstanding != null ? `£${stats.outstanding.toFixed(2)} outstanding` : "—"}
+        </p>
       </div>
 
       {/* Stats Cards */}

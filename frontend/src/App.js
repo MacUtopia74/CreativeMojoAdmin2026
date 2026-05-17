@@ -29,6 +29,7 @@ import InvoiceDetail from "@/pages/invoices/InvoiceDetail";
 import InvoiceClients from "@/pages/invoices/InvoiceClients";
 import DeletedInvoices from "@/pages/invoices/DeletedInvoices";
 import InvoiceSettings from "@/pages/invoices/InvoiceSettings";
+import InvoicesShell from "@/pages/invoices/InvoicesShell";
 
 export default function App() {
   return (
@@ -63,13 +64,15 @@ export default function App() {
               <Route path="/airtable-inspector" element={<AirtableInspectorPage />} />
               <Route path="/migration-plan" element={<MigrationPlanPage />} />
               {/* Invoices module — merged from the legacy Pay-Paperwork app */}
-              <Route path="/invoices" element={<InvoiceList />} />
-              <Route path="/invoices/new" element={<CreateInvoice />} />
-              <Route path="/invoices/deleted" element={<DeletedInvoices />} />
-              <Route path="/invoices/clients" element={<InvoiceClients />} />
-              <Route path="/invoices/settings" element={<InvoiceSettings />} />
-              <Route path="/invoices/:id" element={<InvoiceDetail />} />
-              <Route path="/invoices/:id/edit" element={<EditInvoice />} />
+              <Route path="/invoices" element={<InvoicesShell />}>
+                <Route index element={<InvoiceList />} />
+                <Route path="new" element={<CreateInvoice />} />
+                <Route path="deleted" element={<DeletedInvoices />} />
+                <Route path="clients" element={<InvoiceClients />} />
+                <Route path="settings" element={<InvoiceSettings />} />
+                <Route path=":id" element={<InvoiceDetail />} />
+                <Route path=":id/edit" element={<EditInvoice />} />
+              </Route>
               <Route path="/banking" element={<BankingPage />} />
             </Route>
           </Routes>
