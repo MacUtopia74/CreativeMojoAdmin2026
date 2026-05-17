@@ -20,6 +20,7 @@ import TerritoryBuilderPage from "@/pages/TerritoryBuilderPage";
 import CqcDefinitionsPage from "@/pages/CqcDefinitionsPage";
 import CalendarPage from "@/pages/CalendarPage";
 import PortalDashboardPage from "@/pages/PortalDashboardPage";
+import BankingPage from "@/pages/BankingPage";
 // Invoices module (merged from Pay-Paperwork)
 import InvoiceList from "@/pages/invoices/InvoiceList";
 import CreateInvoice from "@/pages/invoices/CreateInvoice";
@@ -69,6 +70,7 @@ export default function App() {
               <Route path="/invoices/settings" element={<InvoiceSettings />} />
               <Route path="/invoices/:id" element={<InvoiceDetail />} />
               <Route path="/invoices/:id/edit" element={<EditInvoice />} />
+              <Route path="/banking" element={<BankingPage />} />
             </Route>
           </Routes>
         </BrowserRouter>

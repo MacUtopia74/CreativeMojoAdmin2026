@@ -17,6 +17,7 @@ import {
   Wrench,
   ChevronDown,
   Receipt,
+  Banknote,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -36,6 +37,7 @@ const NAV = [
 // group at the bottom of the sidebar so they don't clutter the day-to-day list.
 const ADMIN_NAV = [
   { to: "/invoices", label: "Invoices", icon: Receipt, testid: "nav-invoices" },
+  { to: "/banking", label: "Banking", icon: Banknote, testid: "nav-banking" },
   { to: "/form-intake", label: "Form Intake", icon: Inbox, testid: "nav-form-intake" },
   { to: "/airtable-inspector", label: "Airtable Inspector", icon: Database, testid: "nav-airtable-inspector" },
   { to: "/migration-plan", label: "Migration Plan", icon: ClipboardList, testid: "nav-migration-plan" },

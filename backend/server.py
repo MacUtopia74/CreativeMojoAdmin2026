@@ -2198,6 +2198,18 @@ api.include_router(build_cqc_router(db, require_role))
 from invoices_routes import build_invoices_router  # noqa: E402
 api.include_router(build_invoices_router(db, require_role))
 
+# Banking module — TrueLayer Open Banking (read-only HSBC integration)
+from banking_routes import build_banking_router, ensure_banking_indexes  # noqa: E402
+api.include_router(build_banking_router(db, require_role))
+
+
+@app.on_event("startup")
+async def _banking_indexes():
+    try:
+        await ensure_banking_indexes(db)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Banking index init failed (non-fatal): %s", exc)
+
 # Phase 5 — Google Calendar
 from calendar_routes import attach as build_calendar_router  # noqa: E402
 api.include_router(build_calendar_router(api, db, require_role))
