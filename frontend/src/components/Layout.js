@@ -16,6 +16,7 @@ import {
   LogOut,
   Wrench,
   ChevronDown,
+  Receipt,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -34,6 +35,7 @@ const NAV = [
 // Secondary "Admin" nav — power-user tools, tucked away in a collapsible
 // group at the bottom of the sidebar so they don't clutter the day-to-day list.
 const ADMIN_NAV = [
+  { to: "/invoices", label: "Invoices", icon: Receipt, testid: "nav-invoices" },
   { to: "/form-intake", label: "Form Intake", icon: Inbox, testid: "nav-form-intake" },
   { to: "/airtable-inspector", label: "Airtable Inspector", icon: Database, testid: "nav-airtable-inspector" },
   { to: "/migration-plan", label: "Migration Plan", icon: ClipboardList, testid: "nav-migration-plan" },

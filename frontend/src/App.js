@@ -20,6 +20,14 @@ import TerritoryBuilderPage from "@/pages/TerritoryBuilderPage";
 import CqcDefinitionsPage from "@/pages/CqcDefinitionsPage";
 import CalendarPage from "@/pages/CalendarPage";
 import PortalDashboardPage from "@/pages/PortalDashboardPage";
+// Invoices module (merged from Pay-Paperwork)
+import InvoiceList from "@/pages/invoices/InvoiceList";
+import CreateInvoice from "@/pages/invoices/CreateInvoice";
+import EditInvoice from "@/pages/invoices/EditInvoice";
+import InvoiceDetail from "@/pages/invoices/InvoiceDetail";
+import InvoiceClients from "@/pages/invoices/InvoiceClients";
+import DeletedInvoices from "@/pages/invoices/DeletedInvoices";
+import InvoiceSettings from "@/pages/invoices/InvoiceSettings";
 
 export default function App() {
   return (
@@ -53,6 +61,14 @@ export default function App() {
               <Route path="/form-intake" element={<FormIntakePage />} />
               <Route path="/airtable-inspector" element={<AirtableInspectorPage />} />
               <Route path="/migration-plan" element={<MigrationPlanPage />} />
+              {/* Invoices module — merged from the legacy Pay-Paperwork app */}
+              <Route path="/invoices" element={<InvoiceList />} />
+              <Route path="/invoices/new" element={<CreateInvoice />} />
+              <Route path="/invoices/deleted" element={<DeletedInvoices />} />
+              <Route path="/invoices/clients" element={<InvoiceClients />} />
+              <Route path="/invoices/settings" element={<InvoiceSettings />} />
+              <Route path="/invoices/:id" element={<InvoiceDetail />} />
+              <Route path="/invoices/:id/edit" element={<EditInvoice />} />
             </Route>
           </Routes>
         </BrowserRouter>
