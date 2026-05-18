@@ -16,7 +16,7 @@ import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
-import { CalendarDays, ExternalLink, Loader2, Plus, RefreshCw, Trash2, AlertCircle, CheckCircle2, X, Save, Link as LinkIcon, MapPin, Clock, Pencil, PowerOff, Video, LayoutGrid, LayoutList, Users } from "lucide-react";
+import { CalendarDays, ExternalLink, Loader2, Plus, RefreshCw, Trash2, AlertCircle, CheckCircle2, X, Save, Link as LinkIcon, MapPin, Clock, Pencil, PowerOff, Video, LayoutGrid, LayoutList, Users, Sparkles } from "lucide-react";
 
 function formatDateRange(start, end, allDay) {
   if (!start) return "";
@@ -454,6 +454,8 @@ function EventModal({ event, defaults, onClose, onSaved }) {
   const [end, setEnd] = useState(event?.end ? event.end.slice(0, 16) : (defaults?.end || todayLocal(60)));
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  const [zoomModalOpen, setZoomModalOpen] = useState(false);
+  const [zoomNotice, setZoomNotice] = useState("");
 
   // Friendly end-time keeper — when the user edits the start, we slide
   // the end forward to maintain the same gap (or default to +60 mins),
@@ -537,14 +539,36 @@ function EventModal({ event, defaults, onClose, onSaved }) {
             <DateInput label="Starts" value={start} onChange={setStartSmart} allDay={allDay} testid="cal-start" />
             <DateInput label="Ends" value={end} onChange={setEnd} allDay={allDay} testid="cal-end" />
           </div>
-          <Input
-            label="Meeting link (optional)"
-            value={meetingUrl}
-            onChange={setMeetingUrl}
-            placeholder="Paste a Microsoft Teams or Zoom join URL"
-            testid="cal-meeting-url"
-            icon={LinkIcon}
-          />
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Meeting link (optional)</label>
+              <button
+                type="button"
+                onClick={() => setZoomModalOpen(true)}
+                data-testid="cal-create-zoom-btn"
+                className="text-[10px] uppercase tracking-[0.15em] font-bold px-2.5 py-1 rounded-md bg-[#2D8CFF] text-white hover:bg-[#1A73D9] transition-colors flex items-center gap-1.5"
+                title="Create a Zoom meeting on headoffice@creativemojo.co.uk"
+              >
+                <Video className="w-3 h-3" />
+                {meetingUrl ? "Replace with Zoom" : "Create Zoom meeting"}
+              </button>
+            </div>
+            <div className="relative">
+              <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-400" />
+              <input
+                value={meetingUrl}
+                onChange={(e) => setMeetingUrl(e.target.value)}
+                placeholder="Paste a Teams / Zoom / Meet link, or click 'Create Zoom meeting' →"
+                data-testid="cal-meeting-url"
+                className="w-full pl-9 pr-3 py-2 text-sm border border-stone-300 rounded-lg"
+              />
+            </div>
+            {zoomNotice && (
+              <div className="mt-1.5 text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1.5 rounded-md flex items-center gap-1.5" data-testid="cal-zoom-notice">
+                <CheckCircle2 className="w-3 h-3" /> {zoomNotice}
+              </div>
+            )}
+          </div>
           {/* Franchisee-portal toggle — events default to admin-only.
               Tick this to also surface the event on the franchisee
               portal's Events panel (shared join URL, time, description). */}
@@ -582,6 +606,160 @@ function EventModal({ event, defaults, onClose, onSaved }) {
             className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-[#D4FF00] text-stone-950 hover:bg-[#BDE600] rounded-lg disabled:opacity-50 flex items-center gap-1.5">
             {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
             {event ? "Save changes" : "Create event"}
+          </button>
+        </div>
+      </div>
+      {zoomModalOpen && (
+        <ZoomMeetingModal
+          defaultTopic={title}
+          defaultStart={start}
+          defaultEnd={end}
+          allDay={allDay}
+          onClose={() => setZoomModalOpen(false)}
+          onCreated={({ join_url, password, topic }) => {
+            setMeetingUrl(join_url);
+            if (!title.trim() && topic) setTitle(topic);
+            setZoomNotice(password ? `Zoom meeting created — passcode ${password}` : "Zoom meeting created");
+            setZoomModalOpen(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function ZoomMeetingModal({ defaultTopic, defaultStart, defaultEnd, allDay, onClose, onCreated }) {
+  // Compute a sensible default duration in minutes from start→end.
+  const defaultDuration = (() => {
+    if (allDay) return 60;
+    const s = new Date(defaultStart).getTime();
+    const e = new Date(defaultEnd).getTime();
+    if (Number.isFinite(s) && Number.isFinite(e) && e > s) {
+      return Math.max(5, Math.min(1440, Math.round((e - s) / 60000)));
+    }
+    return 60;
+  })();
+
+  const [duration, setDuration] = useState(defaultDuration);
+  const [requirePasscode, setRequirePasscode] = useState(true);
+  const [waitingRoom, setWaitingRoom] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [err, setErr] = useState("");
+
+  const create = async () => {
+    setErr("");
+    if (allDay) {
+      setErr("Zoom needs a specific start time — switch off 'All-day' first.");
+      return;
+    }
+    if (!requirePasscode && !waitingRoom) {
+      setErr("Zoom requires either a passcode OR a waiting room. Tick at least one.");
+      return;
+    }
+    setCreating(true);
+    try {
+      const startIso = new Date(defaultStart).toISOString();
+      const { data } = await api.post("/zoom/meetings", {
+        topic: (defaultTopic && defaultTopic.trim()) || "Creative Mojo meeting",
+        start_time: startIso,
+        duration,
+        timezone: "Europe/London",
+        require_passcode: requirePasscode,
+        enable_waiting_room: waitingRoom,
+        agenda: defaultTopic || null,
+      });
+      onCreated(data);
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Zoom meeting creation failed.");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[70] bg-stone-950/70 backdrop-blur-sm flex items-center justify-center p-6"
+      onClick={onClose}
+      data-testid="zoom-create-modal"
+    >
+      <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="px-5 py-4 border-b border-stone-200 flex items-center justify-between bg-[#2D8CFF] text-white rounded-t-2xl">
+          <div className="flex items-center gap-2">
+            <Video className="w-4 h-4" />
+            <span className="font-bold">Create Zoom meeting</span>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 hover:bg-white/20 rounded-md flex items-center justify-center">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="text-[11px] text-stone-600 bg-stone-50 border border-stone-200 rounded-lg px-3 py-2 leading-relaxed">
+            Hosted on <strong>headoffice@creativemojo.co.uk</strong>. The join URL will auto-fill the meeting-link field. Daily Zoom limit: 100 meetings.
+          </div>
+
+          <div>
+            <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-1">Duration (minutes)</label>
+            <input
+              type="number"
+              min={5}
+              max={1440}
+              value={duration}
+              onChange={(e) => setDuration(Number(e.target.value) || 0)}
+              data-testid="zoom-duration"
+              className="w-full px-3 py-2 text-sm border border-stone-300 rounded-lg tabular-nums"
+            />
+          </div>
+
+          <label className={`flex items-start gap-3 p-3 border-2 rounded-xl cursor-pointer transition ${requirePasscode ? "border-blue-400 bg-blue-50/60" : "border-stone-200 hover:border-stone-300 bg-white"}`}>
+            <input
+              type="checkbox"
+              checked={requirePasscode}
+              onChange={(e) => setRequirePasscode(e.target.checked)}
+              data-testid="zoom-passcode"
+              className="mt-0.5 accent-blue-600"
+            />
+            <div className="flex-1">
+              <div className="text-sm font-bold text-stone-950">Require passcode</div>
+              <div className="text-[11px] text-stone-600 mt-0.5">
+                Zoom auto-generates a 6-digit passcode and embeds it in the join link.
+              </div>
+            </div>
+          </label>
+
+          <label className={`flex items-start gap-3 p-3 border-2 rounded-xl cursor-pointer transition ${waitingRoom ? "border-blue-400 bg-blue-50/60" : "border-stone-200 hover:border-stone-300 bg-white"}`}>
+            <input
+              type="checkbox"
+              checked={waitingRoom}
+              onChange={(e) => setWaitingRoom(e.target.checked)}
+              data-testid="zoom-waiting-room"
+              className="mt-0.5 accent-blue-600"
+            />
+            <div className="flex-1">
+              <div className="text-sm font-bold text-stone-950">Enable waiting room</div>
+              <div className="text-[11px] text-stone-600 mt-0.5">
+                Attendees see a holding screen until the host admits them.
+              </div>
+            </div>
+          </label>
+
+          {err && (
+            <div className="text-xs text-red-700 bg-red-50 border border-red-200 px-3 py-2 rounded-lg flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5" /> {err}
+            </div>
+          )}
+        </div>
+        <div className="px-5 py-4 border-t border-stone-200 flex justify-end gap-2 bg-stone-50 rounded-b-2xl">
+          <button onClick={onClose} className="px-3 py-2 text-xs font-bold rounded-lg border border-stone-300 bg-white hover:bg-stone-50">
+            Cancel
+          </button>
+          <button
+            onClick={create}
+            disabled={creating}
+            data-testid="zoom-create-confirm"
+            className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-[#2D8CFF] text-white hover:bg-[#1A73D9] rounded-lg disabled:opacity-50 flex items-center gap-1.5"
+          >
+            {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+            {creating ? "Creating…" : "Create meeting"}
           </button>
         </div>
       </div>

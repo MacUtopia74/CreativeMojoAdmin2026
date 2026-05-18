@@ -34,6 +34,15 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
   - **Supplier keyword filters** on Banking page: 16 seed chips (DENE LODGE, HAZELGATE, etc.) — click-to-filter, add/remove inline, persists in `banking_supplier_keywords`.
 
 
+## What's Implemented (2026-05-18)
+- **Zoom Server-to-Server OAuth — Calendar one-click meeting creation** ✅ (May 18 2026)
+  - Marketplace Server-to-Server OAuth app on `headoffice@creativemojo.co.uk` (single shared host). Granular scopes: `meeting:write:meeting:admin`, `meeting:read:meeting:admin`, `user:read:user:admin`.
+  - New backend module `backend/zoom_routes.py` — in-memory token cache (1h TTL, 60s safety margin, asyncio lock), `GET /api/zoom/status`, `POST /api/zoom/meetings`. Audit trail in `zoom_audit` collection.
+  - Frontend: new `ZoomMeetingModal` inside the calendar `EventModal`. Blue "Create Zoom meeting" button next to the meeting-link field opens a small dialog (duration auto-defaulted from event start↔end, passcode toggle [on by default], waiting-room toggle). On confirm, the returned `join_url` auto-fills `meeting_url` and a green success notice shows the passcode. Manual paste still works (Teams/Meet/etc).
+  - Pivot away from MS Teams (Microsoft 365 dev-app restrictions on the user's tenant). Manual paste kept as fallback.
+- **Mojo Orders promoted to primary nav** ✅ (May 18 2026)
+  - Moved out of the collapsed Admin sub-menu in `Layout.js` to the main sidebar (just under CQC Definitions).
+
 ## What's Implemented (2026-05-16)
 - **Teams meeting links (manual paste flow)** ✅ (Feb 18 2026)
   - Calendar event form already supported a `meeting_url` field (typically MS Teams join link). Admin pastes it once when creating/editing → both admin Calendar page and the new portal Events panel render a one-click "Join meeting" button.
