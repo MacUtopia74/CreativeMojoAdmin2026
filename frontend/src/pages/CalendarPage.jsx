@@ -394,10 +394,43 @@ function EventModal({ event, defaults, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
+  // Friendly end-time keeper — when the user edits the start, we slide
+  // the end forward to maintain the same gap (or default to +60 mins),
+  // matching what every other calendar app does.
+  const setStartSmart = (newStart) => {
+    if (!allDay && newStart && end) {
+      const oldS = new Date(start).getTime();
+      const oldE = new Date(end).getTime();
+      const newS = new Date(newStart).getTime();
+      if (Number.isFinite(oldS) && Number.isFinite(oldE) && Number.isFinite(newS)) {
+        const gap = oldE > oldS ? oldE - oldS : 60 * 60 * 1000;
+        const projected = new Date(newS + gap);
+        // ISO local-style "YYYY-MM-DDTHH:mm" — strip timezone+seconds.
+        const pad = (n) => String(n).padStart(2, "0");
+        const iso = `${projected.getFullYear()}-${pad(projected.getMonth() + 1)}-${pad(projected.getDate())}T${pad(projected.getHours())}:${pad(projected.getMinutes())}`;
+        setEnd(iso);
+      }
+    }
+    setStart(newStart);
+  };
+
   const save = async () => {
     setErr("");
     if (!title.trim()) { setErr("Title is required."); return; }
     if (!start || !end) { setErr("Pick start and end."); return; }
+    // End must come after start — Google rejects an empty range with a
+    // cryptic "time range is empty" error otherwise. Compare on raw
+    // strings for all-day (yyyy-mm-dd) and timestamps for timed.
+    if (allDay) {
+      if (end < start) { setErr("End date must be on or after start date."); return; }
+    } else {
+      const s = new Date(start).getTime();
+      const e = new Date(end).getTime();
+      if (Number.isFinite(s) && Number.isFinite(e) && e <= s) {
+        setErr("End time must be after the start time.");
+        return;
+      }
+    }
     setSaving(true);
     try {
       const body = {
@@ -413,8 +446,16 @@ function EventModal({ event, defaults, onClose, onSaved }) {
       if (event?.id) await api.patch(`/calendar/events/${event.id}`, body);
       else await api.post("/calendar/events", body);
       onSaved?.();
-    } catch (e) { setErr(e?.response?.data?.detail || "Save failed"); }
-    finally { setSaving(false); }
+    } catch (e) {
+      // Surface the user-friendly translation for the most common
+      // Google API gotcha instead of dumping the raw HttpError.
+      const raw = e?.response?.data?.detail || "Save failed";
+      if (typeof raw === "string" && /timeRangeEmpty|time range is empty/i.test(raw)) {
+        setErr("End time must be after the start time.");
+      } else {
+        setErr(raw);
+      }
+    } finally { setSaving(false); }
   };
 
   return (
@@ -432,7 +473,7 @@ function EventModal({ event, defaults, onClose, onSaved }) {
             All-day event
           </label>
           <div className="grid grid-cols-2 gap-3">
-            <DateInput label="Starts" value={start} onChange={setStart} allDay={allDay} testid="cal-start" />
+            <DateInput label="Starts" value={start} onChange={setStartSmart} allDay={allDay} testid="cal-start" />
             <DateInput label="Ends" value={end} onChange={setEnd} allDay={allDay} testid="cal-end" />
           </div>
           <Input
