@@ -234,6 +234,37 @@ async def logout(response: Response, _: dict = Depends(get_current_user)):
     return {"ok": True}
 
 
+@api.post("/auth/refresh")
+async def refresh_token(request: Request, response: Response):
+    """Issue a fresh access_token from the refresh_token cookie. The
+    frontend's axios interceptor hits this transparently when an
+    authenticated call returns 401, so admins don't get bounced to the
+    login screen mid-session after 8 hours."""
+    rtoken = request.cookies.get("refresh_token")
+    if not rtoken:
+        raise HTTPException(401, "No refresh token")
+    try:
+        payload = jwt.decode(rtoken, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        if payload.get("type") != "refresh":
+            raise HTTPException(401, "Invalid token type")
+        user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0})
+        if not user:
+            raise HTTPException(401, "User not found")
+    except jwt.ExpiredSignatureError:
+        # Refresh expired too — nothing we can do, force re-login.
+        clear_auth_cookies(response)
+        raise HTTPException(401, "Refresh token expired") from None
+    except jwt.InvalidTokenError:
+        clear_auth_cookies(response)
+        raise HTTPException(401, "Invalid refresh token") from None
+    new_access = create_access_token(user["id"], user["email"], user["role"])
+    # Roll the refresh token too so a long-lived session keeps extending
+    # rather than dying at the 7-day mark.
+    new_refresh = create_refresh_token(user["id"])
+    set_auth_cookies(response, new_access, new_refresh)
+    return user_to_public(user)
+
+
 @api.get("/auth/me")
 async def me(user: dict = Depends(get_current_user)):
     return user_to_public(user)
