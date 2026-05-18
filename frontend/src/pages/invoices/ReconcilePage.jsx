@@ -139,6 +139,7 @@ export default function ReconcilePage() {
     });
   };
   const clearKeywords = () => setActiveKeywords(new Set());
+  const selectAllKeywords = () => setActiveKeywords(new Set(keywords));
 
   const linkTransaction = async (tx) => {
     if (!selectedInvoiceId) {
@@ -272,14 +273,24 @@ export default function ReconcilePage() {
               ? `${activeKeywords.size} active`
               : `${keywords.length} saved`}
           </span>
-          {activeKeywords.size > 0 && (
+          <div className="ml-auto flex items-center gap-1.5">
+            {activeKeywords.size > 0 && (
+              <button
+                onClick={clearKeywords}
+                data-testid="reconcile-chip-clear"
+                className="text-[10px] uppercase tracking-wider font-bold text-slate-500 hover:text-slate-900 px-2 py-1"
+              >
+                Clear
+              </button>
+            )}
             <button
-              onClick={clearKeywords}
-              className="ml-auto text-[10px] uppercase tracking-wider font-bold text-slate-500 hover:text-slate-900"
+              onClick={selectAllKeywords}
+              data-testid="reconcile-chip-select-all"
+              className="text-[10px] uppercase tracking-wider font-bold text-slate-500 hover:text-slate-900 px-2 py-1"
             >
-              Clear
+              Select all
             </button>
-          )}
+          </div>
         </div>
         <div className="flex flex-wrap gap-1.5">
           {keywords.map((k) => {
