@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "@/lib/api";
 import { formatDate } from "@/lib/date";
-import { AlertCircle, BellRing, Mail, ChevronDown, ChevronUp, CalendarDays, Search } from "lucide-react";
+import { AlertCircle, BellRing, Mail, ChevronDown, ChevronUp, CalendarDays, Search, CheckCircle2, Undo2, Phone } from "lucide-react";
 
 const BUCKETS = [
   { key: "overdue",  label: "Already Expired",        chip: "bg-red-100 text-red-800 border-red-300" },
@@ -71,6 +71,19 @@ export default function ContractRenewalsPage() {
   const [windowDays, setWindowDays] = useState(365);
   const [search, setSearch] = useState("");
   const [collapsed, setCollapsed] = useState({ overdue: true });  // hide expired by default
+  const [hideContacted, setHideContacted] = useState(false);
+  // Optimistic in-flight markers so the user sees instant feedback while
+  // the POST is still in flight. Keyed by contract id.
+  const [busyIds, setBusyIds] = useState(() => new Set());
+
+  const reload = async () => {
+    try {
+      const { data } = await api.get("/contracts/renewals", { params: { within_days: windowDays } });
+      setData(data);
+    } catch (e) {
+      setError("Could not load contract renewals.");
+    }
+  };
 
   useEffect(() => {
     let cancel = false;
@@ -86,6 +99,50 @@ export default function ContractRenewalsPage() {
     return () => { cancel = true; };
   }, [windowDays]);
 
+  const markContacted = async (row, method = "email") => {
+    setBusyIds((s) => new Set([...s, row.id]));
+    // Optimistic update so the green pill appears straight away —
+    // the reload below replaces the row with the canonical state.
+    setData((d) => d ? {
+      ...d,
+      items: d.items.map((r) => r.id === row.id ? {
+        ...r,
+        last_reminded_at: new Date().toISOString(),
+        last_reminded_method: method,
+      } : r),
+    } : d);
+    try {
+      await api.post(`/contracts/${row.id}/mark-contacted`, { method });
+      await reload();
+    } catch (e) {
+      // Roll back the optimistic flip on failure.
+      reload();
+    } finally {
+      setBusyIds((s) => { const next = new Set(s); next.delete(row.id); return next; });
+    }
+  };
+
+  const undoContacted = async (row) => {
+    setBusyIds((s) => new Set([...s, row.id]));
+    setData((d) => d ? {
+      ...d,
+      items: d.items.map((r) => r.id === row.id ? {
+        ...r,
+        last_reminded_at: null,
+        last_reminded_by_name: null,
+        last_reminded_method: null,
+      } : r),
+    } : d);
+    try {
+      await api.delete(`/contracts/${row.id}/mark-contacted`);
+      await reload();
+    } catch (e) {
+      reload();
+    } finally {
+      setBusyIds((s) => { const next = new Set(s); next.delete(row.id); return next; });
+    }
+  };
+
   const grouped = useMemo(() => {
     const out = Object.fromEntries(BUCKETS.map((b) => [b.key, []]));
     if (!data) return out;
@@ -96,10 +153,16 @@ export default function ContractRenewalsPage() {
         const haystack = `${f.first_name || ""} ${f.last_name || ""} ${f.organisation || ""} ${f.mojo_email || ""} ${f.postcode || ""}`.toLowerCase();
         if (!haystack.includes(q)) continue;
       }
+      if (hideContacted && row.last_reminded_at) continue;
       out[row.bucket]?.push(row);
     }
     return out;
-  }, [data, search]);
+  }, [data, search, hideContacted]);
+
+  const contactedCount = useMemo(
+    () => (data?.items || []).filter((r) => r.last_reminded_at).length,
+    [data]
+  );
 
   const toggleBucket = (key) => setCollapsed((c) => ({ ...c, [key]: !c[key] }));
 
@@ -118,13 +181,26 @@ export default function ContractRenewalsPage() {
             )}
           </h1>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, org, email…"
               data-testid="renewals-search"
               className="pl-10 pr-3 py-2 w-72 bg-stone-50 border border-stone-300 text-sm focus:outline-none focus:border-stone-900 rounded-lg" />
           </div>
+          <button
+            onClick={() => setHideContacted((v) => !v)}
+            data-testid="renewals-toggle-contacted"
+            title={hideContacted ? "Show all" : "Hide rows already contacted"}
+            className={`px-3 py-2 text-[10px] font-bold uppercase tracking-wider rounded-lg border flex items-center gap-1.5 transition ${
+              hideContacted
+                ? "bg-emerald-100 border-emerald-300 text-emerald-900"
+                : "bg-white border-stone-300 text-stone-700 hover:bg-stone-50"
+            }`}
+          >
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            {hideContacted ? `Hiding ${contactedCount} contacted` : `Hide contacted (${contactedCount})`}
+          </button>
           <select value={windowDays} onChange={(e) => setWindowDays(Number(e.target.value))}
             data-testid="renewals-window"
             className="px-3 py-2 border border-stone-300 bg-white text-xs uppercase tracking-wider font-bold rounded-lg">
@@ -172,7 +248,7 @@ export default function ContractRenewalsPage() {
                           <th className="text-left px-3 py-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-28">Renews</th>
                           <th className="text-left px-3 py-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-32">Countdown</th>
                           <th className="text-left px-3 py-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-24">Mandate</th>
-                          <th className="text-right px-3 py-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-40">Action</th>
+                          <th className="text-right px-3 py-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-56">Action</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -206,14 +282,64 @@ export default function ContractRenewalsPage() {
                               <td className="px-3 py-2"><CountdownPill days={row.days_remaining} bucket={row.bucket} /></td>
                               <td className="px-3 py-2"><MandateBadge status={f.gocardless_mandate_status} /></td>
                               <td className="px-3 py-2 text-right">
-                                {(f.mojo_email || f.email || row.email_rollup) ? (
-                                  <a href={buildReminderMailto(row)}
-                                    data-testid={`reminder-${row.id}`}
-                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider bg-red-600 hover:bg-red-700 text-white rounded-lg transition">
-                                    <Mail className="w-3 h-3" /> Email Reminder
-                                  </a>
+                                {row.last_reminded_at ? (
+                                  // Already-contacted state — green pill + tiny undo. Sticks
+                                  // around until either the user undoes it or the contract's
+                                  // renewal_date moves forward (backend clears it on PATCH).
+                                  <div className="inline-flex items-center gap-1.5">
+                                    <span
+                                      data-testid={`contacted-${row.id}`}
+                                      title={`Last reminded ${new Date(row.last_reminded_at).toLocaleString("en-GB")}${row.last_reminded_by_name ? " by " + row.last_reminded_by_name : ""}`}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-lg"
+                                    >
+                                      <CheckCircle2 className="w-3 h-3" /> Contacted {formatDate(row.last_reminded_at)}
+                                    </span>
+                                    <button
+                                      onClick={() => undoContacted(row)}
+                                      disabled={busyIds.has(row.id)}
+                                      data-testid={`undo-contacted-${row.id}`}
+                                      className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider border border-stone-300 hover:bg-stone-100 rounded-lg text-stone-600 disabled:opacity-50"
+                                      title="Undo · re-enable reminder"
+                                    >
+                                      <Undo2 className="w-3 h-3" />
+                                    </button>
+                                  </div>
                                 ) : (
-                                  <span className="text-[10px] text-stone-400 uppercase tracking-wider">No email on file</span>
+                                  (f.mojo_email || f.email || row.email_rollup) ? (
+                                    <div className="inline-flex items-center gap-1">
+                                      <a href={buildReminderMailto(row)}
+                                        onClick={() => markContacted(row, "email")}
+                                        data-testid={`reminder-${row.id}`}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider bg-red-600 hover:bg-red-700 text-white rounded-lg transition">
+                                        <Mail className="w-3 h-3" /> Email Reminder
+                                      </a>
+                                      {/* "Mark contacted" sidecar — covers the case where the
+                                          user reached out by phone, text or in person and just
+                                          wants the row to stop nagging without firing a mailto. */}
+                                      <button
+                                        onClick={() => markContacted(row, "other")}
+                                        disabled={busyIds.has(row.id)}
+                                        data-testid={`mark-contacted-${row.id}`}
+                                        title="Mark contacted (phone / text / other)"
+                                        className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider border border-stone-300 hover:bg-stone-100 rounded-lg text-stone-700 disabled:opacity-50"
+                                      >
+                                        <Phone className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <div className="inline-flex items-center gap-2">
+                                      <span className="text-[10px] text-stone-400 uppercase tracking-wider">No email on file</span>
+                                      <button
+                                        onClick={() => markContacted(row, "other")}
+                                        disabled={busyIds.has(row.id)}
+                                        data-testid={`mark-contacted-${row.id}`}
+                                        title="Mark contacted (phone / text / other)"
+                                        className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider border border-stone-300 hover:bg-stone-100 rounded-lg text-stone-700 disabled:opacity-50"
+                                      >
+                                        <Phone className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  )
                                 )}
                               </td>
                             </tr>

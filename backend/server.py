@@ -1733,9 +1733,80 @@ async def update_contract(contract_id: str, body: dict, user: dict = Depends(req
             raise HTTPException(400, detail=f"Invalid date/term: {exc}") from exc
     update["updated_at"] = datetime.now(timezone.utc)
     update["updated_by"] = user.get("email")
-    await db.contracts.update_one({"id": contract_id}, {"$set": update})
+    # If the renewal date moves forward (contract was actually renewed),
+    # clear any stale "contacted" flag — the cycle restarts.
+    unset: dict = {}
+    if "renewal_date" in update and update["renewal_date"] != existing.get("renewal_date"):
+        unset.update({
+            "last_reminded_at": "",
+            "last_reminded_by": "",
+            "last_reminded_by_name": "",
+            "last_reminded_method": "",
+        })
+    mongo_op: dict = {"$set": update}
+    if unset:
+        mongo_op["$unset"] = unset
+    await db.contracts.update_one({"id": contract_id}, mongo_op)
     fresh = await db.contracts.find_one({"id": contract_id}, {"_id": 0})
     return {"contract": fresh}
+
+
+# ---------------------------------------------------------------------------
+# Renewal-reminder bookkeeping
+# ---------------------------------------------------------------------------
+# When the admin clicks the "Email Reminder" lozenge on the Renewals page we
+# mark the contract as "contacted" so it stops nagging at them. The state is
+# advisory only — it doesn't change the actual renewal date or bucket; the row
+# just renders with a green "Contacted" pill instead of the red CTA.
+
+@api.post("/contracts/{contract_id}/mark-contacted")
+async def mark_contract_contacted(
+    contract_id: str,
+    body: dict | None = None,
+    user: dict = Depends(require_role("admin")),
+):
+    existing = await db.contracts.find_one({"id": contract_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(404, "Contract not found")
+    now = datetime.now(timezone.utc).isoformat()
+    method = (body or {}).get("method") or "email"  # email | phone | other
+    await db.contracts.update_one(
+        {"id": contract_id},
+        {
+            "$set": {
+                "last_reminded_at": now,
+                "last_reminded_by": user.get("email"),
+                "last_reminded_by_name": user.get("name"),
+                "last_reminded_method": method,
+                "updated_at": datetime.now(timezone.utc),
+            }
+        },
+    )
+    return {
+        "ok": True,
+        "last_reminded_at": now,
+        "last_reminded_by_name": user.get("name"),
+        "last_reminded_method": method,
+    }
+
+
+@api.delete("/contracts/{contract_id}/mark-contacted")
+async def unmark_contract_contacted(
+    contract_id: str, _: dict = Depends(require_role("admin"))
+):
+    existing = await db.contracts.find_one({"id": contract_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(404, "Contract not found")
+    await db.contracts.update_one(
+        {"id": contract_id},
+        {"$unset": {
+            "last_reminded_at": "",
+            "last_reminded_by": "",
+            "last_reminded_by_name": "",
+            "last_reminded_method": "",
+        }},
+    )
+    return {"ok": True}
 
 
 # ----------------------------------------------------------------------------
