@@ -33,6 +33,7 @@ const NAV = [
   { to: "/contacts", label: "Sales & Contacts", icon: Contact, testid: "nav-contacts" },
   { to: "/territory-builder", label: "Territory Builder", icon: Target, testid: "nav-territory-builder" },
   { to: "/cqc-definitions", label: "CQC Definitions", icon: Stethoscope, testid: "nav-cqc-definitions" },
+  { to: "/mojo-orders", label: "Mojo Orders", icon: ShoppingBag, testid: "nav-mojo-orders" },
 ];
 
 // Secondary "Admin" nav — power-user tools, tucked away in a collapsible
@@ -40,7 +41,6 @@ const NAV = [
 const ADMIN_NAV = [
   { to: "/invoices", label: "Invoices", icon: Receipt, testid: "nav-invoices" },
   { to: "/banking", label: "Banking", icon: Banknote, testid: "nav-banking" },
-  { to: "/mojo-orders", label: "Mojo Orders", icon: ShoppingBag, testid: "nav-mojo-orders" },
   { to: "/form-intake", label: "Form Intake", icon: Inbox, testid: "nav-form-intake" },
   { to: "/airtable-inspector", label: "Airtable Inspector", icon: Database, testid: "nav-airtable-inspector" },
   { to: "/migration-plan", label: "Migration Plan", icon: ClipboardList, testid: "nav-migration-plan" },
