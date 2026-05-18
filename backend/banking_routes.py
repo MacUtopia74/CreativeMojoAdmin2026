@@ -20,14 +20,20 @@ Env vars consumed:
 """
 from __future__ import annotations
 
+import hashlib
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import RedirectResponse
+
+from bank_statement_parser import (
+    parse_hsbc_personal,
+    transaction_fingerprint,
+)
 
 # ---------------- URLs ----------------
 def _urls() -> dict:
@@ -147,13 +153,17 @@ def build_banking_router(db, require_role):
     # -------------- routes --------------
     @router.get("/status")
     async def status(_=admin):
-        """Lightweight check used by the UI to decide between "Connect"
-        and "Dashboard" views."""
+        """Lightweight check used by the UI to decide between the empty
+        state and the dashboard view. We treat the dashboard as "live"
+        whenever EITHER a TrueLayer connection OR any uploaded statements
+        exist."""
         conn = await _get_connection()
-        if not conn:
-            return {"connected": False}
+        statement_count = await db.banking_statements.count_documents({})
+        connected_truelayer = bool(conn)
+        if not connected_truelayer and statement_count == 0:
+            return {"connected": False, "statement_count": 0}
         now = datetime.now(timezone.utc)
-        consent_expires = conn.get("consent_expires_at")
+        consent_expires = (conn or {}).get("consent_expires_at")
         days_until_expiry = None
         if consent_expires:
             exp = (datetime.fromisoformat(consent_expires)
@@ -161,12 +171,15 @@ def build_banking_router(db, require_role):
             days_until_expiry = max(0, (exp - now).days)
         return {
             "connected": True,
-            "institution_name": conn.get("institution_name"),
-            "account_count": len(conn.get("accounts") or []),
-            "last_sync_at": conn.get("last_sync_at"),
+            "source": "truelayer" if connected_truelayer else "statements",
+            "institution_name": (conn or {}).get("institution_name")
+                                 or ("HSBC UK (Statements)" if statement_count else None),
+            "account_count": len((conn or {}).get("accounts") or []),
+            "statement_count": statement_count,
+            "last_sync_at": (conn or {}).get("last_sync_at"),
             "consent_expires_at": consent_expires,
             "days_until_consent_expires": days_until_expiry,
-            "status": conn.get("status", "active"),
+            "status": (conn or {}).get("status", "active"),
         }
 
     @router.get("/auth-url")
@@ -411,6 +424,138 @@ def build_banking_router(db, require_role):
                              "count": s["count"]} for s in sources],
             "total_in_window": round(total_in, 2),
         }
+
+    # ---------------- PDF Statement Upload ----------------
+    # The primary import path now that we're not using TrueLayer. Admin
+    # uploads one or more HSBC personal statement PDFs; we parse each
+    # into the same `banking_transactions` collection the rest of the
+    # banking UI already reads from, so the dashboard "just works".
+
+    @router.post("/statements")
+    async def upload_statements(
+        files: list[UploadFile] = File(...),
+        _=admin,
+    ):
+        if not files:
+            raise HTTPException(400, "No files supplied")
+        results = []
+        now = datetime.now(timezone.utc)
+        for upload in files:
+            if not (upload.filename or "").lower().endswith(".pdf"):
+                results.append({"filename": upload.filename, "status": "error",
+                                "message": "Only PDF files accepted"})
+                continue
+            blob = await upload.read()
+            try:
+                parsed = parse_hsbc_personal(blob)
+            except Exception as exc:  # noqa: BLE001
+                results.append({"filename": upload.filename, "status": "error",
+                                "message": f"Parse failed: {exc}"})
+                continue
+            if not parsed.transactions:
+                results.append({"filename": upload.filename, "status": "warning",
+                                "message": "No transactions found — let us know and we'll tune the parser",
+                                "page_count": parsed.page_count})
+                continue
+            statement_id = f"stmt_{int(now.timestamp() * 1000)}_{hashlib.md5(upload.filename.encode()).hexdigest()[:6]}"
+            new_tx = 0
+            duplicates = 0
+            for tx in parsed.transactions:
+                fp = transaction_fingerprint(tx)
+                doc = {
+                    "account_id": "statement-import",
+                    "transaction_id": fp,
+                    "amount": tx.amount,
+                    "currency": "GBP",
+                    "description": tx.description,
+                    "merchant_name": None,
+                    "transaction_type": tx.transaction_type,
+                    "transaction_category": tx.transaction_type,
+                    "timestamp": tx.date + "T00:00:00Z",
+                    "source": "statement",
+                    "source_statement_id": statement_id,
+                    "raw_line": tx.raw,
+                    "updated_at": now.isoformat(),
+                }
+                res = await db.banking_transactions.update_one(
+                    {"account_id": "statement-import", "transaction_id": fp},
+                    {"$set": doc, "$setOnInsert": {"created_at": now.isoformat()}},
+                    upsert=True,
+                )
+                if res.upserted_id is not None:
+                    new_tx += 1
+                else:
+                    duplicates += 1
+            # Persist statement metadata so the user can see / delete it later
+            await db.banking_statements.insert_one({
+                "_id": statement_id,
+                "filename": upload.filename,
+                "uploaded_at": now.isoformat(),
+                "file_size": len(blob),
+                "page_count": parsed.page_count,
+                "transaction_count": len(parsed.transactions),
+                "new_transactions": new_tx,
+                "duplicates_skipped": duplicates,
+                "period_from": parsed.period_from,
+                "period_to": parsed.period_to,
+                "opening_balance": parsed.opening_balance,
+                "closing_balance": parsed.closing_balance,
+            })
+            # Update the headline balance from the closing balance — gives
+            # the dashboard a sensible "current balance" KPI.
+            if parsed.closing_balance is not None:
+                await db.banking_balances.update_one(
+                    {"account_id": "statement-import"},
+                    {"$set": {
+                        "account_id": "statement-import",
+                        "current": parsed.closing_balance,
+                        "available": parsed.closing_balance,
+                        "currency": "GBP",
+                        "updated_at": now.isoformat(),
+                    }},
+                    upsert=True,
+                )
+            results.append({
+                "filename": upload.filename,
+                "status": "ok",
+                "statement_id": statement_id,
+                "transaction_count": len(parsed.transactions),
+                "new_transactions": new_tx,
+                "duplicates_skipped": duplicates,
+                "period_from": parsed.period_from,
+                "period_to": parsed.period_to,
+            })
+        return {"results": results}
+
+    @router.get("/statements")
+    async def list_statements(_=admin):
+        rows = await db.banking_statements.find({}, {"_id": 1, "filename": 1,
+            "uploaded_at": 1, "file_size": 1, "page_count": 1,
+            "transaction_count": 1, "new_transactions": 1,
+            "duplicates_skipped": 1, "period_from": 1, "period_to": 1,
+            "opening_balance": 1, "closing_balance": 1}) \
+            .sort("uploaded_at", -1).to_list(500)
+        for r in rows:
+            r["id"] = r.pop("_id")
+        return {"statements": rows, "count": len(rows)}
+
+    @router.delete("/statements/{statement_id}")
+    async def delete_statement(statement_id: str, _=admin):
+        # Pull every transaction tied to this statement, then check if
+        # each row is shared with another statement. Only transactions
+        # exclusively from this upload are removed.
+        await db.banking_transactions.delete_many(
+            {"source_statement_id": statement_id}
+        )
+        await db.banking_statements.delete_one({"_id": statement_id})
+        # If there are no statements left, also wipe the synthetic balance
+        # we wrote so the UI returns to the empty state cleanly.
+        remaining = await db.banking_statements.count_documents({})
+        if remaining == 0:
+            await db.banking_balances.delete_many(
+                {"account_id": "statement-import"}
+            )
+        return {"ok": True, "remaining_statements": remaining}
 
     return router
 
