@@ -158,9 +158,15 @@ export default function DashboardPage() {
           {!renewals ? (
             <div className="text-sm text-stone-500">Loading renewals…</div>
           ) : (() => {
-            const reminderItems = renewals.items.filter((r) => r.days_remaining >= 0 && r.days_remaining <= 90);
-            const expiringSoon = renewals.items.filter((r) => r.days_remaining > 90 && r.days_remaining <= 180);
-            const expiringLater = renewals.items.filter((r) => r.days_remaining > 180 && r.days_remaining <= 365);
+            // Anything already chased is hidden from the dashboard's "to do"
+            // panel entirely — the whole point of marking-as-contacted on the
+            // Renewals page is to make these stop nagging. The /renewals
+            // page still shows them (with a toggle) for audit.
+            const active = renewals.items.filter((r) => !r.last_reminded_at);
+            const reminderItems = active.filter((r) => r.days_remaining >= 0 && r.days_remaining <= 90);
+            const expiringSoon = active.filter((r) => r.days_remaining > 90 && r.days_remaining <= 180);
+            const expiringLater = active.filter((r) => r.days_remaining > 180 && r.days_remaining <= 365);
+            const contactedCount = renewals.items.filter((r) => r.last_reminded_at).length;
             if (reminderItems.length === 0 && expiringSoon.length === 0 && expiringLater.length === 0) {
               return (
                 <div className="flex items-center gap-2 text-sm text-emerald-700 py-1">
@@ -185,6 +191,13 @@ export default function DashboardPage() {
                     <div className="font-display text-2xl text-stone-900 mt-1 tabular-nums">{expiringLater.length}</div>
                   </div>
                 </div>
+                {contactedCount > 0 && (
+                  <div className="text-[11px] text-emerald-700 flex items-center gap-1.5" data-testid="todo-contacted-summary">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <strong className="tabular-nums">{contactedCount}</strong> already contacted ·
+                    <Link to="/renewals" className="underline underline-offset-2 hover:text-emerald-900">view on Renewals</Link>
+                  </div>
+                )}
                 {reminderItems.length > 0 && (
                   <div>
                     <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-2">Email reminders due now</div>
@@ -208,6 +221,16 @@ export default function DashboardPage() {
                             <span className="text-[11px] text-stone-500 tabular-nums hidden md:inline">Renews {renewalDate}</span>
                             {to ? (
                               <a href={mailto} data-testid={`todo-mail-${r.id}`}
+                                onClick={() => {
+                                  // Fire-and-forget so the user's mailto opens
+                                  // immediately. We refresh the renewals slice
+                                  // afterwards so the row drops out of the
+                                  // panel (it's already-contacted now).
+                                  api.post(`/contracts/${r.id}/mark-contacted`, { method: "email" })
+                                    .then(() => api.get("/contracts/renewals", { params: { within_days: 365 } }))
+                                    .then(({ data }) => setRenewals(data))
+                                    .catch(() => { /* swallow — UI stays in sync on next refresh */ });
+                                }}
                                 className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-red-600 hover:bg-red-700 text-white rounded-lg transition">
                                 <Mail className="w-3 h-3" /> Remind
                               </a>
