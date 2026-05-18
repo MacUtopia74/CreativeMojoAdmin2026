@@ -218,9 +218,9 @@ export default function PortalDashboardPage() {
             {/* Your details — full-width landscape strip across the top.
                 Collapsible so the franchisee can shrink it to a header bar
                 if they want even more room for the map and files below. */}
-            <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid="portal-contact">
+            <div className={`${detailsOpen ? "bg-white" : "bg-stone-100"} border border-stone-200 rounded-2xl overflow-hidden transition-colors`} data-testid="portal-contact">
               <button onClick={() => setDetailsOpen((v) => !v)} data-testid="toggle-details"
-                className="w-full flex items-center justify-between gap-3 hover:bg-stone-50 transition-colors px-6 py-4">
+                className={`w-full flex items-center justify-between gap-3 ${detailsOpen ? "hover:bg-stone-50" : "hover:bg-stone-200"} transition-colors px-6 py-4`}>
                 <div className="flex items-center gap-2">
                   <UserIcon className="w-4 h-4 text-stone-700" />
                   <span className="text-xs uppercase tracking-[0.3em] font-bold text-stone-700">Your details</span>
@@ -283,7 +283,7 @@ export default function PortalDashboardPage() {
               </div>
             ) : (
               <button onClick={() => setTerritoryOpen(true)} data-testid="toggle-territory"
-                className="w-full bg-white border border-stone-200 rounded-2xl px-6 py-4 flex items-center justify-between gap-3 hover:bg-stone-50 transition-colors">
+                className="w-full bg-stone-100 border border-stone-200 rounded-2xl px-6 py-4 flex items-center justify-between gap-3 hover:bg-stone-200 transition-colors">
                 <div className="flex items-center gap-2">
                   <MapPin className="w-4 h-4 text-stone-700" />
                   <span className="text-xs uppercase tracking-[0.3em] font-bold text-stone-700">Your territory</span>
@@ -297,9 +297,9 @@ export default function PortalDashboardPage() {
             {/* Files — primary daily-use tool. Collapsible like the other
                 two panels so the franchisee can shrink it on small screens
                 or when they want a quick map-only view. Default open. */}
-            <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid="portal-files">
+            <div className={`${filesOpen ? "bg-white" : "bg-stone-100"} border border-stone-200 rounded-2xl overflow-hidden transition-colors`} data-testid="portal-files">
               <button onClick={() => setFilesOpen((v) => !v)} data-testid="toggle-files"
-                className="w-full flex items-center justify-between gap-3 hover:bg-stone-50 transition-colors px-6 py-4">
+                className={`w-full flex items-center justify-between gap-3 ${filesOpen ? "hover:bg-stone-50" : "hover:bg-stone-200"} transition-colors px-6 py-4`}>
                 <div className="flex items-center gap-2">
                   <FolderOpen className="w-4 h-4 text-stone-700" />
                   <span className="text-xs uppercase tracking-[0.3em] font-bold text-stone-700">Your files</span>

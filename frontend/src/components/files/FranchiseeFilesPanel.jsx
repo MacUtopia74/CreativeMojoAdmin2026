@@ -15,7 +15,7 @@
 import { useEffect, useState, useCallback } from "react";
 import api, { API_BASE } from "@/lib/api";
 import {
-  Folder, ChevronRight, Loader2, AlertCircle, Package, FolderPlus,
+  Folder, FolderOpen, ChevronRight, Loader2, AlertCircle, Package, FolderPlus,
   Search, X, LayoutGrid, List as ListIcon, Download,
 } from "lucide-react";
 import { prettyFolderName } from "@/utils/folderName";
@@ -116,27 +116,43 @@ export default function FranchiseeFilesPanel({ franchisee, canUpload = true }) {
   };
 
   const segs = prefix.split("/").filter(Boolean);
-  const breadcrumbHome = tab === "own" ? "My franchise files" : "Files for all franchisees";
+  const breadcrumbHome = tab === "own" ? "My own franchise documents" : "Files for all franchisees";
 
   return (
-    <div className="space-y-4" data-testid="franchisee-files-panel">
-      {/* Tab strip — large, pill-shaped, very clearly two selectable sections */}
-      <div className="flex items-center gap-2 flex-wrap" data-testid="franchisee-files-tabs" role="tablist">
-        <button onClick={() => setTab("own")} data-testid="ff-tab-own" role="tab" aria-selected={tab === "own"}
-          className={`px-5 py-3 text-sm font-bold rounded-xl border-2 transition-all flex items-center gap-2 ${tab === "own"
-            ? "bg-stone-950 text-white border-stone-950 shadow-sm"
-            : "bg-white text-stone-700 border-stone-300 hover:border-stone-500"}`}>
-          <Folder className="w-4 h-4" />
-          My franchise files
-        </button>
-        <button onClick={() => setTab("brand")} data-testid="ff-tab-brand" role="tab" aria-selected={tab === "brand"}
-          className={`px-5 py-3 text-sm font-bold rounded-xl border-2 transition-all flex items-center gap-2 ${tab === "brand"
-            ? "bg-stone-950 text-white border-stone-950 shadow-sm"
-            : "bg-white text-stone-700 border-stone-300 hover:border-stone-500"}`}>
-          <Folder className="w-4 h-4" />
-          Files for all franchisees
-        </button>
+    <div className="bg-white border border-stone-300 rounded-2xl overflow-hidden shadow-sm" data-testid="franchisee-files-panel">
+      {/* Green header strip — mirrors the yellow "Recently added" strip
+          directly above. Makes the visual hierarchy obvious: two sibling
+          sections inside the Files panel. */}
+      <div className="w-full bg-[#C8F2C8] px-5 py-3 flex items-center gap-2.5 border-b border-stone-200" data-testid="files-section-header">
+        <div className="w-7 h-7 rounded-md flex items-center justify-center bg-stone-950">
+          <FolderOpen className="w-4 h-4 text-[#C8F2C8]" />
+        </div>
+        <span className="text-sm font-display font-bold tracking-tight text-stone-950">
+          {tab === "own" ? "My own franchise documents" : "Files for all franchisees"}
+        </span>
+        <span className="text-[11px] uppercase tracking-[0.2em] font-bold text-stone-800">
+          · all files
+        </span>
       </div>
+
+      <div className="space-y-4 p-5">
+        {/* Tab strip — large, pill-shaped, very clearly two selectable sections */}
+        <div className="flex items-center gap-2 flex-wrap" data-testid="franchisee-files-tabs" role="tablist">
+          <button onClick={() => setTab("own")} data-testid="ff-tab-own" role="tab" aria-selected={tab === "own"}
+            className={`px-5 py-3 text-sm font-bold rounded-xl border-2 transition-all flex items-center gap-2 ${tab === "own"
+              ? "bg-stone-950 text-white border-stone-950 shadow-sm"
+              : "bg-white text-stone-700 border-stone-300 hover:border-stone-500"}`}>
+            <Folder className="w-4 h-4" />
+            My own franchise documents
+          </button>
+          <button onClick={() => setTab("brand")} data-testid="ff-tab-brand" role="tab" aria-selected={tab === "brand"}
+            className={`px-5 py-3 text-sm font-bold rounded-xl border-2 transition-all flex items-center gap-2 ${tab === "brand"
+              ? "bg-stone-950 text-white border-stone-950 shadow-sm"
+              : "bg-white text-stone-700 border-stone-300 hover:border-stone-500"}`}>
+            <Folder className="w-4 h-4" />
+            Files for all franchisees
+          </button>
+        </div>
 
       {/* Search + view toggle */}
       <div className="flex items-center gap-2 flex-wrap">
@@ -236,7 +252,8 @@ export default function FranchiseeFilesPanel({ franchisee, canUpload = true }) {
           : <TreeList tree={tree} onOpenFolder={(k) => setPrefix(k.slice(rootPrefix.length))} onPreview={setPreview} onDownload={download} downloadingKey={downloadingKey} />
       )}
 
-      <FilePreviewModal file={preview} onClose={() => setPreview(null)} />
+        <FilePreviewModal file={preview} onClose={() => setPreview(null)} />
+      </div>
     </div>
   );
 }
