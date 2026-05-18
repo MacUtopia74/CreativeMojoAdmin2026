@@ -3,7 +3,7 @@
 // a matching transaction to link them in one shot. Supports supplier
 // keyword filtering on the bank side so the user can drill into a
 // specific care-home's incoming receipts.
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { Link } from "react-router-dom";
 import api from "@/lib/api";
 import { toast } from "sonner";
@@ -39,6 +39,9 @@ export default function ReconcilePage() {
   const [transactions, setTransactions] = useState([]);
   const [keywords, setKeywords] = useState([]);
   const [activeKeywords, setActiveKeywords] = useState(new Set());
+  // Tracks whether we've done the one-shot "default everything ON" pass
+  // after the keyword list first loads. After that, user toggles win.
+  const keywordsInitRef = useRef(false);
   const [invoiceSearch, setInvoiceSearch] = useState("");
   const [txSearch, setTxSearch] = useState("");
   const [selectedInvoiceId, setSelectedInvoiceId] = useState(null);
@@ -72,7 +75,17 @@ export default function ReconcilePage() {
 
   const loadKeywords = useCallback(async () => {
     const { data } = await api.get("/banking/supplier-keywords");
-    setKeywords(data.keywords || []);
+    const kws = data.keywords || [];
+    setKeywords(kws);
+    // First-time-on-this-page convenience: default to ALL chips active so
+    // the receipts column is already pre-filtered to the supplier list.
+    // Once the user touches the chips we stop force-syncing so their
+    // selection wins. The "touched" flag is held in a ref outside the
+    // setState callback to avoid stale closures.
+    if (!keywordsInitRef.current && kws.length > 0) {
+      keywordsInitRef.current = true;
+      setActiveKeywords(new Set(kws));
+    }
   }, []);
 
   const refreshAll = useCallback(async () => {
