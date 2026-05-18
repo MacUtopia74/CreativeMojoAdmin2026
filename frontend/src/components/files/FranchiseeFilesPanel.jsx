@@ -119,23 +119,24 @@ export default function FranchiseeFilesPanel({ franchisee, canUpload = true }) {
   const breadcrumbHome = tab === "own" ? "My own franchise documents" : "Files for all franchisees";
 
   return (
-    <div className="bg-white border border-stone-300 rounded-2xl overflow-hidden shadow-sm" data-testid="franchisee-files-panel">
+    <div className="overflow-hidden" data-testid="franchisee-files-panel">
       {/* Green header strip — mirrors the yellow "Recently added" strip
           directly above. Makes the visual hierarchy obvious: two sibling
-          sections inside the Files panel. */}
-      <div className="w-full bg-[#C8F2C8] px-5 py-3 flex items-center gap-2.5 border-b border-stone-200" data-testid="files-section-header">
+          sections inside the Files panel. Flush left/right with no
+          inner border so it lines up with the parent card. */}
+      <div className="-mx-5 px-5 py-3 bg-[#C8F2C8] flex items-center gap-2.5" data-testid="files-section-header">
         <div className="w-7 h-7 rounded-md flex items-center justify-center bg-stone-950">
           <FolderOpen className="w-4 h-4 text-[#C8F2C8]" />
         </div>
         <span className="text-sm font-display font-bold tracking-tight text-stone-950">
-          {tab === "own" ? "My own franchise documents" : "Files for all franchisees"}
+          Franchise File Access
         </span>
         <span className="text-[11px] uppercase tracking-[0.2em] font-bold text-stone-800">
           · all files
         </span>
       </div>
 
-      <div className="space-y-4 p-5">
+      <div className="space-y-4 pt-5">
         {/* Tab strip — large, pill-shaped, very clearly two selectable sections */}
         <div className="flex items-center gap-2 flex-wrap" data-testid="franchisee-files-tabs" role="tablist">
           <button onClick={() => setTab("own")} data-testid="ff-tab-own" role="tab" aria-selected={tab === "own"}
