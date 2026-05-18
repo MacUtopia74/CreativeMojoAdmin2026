@@ -32,6 +32,7 @@ from fastapi.responses import RedirectResponse
 
 from bank_statement_parser import (
     parse_hsbc_personal,
+    parse_hsbc_csv,
     transaction_fingerprint,
 )
 
@@ -441,13 +442,17 @@ def build_banking_router(db, require_role):
         results = []
         now = datetime.now(timezone.utc)
         for upload in files:
-            if not (upload.filename or "").lower().endswith(".pdf"):
+            name = (upload.filename or "").lower()
+            is_csv = name.endswith(".csv")
+            is_pdf = name.endswith(".pdf")
+            if not (is_csv or is_pdf):
                 results.append({"filename": upload.filename, "status": "error",
-                                "message": "Only PDF files accepted"})
+                                "message": "Only PDF or CSV files accepted"})
                 continue
             blob = await upload.read()
             try:
-                parsed = parse_hsbc_personal(blob)
+                parsed = (parse_hsbc_csv(blob) if is_csv
+                          else parse_hsbc_personal(blob))
             except Exception as exc:  # noqa: BLE001
                 results.append({"filename": upload.filename, "status": "error",
                                 "message": f"Parse failed: {exc}"})

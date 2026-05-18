@@ -30,11 +30,12 @@ function StatementDropZone({ onUploaded, compact = false }) {
   const [busy, setBusy] = useState(false);
 
   const upload = async (fileList) => {
-    const files = Array.from(fileList || []).filter((f) =>
-      f.name.toLowerCase().endsWith(".pdf"),
-    );
+    const files = Array.from(fileList || []).filter((f) => {
+      const n = f.name.toLowerCase();
+      return n.endsWith(".pdf") || n.endsWith(".csv");
+    });
     if (!files.length) {
-      toast.error("Please drop PDF files only.");
+      toast.error("Please drop PDF or CSV files only.");
       return;
     }
     setBusy(true);
@@ -77,7 +78,7 @@ function StatementDropZone({ onUploaded, compact = false }) {
       <input
         ref={fileRef}
         type="file"
-        accept="application/pdf,.pdf"
+        accept="application/pdf,.pdf,.csv,text/csv"
         multiple
         className="hidden"
         onChange={(e) => upload(e.target.files)}
@@ -93,10 +94,10 @@ function StatementDropZone({ onUploaded, compact = false }) {
           </div>
           <div className={compact ? "mt-2" : "mt-4"}>
             <p className="font-bold text-stone-900">
-              {compact ? "Upload more statements" : "Drop HSBC statement PDFs here"}
+              {compact ? "Upload more statements" : "Drop HSBC statements here"}
             </p>
             <p className="text-xs text-stone-500 mt-1">
-              {compact ? "PDF only · multiple supported" : "Or click to choose files. Multiple PDFs supported. Duplicates skipped automatically."}
+              {compact ? "PDF or CSV · multiple supported" : "Or click to choose. PDF or CSV exports from HSBC Online Banking. Multiple files supported. Duplicates skipped automatically."}
             </p>
           </div>
         </>
