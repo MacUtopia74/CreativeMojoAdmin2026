@@ -35,6 +35,12 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
 
 
 ## What's Implemented (2026-05-16)
+- **Teams meeting links (manual paste flow)** ✅ (Feb 18 2026)
+  - Calendar event form already supported a `meeting_url` field (typically MS Teams join link). Admin pastes it once when creating/editing → both admin Calendar page and the new portal Events panel render a one-click "Join meeting" button.
+  - New `GET /api/calendar/portal-events` — same shape as admin endpoint, requires login only (no admin role), gracefully returns `connected: false` when calendar not configured instead of 500.
+  - New `PortalEventsPanel` on the franchisee portal — collapsible, lives between "Your Territory" and "Your Files". Shows next-event preview when collapsed. When open: date tile + title + time + location + description + Teams-detected blue "Join meeting" button. "Show recent past" toggle for events ≤30d ago.
+  - Path C (full Microsoft Graph OAuth + auto-generate links + Outlook two-way sync) **declined** — Microsoft Family subscription has no Azure AD; M365 Developer Program sandbox locked behind Visual Studio Enterprise in 2024. Manual paste flow chosen as the pragmatic free alternative. If user later subscribes to M365 Business Basic, can swap in the auto-generated flow without changing data shape.
+
 - **Phase Account-Security** ✅ (Feb 18 2026)
   - **Admin Users page** (Feb 18 2026) — replaces standalone "Password Resets". Two-tab layout at `/admin/users` (legacy `/admin/password-resets` route preserved):
     - **Users tab**: roster of all login accounts with name, email, role pill, linked franchisee, created-at; search box + role filter; "+ New User" modal supports admin/franchisee/licensee with linked-franchisee picker for franchisee accounts; generates a strong password on demand; reveals new credentials ONCE post-creation for the admin to share out-of-band; delete-user (self-delete blocked).

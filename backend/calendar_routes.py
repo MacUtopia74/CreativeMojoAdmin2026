@@ -106,7 +106,7 @@ def _shape_event(e: dict) -> dict:
     }
 
 
-def attach(api, db, require_role):
+def attach(api, db, require_role, get_current_user=None):
     router = APIRouter()
 
     async def _load_creds() -> Optional[Credentials]:
@@ -242,6 +242,48 @@ def attach(api, db, require_role):
             raise HTTPException(502, detail=f"Google Calendar API error: {exc}") from exc
         events = [_shape_event(e) for e in res.get("items", [])]
         return {"events": events, "count": len(events)}
+
+    # ------------------------------------------------ portal: list events
+    # Any authenticated user (admin / franchisee / licensee) can see the
+    # upcoming events feed read-only. The franchisee portal renders this
+    # in a new "Events" panel so people can join Teams meetings without
+    # the admin having to email them the link.
+    if get_current_user is not None:
+        @router.get("/calendar/portal-events")
+        async def list_portal_events(
+            days_ahead: int = Query(60, ge=1, le=365),
+            days_back: int = Query(0, ge=0, le=30),
+            _: dict = Depends(get_current_user),
+        ):
+            try:
+                _env_or_raise()
+            except HTTPException:
+                # Calendar not configured — just return an empty feed so the
+                # portal panel renders a friendly "no events" state instead
+                # of a 500.
+                return {"events": [], "count": 0, "connected": False}
+            try:
+                service = await _service()
+            except HTTPException:
+                return {"events": [], "count": 0, "connected": False}
+            _, _, calendar_id = _env_or_raise()
+            from datetime import timedelta
+            now = datetime.now(timezone.utc)
+            time_min = (now - timedelta(days=days_back)).isoformat()
+            time_max = (now + timedelta(days=days_ahead)).isoformat()
+            try:
+                res = service.events().list(
+                    calendarId=calendar_id,
+                    timeMin=time_min,
+                    timeMax=time_max,
+                    maxResults=200,
+                    singleEvents=True,
+                    orderBy="startTime",
+                ).execute()
+            except HttpError as exc:
+                raise HTTPException(502, detail=f"Google Calendar API error: {exc}") from exc
+            events = [_shape_event(e) for e in res.get("items", [])]
+            return {"events": events, "count": len(events), "connected": True}
 
     # ---------------------------------------------------------- create
     @router.post("/calendar/events")

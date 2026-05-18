@@ -9,6 +9,7 @@ import FranchiseeFilesPanel from "@/components/files/FranchiseeFilesPanel";
 import FranchiseeTerritoryWidget from "@/components/territory/FranchiseeTerritoryWidget";
 import RecentFilesStrip from "@/components/files/RecentFilesStrip";
 import FilePreviewModal from "@/components/files/FilePreviewModal";
+import PortalEventsPanel from "@/components/portal/PortalEventsPanel";
 import {
   LogOut, Phone, Mail, Globe, MapPin, Calendar, ShieldCheck, ShieldAlert,
   FolderOpen, User as UserIcon, Loader2, AlertCircle, Smartphone,
@@ -114,6 +115,13 @@ export default function PortalDashboardPage() {
     catch { return true; }
   });
   useEffect(() => { try { localStorage.setItem("portal.filesOpen", JSON.stringify(filesOpen)); } catch (_) { /* noop */ } }, [filesOpen]);
+  // Events panel — defaults closed because not every franchisee has
+  // scheduled meetings, but stays sticky once they open it.
+  const [eventsOpen, setEventsOpen] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("portal.eventsOpen") ?? "false"); }
+    catch { return false; }
+  });
+  useEffect(() => { try { localStorage.setItem("portal.eventsOpen", JSON.stringify(eventsOpen)); } catch (_) { /* noop */ } }, [eventsOpen]);
 
   // Compose the full address from any of the field-name variants Airtable
   // / the migrator may have stored under.
@@ -293,6 +301,14 @@ export default function PortalDashboardPage() {
                 </span>
               </button>
             )}
+
+            {/* Events — sits between territory and files. Lists upcoming
+                events from the shared Google Calendar with a one-click
+                "Join Teams meeting" button on any event that has one. */}
+            <PortalEventsPanel
+              open={eventsOpen}
+              onToggle={() => setEventsOpen((v) => !v)}
+            />
 
             {/* Files — primary daily-use tool. Collapsible like the other
                 two panels so the franchisee can shrink it on small screens

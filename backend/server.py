@@ -2586,7 +2586,7 @@ async def _banking_indexes():
 
 # Phase 5 — Google Calendar
 from calendar_routes import attach as build_calendar_router  # noqa: E402
-api.include_router(build_calendar_router(api, db, require_role))
+api.include_router(build_calendar_router(api, db, require_role, get_current_user))
 
 app.include_router(api)
 
