@@ -122,7 +122,7 @@ function UsersTab() {
         api.get("/franchisees"),
       ]);
       setUsers(u.data.users || []);
-      setFranchisees(f.data || []);
+      setFranchisees(f.data?.items || f.data || []);
     } catch (e) {
       toast.error("Failed to load users");
     } finally { setLoading(false); }
