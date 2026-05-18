@@ -63,12 +63,12 @@ const InvoiceList = () => {
   return (
     <div className="space-y-8" data-testid="invoice-list-page">
       {/* Page header — restored to match the original Sandra's Invoices look */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
-          <h1 className="text-4xl font-bold tracking-tight font-['Manrope']" data-testid="page-title">
+          <h1 className="text-5xl font-bold tracking-tight text-slate-900" data-testid="page-title">
             Invoices
           </h1>
-          <p className="text-muted-foreground mt-1">
+          <p className="text-muted-foreground mt-2">
             Manage and track your invoices
           </p>
         </div>
@@ -89,7 +89,7 @@ const InvoiceList = () => {
             data-testid="stat-card-total"
           >
             <p className="text-sm font-medium text-muted-foreground">Total Invoices</p>
-            <p className="text-3xl font-bold mt-2" data-testid="stat-total">
+            <p className="text-4xl font-bold mt-3 text-slate-900" data-testid="stat-total">
               {stats.total_invoices}
             </p>
           </Card>
@@ -99,7 +99,7 @@ const InvoiceList = () => {
             data-testid="stat-card-draft"
           >
             <p className="text-sm font-medium text-muted-foreground">Draft</p>
-            <p className="text-3xl font-bold mt-2 text-slate-700" data-testid="stat-draft">
+            <p className="text-4xl font-bold mt-3 text-slate-700" data-testid="stat-draft">
               {stats.draft_count}
             </p>
           </Card>
@@ -109,7 +109,7 @@ const InvoiceList = () => {
             data-testid="stat-card-sent"
           >
             <p className="text-sm font-medium text-muted-foreground">Sent</p>
-            <p className="text-3xl font-bold mt-2 text-blue-600" data-testid="stat-sent">
+            <p className="text-4xl font-bold mt-3 text-blue-600" data-testid="stat-sent">
               {stats.sent_count}
             </p>
           </Card>
@@ -119,7 +119,7 @@ const InvoiceList = () => {
             data-testid="stat-card-partial"
           >
             <p className="text-sm font-medium text-muted-foreground">Partial</p>
-            <p className="text-3xl font-bold mt-2 text-amber-600" data-testid="stat-partial">
+            <p className="text-4xl font-bold mt-3 text-amber-600" data-testid="stat-partial">
               {stats.partial_count || 0}
             </p>
           </Card>
@@ -129,7 +129,7 @@ const InvoiceList = () => {
             data-testid="stat-card-paid"
           >
             <p className="text-sm font-medium text-muted-foreground">Paid</p>
-            <p className="text-3xl font-bold mt-2 text-emerald-600" data-testid="stat-paid">
+            <p className="text-4xl font-bold mt-3 text-emerald-600" data-testid="stat-paid">
               {stats.paid_count}
             </p>
           </Card>
