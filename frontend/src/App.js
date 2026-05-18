@@ -30,6 +30,7 @@ import InvoiceClients from "@/pages/invoices/InvoiceClients";
 import DeletedInvoices from "@/pages/invoices/DeletedInvoices";
 import InvoiceSettings from "@/pages/invoices/InvoiceSettings";
 import InvoicesShell from "@/pages/invoices/InvoicesShell";
+import ReconcilePage from "@/pages/invoices/ReconcilePage";
 
 export default function App() {
   return (
@@ -66,6 +67,7 @@ export default function App() {
               {/* Invoices module — merged from the legacy Pay-Paperwork app */}
               <Route path="/invoices" element={<InvoicesShell />}>
                 <Route index element={<InvoiceList />} />
+                <Route path="reconcile" element={<ReconcilePage />} />
                 <Route path="new" element={<CreateInvoice />} />
                 <Route path="deleted" element={<DeletedInvoices />} />
                 <Route path="clients" element={<InvoiceClients />} />
