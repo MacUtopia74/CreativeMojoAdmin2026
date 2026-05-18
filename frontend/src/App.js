@@ -21,6 +21,8 @@ import CqcDefinitionsPage from "@/pages/CqcDefinitionsPage";
 import CalendarPage from "@/pages/CalendarPage";
 import PortalDashboardPage from "@/pages/PortalDashboardPage";
 import BankingPage from "@/pages/BankingPage";
+import PasswordResetsPage from "@/pages/PasswordResetsPage";
+import ChangePasswordPage from "@/pages/ChangePasswordPage";
 // Invoices module (merged from Pay-Paperwork)
 import InvoiceList from "@/pages/invoices/InvoiceList";
 import CreateInvoice from "@/pages/invoices/CreateInvoice";
@@ -40,6 +42,9 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/portal/login" element={<PortalLoginPage />} />
+            <Route path="/change-password" element={
+              <ProtectedRoute><ChangePasswordPage /></ProtectedRoute>
+            } />
             <Route path="/portal" element={
               <ProtectedRoute role="franchisee"><PortalDashboardPage /></ProtectedRoute>
             } />
@@ -76,6 +81,7 @@ export default function App() {
                 <Route path=":id/edit" element={<EditInvoice />} />
               </Route>
               <Route path="/banking" element={<BankingPage />} />
+              <Route path="/admin/password-resets" element={<PasswordResetsPage />} />
             </Route>
           </Routes>
         </BrowserRouter>

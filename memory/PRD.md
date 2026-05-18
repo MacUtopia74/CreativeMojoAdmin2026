@@ -35,6 +35,11 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
 
 
 ## What's Implemented (2026-05-16)
+- **Phase Account-Security** ✅ (Feb 18 2026)
+  - **Forgot Password (admin-mediated)** — both `/login` and `/portal/login` now show a "Forgot your password?" link. Users submit their email → a `password_reset_requests` doc is filed (no email enumeration — always returns 200). Admin sees pending requests at `/admin/password-resets`, clicks "Generate temp password" → backend mints a memorable hyphenated random (e.g. `bc7-u5ta-ede`), bcrypts it into the user's record, sets `force_password_change=True`, returns the plaintext ONCE for the admin to share out-of-band.
+  - **Forced password change** — login response now exposes `force_password_change`; `ProtectedRoute` redirects to `/change-password` on every request until the user picks a new password (≥8 chars). Voluntary changes also work via the same endpoint.
+  - **Files page restructure** — search moved to a wide top-bar pill (replaces yellow-header search), breadcrumb now lives in the yellow action bar, "Per franchisee preview" and "Franchisees" panels are collapsible (preserve state in localStorage), and a top-left sidebar toggle hides BOTH side panels for full-width file work.
+
 
 ### Phase 4 — Iteration 25 (2026-05-16) ✅ Admin master territory overlay
 **Live franchisees overlay on the Territory Builder map**

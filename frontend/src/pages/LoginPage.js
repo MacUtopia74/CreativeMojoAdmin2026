@@ -3,6 +3,7 @@ import { useNavigate, Navigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import Logo from "@/components/Logo";
 import { ArrowRight } from "lucide-react";
+import ForgotPasswordModal from "@/components/auth/ForgotPasswordModal";
 
 const LOGIN_IMAGE =
   "https://images.unsplash.com/photo-1703301287688-c9a306ebed99?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTB8MHwxfHNlYXJjaHwyfHxzZW5pb3IlMjBwYWludGluZyUyMGNsYXNzfGVufDB8fHx8MTc3ODY3NzMwNnww&ixlib=rb-4.1.0&q=85";
@@ -14,6 +15,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [showForgot, setShowForgot] = useState(false);
 
   if (user) return <Navigate to="/" replace />;
 
@@ -24,7 +26,14 @@ export default function LoginPage() {
     const result = await login(email, password);
     setSubmitting(false);
     if (result.ok) {
-      navigate("/");
+      // If the admin just issued a temp pwd we route the user straight to
+      // a forced-change screen so they can set their own before doing
+      // anything else.
+      if (result.user?.force_password_change) {
+        navigate("/change-password");
+      } else {
+        navigate("/");
+      }
     } else {
       setError(result.error);
     }
@@ -116,6 +125,17 @@ export default function LoginPage() {
               {submitting ? "Signing in…" : "Sign in"}
               {!submitting && <ArrowRight className="w-4 h-4" />}
             </button>
+
+            <div className="text-center">
+              <button
+                type="button"
+                onClick={() => setShowForgot(true)}
+                data-testid="forgot-password-link"
+                className="text-xs font-semibold text-stone-600 hover:text-stone-950 underline underline-offset-2"
+              >
+                Forgot your password?
+              </button>
+            </div>
           </form>
 
           <div className="mt-12 pt-6 border-t border-stone-200">
@@ -125,6 +145,11 @@ export default function LoginPage() {
           </div>
         </div>
       </div>
+      <ForgotPasswordModal
+        open={showForgot}
+        onClose={() => setShowForgot(false)}
+        defaultEmail={email}
+      />
     </div>
   );
 }

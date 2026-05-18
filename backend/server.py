@@ -133,6 +133,8 @@ def user_to_public(doc: dict) -> dict:
     }
     if doc.get("role") == "franchisee" and doc.get("franchisee_id"):
         out["franchisee_id"] = doc["franchisee_id"]
+    if doc.get("force_password_change"):
+        out["force_password_change"] = True
     return out
 
 
@@ -245,6 +247,227 @@ async def create_user(body: CreateUserRequest, _: dict = Depends(require_role("a
     }
     await db.users.insert_one(user)
     return {"id": user["id"], "email": user["email"], "name": user["name"], "role": user["role"]}
+
+
+# ----------------------------------------------------------------------------
+# Password Reset — admin-mediated (no email integration)
+# ----------------------------------------------------------------------------
+# Flow:
+#  1. End user clicks "Forgot password?" → POSTs email to /auth/password-reset/request
+#  2. We always return 200 with a generic message (prevents email enumeration)
+#  3. If a real account exists for that email we file a `password_reset_requests`
+#     row. Otherwise we silently no-op so timing doesn't leak account presence.
+#  4. Admin sees pending requests in /admin/password-resets, clicks Fulfil, and
+#     we generate a random temp password, swap the user's bcrypt hash, mark the
+#     user `force_password_change=True`, then return the plaintext temp pwd
+#     ONCE so the admin can share it out-of-band (phone/SMS/Signal).
+#  5. The user logs in with the temp pwd — login response carries
+#     `force_password_change=True`. The frontend redirects to /change-password
+#     which forces them to set a new one before they can use the app.
+
+class PasswordResetRequestBody(BaseModel):
+    email: str
+
+
+class ChangePasswordBody(BaseModel):
+    current_password: str
+    new_password: str
+
+
+def _generate_temp_password() -> str:
+    """Memorable-but-strong temp password: 3-4-3 hyphen-separated lowercase
+    word-like chunks made from a safe alphabet. ~10^14 entropy. Format
+    chosen so it can be read out over the phone without confusion."""
+    import secrets
+    # Excludes look-alikes (0/o, 1/l/i).
+    alpha = "abcdefghjkmnpqrstuvwxyz23456789"
+    chunks = [
+        "".join(secrets.choice(alpha) for _ in range(3)),
+        "".join(secrets.choice(alpha) for _ in range(4)),
+        "".join(secrets.choice(alpha) for _ in range(3)),
+    ]
+    return "-".join(chunks)
+
+
+@api.post("/auth/password-reset/request")
+async def password_reset_request(
+    body: PasswordResetRequestBody, request: Request
+):
+    email = (body.email or "").lower().strip()
+    if not email:
+        raise HTTPException(400, "Email required")
+    ip = request.client.host if request.client else "unknown"
+    # Cheap rate-limit reuse of login_attempts collection: 8 reset asks per
+    # IP per 60 minutes. Prevents the "spam admin's queue" attack.
+    rl_id = f"reset:{ip}"
+    now = datetime.now(timezone.utc)
+    rl = await db.login_attempts.find_one({"identifier": rl_id})
+    if rl:
+        first = rl.get("first_attempt_at")
+        if isinstance(first, str):
+            first = datetime.fromisoformat(first)
+        if first and (now - first).total_seconds() < 3600 and rl.get("count", 0) >= 8:
+            raise HTTPException(
+                429, "Too many reset requests from this network. Try again later."
+            )
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if user:
+        # Always file a new request even if one is pending — admin can pick
+        # whichever to action. The collection's natural growth is bounded
+        # by rate-limit + admin housekeeping.
+        await db.password_reset_requests.insert_one({
+            "id": str(uuid.uuid4()),
+            "email": email,
+            "user_id": user["id"],
+            "user_name": user.get("name", ""),
+            "role": user.get("role", ""),
+            "requested_at": now.isoformat(),
+            "ip": ip,
+            "user_agent": request.headers.get("User-Agent", "")[:300],
+            "status": "pending",
+        })
+    # Bump rate-limit even on miss so we don't leak account existence via
+    # timing or response shape.
+    await db.login_attempts.update_one(
+        {"identifier": rl_id},
+        {
+            "$inc": {"count": 1},
+            "$setOnInsert": {
+                "identifier": rl_id,
+                "first_attempt_at": now.isoformat(),
+            },
+            "$set": {"last_attempt_at": now.isoformat()},
+        },
+        upsert=True,
+    )
+    return {
+        "ok": True,
+        "message": (
+            "If an account exists for that email, an administrator has been "
+            "notified and will be in touch with a temporary password."
+        ),
+    }
+
+
+@api.get("/auth/password-reset/requests")
+async def password_reset_requests_list(
+    _: dict = Depends(require_role("admin")),
+    status: Optional[str] = "pending",
+):
+    q: dict = {}
+    if status and status != "all":
+        q["status"] = status
+    rows = (
+        await db.password_reset_requests.find(q, {"_id": 0})
+        .sort("requested_at", -1)
+        .to_list(500)
+    )
+    pending = await db.password_reset_requests.count_documents({"status": "pending"})
+    return {"requests": rows, "pending_count": pending}
+
+
+@api.post("/auth/password-reset/requests/{request_id}/fulfill")
+async def password_reset_fulfill(
+    request_id: str, admin: dict = Depends(require_role("admin"))
+):
+    req = await db.password_reset_requests.find_one(
+        {"id": request_id}, {"_id": 0}
+    )
+    if not req:
+        raise HTTPException(404, "Reset request not found")
+    if req.get("status") != "pending":
+        raise HTTPException(400, f"Already {req.get('status')}")
+    user = await db.users.find_one({"id": req["user_id"]}, {"_id": 0})
+    if not user:
+        # The account vanished after the request was filed — nothing to do.
+        await db.password_reset_requests.update_one(
+            {"id": request_id},
+            {"$set": {"status": "rejected",
+                      "fulfilled_at": datetime.now(timezone.utc).isoformat(),
+                      "fulfilled_by": admin["id"],
+                      "note": "User no longer exists"}},
+        )
+        raise HTTPException(410, "User no longer exists")
+    temp_pwd = _generate_temp_password()
+    now = datetime.now(timezone.utc).isoformat()
+    await db.users.update_one(
+        {"id": user["id"]},
+        {
+            "$set": {
+                "password_hash": hash_password(temp_pwd),
+                "force_password_change": True,
+                "password_changed_at": now,
+            }
+        },
+    )
+    # Clear any active lockouts for this user so they can sign straight in.
+    await db.login_attempts.delete_many(
+        {"identifier": {"$regex": f":{user['email']}$"}}
+    )
+    await db.password_reset_requests.update_one(
+        {"id": request_id},
+        {"$set": {"status": "fulfilled", "fulfilled_at": now,
+                  "fulfilled_by": admin["id"],
+                  "fulfilled_by_name": admin.get("name", "")}},
+    )
+    # Return the temp password ONCE. The frontend reveals it in a one-time
+    # modal — refreshing the requests list won't bring it back.
+    return {
+        "ok": True,
+        "temp_password": temp_pwd,
+        "email": user["email"],
+        "user_name": user.get("name", ""),
+    }
+
+
+@api.post("/auth/password-reset/requests/{request_id}/reject")
+async def password_reset_reject(
+    request_id: str, admin: dict = Depends(require_role("admin"))
+):
+    req = await db.password_reset_requests.find_one(
+        {"id": request_id}, {"_id": 0}
+    )
+    if not req:
+        raise HTTPException(404, "Reset request not found")
+    if req.get("status") != "pending":
+        raise HTTPException(400, f"Already {req.get('status')}")
+    await db.password_reset_requests.update_one(
+        {"id": request_id},
+        {"$set": {"status": "rejected",
+                  "fulfilled_at": datetime.now(timezone.utc).isoformat(),
+                  "fulfilled_by": admin["id"]}},
+    )
+    return {"ok": True}
+
+
+@api.post("/auth/change-password")
+async def change_password(
+    body: ChangePasswordBody,
+    user: dict = Depends(get_current_user),
+):
+    """Authenticated user changes their own password. Used both for the
+    forced post-reset change AND voluntary password changes from a profile
+    page later on."""
+    full = await db.users.find_one({"id": user["id"]})
+    if not full or not verify_password(
+        body.current_password, full.get("password_hash", "")
+    ):
+        raise HTTPException(401, "Current password is incorrect")
+    if len(body.new_password or "") < 8:
+        raise HTTPException(400, "New password must be at least 8 characters")
+    if body.new_password == body.current_password:
+        raise HTTPException(400, "New password must differ from current")
+    await db.users.update_one(
+        {"id": user["id"]},
+        {
+            "$set": {
+                "password_hash": hash_password(body.new_password),
+                "password_changed_at": datetime.now(timezone.utc).isoformat(),
+            },
+            "$unset": {"force_password_change": ""},
+        },
+    )
+    return {"ok": True}
 
 
 # ----------------------------------------------------------------------------

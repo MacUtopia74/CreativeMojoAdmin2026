@@ -9,6 +9,7 @@ import api, { formatError } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import Logo from "@/components/Logo";
 import { ArrowRight, Loader2, Eye, EyeOff } from "lucide-react";
+import ForgotPasswordModal from "@/components/auth/ForgotPasswordModal";
 
 export default function PortalLoginPage() {
   const { user, refresh } = useAuth();
@@ -22,6 +23,7 @@ export default function PortalLoginPage() {
   const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [showForgot, setShowForgot] = useState(false);
 
   // Already signed in? Bounce by role. (Hooks above MUST run first.)
   if (user && user.role === "franchisee") return <Navigate to="/portal" replace />;
@@ -165,7 +167,14 @@ export default function PortalLoginPage() {
               </button>
               {step === "login" && (
                 <div className="text-center text-[11px] text-stone-500 pt-2">
-                  Forgot your password? <span className="text-stone-700 font-bold">Contact your administrator</span> to reset it.
+                  <button
+                    type="button"
+                    onClick={() => setShowForgot(true)}
+                    data-testid="portal-forgot-password-link"
+                    className="text-stone-700 font-bold hover:underline underline-offset-2"
+                  >
+                    Forgot your password?
+                  </button>
                 </div>
               )}
               <button type="button" onClick={() => { setStep("email"); setPassword(""); setConfirm(""); setErr(""); }}
@@ -176,6 +185,11 @@ export default function PortalLoginPage() {
           )}
         </div>
       </div>
+      <ForgotPasswordModal
+        open={showForgot}
+        onClose={() => setShowForgot(false)}
+        defaultEmail={email}
+      />
     </div>
   );
 }

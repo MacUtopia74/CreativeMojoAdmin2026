@@ -14,7 +14,7 @@ import {
   Download, Loader2, AlertCircle, CloudUpload, Database, Users, Lock, Globe,
   RefreshCw, ChevronUp, ChevronDown, X, ExternalLink, Share2, Copy, CheckCircle2,
   FolderPlus, Trash2, Eye, LayoutGrid, List, FileText, Image as ImageIcon,
-  FileAudio, FileVideo, FileArchive, Sparkles, Clock,
+  FileAudio, FileVideo, FileArchive, Sparkles, Clock, PanelLeftClose, PanelLeftOpen,
 } from "lucide-react";
 import FolderActionsMenu from "@/components/files/FolderActionsMenu";
 import FolderMovePicker from "@/components/files/FolderMovePicker";
@@ -95,6 +95,35 @@ function Breadcrumb({ prefix, onJump }) {
         );
       })}
     </div>
+  );
+}
+
+// Collapsible "Per franchisee preview" — sits inside the migration plan.
+// Defaults to collapsed because the franchisee list is long and Sandra
+// usually only spot-checks one or two before committing.
+function PerFranchiseePreview({ rows }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        data-testid="per-franchisee-toggle"
+        className="w-full px-3 py-2 bg-stone-50 hover:bg-stone-100 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 border-b border-stone-200 flex items-center justify-between"
+      >
+        <span>Per franchisee preview <span className="text-stone-400 normal-case tracking-normal font-normal">({rows.length})</span></span>
+        {open ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+      </button>
+      {open && (
+        <div className="max-h-64 overflow-y-auto divide-y divide-stone-100 text-xs">
+          {rows.map((f) => (
+            <div key={f.franchisee_id} className="px-3 py-2 flex items-center justify-between hover:bg-stone-50">
+              <span className="text-stone-700">{f.franchise_number || "—"} · {f.name || f.organisation || "(unnamed)"}</span>
+              <span className="text-stone-500 tabular-nums">{f.files} files · {fmtBytes(f.bytes)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -221,15 +250,7 @@ function MigrationPanel({ db, onMigrationDone }) {
                 </div>
               </div>
               <div className="border border-stone-200 rounded-lg overflow-hidden">
-                <div className="px-3 py-2 bg-stone-50 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 border-b border-stone-200">Per franchisee preview</div>
-                <div className="max-h-64 overflow-y-auto divide-y divide-stone-100 text-xs">
-                  {plan.franchisee_summary?.map((f) => (
-                    <div key={f.franchisee_id} className="px-3 py-2 flex items-center justify-between hover:bg-stone-50">
-                      <span className="text-stone-700">{f.franchise_number || "—"} · {f.name || f.organisation || "(unnamed)"}</span>
-                      <span className="text-stone-500 tabular-nums">{f.files} files · {fmtBytes(f.bytes)}</span>
-                    </div>
-                  ))}
-                </div>
+                <PerFranchiseePreview rows={plan.franchisee_summary || []} />
               </div>
               <div className="flex items-center justify-between pt-1">
                 <button onClick={async () => {
@@ -436,6 +457,66 @@ function NewFolderButton({ prefix, onCreated }) {
   );
 }
 
+// Collapsible "Franchisees" scope panel — lives in the sidebar. Sandra
+// rarely scopes to a single franchisee, so it defaults to collapsed and
+// can stay closed to give the rest of the page room to breathe.
+function FranchiseesScopePanel({ scopeTree, prefix, trashMode, onPick }) {
+  const [open, setOpen] = useState(() => {
+    try { return localStorage.getItem("filesFranchiseesOpen") === "true"; }
+    catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("filesFranchiseesOpen", String(open)); } catch { /* ignore */ }
+  }, [open]);
+  const list = scopeTree?.franchisees || [];
+  return (
+    <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid="franchisees-panel">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        data-testid="franchisees-panel-toggle"
+        className="w-full px-3 py-2.5 flex items-center justify-between bg-stone-50 hover:bg-stone-100 border-b border-stone-200"
+      >
+        <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-700 inline-flex items-center gap-1.5">
+          <Users className="w-3 h-3 text-emerald-700" /> Franchisees
+          <span className="text-stone-400 normal-case tracking-normal font-normal">({list.length})</span>
+        </span>
+        {open ? <ChevronUp className="w-4 h-4 text-stone-500" /> : <ChevronDown className="w-4 h-4 text-stone-500" />}
+      </button>
+      {open && (
+        <div className="max-h-[60vh] overflow-y-auto">
+          {list.length === 0 && (
+            <div className="px-3 py-4 text-xs text-stone-500">No franchisees yet</div>
+          )}
+          {[...list]
+            .sort((a, b) => {
+              const an = parseInt(a.franchise_number, 10);
+              const bn = parseInt(b.franchise_number, 10);
+              if (isNaN(an) && isNaN(bn)) return 0;
+              if (isNaN(an)) return 1;
+              if (isNaN(bn)) return -1;
+              return an - bn;
+            })
+            .map((f) => (
+              <button
+                key={f.franchisee_id}
+                onClick={() => onPick(f.prefix || "franchisees/")}
+                className={`w-full px-3 py-2 text-left text-xs hover:bg-stone-50 flex items-center gap-2 ${
+                  prefix === (f.prefix || "franchisees/") && !trashMode ? "bg-emerald-50" : ""
+                }`}
+                data-testid={`scope-franchisee-${f.franchisee_id}`}
+              >
+                <Users className="w-3 h-3 text-emerald-600 shrink-0" />
+                <span className="tabular-nums font-semibold text-stone-700 shrink-0">{f.franchise_number || "—"}</span>
+                <span className="truncate flex-1 text-stone-600">{f.organisation || f.name}</span>
+                <span className="text-[10px] text-stone-500 tabular-nums shrink-0">{f.files}</span>
+              </button>
+            ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 export default function FilesPage() {
   const [scopeTree, setScopeTree] = useState(null);
@@ -462,6 +543,16 @@ export default function FilesPage() {
   useEffect(() => {
     try { localStorage.setItem("filesViewMode", viewMode); } catch { /* ignore */ }
   }, [viewMode]);
+  // Sidebar collapse — persisted. Lets the daily admin user fold the
+  // scope/franchisee picker away so the main file pane goes full-width
+  // (Sandra adds content here heavily; horizontal space matters).
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    try { return localStorage.getItem("filesSidebarOpen") !== "false"; }
+    catch { return true; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("filesSidebarOpen", String(sidebarOpen)); } catch { /* ignore */ }
+  }, [sidebarOpen]);
 
   const reloadScopes = useCallback(async () => {
     try { const { data } = await api.get("/files/scope-tree"); setScopeTree(data); }
@@ -510,28 +601,43 @@ export default function FilesPage() {
 
   return (
     <div className="min-h-screen bg-[#FBFAF8]" data-testid="files-page">
-      {/* Topbar */}
-      <div className="bg-white border-b border-stone-200 px-8 py-5 flex items-center justify-between sticky top-0 z-10">
-        <div>
-          <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">CRM · PHASE 3</div>
-          <h1 className="font-display text-3xl text-stone-950 mt-1 flex items-baseline gap-3">
-            Files
-            {scopeTree && (
-              <span className="text-sm text-stone-500 tabular-nums font-normal">
-                {scopeTree.totals.files.toLocaleString()} files · {fmtBytes(scopeTree.totals.bytes)}
-              </span>
-            )}
-          </h1>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search any file by name…"
-              data-testid="files-search"
-              className="pl-10 pr-3 py-2 w-80 bg-stone-50 border border-stone-300 text-sm focus:outline-none focus:border-stone-900 rounded-lg" />
-            {search && (
-              <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700"><X className="w-3.5 h-3.5" /></button>
-            )}
+      {/* Topbar — heading + global search + sidebar toggle. Search lives
+          here (not in the yellow panel) so it's always reachable and the
+          yellow panel stays focused on folder actions. */}
+      <div className="bg-white border-b border-stone-200 px-8 py-5 sticky top-0 z-10">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setSidebarOpen((v) => !v)}
+              data-testid="files-sidebar-toggle"
+              title={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+              className="px-2.5 py-2 border border-stone-300 hover:bg-stone-50 rounded-lg text-stone-600 hover:text-stone-900"
+            >
+              {sidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
+            </button>
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">CRM · PHASE 3</div>
+              <h1 className="font-display text-3xl text-stone-950 mt-1 flex items-baseline gap-3">
+                Files
+                {scopeTree && (
+                  <span className="text-sm text-stone-500 tabular-nums font-normal">
+                    {scopeTree.totals.files.toLocaleString()} files · {fmtBytes(scopeTree.totals.bytes)}
+                  </span>
+                )}
+              </h1>
+            </div>
+          </div>
+          <div className="flex-1 min-w-[260px] max-w-xl ml-auto">
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
+              <input value={search} onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search every file you can access by name (e.g. cat, halloween, stencil)…"
+                data-testid="files-search"
+                className="w-full pl-11 pr-9 py-3 bg-stone-50 border border-stone-300 text-sm focus:outline-none focus:border-stone-900 focus:bg-white rounded-xl" />
+              {search && (
+                <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700"><X className="w-3.5 h-3.5" /></button>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -539,9 +645,10 @@ export default function FilesPage() {
       <div className="p-8 pt-6">
         <MigrationPanel onMigrationDone={() => { reloadScopes(); reloadTree(prefix); }} />
 
-        <div className="grid grid-cols-12 gap-6">
-          {/* Sidebar — scope navigation */}
-          <aside className="col-span-12 md:col-span-3 space-y-4">
+        <div className={`grid gap-6 ${sidebarOpen ? "grid-cols-12" : "grid-cols-1"}`}>
+          {/* Sidebar — scope navigation. Collapsible. */}
+          {sidebarOpen && (
+          <aside className="col-span-12 md:col-span-3 space-y-4" data-testid="files-sidebar">
             <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden">
               <button onClick={() => { setTrashMode(false); setPrefix(""); }} data-testid="scope-all"
                 className={`w-full px-3 py-2 text-left text-xs font-bold uppercase tracking-wider hover:bg-stone-50 ${prefix === "" && !trashMode ? "bg-stone-100" : ""}`}>
@@ -574,39 +681,17 @@ export default function FilesPage() {
                 </button>
               </div>
             </div>
-            <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden">
-              <div className="px-3 py-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 bg-stone-50 border-b border-stone-200">Franchisees</div>
-              <div className="max-h-[60vh] overflow-y-auto">
-                {(scopeTree?.franchisees || []).length === 0 && (
-                  <div className="px-3 py-4 text-xs text-stone-500">No franchisees yet</div>
-                )}
-                {[...(scopeTree?.franchisees || [])]
-                  .sort((a, b) => {
-                    // Numerical sort by franchise_number; missing numbers
-                    // get sent to the bottom.
-                    const an = parseInt(a.franchise_number, 10);
-                    const bn = parseInt(b.franchise_number, 10);
-                    if (isNaN(an) && isNaN(bn)) return 0;
-                    if (isNaN(an)) return 1;
-                    if (isNaN(bn)) return -1;
-                    return an - bn;
-                  })
-                  .map((f) => (
-                  <button key={f.franchisee_id} onClick={() => { setTrashMode(false); setPrefix(f.prefix || "franchisees/"); }}
-                    className="w-full px-3 py-2 text-left text-xs hover:bg-stone-50 flex items-center gap-2"
-                    data-testid={`scope-franchisee-${f.franchisee_id}`}>
-                    <Users className="w-3 h-3 text-emerald-600 shrink-0" />
-                    <span className="tabular-nums font-semibold text-stone-700 shrink-0">{f.franchise_number || "—"}</span>
-                    <span className="truncate flex-1 text-stone-600">{f.organisation || f.name}</span>
-                    <span className="text-[10px] text-stone-500 tabular-nums shrink-0">{f.files}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
+            <FranchiseesScopePanel
+              scopeTree={scopeTree}
+              prefix={prefix}
+              trashMode={trashMode}
+              onPick={(p) => { setTrashMode(false); setPrefix(p); }}
+            />
           </aside>
+          )}
 
-          {/* Main pane */}
-          <main className="col-span-12 md:col-span-9 space-y-3">
+          {/* Main pane — full-width when sidebar is collapsed. */}
+          <main className={`${sidebarOpen ? "col-span-12 md:col-span-9" : "col-span-12"} space-y-3`}>
             {trashMode ? (
               <TrashView onClose={() => setTrashMode(false)}
                 onChanged={() => { reloadScopes(); reloadTree(prefix); }} />
