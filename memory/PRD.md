@@ -27,6 +27,12 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
 - **Phase 3** Franchisee logins + Cloudflare R2 file storage + file browser (FileCamp retired)
 - **Phase 4** Territory mapping tool + public find-a-class embed (replaces DaD Postcode Lookup)
 - **Phase 5** Licensee portal + 8-download/month quota + optional GoCardless webhook
+- **Phase Invoicing+Banking** ✅ (Feb 2026)
+  - Merged standalone "Pay-Paperwork" invoicing app into the admin shell at `/invoices` (49 invoices, 22 clients migrated)
+  - Banking module pivoted from TrueLayer (KYC-blocked) to manual HSBC CSV statement upload — 2,043 transactions imported, dedup'd via fingerprint hash
+  - **Invoice ↔ Payment linking** (Feb 18 2026): one-to-many — an invoice can be matched to multiple banking receipts (deposit + balance, instalments). Auto-marks "Paid" when total reaches invoice amount, "Partial" otherwise. Picker prioritises exact-amount matches and auto-retargets to the remaining balance on subsequent links. Two-way mirror — banking transactions tag back to their linked invoice.
+  - **Supplier keyword filters** on Banking page: 16 seed chips (DENE LODGE, HAZELGATE, etc.) — click-to-filter, add/remove inline, persists in `banking_supplier_keywords`.
+
 
 ## What's Implemented (2026-05-16)
 

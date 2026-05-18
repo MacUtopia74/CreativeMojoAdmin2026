@@ -22,10 +22,14 @@ export default function InvoicesShell() {
   const navigate = useNavigate();
   const location = useLocation();
   // Hide the "+ New Invoice" CTA on pages where it doesn't make sense
-  // (the editor itself, the detail view) — those already have their own
-  // primary actions.
-  const showNewInvoice = !/^\/invoices\/[^/]+(\/edit)?$/.test(location.pathname)
-    && location.pathname !== "/invoices/new";
+  // (the editor itself, the detail view, AND the list view because the
+  // list page renders its own copy in the page header). The Clients,
+  // Deleted and Settings sub-pages still benefit from the shell's CTA.
+  const showNewInvoice = ![
+    /^\/invoices$/,
+    /^\/invoices\/new$/,
+    /^\/invoices\/[^/]+(\/edit)?$/,
+  ].some((re) => re.test(location.pathname));
 
   return (
     <div className="space-y-6" data-testid="invoices-shell">

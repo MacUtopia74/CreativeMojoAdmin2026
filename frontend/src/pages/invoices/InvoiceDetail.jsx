@@ -3,7 +3,7 @@ import { useNavigate, useParams, Link } from "react-router-dom";
 import api from "@/lib/api";
 import { API_BASE } from "@/lib/api";
 import { format, parseISO } from "date-fns";
-import { ArrowLeft, Download, Edit, Send, CheckCircle, Trash2, RefreshCw } from "lucide-react";
+import { ArrowLeft, Download, Edit, Send, CheckCircle, Trash2, RefreshCw, Banknote, Link2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
@@ -30,6 +30,65 @@ function InvoiceDetail() {
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // Payment-linking state
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [candidates, setCandidates] = useState([]);
+  const [candidatesMeta, setCandidatesMeta] = useState(null);
+  const [loadingCandidates, setLoadingCandidates] = useState(false);
+
+  const openLinker = async () => {
+    setLinkOpen(true); setLoadingCandidates(true);
+    try {
+      const { data } = await api.get(`/invoices/${id}/payment-candidates`);
+      setCandidates(data.candidates || []);
+      setCandidatesMeta({
+        invoice_total: data.invoice_total,
+        paid_total: data.paid_total,
+        remaining: data.remaining,
+        target_amount: data.target_amount,
+      });
+    } catch {
+      toast.error("Could not load candidates");
+    } finally { setLoadingCandidates(false); }
+  };
+
+  const linkPayment = async (txId) => {
+    try {
+      const { data } = await api.post(`/invoices/${id}/link-payment`, { transaction_id: txId });
+      setInvoice(data);
+      const fullyPaid = data.status === "paid";
+      toast.success(fullyPaid ? "Payment linked · invoice marked Paid" : "Payment linked · invoice now Partially paid");
+      // Refresh the candidate list so the just-linked row disappears.
+      // Keep modal open if we still have a remaining balance so the user
+      // can chain multiple receipts without re-opening.
+      if (fullyPaid) {
+        setLinkOpen(false);
+      } else {
+        openLinker();
+      }
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Link failed");
+    }
+  };
+
+  const unlinkSinglePayment = async (txId) => {
+    if (!window.confirm("Remove this payment from the invoice?")) return;
+    try {
+      const { data } = await api.delete(`/invoices/${id}/link-payment/${txId}`);
+      setInvoice(data);
+      toast.success("Payment unlinked");
+    } catch { toast.error("Unlink failed"); }
+  };
+
+  const unlinkAllPayments = async () => {
+    if (!window.confirm("Remove ALL linked payments from this invoice?")) return;
+    try {
+      await api.delete(`/invoices/${id}/link-payment`);
+      const { data } = await api.get(`/invoices/${id}`);
+      setInvoice(data);
+      toast.success("All payments unlinked");
+    } catch { toast.error("Unlink failed"); }
+  };
 
   useEffect(() => {
     Promise.all([
@@ -154,7 +213,7 @@ function InvoiceDetail() {
           </Button>
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-bold tracking-tight" data-testid="invoice-number">{invoice.invoice_number}</h1>
+              <h1 className="text-4xl font-bold tracking-tight font-['Manrope']" data-testid="invoice-number">{invoice.invoice_number}</h1>
               <StatusBadge status={invoice.status} />
             </div>
             <p className="text-muted-foreground mt-1">Created {formattedCreatedAt}</p>
@@ -216,6 +275,146 @@ function InvoiceDetail() {
           </DropdownMenu>
         </div>
       </div>
+
+
+      {/* Linked Payment card — sits between the action row and the invoice
+          preview so the user immediately sees whether this invoice has
+          been matched to one or more banking transactions. Supports
+          partial payments via a running total. */}
+      {(() => {
+        const links = invoice.linked_transactions || [];
+        // Back-compat: if a legacy single-field link exists but no
+        // linked_transactions list, synthesise a row so old data renders.
+        const displayLinks = links.length > 0
+          ? links
+          : (invoice.linked_transaction_id ? [{
+              transaction_id: invoice.linked_transaction_id,
+              amount: invoice.linked_transaction_amount,
+              timestamp: invoice.linked_transaction_timestamp,
+              description: invoice.linked_transaction_description,
+            }] : []);
+        const paidTotal = displayLinks.reduce((a, x) => a + Number(x.amount || 0), 0);
+        const remaining = Math.max(0, Number(invoice.total) - paidTotal);
+        const progressPct = Math.min(100, (paidTotal / Number(invoice.total || 1)) * 100);
+        const fullyPaid = remaining < 0.005 && displayLinks.length > 0;
+        return (
+          <Card className={`max-w-4xl mx-auto p-4 mb-4 ${fullyPaid ? "border-emerald-200 bg-emerald-50/40" : displayLinks.length > 0 ? "border-amber-200 bg-amber-50/40" : "border-stone-200"}`} data-testid="invoice-payment-link">
+            <div className="flex items-start gap-3 flex-wrap">
+              <Banknote className={`w-5 h-5 shrink-0 mt-0.5 ${fullyPaid ? "text-emerald-700" : displayLinks.length > 0 ? "text-amber-700" : "text-stone-500"}`} />
+              <div className="flex-1 min-w-0">
+                {displayLinks.length === 0 ? (
+                  <>
+                    <div className="font-bold text-stone-800">No payment linked</div>
+                    <div className="text-xs text-stone-600">Match this invoice to one or more banking receipts to mark it Paid.</div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`font-bold ${fullyPaid ? "text-emerald-900" : "text-amber-900"}`}>
+                        {fullyPaid ? "Fully paid" : "Partially paid"}
+                      </span>
+                      <span className="text-xs tabular-nums text-stone-700">
+                        £{paidTotal.toFixed(2)} of £{Number(invoice.total).toFixed(2)}
+                        {!fullyPaid && <> · <strong>£{remaining.toFixed(2)}</strong> outstanding</>}
+                      </span>
+                    </div>
+                    {/* Progress bar */}
+                    <div className="mt-2 h-1.5 w-full bg-stone-100 rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full ${fullyPaid ? "bg-emerald-500" : "bg-amber-500"}`} style={{ width: `${progressPct}%` }} />
+                    </div>
+                    {/* List of linked transactions */}
+                    <ul className="mt-3 divide-y divide-stone-200 text-xs">
+                      {displayLinks.map((tx) => (
+                        <li key={tx.transaction_id} className="flex items-center gap-2 py-1.5" data-testid={`linked-tx-${tx.transaction_id}`}>
+                          <span className="tabular-nums text-stone-600 w-20 shrink-0">
+                            {tx.timestamp ? new Date(tx.timestamp).toLocaleDateString("en-GB") : "—"}
+                          </span>
+                          <span className="tabular-nums font-bold w-16 shrink-0">£{Number(tx.amount || 0).toFixed(2)}</span>
+                          <span className="truncate text-stone-700 flex-1" title={tx.description}>{tx.description}</span>
+                          <button
+                            onClick={() => unlinkSinglePayment(tx.transaction_id)}
+                            className="text-stone-400 hover:text-red-600 p-1"
+                            title="Unlink this payment"
+                            data-testid={`unlink-tx-${tx.transaction_id}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </div>
+              <div className="flex flex-col gap-1.5 shrink-0">
+                {!fullyPaid && (
+                  <Button size="sm" onClick={openLinker} data-testid="link-payment-btn">
+                    <Link2 className="w-3.5 h-3.5 mr-1.5" />
+                    {displayLinks.length > 0 ? "Link Another" : "Link a Payment"}
+                  </Button>
+                )}
+                {displayLinks.length > 1 && (
+                  <Button size="sm" variant="outline" onClick={unlinkAllPayments} data-testid="unlink-all-btn">
+                    <Trash2 className="w-3.5 h-3.5 mr-1.5" /> Unlink All
+                  </Button>
+                )}
+              </div>
+            </div>
+          </Card>
+        );
+      })()}
+
+      {/* Payment-picker modal */}
+      <AlertDialog open={linkOpen} onOpenChange={setLinkOpen}>
+        <AlertDialogContent className="max-w-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Link a banking transaction</AlertDialogTitle>
+            <AlertDialogDescription>
+              {candidatesMeta?.paid_total > 0 ? (
+                <>Already paid <strong>£{Number(candidatesMeta.paid_total).toFixed(2)}</strong> of £{Number(candidatesMeta.invoice_total).toFixed(2)}.
+                Showing matches closest to the <strong>£{Number(candidatesMeta.target_amount || 0).toFixed(2)}</strong> outstanding balance.</>
+              ) : (
+                <>Showing the 50 most likely matches for £{Number(invoice.total).toFixed(2)}.
+                Exact-amount matches appear first.</>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="max-h-[60vh] overflow-auto -mx-6 px-6">
+            {loadingCandidates ? (
+              <div className="flex items-center justify-center py-10 text-stone-500"><Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading…</div>
+            ) : candidates.length === 0 ? (
+              <p className="text-sm text-stone-500 py-8 text-center">No incoming transactions found. Upload a statement first.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="text-[10px] uppercase tracking-wider text-stone-500 border-b">
+                  <tr><th className="text-left py-2">Date</th><th className="text-left py-2">Description</th><th className="text-right py-2">Amount</th><th></th></tr>
+                </thead>
+                <tbody>
+                  {candidates.map((t) => {
+                    const target = candidatesMeta?.target_amount ?? invoice.total;
+                    const exact = Math.abs(t.amount - target) < 0.005;
+                    const alreadyLinked = t.linked_invoice_id && t.linked_invoice_id !== id;
+                    return (
+                      <tr key={t.transaction_id} className={`border-b border-stone-100 hover:bg-stone-50 ${exact ? "bg-emerald-50/60" : ""}`} data-testid={`candidate-${t.transaction_id}`}>
+                        <td className="py-2 text-xs text-stone-600 tabular-nums">{new Date(t.timestamp).toLocaleDateString("en-GB")}</td>
+                        <td className="py-2 text-stone-800 truncate max-w-xs" title={t.description}>{t.description}</td>
+                        <td className={`py-2 text-right tabular-nums font-bold ${exact ? "text-emerald-700" : ""}`}>£{Number(t.amount).toFixed(2)}</td>
+                        <td className="py-2 text-right">
+                          <Button size="sm" variant={exact ? "default" : "outline"} onClick={() => linkPayment(t.transaction_id)} disabled={alreadyLinked}>
+                            {alreadyLinked ? "Linked elsewhere" : "Link"}
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Close</AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Card className="bg-white shadow-xl max-w-4xl mx-auto overflow-hidden" data-testid="invoice-content" style={{ aspectRatio: '210/297', minHeight: '800px' }}>
         <div className="h-full flex flex-col p-12 md:p-16">

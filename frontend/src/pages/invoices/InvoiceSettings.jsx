@@ -62,7 +62,7 @@ export default function InvoiceSettings() {
   return (
     <div className="space-y-8 max-w-2xl" data-testid="invoice-settings-page">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight" data-testid="page-title">
+        <h1 className="text-4xl font-bold tracking-tight font-['Manrope']" data-testid="page-title">
           Invoice Settings
         </h1>
         <p className="text-muted-foreground mt-1">

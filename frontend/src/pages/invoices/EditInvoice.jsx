@@ -263,7 +263,7 @@ function EditInvoice() {
       <div className="flex items-center gap-4">
         <Button variant="ghost" onClick={() => navigate(-1)} data-testid="back-btn"><ArrowLeft className="w-4 h-4" /></Button>
         <div>
-          <h1 className="text-3xl font-bold tracking-tight" data-testid="page-title">Edit Invoice</h1>
+          <h1 className="text-4xl font-bold tracking-tight font-['Manrope']" data-testid="page-title">Edit Invoice</h1>
           <p className="text-muted-foreground mt-1">Update invoice details</p>
         </div>
       </div>

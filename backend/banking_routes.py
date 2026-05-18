@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from urllib.parse import urlencode
@@ -29,6 +30,7 @@ from urllib.parse import urlencode
 import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel
 
 from bank_statement_parser import (
     parse_hsbc_personal,
@@ -342,7 +344,8 @@ def build_banking_router(db, require_role):
         date_from: Optional[str] = None,
         date_to: Optional[str] = None,
         search: Optional[str] = None,
-        limit: int = Query(200, le=500),
+        keywords: Optional[str] = Query(None, description="Comma-separated; any-match"),
+        limit: int = Query(200, le=2000),
         _=admin,
     ):
         """List transactions stored locally. Defaults to incoming only —
@@ -364,6 +367,21 @@ def build_banking_router(db, require_role):
                 {"description": {"$regex": search, "$options": "i"}},
                 {"merchant_name": {"$regex": search, "$options": "i"}},
             ]
+        # Keyword "supplier chips" — any-match across descriptions. Escape
+        # the keywords so regex special chars in supplier names (`.`, `(`)
+        # don't blow up the query.
+        if keywords:
+            words = [k.strip() for k in keywords.split(",") if k.strip()]
+            if words:
+                kw_regex = "|".join(re.escape(w) for w in words)
+                # If a `$or` from `search` is already present, combine
+                # via `$and` so both filters apply.
+                kw_clause = {"description": {"$regex": kw_regex, "$options": "i"}}
+                if "$or" in q:
+                    q.setdefault("$and", []).append({"$or": q.pop("$or")})
+                    q["$and"].append(kw_clause)
+                else:
+                    q.update(kw_clause)
         rows = await db.banking_transactions.find(q, {"_id": 0, "raw": 0}) \
             .sort("timestamp", -1).to_list(limit)
         return {"transactions": rows, "count": len(rows)}
@@ -561,6 +579,60 @@ def build_banking_router(db, require_role):
                 {"account_id": "statement-import"}
             )
         return {"ok": True, "remaining_statements": remaining}
+
+    # ---------------- Supplier Keyword Filters ----------------
+    # Sandra wants a way to quickly filter the transactions list to a
+    # known set of care-home suppliers (DENE LODGE, HAZELGATE, etc.).
+    # We store the keyword list once globally (single-tenant admin app)
+    # and let any incoming filter request name a subset.
+
+    DEFAULT_KEYWORDS = [
+        "DENE LODGE", "HAZELGATE", "NORTHAM", "VANEAL", "Swimbridge",
+        "DUFFIELD", "Abbeyfield", "PARKVIEW", "EASTLEIGH", "HATHERLEIGH",
+        "PILTON", "GLEN LYN", "STOURPORT", "Highwood", "Edenmore",
+        "Parklands",
+    ]
+
+    @router.get("/supplier-keywords")
+    async def list_supplier_keywords(_=admin):
+        doc = await db.banking_supplier_keywords.find_one(
+            {"_id": "default"}, {"_id": 0, "keywords": 1}
+        )
+        keywords = (doc or {}).get("keywords")
+        if keywords is None:
+            # Seed on first read so the user immediately sees the chips.
+            await db.banking_supplier_keywords.update_one(
+                {"_id": "default"},
+                {"$set": {"keywords": DEFAULT_KEYWORDS}},
+                upsert=True,
+            )
+            keywords = DEFAULT_KEYWORDS
+        return {"keywords": keywords}
+
+    class KeywordsUpdate(BaseModel):
+        keywords: list[str]
+
+    @router.put("/supplier-keywords")
+    async def update_supplier_keywords(body: KeywordsUpdate, _=admin):
+        # Trim + dedupe (case-insensitive, but preserve the user's casing
+        # on the first occurrence).
+        seen: set[str] = set()
+        cleaned: list[str] = []
+        for k in body.keywords:
+            k = (k or "").strip()
+            if not k:
+                continue
+            low = k.lower()
+            if low in seen:
+                continue
+            seen.add(low)
+            cleaned.append(k)
+        await db.banking_supplier_keywords.update_one(
+            {"_id": "default"},
+            {"$set": {"keywords": cleaned}},
+            upsert=True,
+        )
+        return {"keywords": cleaned}
 
     return router
 

@@ -283,7 +283,7 @@ function CreateInvoice() {
           <ArrowLeft className="w-4 h-4" />
         </Button>
         <div>
-          <h1 className="text-3xl font-bold tracking-tight" data-testid="page-title">Create Invoice</h1>
+          <h1 className="text-4xl font-bold tracking-tight font-['Manrope']" data-testid="page-title">Create Invoice</h1>
           <p className="text-muted-foreground mt-1">Fill in the details below</p>
         </div>
       </div>

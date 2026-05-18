@@ -100,8 +100,16 @@ class InvoiceBase(BaseModel):
     total: float
     notes: Optional[str] = ""
     payment_terms: Optional[str] = "Net 14 Days"
-    status: str = "draft"  # draft, sent, paid, deleted
+    status: str = "draft"  # draft, sent, partial, paid, deleted
     deleted_at: Optional[str] = None
+    # Payment-linking fields — populated by /link-payment routes. Kept on
+    # the base model so they round-trip through the response models.
+    linked_transactions: Optional[List[dict]] = None
+    linked_transaction_id: Optional[str] = None
+    linked_transaction_amount: Optional[float] = None
+    linked_transaction_timestamp: Optional[str] = None
+    linked_transaction_description: Optional[str] = None
+    paid_at: Optional[str] = None
 
 
 class InvoiceCreate(InvoiceBase):
@@ -143,6 +151,10 @@ class Invoice(InvoiceBase):
 
 class StatusUpdate(BaseModel):
     status: str
+
+
+class LinkPayment(BaseModel):
+    transaction_id: str
 
 
 class InvoiceSettings(BaseModel):
@@ -258,6 +270,7 @@ def build_invoices_router(db, require_role):
         total_invoices = await db.invoices.count_documents({})
         draft = await db.invoices.count_documents({"status": "draft"})
         sent = await db.invoices.count_documents({"status": "sent"})
+        partial = await db.invoices.count_documents({"status": "partial"})
         paid = await db.invoices.count_documents({"status": "paid"})
         totals = await db.invoices.aggregate(
             [{"$group": {"_id": "$status", "total": {"$sum": "$total"}}}]
@@ -266,12 +279,13 @@ def build_invoices_router(db, require_role):
             t["total"] for t in totals if t["_id"] == "paid"
         )
         outstanding = sum(
-            t["total"] for t in totals if t["_id"] in ("draft", "sent")
+            t["total"] for t in totals if t["_id"] in ("draft", "sent", "partial")
         )
         return {
             "total_invoices": total_invoices,
             "draft_count": draft,
             "sent_count": sent,
+            "partial_count": partial,
             "paid_count": paid,
             "total_revenue": total_revenue,
             "outstanding": outstanding,
@@ -385,7 +399,7 @@ def build_invoices_router(db, require_role):
         )
         if not existing:
             raise HTTPException(404, "Invoice not found")
-        if body.status not in ("draft", "sent", "paid", "deleted"):
+        if body.status not in ("draft", "sent", "partial", "paid", "deleted"):
             raise HTTPException(400, "Invalid status")
         update = {
             "status": body.status,
@@ -402,6 +416,223 @@ def build_invoices_router(db, require_role):
         return await db.invoices.find_one(
             {"id": invoice_id}, {"_id": 0}
         )
+
+    # -------------------- PAYMENT LINKING --------------------
+    # Connects an invoice to one or more banking transactions. An invoice
+    # can be paid by several receipts (deposit + balance, instalments,
+    # bundled-with-other-invoices, etc.), so we store them as a list and
+    # derive status from the running total vs. the invoice total.
+
+    def _recalc_payment_state(invoice: dict) -> dict:
+        """Returns {linked_transactions, paid_total, status, paid_at} based
+        on the invoice's current `linked_transactions` list."""
+        links = invoice.get("linked_transactions") or []
+        paid_total = round(sum(float(x.get("amount") or 0) for x in links), 2)
+        total = round(float(invoice.get("total") or 0), 2)
+        # Use latest tx timestamp as the "paid" date.
+        latest = max(
+            (x.get("timestamp") for x in links if x.get("timestamp")),
+            default=None,
+        )
+        if not links:
+            # Restore to "sent" if previously paid/partial, else keep current.
+            cur = invoice.get("status", "draft")
+            status = "sent" if cur in ("paid", "partial") else cur
+        elif paid_total + 0.005 >= total:
+            status = "paid"
+        else:
+            status = "partial"
+        return {
+            "paid_total": paid_total,
+            "status": status,
+            "paid_at": latest,
+        }
+
+    @router.get("/{invoice_id}/payment-candidates")
+    async def payment_candidates(invoice_id: str, _=admin):
+        """Returns the 50 most plausible incoming banking transactions
+        for this invoice — sorted by amount-match-and-recency. Already-
+        linked transactions on THIS invoice are excluded so the user can
+        focus on still-unmatched receipts (a partial balance match)."""
+        invoice = await db.invoices.find_one(
+            {"id": invoice_id}, {"_id": 0}
+        )
+        if not invoice:
+            raise HTTPException(404, "Invoice not found")
+        invoice_total = round(float(invoice.get("total") or 0), 2)
+        already = {x.get("transaction_id") for x in
+                   (invoice.get("linked_transactions") or [])}
+        paid_state = _recalc_payment_state(invoice)
+        remaining = round(invoice_total - paid_state["paid_total"], 2)
+        # Suggest matches based on the OUTSTANDING balance (so for a
+        # partial invoice we surface the next instalment) — fall back to
+        # the full total if nothing is paid yet.
+        target = remaining if paid_state["paid_total"] > 0 else invoice_total
+        creds = await db.banking_transactions.find(
+            {"transaction_type": "CREDIT"},
+            {"_id": 0, "transaction_id": 1, "amount": 1,
+             "description": 1, "timestamp": 1, "currency": 1,
+             "linked_invoice_id": 1, "linked_invoice_number": 1},
+        ).to_list(5000)
+        creds = [c for c in creds if c["transaction_id"] not in already]
+        def _score(t):
+            if abs(t["amount"] - target) < 0.005:
+                return 0
+            if abs(t["amount"] - target) < 1.0:
+                return 1
+            return 2
+        # Two-pass stable sort: newest-first, then by score. Python's sort
+        # is stable so the secondary key (score) wins, ties broken by date.
+        creds.sort(key=lambda t: t.get("timestamp") or "", reverse=True)
+        creds.sort(key=_score)
+        return {
+            "candidates": creds[:50],
+            "invoice_total": invoice_total,
+            "paid_total": paid_state["paid_total"],
+            "remaining": remaining,
+            "target_amount": target,
+        }
+
+    @router.post("/{invoice_id}/link-payment")
+    async def link_payment(invoice_id: str, body: LinkPayment, _=admin):
+        invoice = await db.invoices.find_one(
+            {"id": invoice_id}, {"_id": 0}
+        )
+        if not invoice:
+            raise HTTPException(404, "Invoice not found")
+        tx = await db.banking_transactions.find_one(
+            {"transaction_id": body.transaction_id}, {"_id": 0}
+        )
+        if not tx:
+            raise HTTPException(404, "Transaction not found")
+        now = datetime.now(timezone.utc).isoformat()
+        # Append to the linked_transactions list (dedupe by tx_id).
+        existing_links = invoice.get("linked_transactions") or []
+        if any(x.get("transaction_id") == body.transaction_id for x in existing_links):
+            raise HTTPException(400, "Transaction already linked to this invoice")
+        link_entry = {
+            "transaction_id": body.transaction_id,
+            "amount": tx.get("amount"),
+            "timestamp": tx.get("timestamp"),
+            "description": tx.get("description"),
+            "linked_at": now,
+        }
+        new_links = existing_links + [link_entry]
+        # Compute new status from the running total.
+        merged = {**invoice, "linked_transactions": new_links}
+        state = _recalc_payment_state(merged)
+        update: dict = {
+            "linked_transactions": new_links,
+            "status": state["status"],
+            "updated_at": now,
+        }
+        if state["status"] == "paid":
+            update["paid_at"] = state["paid_at"] or now
+        # Keep legacy single-field mirror so any older UI bits still work.
+        update["linked_transaction_id"] = body.transaction_id
+        update["linked_transaction_amount"] = tx.get("amount")
+        update["linked_transaction_timestamp"] = tx.get("timestamp")
+        update["linked_transaction_description"] = tx.get("description")
+        await db.invoices.update_one({"id": invoice_id}, {"$set": update})
+        await db.banking_transactions.update_one(
+            {"transaction_id": body.transaction_id},
+            {"$set": {
+                "linked_invoice_id": invoice_id,
+                "linked_invoice_number": invoice.get("invoice_number"),
+            }},
+        )
+        return await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
+
+    @router.delete("/{invoice_id}/link-payment/{transaction_id}")
+    async def unlink_single_payment(
+        invoice_id: str, transaction_id: str, _=admin
+    ):
+        """Unlink one specific transaction from the invoice."""
+        invoice = await db.invoices.find_one(
+            {"id": invoice_id}, {"_id": 0}
+        )
+        if not invoice:
+            raise HTTPException(404, "Invoice not found")
+        existing_links = invoice.get("linked_transactions") or []
+        new_links = [x for x in existing_links
+                     if x.get("transaction_id") != transaction_id]
+        if len(new_links) == len(existing_links):
+            raise HTTPException(404, "Transaction not linked to this invoice")
+        merged = {**invoice, "linked_transactions": new_links}
+        state = _recalc_payment_state(merged)
+        now = datetime.now(timezone.utc).isoformat()
+        update: dict = {
+            "linked_transactions": new_links,
+            "status": state["status"],
+            "updated_at": now,
+        }
+        # Refresh the legacy mirror to whichever link remains (or unset).
+        if new_links:
+            last = new_links[-1]
+            update["linked_transaction_id"] = last.get("transaction_id")
+            update["linked_transaction_amount"] = last.get("amount")
+            update["linked_transaction_timestamp"] = last.get("timestamp")
+            update["linked_transaction_description"] = last.get("description")
+            await db.invoices.update_one({"id": invoice_id}, {"$set": update})
+        else:
+            await db.invoices.update_one(
+                {"id": invoice_id},
+                {"$set": update, "$unset": {
+                    "linked_transaction_id": "",
+                    "linked_transaction_amount": "",
+                    "linked_transaction_timestamp": "",
+                    "linked_transaction_description": "",
+                    "paid_at": "",
+                }},
+            )
+        await db.banking_transactions.update_one(
+            {"transaction_id": transaction_id},
+            {"$unset": {"linked_invoice_id": "", "linked_invoice_number": ""}},
+        )
+        return await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
+
+    @router.delete("/{invoice_id}/link-payment")
+    async def unlink_all_payments(invoice_id: str, _=admin):
+        """Unlink every transaction from this invoice in one go."""
+        invoice = await db.invoices.find_one(
+            {"id": invoice_id}, {"_id": 0}
+        )
+        if not invoice:
+            raise HTTPException(404, "Invoice not found")
+        tx_ids = [x.get("transaction_id")
+                  for x in (invoice.get("linked_transactions") or [])
+                  if x.get("transaction_id")]
+        # Also pick up legacy single-link rows.
+        legacy = invoice.get("linked_transaction_id")
+        if legacy and legacy not in tx_ids:
+            tx_ids.append(legacy)
+        for tx_id in tx_ids:
+            await db.banking_transactions.update_one(
+                {"transaction_id": tx_id},
+                {"$unset": {"linked_invoice_id": "", "linked_invoice_number": ""}},
+            )
+        now = datetime.now(timezone.utc).isoformat()
+        prev_status = invoice.get("status")
+        new_status = ("sent" if prev_status in ("paid", "partial")
+                      else prev_status)
+        await db.invoices.update_one(
+            {"id": invoice_id},
+            {
+                "$set": {
+                    "linked_transactions": [],
+                    "status": new_status,
+                    "updated_at": now,
+                },
+                "$unset": {
+                    "linked_transaction_id": "",
+                    "linked_transaction_amount": "",
+                    "linked_transaction_timestamp": "",
+                    "linked_transaction_description": "",
+                    "paid_at": "",
+                },
+            },
+        )
+        return {"ok": True, "unlinked_count": len(tx_ids)}
 
     # -------------------- PDF GENERATION --------------------
     @router.get("/{invoice_id}/pdf")

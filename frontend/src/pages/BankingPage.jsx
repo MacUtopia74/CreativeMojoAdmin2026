@@ -16,6 +16,9 @@ import {
   FileText,
   Trash2,
   CheckCircle2,
+  Filter,
+  Plus,
+  X as XIcon,
 } from "lucide-react";
 
 const moneyFmt = (n, currency = "GBP") =>
@@ -115,6 +118,11 @@ export default function BankingPage() {
   const [statements, setStatements] = useState([]);
   const [direction, setDirection] = useState("in");
   const [search, setSearch] = useState("");
+  // Supplier-keyword chips. `keywords` is the full saved list; `active`
+  // is the subset the user has currently toggled on (empty = no filter).
+  const [keywords, setKeywords] = useState([]);
+  const [activeKeywords, setActiveKeywords] = useState(new Set());
+  const [newKeyword, setNewKeyword] = useState("");
 
   const loadStatus = useCallback(async () => {
     try {
@@ -136,12 +144,21 @@ export default function BankingPage() {
 
   const loadTransactions = useCallback(async () => {
     try {
-      const { data } = await api.get("/banking/transactions", {
-        params: { direction, search: search || undefined, limit: 500 },
-      });
+      const params = { direction, search: search || undefined, limit: 500 };
+      if (activeKeywords.size > 0) {
+        params.keywords = Array.from(activeKeywords).join(",");
+      }
+      const { data } = await api.get("/banking/transactions", { params });
       setTransactions(data.transactions || []);
     } catch {/* ignore */}
-  }, [direction, search]);
+  }, [direction, search, activeKeywords]);
+
+  const loadKeywords = useCallback(async () => {
+    try {
+      const { data } = await api.get("/banking/supplier-keywords");
+      setKeywords(data.keywords || []);
+    } catch {/* ignore */}
+  }, []);
 
   const loadStatements = useCallback(async () => {
     try {
@@ -153,9 +170,9 @@ export default function BankingPage() {
   const refreshAll = useCallback(async () => {
     const s = await loadStatus();
     if (s?.connected) {
-      await Promise.all([loadDashboard(), loadTransactions(), loadStatements()]);
+      await Promise.all([loadDashboard(), loadTransactions(), loadStatements(), loadKeywords()]);
     }
-  }, [loadStatus, loadDashboard, loadTransactions, loadStatements]);
+  }, [loadStatus, loadDashboard, loadTransactions, loadStatements, loadKeywords]);
 
   useEffect(() => {
     (async () => {
@@ -173,7 +190,50 @@ export default function BankingPage() {
   // Re-fetch transactions when filter changes
   useEffect(() => {
     if (status?.connected) loadTransactions();
-  }, [direction, status?.connected, loadTransactions]);
+  }, [direction, status?.connected, activeKeywords, loadTransactions]);
+
+  const toggleKeyword = (k) => {
+    setActiveKeywords((prev) => {
+      const next = new Set(prev);
+      next.has(k) ? next.delete(k) : next.add(k);
+      return next;
+    });
+  };
+
+  const clearKeywords = () => setActiveKeywords(new Set());
+  const selectAllKeywords = () => setActiveKeywords(new Set(keywords));
+
+  const addKeyword = async () => {
+    const trimmed = newKeyword.trim();
+    if (!trimmed) return;
+    if (keywords.some((k) => k.toLowerCase() === trimmed.toLowerCase())) {
+      toast.warning(`"${trimmed}" is already in the list.`);
+      return;
+    }
+    const updated = [...keywords, trimmed];
+    try {
+      const { data } = await api.put("/banking/supplier-keywords", { keywords: updated });
+      setKeywords(data.keywords);
+      setNewKeyword("");
+      toast.success(`Added "${trimmed}"`);
+    } catch {
+      toast.error("Could not save");
+    }
+  };
+
+  const removeKeyword = async (k) => {
+    if (!window.confirm(`Remove "${k}" from the supplier filters?`)) return;
+    const updated = keywords.filter((x) => x !== k);
+    try {
+      const { data } = await api.put("/banking/supplier-keywords", { keywords: updated });
+      setKeywords(data.keywords);
+      setActiveKeywords((prev) => {
+        const next = new Set(prev); next.delete(k); return next;
+      });
+    } catch {
+      toast.error("Could not save");
+    }
+  };
 
   const handleDeleteStatement = async (s) => {
     if (!window.confirm(`Delete "${s.filename}"? Its ${s.transaction_count} transactions will be removed.`)) return;
@@ -381,6 +441,72 @@ export default function BankingPage() {
         )}
       </div>
 
+      {/* Supplier keyword filters — quick-toggle chips above the tx list */}
+      <div className="bg-white border border-stone-200 rounded-2xl p-5" data-testid="banking-supplier-filters">
+        <div className="flex items-center gap-3 flex-wrap mb-3">
+          <h2 className="text-sm font-bold tracking-wider uppercase text-stone-700 flex items-center gap-2">
+            <Filter className="w-3.5 h-3.5" /> Suppliers
+          </h2>
+          <span className="text-xs text-stone-400">
+            {activeKeywords.size > 0
+              ? `${activeKeywords.size} of ${keywords.length} active — list below shows only these suppliers`
+              : `${keywords.length} saved · click any to filter`}
+          </span>
+          <div className="ml-auto flex items-center gap-1.5">
+            {activeKeywords.size > 0 && (
+              <button onClick={clearKeywords} className="text-[10px] uppercase tracking-wider font-bold text-stone-500 hover:text-stone-950 px-2 py-1">Clear</button>
+            )}
+            <button onClick={selectAllKeywords} className="text-[10px] uppercase tracking-wider font-bold text-stone-500 hover:text-stone-950 px-2 py-1">Select all</button>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {keywords.map((k) => {
+            const isActive = activeKeywords.has(k);
+            return (
+              <span
+                key={k}
+                className={`inline-flex items-center gap-1 rounded-full text-xs font-bold transition-all
+                  ${isActive
+                    ? "bg-stone-950 text-white shadow-sm"
+                    : "bg-stone-100 text-stone-700 hover:bg-stone-200"}`}
+                data-testid={`supplier-chip-${k}`}
+              >
+                <button
+                  onClick={() => toggleKeyword(k)}
+                  className="pl-3 pr-1 py-1.5 uppercase tracking-wider"
+                  title={isActive ? "Remove from filter" : "Add to filter"}
+                >
+                  {k}
+                </button>
+                <button
+                  onClick={() => removeKeyword(k)}
+                  className={`pr-2 pl-0.5 py-1.5 ${isActive ? "text-white/60 hover:text-white" : "text-stone-400 hover:text-red-600"}`}
+                  title="Delete keyword"
+                >
+                  <XIcon className="w-3 h-3" />
+                </button>
+              </span>
+            );
+          })}
+          <div className="inline-flex items-center gap-1 border-2 border-dashed border-stone-300 rounded-full pl-2 pr-1">
+            <Plus className="w-3 h-3 text-stone-400" />
+            <input
+              value={newKeyword}
+              onChange={(e) => setNewKeyword(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") addKeyword(); }}
+              placeholder="Add supplier…"
+              className="text-xs font-bold uppercase tracking-wider bg-transparent px-1 py-1.5 focus:outline-none w-32"
+              data-testid="supplier-add-input"
+            />
+            <button
+              onClick={addKeyword}
+              disabled={!newKeyword.trim()}
+              className="text-[10px] uppercase tracking-wider font-bold text-stone-600 hover:text-stone-950 px-2 py-1 disabled:opacity-40"
+            >Add</button>
+          </div>
+        </div>
+      </div>
+
       {/* Transactions list */}
       <div className="bg-white border border-stone-200 rounded-2xl p-5">
         <div className="flex items-center gap-3 flex-wrap mb-4">
@@ -435,7 +561,14 @@ export default function BankingPage() {
                         {t.timestamp ? new Date(t.timestamp).toLocaleDateString("en-GB") : "—"}
                       </span>
                     </td>
-                    <td className="py-2 text-stone-800 max-w-md truncate" title={t.description}>{t.description || "—"}</td>
+                    <td className="py-2 text-stone-800 max-w-md truncate" title={t.description}>
+                      {t.description || "—"}
+                      {t.linked_invoice_number && (
+                        <span className="ml-2 inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200 rounded">
+                          → {t.linked_invoice_number}
+                        </span>
+                      )}
+                    </td>
                     <td className={`py-2 text-right tabular-nums font-bold ${t.transaction_type === "CREDIT" ? "text-emerald-700" : "text-stone-700"}`}>
                       <span className="inline-flex items-center gap-1 justify-end">
                         {t.transaction_type === "CREDIT" ? <ArrowDownLeft className="w-3 h-3" /> : <ArrowUpRight className="w-3 h-3" />}
