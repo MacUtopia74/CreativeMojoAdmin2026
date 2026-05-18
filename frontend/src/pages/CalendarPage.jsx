@@ -16,7 +16,7 @@ import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
-import { CalendarDays, ExternalLink, Loader2, Plus, RefreshCw, Trash2, AlertCircle, CheckCircle2, X, Save, Link as LinkIcon, MapPin, Clock, Pencil, PowerOff, Video, LayoutGrid, LayoutList } from "lucide-react";
+import { CalendarDays, ExternalLink, Loader2, Plus, RefreshCw, Trash2, AlertCircle, CheckCircle2, X, Save, Link as LinkIcon, MapPin, Clock, Pencil, PowerOff, Video, LayoutGrid, LayoutList, Users } from "lucide-react";
 
 function formatDateRange(start, end, allDay) {
   if (!start) return "";
@@ -340,7 +340,18 @@ function EventRow({ event, onEdit, onDelete }) {
   return (
     <div className="px-5 py-4 flex items-start justify-between gap-4 hover:bg-stone-50" data-testid={`cal-event-${event.id}`}>
       <div className="min-w-0 flex-1">
-        <div className="text-base font-semibold text-stone-950 truncate">{event.title}</div>
+        <div className="text-base font-semibold text-stone-950 truncate flex items-center gap-2">
+          <span className="truncate">{event.title}</span>
+          {event.show_in_portal && (
+            <span
+              data-testid={`cal-portal-badge-${event.id}`}
+              title="Visible on the franchisee portal"
+              className="inline-flex items-center gap-1 text-[9px] uppercase tracking-wider font-bold bg-emerald-100 text-emerald-900 border border-emerald-300 px-1.5 py-0.5 rounded shrink-0"
+            >
+              <Users className="w-2.5 h-2.5" /> Portal
+            </span>
+          )}
+        </div>
         <div className="text-xs text-stone-600 mt-0.5 flex items-center gap-1.5 flex-wrap">
           <Clock className="w-3 h-3" /> {formatDateRange(event.start, event.end, event.all_day)}
           {event.location && (<><span className="text-stone-300">·</span><MapPin className="w-3 h-3" /> <span className="truncate">{event.location}</span></>)}
@@ -376,6 +387,7 @@ function EventModal({ event, defaults, onClose, onSaved }) {
   const [description, setDescription] = useState(event?.description || "");
   const [location, setLocation] = useState(event?.location || "");
   const [meetingUrl, setMeetingUrl] = useState(event?.meeting_url || "");
+  const [showInPortal, setShowInPortal] = useState(!!event?.show_in_portal);
   const [allDay, setAllDay] = useState(!!event?.all_day);
   const [start, setStart] = useState(event?.start ? event.start.slice(0, 16) : (defaults?.start || todayLocal()));
   const [end, setEnd] = useState(event?.end ? event.end.slice(0, 16) : (defaults?.end || todayLocal(60)));
@@ -393,6 +405,7 @@ function EventModal({ event, defaults, onClose, onSaved }) {
         description: description || null,
         location: location || null,
         meeting_url: meetingUrl ? meetingUrl.trim() : null,
+        show_in_portal: showInPortal,
         all_day: allDay,
         start: allDay ? start.slice(0, 10) : new Date(start).toISOString(),
         end: allDay ? end.slice(0, 10) : new Date(end).toISOString(),
@@ -430,6 +443,29 @@ function EventModal({ event, defaults, onClose, onSaved }) {
             testid="cal-meeting-url"
             icon={LinkIcon}
           />
+          {/* Franchisee-portal toggle — events default to admin-only.
+              Tick this to also surface the event on the franchisee
+              portal's Events panel (shared join URL, time, description). */}
+          <label className={`flex items-start gap-3 p-3 border-2 rounded-xl cursor-pointer transition ${showInPortal ? "border-emerald-400 bg-emerald-50/60" : "border-stone-200 hover:border-stone-300 bg-white"}`}
+            data-testid="cal-portal-toggle-label">
+            <input
+              type="checkbox"
+              checked={showInPortal}
+              onChange={(e) => setShowInPortal(e.target.checked)}
+              data-testid="cal-portal-toggle"
+              className="mt-0.5 accent-emerald-600"
+            />
+            <div className="flex-1">
+              <div className="text-sm font-bold text-stone-950">
+                Also include in Franchisee Portal Calendar
+              </div>
+              <div className="text-[11px] text-stone-600 mt-0.5">
+                {showInPortal
+                  ? "This event will appear in every franchisee's Events panel — including the meeting link if you've added one."
+                  : "Admin-only — won't appear on the franchisee portal."}
+              </div>
+            </div>
+          </label>
           <div>
             <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-1">Description (optional)</label>
             <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} data-testid="cal-description"

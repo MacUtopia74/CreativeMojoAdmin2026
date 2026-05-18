@@ -85,12 +85,14 @@ class EventIn(BaseModel):
     end: str    # ISO 8601
     all_day: bool = False
     meeting_url: Optional[str] = None  # e.g. MS Teams join URL
+    show_in_portal: bool = False  # surfaces event on the franchisee portal
 
 
 def _shape_event(e: dict) -> dict:
     """Trim Google's event payload to what the frontend renders."""
     start = e.get("start") or {}
     end = e.get("end") or {}
+    shared = (e.get("extendedProperties") or {}).get("shared", {})
     return {
         "id": e.get("id"),
         "title": e.get("summary") or "(no title)",
@@ -99,7 +101,11 @@ def _shape_event(e: dict) -> dict:
         "start": start.get("dateTime") or start.get("date"),
         "end": end.get("dateTime") or end.get("date"),
         "all_day": "date" in start and "dateTime" not in start,
-        "meeting_url": (e.get("extendedProperties") or {}).get("shared", {}).get("meeting_url"),
+        "meeting_url": shared.get("meeting_url"),
+        # show_in_portal — stored as the literal string "1" via Google's
+        # extended-properties (the API only accepts string values there).
+        # Anything truthy except "0" / "false" / "" is treated as on.
+        "show_in_portal": str(shared.get("show_in_portal") or "").lower() in ("1", "true", "yes"),
         "html_link": e.get("htmlLink"),
         "creator_email": (e.get("creator") or {}).get("email"),
         "status": e.get("status"),
@@ -276,9 +282,14 @@ def attach(api, db, require_role, get_current_user=None):
                     calendarId=calendar_id,
                     timeMin=time_min,
                     timeMax=time_max,
-                    maxResults=200,
+                    maxResults=500,
                     singleEvents=True,
                     orderBy="startTime",
+                    # Server-side filter — Google supports
+                    # privateExtendedProperty / sharedExtendedProperty
+                    # query params. Only events explicitly flagged for the
+                    # portal come back.
+                    sharedExtendedProperty="show_in_portal=1",
                 ).execute()
             except HttpError as exc:
                 raise HTTPException(502, detail=f"Google Calendar API error: {exc}") from exc
@@ -302,11 +313,14 @@ def attach(api, db, require_role, get_current_user=None):
         else:
             ev["start"] = {"dateTime": body.start, "timeZone": "Europe/London"}
             ev["end"] = {"dateTime": body.end, "timeZone": "Europe/London"}
+        if body.meeting_url or body.show_in_portal:
+            shared: dict = {}
+            if body.meeting_url:
+                shared["meeting_url"] = body.meeting_url
+            if body.show_in_portal:
+                shared["show_in_portal"] = "1"
+            ev["extendedProperties"] = {"shared": shared}
         if body.meeting_url:
-            # Store the join URL as a shared extended property so we can show
-            # a "Join meeting" button on the calendar page. We don't try to
-            # create a real Teams meeting via Graph API yet (deferred).
-            ev["extendedProperties"] = {"shared": {"meeting_url": body.meeting_url}}
             # Also tack it onto the description so it survives even if the
             # admin opens the event in Google Calendar directly.
             ev["description"] = (ev["description"] + "\n\nJoin: " + body.meeting_url).strip()
@@ -347,6 +361,23 @@ def attach(api, db, require_role, get_current_user=None):
             current["end"] = {"dateTime": body["end"], "timeZone": "Europe/London"}
         if body.get("meeting_url") is not None:
             current.setdefault("extendedProperties", {}).setdefault("shared", {})["meeting_url"] = body["meeting_url"]
+        if body.get("show_in_portal") is not None:
+            # Google's extended-properties only accepts string values. To
+            # *remove* the flag we have to pop the key off the dict before
+            # sending — setting to None or "" leaves stale data that the
+            # `sharedExtendedProperty=show_in_portal=1` filter may still
+            # match in some Google client libraries.
+            shared = current.setdefault("extendedProperties", {}).setdefault("shared", {})
+            if body["show_in_portal"]:
+                shared["show_in_portal"] = "1"
+            else:
+                shared.pop("show_in_portal", None)
+                # An empty shared dict + Google's strict schema → just
+                # remove the wrapper too if nothing's left.
+                if not shared:
+                    current["extendedProperties"].pop("shared", None)
+                if not current.get("extendedProperties"):
+                    current.pop("extendedProperties", None)
         try:
             updated = service.events().update(calendarId=calendar_id, eventId=event_id, body=current).execute()
         except HttpError as exc:
