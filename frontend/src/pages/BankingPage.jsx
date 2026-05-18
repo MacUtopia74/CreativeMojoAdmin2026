@@ -160,6 +160,11 @@ export default function BankingPage() {
               You'll be redirected to TrueLayer to authorise read-only access.
               Connection is granted by HSBC for 90 days, then renewable with a tap.
             </p>
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg mt-3 mx-auto max-w-md px-3 py-2 text-left">
+              <strong>Sandbox mode:</strong> picking a mock bank takes you through
+              the full flow with test data. Real HSBC requires switching the app
+              to Live mode in the TrueLayer console first.
+            </p>
           </div>
           <button
             onClick={handleConnect}

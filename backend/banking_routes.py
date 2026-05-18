@@ -172,14 +172,16 @@ def build_banking_router(db, require_role):
     @router.get("/auth-url")
     async def auth_url(_=admin):
         """Builds the TrueLayer authorisation URL the admin clicks to start
-        the consent journey. Sandbox shows mock providers; live shows real
-        UK banks including HSBC Personal."""
+        the consent journey. In sandbox we restrict the provider list to
+        mock banks only — picking a real bank in sandbox results in an
+        endless "Connecting…" loop because sandbox apps can't authenticate
+        against live HSBC/etc."""
         env = (os.environ.get("TRUELAYER_ENV") or "sandbox").lower()
-        # Provider filter:
-        #  - sandbox: include the mock providers so we can test without
-        #    needing real HSBC creds.
-        #  - live: restrict to UK Open Banking real banks.
-        providers = "uk-cs-mock uk-ob-all uk-oauth-all" if env == "sandbox" else "uk-ob-all uk-oauth-all"
+        if env == "live":
+            providers = "uk-ob-all uk-oauth-all"
+        else:
+            # Sandbox: mock providers only, no fallback to real banks.
+            providers = "uk-cs-mock"
         params = {
             "response_type": "code",
             "client_id": os.environ["TRUELAYER_CLIENT_ID"],
