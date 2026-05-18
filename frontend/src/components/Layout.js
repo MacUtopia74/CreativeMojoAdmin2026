@@ -19,6 +19,7 @@ import {
   Receipt,
   Banknote,
   KeyRound,
+  ShoppingBag,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -39,6 +40,7 @@ const NAV = [
 const ADMIN_NAV = [
   { to: "/invoices", label: "Invoices", icon: Receipt, testid: "nav-invoices" },
   { to: "/banking", label: "Banking", icon: Banknote, testid: "nav-banking" },
+  { to: "/mojo-orders", label: "Mojo Orders", icon: ShoppingBag, testid: "nav-mojo-orders" },
   { to: "/form-intake", label: "Form Intake", icon: Inbox, testid: "nav-form-intake" },
   { to: "/airtable-inspector", label: "Airtable Inspector", icon: Database, testid: "nav-airtable-inspector" },
   { to: "/migration-plan", label: "Migration Plan", icon: ClipboardList, testid: "nav-migration-plan" },
