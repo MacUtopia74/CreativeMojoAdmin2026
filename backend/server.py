@@ -2619,6 +2619,10 @@ async def _banking_indexes():
 from calendar_routes import attach as build_calendar_router  # noqa: E402
 api.include_router(build_calendar_router(api, db, require_role, get_current_user))
 
+# Zoom — Server-to-Server OAuth meeting creation
+from zoom_routes import attach as build_zoom_router  # noqa: E402
+api.include_router(build_zoom_router(api, db, require_role))
+
 app.include_router(api)
 
 # Serve cached franchisee photos (downloaded from Airtable at migration time so they
