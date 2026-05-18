@@ -73,7 +73,7 @@ const InvoiceList = () => {
           </p>
         </div>
         <Link to="/invoices/new">
-          <Button className="gap-2 rounded-full px-6" data-testid="new-invoice-btn">
+          <Button className="gap-2 rounded-full px-6 bg-blue-600 hover:bg-blue-700 text-white shadow-sm" data-testid="new-invoice-btn">
             <Plus className="w-4 h-4" />
             Create Invoice
           </Button>
@@ -82,14 +82,14 @@ const InvoiceList = () => {
 
       {/* Stats Cards */}
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4" data-testid="stats-section">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4" data-testid="stats-section">
           <Card 
-            className={`p-6 cursor-pointer transition-all hover:shadow-md hover:scale-[1.02] ${statusFilter === "all" ? "ring-2 ring-primary" : ""}`}
+            className={`p-6 cursor-pointer transition-all hover:shadow-md hover:scale-[1.02] ${statusFilter === "all" ? "ring-2 ring-blue-500" : ""}`}
             onClick={() => setStatusFilter("all")}
             data-testid="stat-card-total"
           >
             <p className="text-sm font-medium text-muted-foreground">Total Invoices</p>
-            <p className="text-2xl font-bold font-mono mt-1" data-testid="stat-total">
+            <p className="text-3xl font-bold mt-2" data-testid="stat-total">
               {stats.total_invoices}
             </p>
           </Card>
@@ -99,7 +99,7 @@ const InvoiceList = () => {
             data-testid="stat-card-draft"
           >
             <p className="text-sm font-medium text-muted-foreground">Draft</p>
-            <p className="text-2xl font-bold font-mono mt-1 text-slate-600" data-testid="stat-draft">
+            <p className="text-3xl font-bold mt-2 text-slate-700" data-testid="stat-draft">
               {stats.draft_count}
             </p>
           </Card>
@@ -109,8 +109,18 @@ const InvoiceList = () => {
             data-testid="stat-card-sent"
           >
             <p className="text-sm font-medium text-muted-foreground">Sent</p>
-            <p className="text-2xl font-bold font-mono mt-1 text-blue-600" data-testid="stat-sent">
+            <p className="text-3xl font-bold mt-2 text-blue-600" data-testid="stat-sent">
               {stats.sent_count}
+            </p>
+          </Card>
+          <Card 
+            className={`p-6 cursor-pointer transition-all hover:shadow-md hover:scale-[1.02] ${statusFilter === "partial" ? "ring-2 ring-amber-500" : ""}`}
+            onClick={() => setStatusFilter("partial")}
+            data-testid="stat-card-partial"
+          >
+            <p className="text-sm font-medium text-muted-foreground">Partial</p>
+            <p className="text-3xl font-bold mt-2 text-amber-600" data-testid="stat-partial">
+              {stats.partial_count || 0}
             </p>
           </Card>
           <Card 
@@ -119,7 +129,7 @@ const InvoiceList = () => {
             data-testid="stat-card-paid"
           >
             <p className="text-sm font-medium text-muted-foreground">Paid</p>
-            <p className="text-2xl font-bold font-mono mt-1 text-emerald-600" data-testid="stat-paid">
+            <p className="text-3xl font-bold mt-2 text-emerald-600" data-testid="stat-paid">
               {stats.paid_count}
             </p>
           </Card>

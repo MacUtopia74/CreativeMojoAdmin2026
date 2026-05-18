@@ -42,14 +42,14 @@ export default function InvoicesShell() {
               end={end}
               data-testid={testid}
               className={({ isActive }) =>
-                `inline-flex items-center gap-2 px-3 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-colors ${
+                `inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
                   isActive
-                    ? "bg-stone-950 text-white"
+                    ? "bg-blue-50 text-blue-700 ring-1 ring-blue-200"
                     : "text-stone-600 hover:bg-stone-100"
                 }`
               }
             >
-              <Icon className="w-3.5 h-3.5" />
+              <Icon className="w-4 h-4" />
               {label}
             </NavLink>
           ))}
@@ -58,7 +58,7 @@ export default function InvoicesShell() {
           <button
             onClick={() => navigate("/invoices/new")}
             data-testid="inv-new-cta"
-            className="ml-auto inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold uppercase tracking-wider bg-[#D4FF00] text-stone-950 rounded-lg hover:brightness-95 transition"
+            className="ml-auto inline-flex items-center gap-1.5 px-5 py-2.5 text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-sm transition"
           >
             <Plus className="w-4 h-4" />
             New Invoice
