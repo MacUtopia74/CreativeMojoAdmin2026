@@ -137,13 +137,44 @@ export default function CalendarPage() {
   };
 
   const grouped = useMemo(() => {
+    // Bucket events by their day label. Two-tier sort: upcoming days
+    // (today + future) come first in chronological order, then past
+    // days afterwards in reverse-chronological (newest-first) order. This
+    // means when Sandra opens the list, the next thing she has to do is
+    // at the very top — not buried under last year's recurring meetings.
     const buckets = new Map();
+    const dayKeys = new Map(); // label → timestamp for sorting
     events.forEach((e) => {
-      const d = e.start ? new Date(e.start).toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long", year: "numeric" }) : "—";
-      if (!buckets.has(d)) buckets.set(d, []);
-      buckets.get(d).push(e);
+      if (!e.start) return;
+      const d = new Date(e.start);
+      const label = d.toLocaleDateString("en-GB", {
+        weekday: "long", day: "2-digit", month: "long", year: "numeric",
+      });
+      // Day-only timestamp (midnight) for stable sorting regardless of
+      // intra-day order.
+      const dayTs = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+      if (!buckets.has(label)) {
+        buckets.set(label, []);
+        dayKeys.set(label, dayTs);
+      }
+      buckets.get(label).push(e);
     });
-    return [...buckets.entries()];
+    // Within each day, sort events by start time ascending so 09:00 is
+    // above 14:00.
+    for (const list of buckets.values()) {
+      list.sort((a, b) => new Date(a.start) - new Date(b.start));
+    }
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const todayTs = today.getTime();
+    const entries = [...buckets.entries()];
+    entries.sort((a, b) => {
+      const aTs = dayKeys.get(a[0]); const bTs = dayKeys.get(b[0]);
+      const aFuture = aTs >= todayTs;
+      const bFuture = bTs >= todayTs;
+      if (aFuture !== bFuture) return aFuture ? -1 : 1;
+      return aFuture ? aTs - bTs : bTs - aTs;
+    });
+    return entries;
   }, [events]);
 
   // FullCalendar event shape — translates our normalised event list.
@@ -309,16 +340,46 @@ export default function CalendarPage() {
             </div>
           ) : (
             <div className="space-y-6" data-testid="cal-events">
-              {grouped.map(([dayLabel, list]) => (
-                <div key={dayLabel}>
-                  <div className="text-[11px] uppercase tracking-[0.25em] font-bold text-stone-500 mb-2">{dayLabel}</div>
-                  <div className="bg-white border border-stone-200 rounded-2xl divide-y divide-stone-100 overflow-hidden">
-                    {list.map((e) => (
-                      <EventRow key={e.id} event={e} onEdit={() => setModal({ event: e })} onDelete={() => deleteEvent(e.id)} />
-                    ))}
-                  </div>
-                </div>
-              ))}
+              {(() => {
+                // Detect the index where past starts so we can drop a
+                // visual divider between "upcoming" and "past" rows.
+                const today = new Date(); today.setHours(0, 0, 0, 0);
+                const todayLabel = today.toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
+                const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+                const tomorrowLabel = tomorrow.toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
+                let pastShown = false;
+                return grouped.map(([dayLabel, list], idx) => {
+                  const sample = list[0]?.start ? new Date(list[0].start) : null;
+                  const isPast = sample && new Date(sample.getFullYear(), sample.getMonth(), sample.getDate()).getTime() < today.getTime();
+                  const showPastDivider = isPast && !pastShown;
+                  if (isPast) pastShown = true;
+                  return (
+                    <div key={dayLabel}>
+                      {showPastDivider && (
+                        <div className="mb-3 flex items-center gap-3" data-testid="cal-past-divider">
+                          <div className="flex-1 h-px bg-stone-200"></div>
+                          <span className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">Past events</span>
+                          <div className="flex-1 h-px bg-stone-200"></div>
+                        </div>
+                      )}
+                      <div className={`text-[11px] uppercase tracking-[0.25em] font-bold mb-2 flex items-center gap-2 ${
+                        dayLabel === todayLabel ? "text-blue-700" :
+                        dayLabel === tomorrowLabel ? "text-emerald-700" :
+                        isPast ? "text-stone-400" : "text-stone-500"
+                      }`}>
+                        {dayLabel}
+                        {dayLabel === todayLabel && <span className="px-1.5 py-0.5 text-[9px] bg-blue-100 text-blue-800 rounded">Today</span>}
+                        {dayLabel === tomorrowLabel && <span className="px-1.5 py-0.5 text-[9px] bg-emerald-100 text-emerald-800 rounded">Tomorrow</span>}
+                      </div>
+                      <div className="bg-white border border-stone-200 rounded-2xl divide-y divide-stone-100 overflow-hidden">
+                        {list.map((e) => (
+                          <EventRow key={e.id} event={e} onEdit={() => setModal({ event: e })} onDelete={() => deleteEvent(e.id)} />
+                        ))}
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
             </div>
           )}
         </>
