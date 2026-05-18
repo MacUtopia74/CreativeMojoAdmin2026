@@ -71,6 +71,14 @@ class CreateUserRequest(BaseModel):
     password: str
     name: str
     role: Role = "admin"
+    franchisee_id: Optional[str] = None  # only meaningful when role == "franchisee"
+
+
+class UpdateUserRequest(BaseModel):
+    name: Optional[str] = None
+    role: Optional[Role] = None
+    franchisee_id: Optional[str] = None
+    active: Optional[bool] = None
 
 
 # ----------------------------------------------------------------------------
@@ -237,6 +245,8 @@ async def create_user(body: CreateUserRequest, _: dict = Depends(require_role("a
     existing = await db.users.find_one({"email": email})
     if existing:
         raise HTTPException(status_code=409, detail="User with this email already exists")
+    if len(body.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
     user = {
         "id": str(uuid.uuid4()),
         "email": email,
@@ -244,9 +254,79 @@ async def create_user(body: CreateUserRequest, _: dict = Depends(require_role("a
         "role": body.role,
         "password_hash": hash_password(body.password),
         "created_at": datetime.now(timezone.utc).isoformat(),
+        "active": True,
     }
+    if body.role == "franchisee" and body.franchisee_id:
+        user["franchisee_id"] = body.franchisee_id
     await db.users.insert_one(user)
-    return {"id": user["id"], "email": user["email"], "name": user["name"], "role": user["role"]}
+    return {
+        "id": user["id"], "email": user["email"], "name": user["name"],
+        "role": user["role"], "franchisee_id": user.get("franchisee_id"),
+        "created_at": user["created_at"], "active": True,
+    }
+
+
+@api.get("/auth/users")
+async def list_users(_: dict = Depends(require_role("admin"))):
+    """Admin-only roster of every login account on the system. Surfaced
+    on the Admin Users page; we strip the bcrypt hash before returning."""
+    rows = await db.users.find({}, {"_id": 0, "password_hash": 0}).sort("created_at", -1).to_list(1000)
+    # Hydrate franchisee names for the linked-franchisee column.
+    fids = {r["franchisee_id"] for r in rows if r.get("franchisee_id")}
+    fmap: dict = {}
+    if fids:
+        fr = await db.franchisees.find(
+            {"id": {"$in": list(fids)}},
+            {"_id": 0, "id": 1, "organisation": 1, "name": 1, "franchise_number": 1},
+        ).to_list(500)
+        fmap = {f["id"]: f for f in fr}
+    for r in rows:
+        if r.get("franchisee_id") and r["franchisee_id"] in fmap:
+            f = fmap[r["franchisee_id"]]
+            r["franchisee_label"] = (
+                f"{f.get('franchise_number') or '—'} · "
+                f"{f.get('organisation') or f.get('name') or '(unnamed)'}"
+            )
+    return {"users": rows}
+
+
+@api.patch("/auth/users/{user_id}")
+async def update_user(
+    user_id: str, body: UpdateUserRequest,
+    admin: dict = Depends(require_role("admin")),
+):
+    user = await db.users.find_one({"id": user_id})
+    if not user:
+        raise HTTPException(404, "User not found")
+    update: dict = {}
+    if body.name is not None: update["name"] = body.name
+    if body.role is not None: update["role"] = body.role
+    if body.franchisee_id is not None:
+        # Empty string clears the linkage.
+        update["franchisee_id"] = body.franchisee_id or None
+    if body.active is not None:
+        # Self-disable lockout guard — admins can't accidentally lock
+        # themselves out of the console.
+        if not body.active and user_id == admin["id"]:
+            raise HTTPException(400, "You can't deactivate your own account")
+        update["active"] = body.active
+    if not update:
+        raise HTTPException(400, "No changes provided")
+    await db.users.update_one({"id": user_id}, {"$set": update})
+    return {"ok": True}
+
+
+@api.delete("/auth/users/{user_id}")
+async def delete_user(
+    user_id: str, admin: dict = Depends(require_role("admin"))
+):
+    if user_id == admin["id"]:
+        raise HTTPException(400, "You can't delete your own account")
+    user = await db.users.find_one({"id": user_id})
+    if not user:
+        raise HTTPException(404, "User not found")
+    await db.users.delete_one({"id": user_id})
+    return {"ok": True}
 
 
 # ----------------------------------------------------------------------------

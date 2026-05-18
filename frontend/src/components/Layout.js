@@ -42,7 +42,7 @@ const ADMIN_NAV = [
   { to: "/form-intake", label: "Form Intake", icon: Inbox, testid: "nav-form-intake" },
   { to: "/airtable-inspector", label: "Airtable Inspector", icon: Database, testid: "nav-airtable-inspector" },
   { to: "/migration-plan", label: "Migration Plan", icon: ClipboardList, testid: "nav-migration-plan" },
-  { to: "/admin/password-resets", label: "Password Resets", icon: KeyRound, testid: "nav-password-resets" },
+  { to: "/admin/users", label: "Admin Users", icon: KeyRound, testid: "nav-admin-users" },
 ];
 
 function NavItem({ to, label, icon: Icon, testid }) {
