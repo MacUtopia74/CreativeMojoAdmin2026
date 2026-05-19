@@ -42,6 +42,23 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
   - Backend: 3 new endpoints — `POST /api/territory-plans/:id/share`, `DELETE /api/territory-plans/:id/share`, `GET /api/public/territory-plans/:token` (unauthenticated). `GET /api/territory-plans` now eagerly joins `contact_name` so the panel can label plans with the prospect.
   - Fixed: axios 401 interceptor was bouncing unauthenticated visitors off `/share/*` paths. Whitelisted now.
 
+## What's Implemented (2026-05-19)
+- **Airtable decommissioned** ✅ (May 19 2026)
+  - Frontend: removed sidebar items (Airtable Inspector, Migration Plan), removed dashboard "Re-run migration" button, deleted page components, removed routes. Kept the "Migrated from Airtable · {date}" stamp as a historical marker.
+  - Backend: removed `/api/airtable/*` endpoints, `/api/migration/decisions/*` endpoints, `/api/migration/run`, `/api/franchisees/refresh-photos`, the airtable summary block on `/api/dashboard/stats`, the startup-time seeding of `migration_table_decisions`, the env-var imports (`AIRTABLE_PAT`, `AIRTABLE_BASE_ID`).
+  - Removed `AIRTABLE_PAT` + `AIRTABLE_BASE_ID` from `backend/.env`.
+  - Kept Mongo collections (`migration_runs`, `migration_table_decisions`, `migration_field_decisions`) untouched for audit, but no code reads them anymore.
+  - Net effect: ~189 lines deleted from `server.py` + 2 frontend page files removed. Cleaner, smaller, no live Airtable API calls.
+
+- **CQC full sync (re-)kicked off** — running in the background. Total target: 121,283 records. Currently at page 3, climbing.
+
+- **Territory Builder map polish** ✅ (May 19 2026)
+  - Public share viewer map now taller (820px vs 620px) so prospects can see the territory at a glance.
+  - Light / Roads basemap toggle added to the public viewer (top-left of map).
+  - Per-sector outline thickness reduced (selected: 2 → 1.25px; available: 0.8 → 0.5px; franchisee inner: 0.75 → 0.4px).
+  - Franchisee fill opacity dialled back (30/55 → 18/35).
+  - Boosted town/city label layer (text-size scaled by zoom, font upgraded to bold, halo widened to 2.2px) so prospects can read the map.
+
 ## What's Implemented (2026-05-18)
 - **Zoom Server-to-Server OAuth — Calendar one-click meeting creation** ✅ (May 18 2026)
   - Marketplace Server-to-Server OAuth app on `headoffice@creativemojo.co.uk` (single shared host). Granular scopes: `meeting:write:meeting:admin`, `meeting:read:meeting:admin`, `user:read:user:admin`.

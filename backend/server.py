@@ -12,7 +12,7 @@ import bcrypt
 import jwt
 import httpx
 from datetime import datetime, timezone, timedelta
-from typing import Optional, List, Literal
+from typing import Optional, List, Literal, Dict, Any
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, Query, UploadFile, File
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -28,8 +28,6 @@ JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_MINUTES = 60 * 8  # 8 hours for an admin tool
 REFRESH_TOKEN_DAYS = 7
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
-AIRTABLE_PAT = os.environ.get("AIRTABLE_PAT", "")
-AIRTABLE_BASE_ID = os.environ.get("AIRTABLE_BASE_ID", "")
 INTAKE_TOKEN = os.environ.get("INTAKE_TOKEN", "")
 
 client = AsyncIOMotorClient(MONGO_URL)
@@ -582,201 +580,12 @@ async def change_password(
 
 
 # ----------------------------------------------------------------------------
-# Airtable Inspector (read-only proxy)
+# Airtable / Migration endpoints — REMOVED 2026-05-19 after the live cutover.
+# The console is now the source of truth; Airtable has been decommissioned.
+# (Sidebar items + dashboard 'Re-run migration' button were also removed.)
 # ----------------------------------------------------------------------------
-_airtable_schema_cache: dict = {"data": None, "fetched_at": None}
 
 
-async def airtable_get(path: str, params: Optional[dict] = None) -> dict:
-    if not AIRTABLE_PAT or not AIRTABLE_BASE_ID:
-        raise HTTPException(status_code=503, detail="Airtable credentials not configured")
-    headers = {"Authorization": f"Bearer {AIRTABLE_PAT}"}
-    url = f"https://api.airtable.com/v0{path}"
-    async with httpx.AsyncClient(timeout=30) as client_http:
-        r = await client_http.get(url, headers=headers, params=params or {})
-    if r.status_code >= 400:
-        raise HTTPException(status_code=r.status_code, detail=f"Airtable error: {r.text}")
-    return r.json()
-
-
-@api.get("/airtable/tables")
-async def list_airtable_tables(_: dict = Depends(require_role("admin"))):
-    """Return the full schema for the configured Airtable base."""
-    # 5 minute cache
-    now = datetime.now(timezone.utc)
-    cached = _airtable_schema_cache
-    if cached["data"] and cached["fetched_at"] and (now - cached["fetched_at"]).total_seconds() < 300:
-        return cached["data"]
-    data = await airtable_get(f"/meta/bases/{AIRTABLE_BASE_ID}/tables")
-    tables = []
-    for t in data.get("tables", []):
-        tables.append({
-            "id": t["id"],
-            "name": t["name"],
-            "primary_field_id": t.get("primaryFieldId"),
-            "field_count": len(t.get("fields", [])),
-            "view_count": len(t.get("views", [])),
-            "fields": [
-                {"id": f["id"], "name": f["name"], "type": f.get("type", "unknown"), "description": f.get("description")}
-                for f in t.get("fields", [])
-            ],
-            "views": [{"id": v["id"], "name": v["name"], "type": v.get("type")} for v in t.get("views", [])],
-        })
-    result = {"base_id": AIRTABLE_BASE_ID, "tables": tables}
-    _airtable_schema_cache.update({"data": result, "fetched_at": now})
-    return result
-
-
-@api.get("/airtable/tables/{table_id}/records")
-async def get_table_records(
-    table_id: str,
-    limit: int = Query(20, ge=1, le=100),
-    offset: Optional[str] = None,
-    _: dict = Depends(require_role("admin")),
-):
-    params = {"pageSize": limit}
-    if offset:
-        params["offset"] = offset
-    data = await airtable_get(f"/{AIRTABLE_BASE_ID}/{table_id}", params=params)
-    return {
-        "records": data.get("records", []),
-        "offset": data.get("offset"),
-    }
-
-
-@api.get("/airtable/tables/{table_id}/count")
-async def count_table_records(table_id: str, _: dict = Depends(require_role("admin"))):
-    """Paginate through entire table to count. Cached briefly."""
-    total = 0
-    offset = None
-    async with httpx.AsyncClient(timeout=60) as client_http:
-        while True:
-            params = {"pageSize": 100}
-            if offset:
-                params["offset"] = offset
-            r = await client_http.get(
-                f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{table_id}",
-                headers={"Authorization": f"Bearer {AIRTABLE_PAT}"},
-                params=params,
-            )
-            if r.status_code >= 400:
-                raise HTTPException(status_code=r.status_code, detail=r.text)
-            j = r.json()
-            total += len(j.get("records", []))
-            offset = j.get("offset")
-            if not offset:
-                break
-    return {"table_id": table_id, "count": total}
-
-
-# ----------------------------------------------------------------------------
-# Migration Decisions (captured by user during Airtable Inspector walkthrough)
-# ----------------------------------------------------------------------------
-DECISION_VALUES = {"undecided", "keep", "rename", "drop", "merge"}
-
-
-class FieldDecisionRequest(BaseModel):
-    table_id: str
-    field_id: str
-    field_name: str
-    decision: str = "undecided"
-    rename_to: Optional[str] = None
-    merge_with: Optional[str] = None
-    notes: Optional[str] = None
-
-
-class TableDecisionRequest(BaseModel):
-    table_id: str
-    table_name: str
-    migrate: Optional[bool] = None
-    notes: Optional[str] = None
-
-
-@api.get("/migration/decisions")
-async def get_decisions(_: dict = Depends(require_role("admin"))):
-    tables = await db.migration_table_decisions.find({}, {"_id": 0}).to_list(1000)
-    fields = await db.migration_field_decisions.find({}, {"_id": 0}).to_list(10000)
-    return {"tables": tables, "fields": fields}
-
-
-@api.post("/migration/decisions/table")
-async def set_table_decision(body: TableDecisionRequest, user: dict = Depends(require_role("admin"))):
-    update = {
-        "table_id": body.table_id,
-        "table_name": body.table_name,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-        "updated_by": user["email"],
-    }
-    if body.migrate is not None:
-        update["migrate"] = body.migrate
-    if body.notes is not None:
-        update["notes"] = body.notes
-    await db.migration_table_decisions.update_one(
-        {"table_id": body.table_id}, {"$set": update}, upsert=True
-    )
-    return {"ok": True}
-
-
-@api.post("/migration/decisions/field")
-async def set_field_decision(body: FieldDecisionRequest, user: dict = Depends(require_role("admin"))):
-    if body.decision not in DECISION_VALUES:
-        raise HTTPException(status_code=400, detail=f"decision must be one of {sorted(DECISION_VALUES)}")
-    doc = {
-        "table_id": body.table_id,
-        "field_id": body.field_id,
-        "field_name": body.field_name,
-        "decision": body.decision,
-        "rename_to": body.rename_to,
-        "merge_with": body.merge_with,
-        "notes": body.notes,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-        "updated_by": user["email"],
-    }
-    await db.migration_field_decisions.update_one(
-        {"table_id": body.table_id, "field_id": body.field_id}, {"$set": doc}, upsert=True
-    )
-    return {"ok": True}
-
-
-@api.get("/migration/plan")
-async def migration_plan(_: dict = Depends(require_role("admin"))):
-    """Aggregate summary of all decisions for the Migration Plan page + export."""
-    schema = await list_airtable_tables(_)
-    table_decisions = {td["table_id"]: td for td in await db.migration_table_decisions.find({}, {"_id": 0}).to_list(1000)}
-    field_decisions: dict = {}
-    for fd in await db.migration_field_decisions.find({}, {"_id": 0}).to_list(10000):
-        field_decisions.setdefault(fd["table_id"], {})[fd["field_id"]] = fd
-
-    plan = []
-    totals = {"keep": 0, "rename": 0, "drop": 0, "merge": 0, "undecided": 0}
-    for t in schema["tables"]:
-        td = table_decisions.get(t["id"], {})
-        per_field = []
-        counts = {k: 0 for k in totals}
-        for f in t["fields"]:
-            fd = field_decisions.get(t["id"], {}).get(f["id"], {})
-            decision = fd.get("decision", "undecided")
-            counts[decision] = counts.get(decision, 0) + 1
-            totals[decision] = totals.get(decision, 0) + 1
-            per_field.append({
-                "field_id": f["id"],
-                "field_name": f["name"],
-                "field_type": f["type"],
-                "decision": decision,
-                "rename_to": fd.get("rename_to"),
-                "merge_with": fd.get("merge_with"),
-                "notes": fd.get("notes"),
-            })
-        plan.append({
-            "table_id": t["id"],
-            "table_name": t["name"],
-            "field_count": t["field_count"],
-            "migrate": td.get("migrate"),
-            "notes": td.get("notes"),
-            "counts": counts,
-            "fields": per_field,
-        })
-    return {"totals": totals, "tables": plan}
 
 
 # ----------------------------------------------------------------------------
@@ -974,7 +783,7 @@ async def dashboard_stats(_: dict = Depends(require_role("admin"))):
     contacts = await db.contacts.count_documents({})
     web_form_contacts = await db.web_form_contacts.count_documents({})
     territories = await db.territories.count_documents({})
-    last_migration = await db.migration_runs.find_one({}, sort=[("run_at", -1)])
+    last_migration = await db.migration_runs.find_one({}, sort=[("run_at", -1)])  # legacy stamp — kept for "Migrated from Airtable · …" UI
 
     # Mandate breakdown across active franchisees only — reads live
     # `gocardless_mandate_status` (kept in sync via the GoCardless API).
@@ -1025,15 +834,7 @@ async def dashboard_stats(_: dict = Depends(require_role("admin"))):
          "postcode": 1, "date": 1, "pipeline_status": 1, "potential": 1, "source": 1},
     ).sort("date", -1).limit(5).to_list(5)
 
-    airtable_summary = None
-    try:
-        data = await list_airtable_tables(_)
-        airtable_summary = {
-            "tables": len(data["tables"]),
-            "total_fields": sum(t["field_count"] for t in data["tables"]),
-        }
-    except Exception as e:
-        logger.warning(f"Could not fetch airtable summary: {e}")
+    airtable_summary = None  # Airtable decommissioned 2026-05-19
     return {
         "users": user_count,
         "franchisees_migrated": franchisees,
@@ -1054,54 +855,11 @@ async def dashboard_stats(_: dict = Depends(require_role("admin"))):
 
 
 # ----------------------------------------------------------------------------
-# Migration runner endpoint
+# Migration runner endpoint — REMOVED 2026-05-19 (Airtable decommissioned).
+# The console is now the source of truth. The historical Mongo collections
+# `migration_runs`, `migration_table_decisions`, `migration_field_decisions`
+# are kept untouched for audit, but no code reads them anymore.
 # ----------------------------------------------------------------------------
-from migration import run_migration  # noqa: E402
-
-
-@api.post("/migration/run")
-async def migration_run(user: dict = Depends(require_role("admin"))):
-    if not AIRTABLE_PAT or not AIRTABLE_BASE_ID:
-        raise HTTPException(status_code=503, detail="Airtable credentials not configured")
-    try:
-        counts = await run_migration(db, AIRTABLE_PAT, AIRTABLE_BASE_ID, user["email"])
-        return {"ok": True, "counts": counts}
-    except Exception as e:
-        logger.exception("Migration failed")
-        raise HTTPException(status_code=500, detail=f"Migration failed: {e}")
-
-
-@api.post("/franchisees/refresh-photos")
-async def refresh_franchisee_photos(user: dict = Depends(require_role("admin"))):
-    """Re-fetch the original Airtable URLs for any franchisees whose photos failed to download
-    and download them now. Useful when migration ran when Airtable URLs had already expired."""
-    if not AIRTABLE_PAT or not AIRTABLE_BASE_ID:
-        raise HTTPException(status_code=503, detail="Airtable credentials not configured")
-    from migration import _fetch_all_records, _extract_attachment_urls, _download_franchisee_photos
-    # Find the franchisees table id from saved decisions
-    td = await db.migration_table_decisions.find_one({"table_name": "Franchisees/Licencees"}, {"_id": 0})
-    if not td or not td.get("table_id"):
-        raise HTTPException(status_code=404, detail="Franchisees table id not found in migration decisions")
-    # Pull fresh attachment URLs from Airtable
-    records = await _fetch_all_records(AIRTABLE_BASE_ID, td["table_id"], AIRTABLE_PAT)
-    at_id_to_photos = {}
-    for rec in records:
-        photos = _extract_attachment_urls(rec.get("fields", {}).get("Upload"))
-        if photos:
-            at_id_to_photos[rec["id"]] = photos
-    # Build a list of franchisees with refreshed remote URLs
-    franchisees = await db.franchisees.find({}, {"_id": 0}).to_list(10000)
-    updated = []
-    for f in franchisees:
-        photos = at_id_to_photos.get(f.get("airtable_id"))
-        if photos:
-            f["photos"] = photos
-            updated.append(f)
-    stats = await _download_franchisee_photos(updated)
-    for f in updated:
-        if f.get("photos"):
-            await db.franchisees.update_one({"id": f["id"]}, {"$set": {"photos": f["photos"]}})
-    return {"ok": True, "stats": stats, "refreshed": len(updated)}
 
 
 @api.post("/franchisees/{franchisee_id}/photo")
@@ -2528,47 +2286,8 @@ async def on_startup():
         logger.info("Backfilled in_pipeline flag on contacts")
     except Exception as e:
         logger.warning(f"in_pipeline backfill failed: {e}")
-    presets = {
-        # migrate
-        "Franchisees/Licencees": (True, "Core franchise records — migrate all relevant fields."),
-        "Contracts": (True, "Contract records linked to franchisees."),
-        "Contacts": (True, "Legacy general enquiry archive — migrate and dedupe vs Web Form - Contact."),
-        "Web Form - Contact": (True, "Active franchise enquiry archive — migrate and dedupe vs Contacts."),
-        "DaD Postcode Lookup": (True, "Temporary bridge for find-a-class map until Phase 4 auto-generates lookups."),
-        # skip (agreed)
-        "Snowflakes": (False, "Skip — agreed during scoping."),
-        "Avery All Homes": (False, "Skip — agreed during scoping."),
-        "Avery August 2025 Products": (False, "Skip — agreed during scoping."),
-        "Renewals 2025": (False, "Skip — agreed during scoping."),
-        "Franchise Review Survey 2020": (False, "Skip — historical one-off survey."),
-        "Finance Questionnaire Nov 2022": (False, "Skip — historical one-off survey."),
-        "DaD Shop Orders": (False, "Defer — review during Phase 2 (Orders)."),
-        "Shapes, DBS & Other Orders": (False, "Defer — review during Phase 2 (Orders)."),
-        "FSH Home List Lookup": (False, "Defer — review during Phase 4 (Territory map)."),
-    }
-    # Fetch table IDs from cache or by calling airtable
-    if AIRTABLE_PAT and AIRTABLE_BASE_ID:
-        try:
-            data = await airtable_get(f"/meta/bases/{AIRTABLE_BASE_ID}/tables")
-            for t in data.get("tables", []):
-                preset = presets.get(t["name"])
-                if not preset:
-                    continue
-                migrate, note = preset
-                existing = await db.migration_table_decisions.find_one({"table_id": t["id"]})
-                if existing:
-                    continue  # don't overwrite user changes
-                await db.migration_table_decisions.insert_one({
-                    "table_id": t["id"],
-                    "table_name": t["name"],
-                    "migrate": migrate,
-                    "notes": note,
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
-                    "updated_by": "system:seed",
-                })
-            logger.info("Seeded preset migration decisions")
-        except Exception as e:
-            logger.warning(f"Could not seed migration presets: {e}")
+    # Airtable seed of migration_table_decisions removed 2026-05-19
+    # (Airtable decommissioned — see comment block elsewhere in this file.)
 
 
 @app.on_event("shutdown")
