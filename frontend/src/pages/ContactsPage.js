@@ -1,7 +1,8 @@
 import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "@/lib/api";
-import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus, Plus, Sparkles, Upload, FileText, CheckCircle2, Send, Award, Target } from "lucide-react";
+import LinkExistingFranchiseeModal from "@/components/contacts/LinkExistingFranchiseeModal";
+import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus, Plus, Sparkles, Upload, FileText, CheckCircle2, Send, Award, Target, Link2 } from "lucide-react";
 
 const STAGES = [
   { key: "new", label: "New", color: "bg-stone-100 text-stone-700 border-stone-300", barColor: "bg-stone-400" },
@@ -618,7 +619,7 @@ function MoveMenu({ onMove, label = "Move", testid, currentTab, count, contactSo
   );
 }
 
-function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, onDelete, onReply, onConvert }) {
+function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, onDelete, onReply, onConvert, onLinkExisting }) {
   const [busy, setBusy] = useState(false);
   const [converting, setConverting] = useState(false);
   if (!contact) return null;
@@ -733,6 +734,22 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
                 </button>
               )}
             </div>
+            {/* Secondary action — link to an EXISTING franchisee record (no new
+                record created). Shown only when the contact isn't already
+                linked/converted. */}
+            {!alreadyConverted && onLinkExisting && (
+              <div className="mt-3 pt-3 border-t border-stone-200/70 flex items-center justify-between gap-3">
+                <div className="text-xs text-stone-600">
+                  Already in the franchisees list? Skip creating a new record and link to the existing one.
+                </div>
+                <button
+                  onClick={() => onLinkExisting(contact)}
+                  data-testid="drawer-link-existing"
+                  className="shrink-0 px-3 py-2 text-xs font-bold uppercase tracking-wider bg-white text-stone-800 border border-stone-300 hover:bg-stone-50 rounded-lg flex items-center gap-1.5">
+                  <Link2 className="w-3.5 h-3.5" /> Link to existing
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Phase 4 — Plan territory for prospective franchisees only. Licence
@@ -1037,6 +1054,26 @@ export default function ContactsPage() {
       const msg = e?.response?.data?.detail || "Could not convert contact.";
       setError(typeof msg === "string" ? msg : "Could not convert contact.");
     }
+  };
+
+  // Link contact to an EXISTING franchisee (no new record created).
+  // The actual API call happens inside the modal; we just handle the
+  // post-link side-effects here (in-place row update + navigation).
+  const [linkingContact, setLinkingContact] = useState(null);
+  const openLinkExisting = (contact) => setLinkingContact(contact);
+  const handleLinked = (franchiseeId) => {
+    if (!linkingContact) return;
+    setData((d) => ({
+      ...d,
+      items: d.items.map((c) => c.id === linkingContact.id
+        ? { ...c, in_pipeline: false, pipeline_status: null,
+            converted_to_franchisee_id: franchiseeId,
+            linked_to_existing: true }
+        : c),
+    }));
+    setLinkingContact(null);
+    setSelected(null);
+    navigate(`/franchisees/${franchiseeId}`);
   };
 
   const grouped = useMemo(() => {
@@ -1359,7 +1396,13 @@ export default function ContactsPage() {
         }}
         onDelete={remove}
         onReply={replyByEmail}
-        onConvert={convertContact} />
+        onConvert={convertContact}
+        onLinkExisting={openLinkExisting} />
+      <LinkExistingFranchiseeModal
+        open={!!linkingContact}
+        contact={linkingContact}
+        onClose={() => setLinkingContact(null)}
+        onLinked={handleLinked} />
       <AddContactModal open={addOpen} onClose={() => setAddOpen(false)}
         defaultTarget={tab === "pipeline" ? "franchise" : tab}
         onCreated={(_c, target) => {

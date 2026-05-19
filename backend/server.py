@@ -1319,6 +1319,168 @@ async def convert_contact_to_franchisee(contact_id: str, user: dict = Depends(re
 
 
 # ----------------------------------------------------------------------------
+# Link an enquiry contact to an EXISTING franchisee record (no new record
+# created). Useful for cleaning up the pipeline when a lead is already in the
+# franchisees collection from the migration. Mirrors the data-shape side-
+# effects of `convert_contact_to_franchisee` so the drawer & list views
+# behave identically afterwards.
+# ----------------------------------------------------------------------------
+class LinkExistingFranchiseePayload(BaseModel):
+    franchisee_id: str
+    append_to_notes: bool = True
+
+
+def _score_franchisee_match(contact: dict, fr: dict) -> tuple[int, list[str]]:
+    """Heuristic match score between a contact and a franchisee. Returns
+    ``(score, reasons)`` — higher = better. Empty reasons means no signal."""
+    score = 0
+    reasons: list[str] = []
+    c_email = (contact.get("email") or "").strip().lower()
+    f_email = (fr.get("email") or "").strip().lower()
+    if c_email and f_email and c_email == f_email:
+        score += 100
+        reasons.append("Email matches exactly")
+    c_pc = re.sub(r"\s+", "", (contact.get("postcode") or "").upper())
+    f_pc = re.sub(r"\s+", "", (fr.get("postcode") or "").upper())
+    if c_pc and f_pc and c_pc == f_pc:
+        score += 35
+        reasons.append("Postcode matches")
+    elif c_pc and f_pc and len(c_pc) >= 3 and c_pc[:3] == f_pc[:3]:
+        score += 12
+        reasons.append("Same postcode area")
+    c_first = (contact.get("first_name") or "").strip().lower()
+    c_last  = (contact.get("last_name") or "").strip().lower()
+    f_first = (fr.get("first_name") or "").strip().lower()
+    f_last  = (fr.get("last_name") or "").strip().lower()
+    if c_first and c_last and f_first == c_first and f_last == c_last:
+        score += 60
+        reasons.append("Name matches exactly")
+    elif c_last and f_last and c_last == f_last:
+        score += 15
+        reasons.append("Surname matches")
+    # Telephone last-7-digit comparison (handles +44 / 0 prefix differences)
+    def _norm_phone(p: str) -> str:
+        return re.sub(r"\D", "", str(p or ""))[-7:]
+    c_phone = _norm_phone(contact.get("telephone") or contact.get("mobile_phone"))
+    f_phone = _norm_phone(fr.get("telephone") or fr.get("mobile_phone"))
+    if c_phone and f_phone and c_phone == f_phone:
+        score += 20
+        reasons.append("Phone matches")
+    return score, reasons
+
+
+@api.get("/contacts/{contact_id}/franchisee-matches")
+async def list_franchisee_matches_for_contact(
+    contact_id: str,
+    _user: dict = Depends(require_role("admin")),
+):
+    """Return every active franchisee, with the top-3 most likely matches for
+    this contact flagged via ``suggested=True`` and a list of human-readable
+    ``match_reasons``. Used by the Link-to-Existing-Franchisee modal."""
+    contact = await db.web_form_contacts.find_one({"id": contact_id}, {"_id": 0})
+    if not contact:
+        contact = await db.contacts.find_one({"id": contact_id}, {"_id": 0})
+    if not contact:
+        raise HTTPException(404, "Contact not found")
+    fr_cursor = db.franchisees.find(
+        {"status": {"$ne": "Archived"}},
+        {"_id": 0, "id": 1, "first_name": 1, "last_name": 1, "organisation": 1,
+         "email": 1, "telephone": 1, "mobile_phone": 1, "postcode": 1, "city": 1,
+         "franchise_number": 1, "status": 1, "record_type": 1, "photos": 1},
+    )
+    franchisees = await fr_cursor.to_list(500)
+    scored: list[dict] = []
+    for fr in franchisees:
+        score, reasons = _score_franchisee_match(contact, fr)
+        scored.append({**fr, "_score": score, "match_reasons": reasons})
+    # Sort by score desc, then by surname asc for stability
+    scored.sort(key=lambda x: (-x["_score"], (x.get("last_name") or "").lower()))
+    # Flag the top-3 (with score > 0) as suggested
+    suggested_cutoff = sum(1 for x in scored[:3] if x["_score"] > 0)
+    for i, x in enumerate(scored):
+        x["suggested"] = i < suggested_cutoff
+        x.pop("_score", None)
+    return {"contact_id": contact_id, "items": scored, "suggested_count": suggested_cutoff}
+
+
+@api.post("/contacts/{contact_id}/link-to-franchisee")
+async def link_contact_to_existing_franchisee(
+    contact_id: str,
+    payload: LinkExistingFranchiseePayload,
+    user: dict = Depends(require_role("admin")),
+):
+    """Link an enquiry contact to an EXISTING franchisee record. Mirrors the
+    drawer/list side-effects of the regular convert flow (in_pipeline=False,
+    converted_to_franchisee_id set, pipeline_status cleared) WITHOUT creating
+    a new franchisees row. Optionally appends the original enquiry to the
+    franchisee's ``notes`` field for audit."""
+    contact = await db.web_form_contacts.find_one({"id": contact_id}, {"_id": 0})
+    src_coll = "web_form_contacts"
+    if not contact:
+        contact = await db.contacts.find_one({"id": contact_id}, {"_id": 0})
+        src_coll = "contacts"
+    if not contact:
+        raise HTTPException(404, "Contact not found")
+    if contact.get("converted_to_franchisee_id"):
+        raise HTTPException(409, "Contact already linked / converted")
+    fr = await db.franchisees.find_one({"id": payload.franchisee_id}, {"_id": 0})
+    if not fr:
+        raise HTTPException(404, "Franchisee not found")
+
+    now = datetime.now(timezone.utc).isoformat()
+    record_type = fr.get("record_type") or ("licencee" if contact.get("source") == "licence_enquiry" else "franchisee")
+
+    # Optionally append the original enquiry to the franchisee's notes.
+    if payload.append_to_notes:
+        append_lines: list[str] = []
+        raw_date = str(contact.get("date") or "")
+        m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", raw_date)
+        display_date = f"{m.group(3)}/{m.group(2)}/{m.group(1)}" if m else (raw_date[:10] or "(unknown date)")
+        append_lines.append(f"— Linked enquiry from {display_date} (by {user.get('email')}) —")
+        if contact.get("source"):
+            append_lines.append(f"Source: {contact['source'].replace('_', ' ').title()}")
+        if contact.get("referral_source"):
+            append_lines.append(f"Heard about us via: {contact['referral_source']}")
+        if contact.get("why_contacting"):
+            append_lines.append(f"Why contacting: {contact['why_contacting']}")
+        if contact.get("message"):
+            append_lines.append(f"Original message:\n{contact['message']}")
+        if contact.get("comments"):
+            append_lines.append(f"Comments:\n{contact['comments']}")
+        appended = "\n".join(append_lines).strip()
+        if appended:
+            existing_notes = (fr.get("notes") or "").rstrip()
+            new_notes = f"{existing_notes}\n\n{appended}".strip() if existing_notes else appended
+            await db.franchisees.update_one(
+                {"id": payload.franchisee_id},
+                {"$set": {"notes": new_notes, "updated_at": now}},
+            )
+
+    # Side-effects on the contact — same shape as the convert flow so the
+    # drawer flips to "VIEW RECORD", the kanban removes it from the column,
+    # and the list view shows it under the In-Pipeline pill.
+    contact_update = {
+        "in_pipeline": False,
+        "pipeline_status": None,
+        "converted_to_franchisee_id": payload.franchisee_id,
+        "converted_to_record_type": record_type,
+        "converted_at": now,
+        "linked_to_existing": True,
+        "linked_by": user.get("email"),
+        "linked_at": now,
+        "updated_at": now,
+    }
+    coll = db.web_form_contacts if src_coll == "web_form_contacts" else db.contacts
+    await coll.update_one({"id": contact_id}, {"$set": contact_update})
+    return {
+        "ok": True,
+        "franchisee_id": payload.franchisee_id,
+        "record_type": record_type,
+        "appended_to_notes": payload.append_to_notes,
+    }
+
+
+# ----------------------------------------------------------------------------
 # CRM — Contracts
 # ----------------------------------------------------------------------------
 @api.get("/contracts")

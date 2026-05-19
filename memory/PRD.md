@@ -34,6 +34,14 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
   - **Supplier keyword filters** on Banking page: 16 seed chips (DENE LODGE, HAZELGATE, etc.) — click-to-filter, add/remove inline, persists in `banking_supplier_keywords`.
 
 
+- **Sales Pipeline — "Link to existing franchisee" flow** ✅ (May 19 2026)
+  - Use case: pipeline contacts who are actually *already* in the franchisees collection from the historic migration. The standard "Convert" flow created an unwanted duplicate franchisees row; this skips that.
+  - New backend endpoints (admin-only):
+    - `GET /api/contacts/{id}/franchisee-matches` — returns all 88 active franchisees, top-3 ranked via heuristic (email exact +100, full name +60, postcode exact +35, area code +12, surname +15, phone last-7 +20) with human-readable `match_reasons[]` and a `suggested=True` flag.
+    - `POST /api/contacts/{id}/link-to-franchisee {franchisee_id, append_to_notes}` — mirrors convert-side-effects: sets `converted_to_franchisee_id`, clears pipeline, stamps `linked_to_existing`/`linked_by`/`linked_at`, and (default ON) appends the original enquiry — source, date, referral, message, comments — to the franchisee's `notes` for audit. 409 if contact already linked/converted.
+  - New frontend modal `LinkExistingFranchiseeModal.jsx` with a searchable picker. Suggested matches block (amber highlight + reasons row) renders at top when scoring > 0, then the full browseable list below. Filter box matches across name, organisation, email, postcode, franchise#. Dynamic CTA label "Link to {name}". Pre-checked "Append original enquiry to notes" toggle.
+  - Wired as a secondary CTA inside the existing Convert section in the drawer ("Already in the franchisees list? Skip creating a new record and link to the existing one.").
+
 - **Sales Pipeline — licence contacts hide franchise-only stages** ✅ (May 19 2026)
   - For contacts whose `source === 'licence_enquiry'`, the drawer "Move to Stage" grid, the kanban "Move to…" dropdown, and the "Plan their territory" CTA all hide the two franchise-only stages (`demo_booked` "Shadow Day Booked" + `converted` "Territory Map"). Licence prospects see only New / Contacted / Interested / Lost — conversion is done via the explicit "Convert to Licencee" button. Helper `stagesForContact()` keeps the contact's CURRENT stage visible even if it's a legacy franchise stage (so it can be moved out).
 
