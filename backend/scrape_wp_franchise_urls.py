@@ -69,10 +69,11 @@ async def list_franchise_posts(client: httpx.AsyncClient) -> list[dict]:
     return out
 
 
-async def extract_emails_from_page(client: httpx.AsyncClient, url: str) -> list[str]:
+async def extract_emails_from_page(client: httpx.AsyncClient, url: str) -> tuple[list[str], str | None]:
+    """Return (emails, facebook_url) extracted from a franchise page."""
     r = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
     if r.status_code != 200:
-        return []
+        return [], None
     text = r.text
     # 1. Cloudflare-protected emails: data-cfemail="…" OR href="…/email-protection#HEX"
     protected = re.findall(r'(?:data-cfemail="|/email-protection#)([a-fA-F0-9]+)', text)
@@ -92,7 +93,19 @@ async def extract_emails_from_page(client: httpx.AsyncClient, url: str) -> list[
             continue
         seen.add(e)
         deduped.append(e)
-    return deduped
+
+    # 3. Franchise-specific Facebook URL — every page also contains the
+    # generic creativemojoltd page (HQ social link in the footer), so we
+    # filter that out and pick the FIRST facebook.com/* link that isn't HQ.
+    fb_url = None
+    fb_matches = re.findall(r'https?://(?:www\.)?facebook\.com/([A-Za-z0-9._-]+)/?', text)
+    for handle in fb_matches:
+        h = handle.strip("/").lower()
+        if not h or h in {"creativemojoltd", "sharer", "share.php", "dialog", "tr", "plugins"}:
+            continue
+        fb_url = f"https://www.facebook.com/{handle.strip('/')}"
+        break
+    return deduped, fb_url
 
 
 async def main():
@@ -134,7 +147,7 @@ async def main():
         for post in posts:
             slug = post["slug"]
             link = post["link"]
-            emails = await extract_emails_from_page(http, link)
+            emails, fb_url = await extract_emails_from_page(http, link)
             # Filter out generic/shared
             specific = [e for e in emails if e not in SHARED_EMAILS]
             if not specific:
@@ -166,6 +179,7 @@ async def main():
                     "wp_page_url": link,
                     "wp_slug": slug,
                     "wp_title": wp_title,
+                    "facebook": fb_url,
                 }},
             )
             name = f"{franchisee.get('first_name') or ''} {franchisee.get('last_name') or ''}".strip()
