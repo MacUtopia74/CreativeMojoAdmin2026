@@ -97,6 +97,45 @@ FIELD_LABELS_BY_FORM: dict[int, dict[str, str]] = {
 }
 
 
+# Older versions of those same forms used different numeric IDs (the form
+# fields were re-numbered at some point). This map covers entries pre-2024-ish.
+FIELD_LABELS_LEGACY: dict[str, str] = {
+    "9":  "First Name",
+    "12": "Surname Name",
+    "5":  "Telephone Number",
+    "4":  "Email",
+    "13": "1st Line of Address",
+    "14": "Town/City",
+    "15": "County",       # or State on Licence
+    "16": "Postcode",     # or Country (5-digit/postcode mismatch handled below)
+    "28": "Postcode/Zip",
+}
+
+
+def _pluck(entry: dict, *keys: str) -> Optional[str]:
+    """Return the first non-empty value across the given key candidates."""
+    for k in keys:
+        v = entry.get(k)
+        if v is not None and str(v).strip() != "":
+            return str(v).strip()
+    return None
+
+
+def _looks_legacy(entry: dict) -> bool:
+    """Detect legacy GF field-ID layout vs the current one."""
+    # If any current-shape primary key has a value, treat as current.
+    for k in ("1.3", "1.6", "2", "3"):
+        v = entry.get(k)
+        if v not in (None, "", []):
+            return False
+    # Else if a legacy-shape key has a value, treat as legacy.
+    for k in ("9", "12", "5", "4"):
+        v = entry.get(k)
+        if v not in (None, "", []):
+            return True
+    return False
+
+
 # In-process status — exposed by /api/intake/backfill/status.
 _backfill_state: dict = {
     "last_run_at": None,
