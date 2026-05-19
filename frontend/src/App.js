@@ -15,6 +15,7 @@ import FilesPage from "@/pages/FilesPage";
 import ContactsPage from "@/pages/ContactsPage";
 import FormIntakePage from "@/pages/FormIntakePage";
 import PublicFolderSharePage from "@/pages/PublicFolderSharePage";
+import PublicTerritorySharePage from "@/pages/PublicTerritorySharePage";
 import PortalLoginPage from "@/pages/PortalLoginPage";
 import TerritoryBuilderPage from "@/pages/TerritoryBuilderPage";
 import CqcDefinitionsPage from "@/pages/CqcDefinitionsPage";
@@ -50,6 +51,7 @@ export default function App() {
               <ProtectedRoute role="franchisee"><PortalDashboardPage /></ProtectedRoute>
             } />
             <Route path="/share/folder/:token" element={<PublicFolderSharePage />} />
+            <Route path="/share/territory/:token" element={<PublicTerritorySharePage />} />
             <Route
               element={
                 <ProtectedRoute role="admin">

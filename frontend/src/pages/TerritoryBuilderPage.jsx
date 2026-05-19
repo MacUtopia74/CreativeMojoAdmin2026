@@ -15,6 +15,7 @@ import {
   Search, Loader2, Target, Save, Trash2, MapPin, Plus, RotateCcw,
   Users, AlertCircle, CheckCircle2, Pencil, ChevronRight, ArrowLeft,
   ClipboardPaste, Layers, Eye, EyeOff, ChevronDown, ChevronUp,
+  Share2, Copy, Link as LinkIcon, FolderOpen,
 } from "lucide-react";
 
 const TARGET_HOMES = 150;
@@ -60,6 +61,27 @@ export default function TerritoryBuilderPage() {
   useEffect(() => {
     try { localStorage.setItem("cm.tb.legendOpen", legendOpen ? "1" : "0"); } catch {/* ignore */}
   }, [legendOpen]);
+
+  // All saved plans — listed in the bottom-right "Saved plans" panel when
+  // there's no contact/franchisee context (e.g. opened via the sidebar).
+  // Lets admins re-open prior prospect plans + share/copy/delete them.
+  const [allPlans, setAllPlans] = useState([]);
+  const [allPlansLoading, setAllPlansLoading] = useState(false);
+  const [planFilter, setPlanFilter] = useState("");
+
+  const reloadAllPlans = useCallback(async () => {
+    setAllPlansLoading(true);
+    try {
+      const { data } = await api.get("/territory-plans");
+      setAllPlans(data.plans || []);
+    } catch {/* ignore */}
+    finally { setAllPlansLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    if (contactId || franchiseeId) return;  // panel only relevant globally
+    reloadAllPlans();
+  }, [contactId, franchiseeId, reloadAllPlans]);
 
   // Load contact details + existing plans if contact_id is provided
   useEffect(() => {
@@ -237,6 +259,7 @@ export default function TerritoryBuilderPage() {
           const { data } = await api.post("/territory-plans", body);
           setSavedPlan(data);
         }
+        reloadAllPlans();
       }
     } catch (e) {
       setErr(e?.response?.data?.detail || "Could not save");
@@ -251,6 +274,60 @@ export default function TerritoryBuilderPage() {
     setSelected([]);
     setName("");
     setNotes("");
+    reloadAllPlans();
+  };
+
+  // ---- share link helpers -------------------------------------------------
+  const [shareCopied, setShareCopied] = useState(false);
+
+  const shareUrlFor = (token) => `${window.location.origin}/share/territory/${token}`;
+
+  const toggleShare = async (plan) => {
+    if (!plan?.id) return null;
+    try {
+      if (plan.is_shared && plan.share_token) {
+        await api.delete(`/territory-plans/${plan.id}/share`);
+        const next = { ...plan, is_shared: false, share_token: null };
+        if (savedPlan?.id === plan.id) setSavedPlan(next);
+        setAllPlans((cur) => cur.map((p) => p.id === plan.id ? next : p));
+        return null;
+      }
+      const { data } = await api.post(`/territory-plans/${plan.id}/share`);
+      const next = { ...plan, is_shared: true, share_token: data.share_token };
+      if (savedPlan?.id === plan.id) setSavedPlan(next);
+      setAllPlans((cur) => cur.map((p) => p.id === plan.id ? next : p));
+      return data.share_token;
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Could not update sharing.");
+      return null;
+    }
+  };
+
+  const copyShareLink = async (plan) => {
+    let token = plan?.share_token;
+    if (!token) {
+      token = await toggleShare(plan);
+      if (!token) return;
+    }
+    try {
+      await navigator.clipboard.writeText(shareUrlFor(token));
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 1800);
+    } catch {/* ignore — clipboard might be blocked */}
+  };
+
+  const deletePlanById = async (id) => {
+    if (!window.confirm("Delete this territory plan?")) return;
+    try {
+      await api.delete(`/territory-plans/${id}`);
+      setAllPlans((cur) => cur.filter((p) => p.id !== id));
+      if (savedPlan?.id === id) {
+        setSavedPlan(null);
+        setSelected([]);
+      }
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Delete failed");
+    }
   };
 
   const sortedSelected = useMemo(() => [...selected].sort(), [selected]);
@@ -446,6 +523,61 @@ export default function TerritoryBuilderPage() {
                 <CheckCircle2 className="w-3.5 h-3.5" /> Saved · last update {new Date(savedPlan.updated_at || savedPlan.created_at).toLocaleString()}
               </div>
             )}
+            {/* Share link controls — only when a plan is saved. The admin
+                toggles sharing on/off; while on, "Copy link" places a
+                /share/territory/<token> URL on the clipboard for prospects. */}
+            {savedPlan && !franchiseeId && (
+              <div className="mt-2 px-3 py-2 border border-stone-200 bg-stone-50 rounded-lg space-y-2" data-testid="share-controls">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-stone-700">
+                    <Share2 className="w-3.5 h-3.5" />
+                    Share with prospect
+                  </div>
+                  <button
+                    onClick={() => toggleShare(savedPlan)}
+                    data-testid="share-toggle"
+                    className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full transition-colors ${
+                      savedPlan.is_shared
+                        ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                        : "bg-stone-200 text-stone-700 hover:bg-stone-300"
+                    }`}
+                  >
+                    {savedPlan.is_shared ? "On" : "Off"}
+                  </button>
+                </div>
+                {savedPlan.is_shared && savedPlan.share_token && (
+                  <>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        readOnly
+                        value={shareUrlFor(savedPlan.share_token)}
+                        data-testid="share-url"
+                        onFocus={(e) => e.target.select()}
+                        className="flex-1 px-2 py-1 text-[11px] font-mono bg-white border border-stone-300 rounded text-stone-700"
+                      />
+                      <button
+                        onClick={() => copyShareLink(savedPlan)}
+                        data-testid="share-copy"
+                        className="px-2 py-1 text-[10px] font-bold rounded border border-stone-300 bg-white hover:bg-stone-50 flex items-center gap-1"
+                        title="Copy link"
+                      >
+                        <Copy className="w-3 h-3" />
+                        {shareCopied ? "Copied" : "Copy"}
+                      </button>
+                    </div>
+                    <div className="text-[10px] text-stone-500">
+                      Anyone with this link can view the territory (no login).
+                      {savedPlan.view_count ? ` · Opened ${savedPlan.view_count}×` : ""}
+                    </div>
+                  </>
+                )}
+                {!savedPlan.is_shared && (
+                  <div className="text-[10px] text-stone-500">
+                    Turn on to generate a public read-only link.
+                  </div>
+                )}
+              </div>
+            )}
             {franchiseeId && territorySavedAt && (
               <div className="mt-3 px-3 py-2 text-[11px] bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg flex items-center gap-1.5">
                 <CheckCircle2 className="w-3.5 h-3.5" /> Locked · {new Date(territorySavedAt).toLocaleString()}
@@ -488,6 +620,25 @@ export default function TerritoryBuilderPage() {
               })}
             </div>
           </div>
+
+          {/* Saved territory plans — only shown when there's no contact
+              or franchisee context (i.e. user opened the page from the
+              sidebar). Lets admins re-open a prior prospect plan and
+              copy a share link without leaving the page. */}
+          {!contactId && !franchiseeId && (
+            <SavedPlansPanel
+              plans={allPlans}
+              loading={allPlansLoading}
+              filter={planFilter}
+              onFilter={setPlanFilter}
+              activeId={savedPlan?.id || planId}
+              onCopyShare={copyShareLink}
+              onToggleShare={toggleShare}
+              onDelete={deletePlanById}
+              shareUrlFor={shareUrlFor}
+              shareCopied={shareCopied}
+            />
+          )}
         </div>
       </div>
 
@@ -567,3 +718,123 @@ export default function TerritoryBuilderPage() {
     </div>
   );
 }
+
+// -------------------------------- Saved plans panel ---------------------
+// Lists every territory plan the admin has saved, with quick actions:
+// Open (loads it onto the current map), Copy share link, toggle share,
+// Delete. Filter box narrows by plan name / contact / centre postcode.
+function SavedPlansPanel({
+  plans, loading, filter, onFilter, activeId, onCopyShare, onToggleShare,
+  onDelete, shareUrlFor, shareCopied,
+}) {
+  const filtered = (plans || []).filter((p) => {
+    if (!filter.trim()) return true;
+    const q = filter.toLowerCase();
+    return (
+      (p.name || "").toLowerCase().includes(q)
+      || (p.contact_name || "").toLowerCase().includes(q)
+      || (p.centre_postcode || "").toLowerCase().includes(q)
+    );
+  });
+
+  return (
+    <div className="bg-white border border-stone-200 rounded-2xl p-4" data-testid="saved-plans-panel">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500 flex items-center gap-1.5">
+          <FolderOpen className="w-3.5 h-3.5" />
+          Saved plans ({plans.length})
+        </div>
+        {loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-stone-400" />}
+      </div>
+
+      {plans.length > 5 && (
+        <input
+          value={filter}
+          onChange={(e) => onFilter(e.target.value)}
+          placeholder="Filter by name / contact / postcode"
+          data-testid="saved-plans-filter"
+          className="w-full px-2.5 py-1.5 mb-2 text-xs bg-stone-50 border border-stone-200 rounded-lg"
+        />
+      )}
+
+      {!plans.length && !loading && (
+        <div className="text-xs text-stone-500 leading-relaxed">
+          No saved plans yet. Build a territory, give it a name, then click <strong>Save plan</strong>. Saved plans appear here so you can re-open or share them with prospects.
+        </div>
+      )}
+
+      <div className="max-h-80 overflow-auto space-y-1.5">
+        {filtered.map((p) => {
+          const isActive = p.id === activeId;
+          return (
+            <div
+              key={p.id}
+              data-testid={`saved-plan-${p.id}`}
+              className={`group rounded-lg border px-2.5 py-2 transition ${
+                isActive
+                  ? "border-emerald-400 bg-emerald-50/50"
+                  : "border-stone-200 hover:border-stone-300 bg-white"
+              }`}
+            >
+              <Link
+                to={`/territory-builder?plan_id=${p.id}${p.contact_id ? `&contact_id=${p.contact_id}` : ""}`}
+                data-testid={`saved-plan-open-${p.id}`}
+                className="block"
+              >
+                <div className="text-xs font-bold text-stone-950 truncate flex items-center gap-1.5">
+                  {p.name || "Untitled plan"}
+                  {isActive && <CheckCircle2 className="w-3 h-3 text-emerald-600" />}
+                </div>
+                <div className="text-[10px] text-stone-500 truncate mt-0.5">
+                  {p.contact_name && <span>{p.contact_name} · </span>}
+                  <span className="tabular-nums">{p.home_count || 0} homes · {(p.sectors || []).length} sectors</span>
+                  {p.centre_postcode && <span> · {p.centre_postcode}</span>}
+                </div>
+              </Link>
+              <div className="mt-1.5 flex items-center gap-1">
+                <button
+                  onClick={() => onCopyShare(p)}
+                  data-testid={`saved-plan-share-${p.id}`}
+                  className="flex-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider border border-stone-300 hover:bg-stone-50 rounded flex items-center justify-center gap-1"
+                  title={p.is_shared ? "Copy share link" : "Generate and copy share link"}
+                >
+                  {p.is_shared ? <LinkIcon className="w-3 h-3" /> : <Share2 className="w-3 h-3" />}
+                  {p.is_shared
+                    ? (shareCopied ? "Copied" : "Copy link")
+                    : "Share"}
+                </button>
+                {p.is_shared && (
+                  <button
+                    onClick={() => onToggleShare(p)}
+                    data-testid={`saved-plan-unshare-${p.id}`}
+                    className="px-2 py-1 text-[10px] font-bold rounded border border-stone-300 hover:bg-stone-50 text-stone-600"
+                    title="Revoke share link"
+                  >
+                    <EyeOff className="w-3 h-3" />
+                  </button>
+                )}
+                <button
+                  onClick={() => onDelete(p.id)}
+                  data-testid={`saved-plan-delete-${p.id}`}
+                  className="px-2 py-1 text-[10px] font-bold rounded border border-stone-300 text-red-700 hover:bg-red-50"
+                  title="Delete plan"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
+              {p.is_shared && p.share_token && (
+                <div className="mt-1 text-[10px] text-stone-500 truncate font-mono">
+                  {shareUrlFor(p.share_token)}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {!filtered.length && plans.length > 0 && (
+          <div className="text-[11px] text-stone-500 italic px-1 py-2">No plans match "{filter}".</div>
+        )}
+      </div>
+    </div>
+  );
+}
+

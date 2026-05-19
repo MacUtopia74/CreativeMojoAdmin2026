@@ -36,7 +36,13 @@ api.interceptors.response.use(
       // when we're not already on a public page so we don't loop the
       // login page itself.
       const path = window.location.pathname;
-      if (!path.startsWith("/login") && !path.startsWith("/portal/login")) {
+      // Public pages (no auth) shouldn't be bounced to login. The 401 here
+      // is just the AuthProvider's "am I logged in?" probe failing.
+      if (
+        !path.startsWith("/login")
+        && !path.startsWith("/portal/login")
+        && !path.startsWith("/share/")
+      ) {
         const target = path.startsWith("/portal") ? "/portal/login" : "/login";
         window.location.href = target;
       }

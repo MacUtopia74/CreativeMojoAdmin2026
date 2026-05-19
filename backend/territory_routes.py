@@ -342,6 +342,24 @@ def build_territory_router(db, require_role):  # noqa: D401
         if franchisee_id:
             q["franchisee_id"] = franchisee_id
         plans = await db.territory_plans.find(q, {"_id": 0}).sort("created_at", -1).to_list(200)
+        # Attach contact name (where applicable) so the UI can label plans
+        # with the prospect's name without a second round-trip.
+        contact_ids = [p["contact_id"] for p in plans if p.get("contact_id")]
+        if contact_ids:
+            contacts = await db.contacts.find(
+                {"id": {"$in": contact_ids}},
+                {"_id": 0, "id": 1, "first_name": 1, "last_name": 1, "organisation": 1},
+            ).to_list(500)
+            name_map = {c["id"]: c for c in contacts}
+            for p in plans:
+                cid = p.get("contact_id")
+                if cid and cid in name_map:
+                    c = name_map[cid]
+                    p["contact_name"] = (
+                        c.get("organisation")
+                        or " ".join([c.get("first_name") or "", c.get("last_name") or ""]).strip()
+                        or None
+                    )
         return {"plans": plans, "count": len(plans)}
 
     @router.patch("/territory-plans/{plan_id}")
@@ -369,6 +387,101 @@ def build_territory_router(db, require_role):  # noqa: D401
         if not res.deleted_count:
             raise HTTPException(404, detail="Plan not found")
         return {"ok": True}
+
+    # ---------------------------------- share link (admin-controlled toggle)
+    @router.post("/territory-plans/{plan_id}/share")
+    async def share_plan(
+        plan_id: str,
+        _user: dict = Depends(require_role("admin")),
+    ):
+        """Mint (or reuse) a public share token for this plan. Anyone with
+        the link can view the read-only map. Admin can revoke via DELETE."""
+        plan = await db.territory_plans.find_one({"id": plan_id}, {"_id": 0})
+        if not plan:
+            raise HTTPException(404, detail="Plan not found")
+        token = plan.get("share_token") or uuid.uuid4().hex
+        await db.territory_plans.update_one(
+            {"id": plan_id},
+            {"$set": {
+                "share_token": token,
+                "is_shared": True,
+                "shared_at": datetime.now(timezone.utc),
+            }},
+        )
+        return {"share_token": token, "is_shared": True}
+
+    @router.delete("/territory-plans/{plan_id}/share")
+    async def unshare_plan(
+        plan_id: str,
+        _user: dict = Depends(require_role("admin")),
+    ):
+        """Revoke the share — the existing link will return 404."""
+        res = await db.territory_plans.update_one(
+            {"id": plan_id},
+            {"$set": {"is_shared": False},
+             "$unset": {"share_token": ""}},
+        )
+        if not res.matched_count:
+            raise HTTPException(404, detail="Plan not found")
+        return {"is_shared": False}
+
+    # ---------------------------------- public viewer (no auth, by token)
+    @router.get("/public/territory-plans/{share_token}")
+    async def public_plan(share_token: str):
+        """Read-only payload for the public share page. Returns the plan's
+        sectors with polygon geometry + home count + centre. Excludes PII
+        (contact id/name, internal notes, audit fields).
+        Also records a non-PII view counter."""
+        plan = await db.territory_plans.find_one(
+            {"share_token": share_token, "is_shared": True},
+            {"_id": 0},
+        )
+        if not plan:
+            raise HTTPException(404, detail="This share link is no longer active.")
+        sectors = plan.get("sectors") or []
+        polys = []
+        if sectors:
+            polys = await db.postcode_sector_polygons.find(
+                {"sector": {"$in": sectors}},
+                {"_id": 0, "sector": 1, "geometry": 1},
+            ).to_list(5000)
+        homes_coll = await _homes_collection()
+        base_filter = await _homes_filter()
+        home_count = 0
+        per_sector: dict = {}
+        if sectors:
+            home_count = await homes_coll.count_documents(
+                {**base_filter, "postcode_sector": {"$in": sectors}},
+            )
+            agg = await homes_coll.aggregate([
+                {"$match": {**base_filter, "postcode_sector": {"$in": sectors}}},
+                {"$group": {"_id": "$postcode_sector", "n": {"$sum": 1}}},
+            ]).to_list(5000)
+            per_sector = {a["_id"]: a["n"] for a in agg}
+        # Bump a view counter (best-effort, no PII).
+        try:
+            await db.territory_plans.update_one(
+                {"share_token": share_token},
+                {"$inc": {"view_count": 1},
+                 "$set": {"last_viewed_at": datetime.now(timezone.utc)}},
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        return {
+            "name": plan.get("name") or "Proposed territory",
+            "sectors": [
+                {"sector": p["sector"], "geometry": p.get("geometry"),
+                 "home_count": per_sector.get(p["sector"], 0)}
+                for p in polys
+            ],
+            "sector_codes": sectors,
+            "home_count": home_count,
+            "centre": (
+                {"lat": plan.get("centre_lat"), "lng": plan.get("centre_lng")}
+                if plan.get("centre_lat") is not None else None
+            ),
+            "centre_postcode": plan.get("centre_postcode"),
+        }
 
     @router.post("/franchisees/{franchisee_id}/territory/parse")
     async def parse_territory_paste(

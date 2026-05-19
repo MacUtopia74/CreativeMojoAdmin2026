@@ -34,6 +34,14 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
   - **Supplier keyword filters** on Banking page: 16 seed chips (DENE LODGE, HAZELGATE, etc.) — click-to-filter, add/remove inline, persists in `banking_supplier_keywords`.
 
 
+## What's Implemented (2026-05-19)
+- **Territory Builder — saved plans panel + public share links** ✅ (May 19 2026)
+  - New "Saved plans" panel in the bottom-right of `/territory-builder` (when no contact/franchisee in URL). Lists every saved plan with name, contact (where linked), home count, sector count, centre postcode. Quick actions: Open (loads onto the map), Copy share link, Revoke share, Delete. Filter box appears once there are >5 plans.
+  - Per-plan share toggle ("Share with prospect" card) in the plan-details column once a plan is saved. Mints a `share_token`, exposes a `/share/territory/<token>` URL, tracks `view_count` + `last_viewed_at`. Admin can revoke at any time.
+  - New public viewer page `/share/territory/:token` (no login required). Branded header with Creative Mojo logo, "PROPOSED TERRITORY" eyebrow + plan name, live CQC care-home count badge, read-only Mapbox view of the polygons with per-sector counts, "At a glance" + sector-chip panels, "Shared by Creative Mojo" footer. No PII (no contact names / internal notes).
+  - Backend: 3 new endpoints — `POST /api/territory-plans/:id/share`, `DELETE /api/territory-plans/:id/share`, `GET /api/public/territory-plans/:token` (unauthenticated). `GET /api/territory-plans` now eagerly joins `contact_name` so the panel can label plans with the prospect.
+  - Fixed: axios 401 interceptor was bouncing unauthenticated visitors off `/share/*` paths. Whitelisted now.
+
 ## What's Implemented (2026-05-18)
 - **Zoom Server-to-Server OAuth — Calendar one-click meeting creation** ✅ (May 18 2026)
   - Marketplace Server-to-Server OAuth app on `headoffice@creativemojo.co.uk` (single shared host). Granular scopes: `meeting:write:meeting:admin`, `meeting:read:meeting:admin`, `user:read:user:admin`.
