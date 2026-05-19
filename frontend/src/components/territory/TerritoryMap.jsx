@@ -89,8 +89,8 @@ export default function TerritoryMap({
           "fill-color": ["coalesce", ["get", "color"], "#94A3B8"],
           "fill-opacity": [
             "case",
-            ["boolean", ["feature-state", "hover"], false], 0.55,
-            0.30,
+            ["boolean", ["feature-state", "hover"], false], 0.35,
+            0.18,
           ],
         },
       });
@@ -102,8 +102,8 @@ export default function TerritoryMap({
         source: "franchisee-territories",
         paint: {
           "line-color": ["coalesce", ["get", "color"], "#475569"],
-          "line-width": 0.75,
-          "line-opacity": 0.55,
+          "line-width": 0.4,
+          "line-opacity": 0.5,
         },
       });
 
@@ -175,7 +175,7 @@ export default function TerritoryMap({
             ["get", "selected"], OUTLINE_DARK,
             OUTLINE_LIGHT,
           ],
-          "line-width": ["case", ["get", "selected"], 2, 0.8],
+          "line-width": ["case", ["get", "selected"], 1.25, 0.5],
           "line-opacity": 0.9,
         },
       });

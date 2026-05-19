@@ -102,7 +102,7 @@ export default function PublicTerritorySharePage() {
             selected={selectedCodes}
             centre={data.centre}
             centreLabel={data.centre_postcode || ""}
-            height={620}
+            height={820}
             interactive={false}
           />
         </div>
