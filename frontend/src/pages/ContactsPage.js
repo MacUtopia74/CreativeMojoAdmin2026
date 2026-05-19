@@ -12,6 +12,23 @@ const STAGES = [
   { key: "lost", label: "Lost", color: "bg-red-50 text-red-700 border-red-200", barColor: "bg-red-400" },
 ];
 
+// Licence prospects never go through "Shadow Day Booked" (franchise trial day)
+// or "Territory Map" (territory planning is franchise-only). Hide those stage
+// options from licence-source contacts. Conversion to a licensee is handled
+// via the explicit "Convert to Licensee" action elsewhere in the drawer.
+const FRANCHISE_ONLY_STAGES = new Set(["demo_booked", "converted"]);
+
+function stagesForContact(contact) {
+  if (!contact) return STAGES;
+  if (contact.source !== "licence_enquiry") return STAGES;
+  // Always keep the contact's CURRENT stage visible so it can be moved out of
+  // a legacy/incorrect stage (e.g. someone manually parked a licence lead in
+  // Territory Map before this filter existed).
+  return STAGES.filter(
+    (s) => !FRANCHISE_ONLY_STAGES.has(s.key) || contact.pipeline_status === s.key
+  );
+}
+
 const STAGE_MAP = Object.fromEntries(STAGES.map((s) => [s.key, s]));
 
 const TABS = [
@@ -582,7 +599,7 @@ function MoveMenu({ onMove, label = "Move", testid, currentTab, count, contactSo
               <div className="px-3 py-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 bg-stone-50 border-b border-stone-200">
                 {inPipeline ? "Change stage to" : "Add to pipeline as"}
               </div>
-              {STAGES.map((s) => (
+              {STAGES.filter((s) => contactSource !== "licence_enquiry" || !FRANCHISE_ONLY_STAGES.has(s.key)).map((s) => (
                 <button key={s.key} onClick={(e) => { e.stopPropagation(); onMove("pipeline", s.key); close(); }}
                   data-testid={`${testid}-stage-${s.key}`}
                   className="w-full text-left px-3 py-2 hover:bg-stone-50 flex items-center gap-2">
@@ -718,8 +735,9 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
             </div>
           </div>
 
-          {/* Phase 4 — Plan territory for prospective franchisees */}
-          {!alreadyConverted && (isFranchiseEnq || isInPipeline) && (
+          {/* Phase 4 — Plan territory for prospective franchisees only. Licence
+              contacts don't get a Territory Map, so this CTA is hidden for them. */}
+          {!alreadyConverted && !isLicenceEnq && (isFranchiseEnq || isInPipeline) && (
             <a href={`/territory-builder?contact_id=${contact.id}`}
               data-testid="drawer-plan-territory"
               className="block p-4 border border-stone-300 rounded-xl hover:border-stone-500 hover:shadow-md transition-all bg-gradient-to-br from-[#EEEE86]/30 to-white">
@@ -742,8 +760,8 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
           {isInPipeline ? (
             <div>
               <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-2">Move to stage</div>
-              <div className="grid grid-cols-3 gap-2">
-                {STAGES.map((s) => (
+              <div className="grid grid-cols-3 gap-2" data-testid="drawer-stages">
+                {stagesForContact(contact).map((s) => (
                   <button key={s.key} onClick={() => onStageChange(contact.id, s.key)} data-testid={`drawer-stage-${s.key}`}
                     className={`px-3 py-2 text-xs font-bold uppercase tracking-wider border rounded-lg transition-colors ${
                       contact.pipeline_status === s.key ? `${s.color} border-current` : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"

@@ -34,6 +34,9 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
   - **Supplier keyword filters** on Banking page: 16 seed chips (DENE LODGE, HAZELGATE, etc.) — click-to-filter, add/remove inline, persists in `banking_supplier_keywords`.
 
 
+- **Sales Pipeline — licence contacts hide franchise-only stages** ✅ (May 19 2026)
+  - For contacts whose `source === 'licence_enquiry'`, the drawer "Move to Stage" grid, the kanban "Move to…" dropdown, and the "Plan their territory" CTA all hide the two franchise-only stages (`demo_booked` "Shadow Day Booked" + `converted` "Territory Map"). Licence prospects see only New / Contacted / Interested / Lost — conversion is done via the explicit "Convert to Licencee" button. Helper `stagesForContact()` keeps the contact's CURRENT stage visible even if it's a legacy franchise stage (so it can be moved out).
+
 - **Sales Pipeline — fixed 63 "UNNAMED" cards + recovered 150 missing leads** ✅ (May 19 2026)
   - Root cause: `gf_backfill.py` was using the wrong Gravity Forms field-ID mapping (assumed dotted-id schema `1.3 / 1.6 / 5.x`), but the LIVE Franchise (17) + Licence (32) forms use the flat numeric IDs `9 / 12 / 4 / 5 / 13 / 14 / 15 / 16 / 28 / 6 / 24.x`. Result: 63 entries inserted with `first_name=null`, `last_name=null`, all other fields empty, surname mis-stuffed into the `google` field.
   - Fix: rewrote `FIELD_LABELS_BY_FORM` + the doc-build path to read the real field IDs, added a `repair_stubs` mode that REPLACES rows previously inserted as nameless stubs (matched on `ingested_via='gf_backfill' AND first_name IS NULL AND last_name IS NULL`).
