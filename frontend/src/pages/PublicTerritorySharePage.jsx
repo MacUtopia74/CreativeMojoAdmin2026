@@ -9,13 +9,17 @@ import { API_BASE } from "@/lib/api";
 import axios from "axios";
 import TerritoryMap from "@/components/territory/TerritoryMap";
 import Logo from "@/components/Logo";
-import { AlertCircle, Loader2, MapPin, Home as HomeIcon } from "lucide-react";
+import { AlertCircle, Loader2, MapPin, Home as HomeIcon, Map as MapIcon, Layers } from "lucide-react";
 
 export default function PublicTerritorySharePage() {
   const { token } = useParams();
   const [data, setData] = useState(null);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
+  // Basemap toggle — Light is the default for clean territory contrast;
+  // Streets adds the road network so prospects can see how the area
+  // connects (A-roads, motorway access etc.).
+  const [basemap, setBasemap] = useState("light");
 
   useEffect(() => {
     (async () => {
@@ -96,7 +100,34 @@ export default function PublicTerritorySharePage() {
 
       <main className="max-w-6xl mx-auto px-6 py-6 space-y-5">
         {/* Map */}
-        <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid="public-territory-map">
+        <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden relative" data-testid="public-territory-map">
+          {/* Basemap toggle — overlaid top-left on the map */}
+          <div className="absolute top-3 left-3 z-10 bg-white border border-stone-200 rounded-lg shadow-sm flex p-0.5" data-testid="public-basemap-toggle">
+            <button
+              onClick={() => setBasemap("light")}
+              data-testid="basemap-light"
+              className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded flex items-center gap-1 transition-colors ${
+                basemap === "light"
+                  ? "bg-stone-950 text-white"
+                  : "text-stone-700 hover:bg-stone-100"
+              }`}
+              title="Clean basemap (best for territory contrast)"
+            >
+              <Layers className="w-3 h-3" /> Light
+            </button>
+            <button
+              onClick={() => setBasemap("streets")}
+              data-testid="basemap-streets"
+              className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded flex items-center gap-1 transition-colors ${
+                basemap === "streets"
+                  ? "bg-stone-950 text-white"
+                  : "text-stone-700 hover:bg-stone-100"
+              }`}
+              title="Show roads, motorways and major routes"
+            >
+              <MapIcon className="w-3 h-3" /> Roads
+            </button>
+          </div>
           <TerritoryMap
             sectors={mapSectors}
             selected={selectedCodes}
@@ -104,6 +135,7 @@ export default function PublicTerritorySharePage() {
             centreLabel={data.centre_postcode || ""}
             height={820}
             interactive={false}
+            basemap={basemap}
           />
         </div>
 
