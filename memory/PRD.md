@@ -34,6 +34,13 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
   - **Supplier keyword filters** on Banking page: 16 seed chips (DENE LODGE, HAZELGATE, etc.) — click-to-filter, add/remove inline, persists in `banking_supplier_keywords`.
 
 
+- **Sales Pipeline — fixed 63 "UNNAMED" cards + recovered 150 missing leads** ✅ (May 19 2026)
+  - Root cause: `gf_backfill.py` was using the wrong Gravity Forms field-ID mapping (assumed dotted-id schema `1.3 / 1.6 / 5.x`), but the LIVE Franchise (17) + Licence (32) forms use the flat numeric IDs `9 / 12 / 4 / 5 / 13 / 14 / 15 / 16 / 28 / 6 / 24.x`. Result: 63 entries inserted with `first_name=null`, `last_name=null`, all other fields empty, surname mis-stuffed into the `google` field.
+  - Fix: rewrote `FIELD_LABELS_BY_FORM` + the doc-build path to read the real field IDs, added a `repair_stubs` mode that REPLACES rows previously inserted as nameless stubs (matched on `ingested_via='gf_backfill' AND first_name IS NULL AND last_name IS NULL`).
+  - Outcome: 0 unnamed enquiries left across both `web_form_contacts` (740 in pipeline) and `contacts`. 150 brand-new entries also recovered in the same sweep — entries that were dropped by the intermittent WP→backend webhook between May 8 and May 19. Spam filter correctly skipped entry `6024` (`MiltonIdova MiltonIdova`).
+  - Admin trigger: `POST /api/intake/backfill/run?limit=200&repair=true` (limit clamped to 1-500).
+
+
 ## What's Implemented (2026-05-19)
 - **Territory Builder — saved plans panel + public share links** ✅ (May 19 2026)
   - New "Saved plans" panel in the bottom-right of `/territory-builder` (when no contact/franchisee in URL). Lists every saved plan with name, contact (where linked), home count, sector count, centre postcode. Quick actions: Open (loads onto the map), Copy share link, Revoke share, Delete. Filter box appears once there are >5 plans.
