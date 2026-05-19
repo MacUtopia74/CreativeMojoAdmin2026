@@ -10,6 +10,7 @@ import {
   Inbox,
   BellRing,
   FolderOpen,
+  MapPin,
   Target,
   Stethoscope,
   CalendarDays,
@@ -32,6 +33,7 @@ const NAV = [
   { to: "/files", label: "Files", icon: FolderOpen, testid: "nav-files" },
   { to: "/contacts", label: "Sales & Contacts", icon: Contact, testid: "nav-contacts" },
   { to: "/territory-builder", label: "Territory Builder", icon: Target, testid: "nav-territory-builder" },
+  { to: "/find-class", label: "Find-a-Class", icon: MapPin, testid: "nav-find-class" },
   { to: "/cqc-definitions", label: "CQC Definitions", icon: Stethoscope, testid: "nav-cqc-definitions" },
   { to: "/mojo-orders", label: "Mojo Orders", icon: ShoppingBag, testid: "nav-mojo-orders" },
 ];

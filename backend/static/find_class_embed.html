@@ -1,0 +1,408 @@
+<!--
+=============================================================================
+Creative Mojo — Find a Class · WordPress embed
+=============================================================================
+Paste this block into the creativemojo.com WordPress "Find a class" page
+inside a Custom HTML block. It is fully self-contained: it loads Mapbox GL JS
+from CDN, talks to the Creative Mojo admin API, and renders the postcode
+search + popup + map exactly like the existing page.
+
+Replace these two values once at the top before going live:
+
+  - API_BASE: the public URL of the Creative Mojo admin API
+  - MAPBOX_TOKEN: a public-scope Mapbox token (pk.*) for the WP site
+
+To swap from the legacy Airtable lookup to this:
+  1. Edit the "Find a class" page in WP.
+  2. Replace the existing form/map block with this Custom HTML block.
+  3. Preview → search a postcode → confirm popup + map look right.
+  4. Publish.
+
+=============================================================================
+-->
+<style>
+  /* Scope every selector under .cm-find — never bleed into the host theme. */
+  .cm-find {
+    font-family: inherit;
+    color: #1a1a1a;
+  }
+  .cm-find__hero {
+    background: #d4ff00;
+    padding: 56px 24px 64px;
+    text-align: center;
+  }
+  .cm-find__hero h2 {
+    margin: 0 0 12px;
+    font-size: clamp(28px, 4vw, 40px);
+    font-weight: 700;
+    color: #1a1a1a;
+  }
+  .cm-find__hero p {
+    margin: 0 0 28px;
+    font-size: 16px;
+    color: #1a1a1a;
+  }
+  .cm-find__form {
+    display: inline-flex;
+    background: #fff;
+    border: 1px solid #1a1a1a;
+    border-radius: 2px;
+    overflow: hidden;
+    max-width: 100%;
+  }
+  .cm-find__form input {
+    border: 0;
+    padding: 14px 18px;
+    font-size: 16px;
+    outline: none;
+    min-width: 240px;
+  }
+  .cm-find__form button {
+    background: #93195a; /* Creative Mojo pink */
+    color: #fff;
+    border: 0;
+    padding: 14px 24px;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    text-transform: lowercase;
+  }
+  .cm-find__form button:disabled { opacity: 0.6; cursor: wait; }
+  .cm-find__form button:hover:not(:disabled) { background: #7a134a; }
+  .cm-find__error {
+    margin-top: 16px;
+    color: #93195a;
+    font-weight: 600;
+    min-height: 1em;
+  }
+
+  /* ---- Map + popup ----- */
+  .cm-find__map-wrap {
+    position: relative;
+    width: 100%;
+    height: 620px;
+    background: #f3f4f1;
+  }
+  #cm-find-map { width: 100%; height: 100%; }
+  .cm-find__popup {
+    position: absolute;
+    top: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+    z-index: 5;
+    width: min(680px, calc(100% - 32px));
+    display: flex;
+    align-items: stretch;
+    overflow: hidden;
+    animation: cm-pop 0.25s ease-out;
+  }
+  @keyframes cm-pop {
+    from { opacity: 0; transform: translate(-50%, -8px); }
+    to   { opacity: 1; transform: translate(-50%, 0); }
+  }
+  .cm-find__popup-close {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 32px; height: 32px;
+    border: 0; background: transparent; cursor: pointer;
+    font-size: 20px; line-height: 1; color: #555;
+  }
+  .cm-find__popup-close:hover { color: #000; }
+  .cm-find__popup-body {
+    padding: 24px 24px 20px;
+    flex: 1;
+    min-width: 0;
+  }
+  .cm-find__popup-body h3 {
+    margin: 0 0 6px;
+    font-size: 20px;
+    font-weight: 700;
+    color: #1a1a1a;
+    line-height: 1.25;
+  }
+  .cm-find__popup-body .cm-find__name {
+    margin: 0 0 12px;
+    color: #93195a;
+    font-weight: 600;
+  }
+  .cm-find__popup-body .cm-find__row {
+    color: #93195a;
+    font-weight: 600;
+    margin: 4px 0;
+  }
+  .cm-find__popup-body .cm-find__row a {
+    color: #93195a;
+    text-decoration: none;
+  }
+  .cm-find__popup-body .cm-find__row a:hover { text-decoration: underline; }
+  .cm-find__popup-body .cm-find__message {
+    color: #1a1a1a;
+    font-weight: 400;
+    margin: 0 0 12px;
+    font-size: 15px;
+    line-height: 1.45;
+  }
+  .cm-find__popup-body .cm-find__fallback-cta {
+    color: #93195a;
+    font-weight: 600;
+    margin: 14px 0 4px;
+  }
+  .cm-find__popup-photo {
+    flex: 0 0 auto;
+    width: 160px;
+    background: #f5f5f0;
+    position: relative;
+  }
+  .cm-find__popup-photo img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .cm-find__popup-photo .cm-find__visit {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    background: #93195a;
+    color: #fff;
+    text-align: center;
+    padding: 12px 8px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 15px;
+  }
+  .cm-find__popup-photo .cm-find__visit:hover { background: #7a134a; }
+  .cm-find__loading {
+    position: absolute;
+    inset: 0;
+    background: rgba(255,255,255,0.6);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 10;
+    font-weight: 600;
+    color: #1a1a1a;
+  }
+
+  @media (max-width: 720px) {
+    .cm-find__form { flex-direction: column; width: 90%; }
+    .cm-find__form input { width: 100%; }
+    .cm-find__popup { flex-direction: column; }
+    .cm-find__popup-photo { width: 100%; height: 200px; }
+  }
+</style>
+
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.6.0/mapbox-gl.css" rel="stylesheet" />
+
+<div class="cm-find">
+  <div class="cm-find__hero">
+    <h2>Find your nearest Creative Mojo representative</h2>
+    <p>Enter your post code in the search box to find your nearest Creative Mojo representative.</p>
+    <form class="cm-find__form" id="cm-find-form" autocomplete="off">
+      <input id="cm-find-input" type="text" placeholder="Enter postcode" required aria-label="Postcode" />
+      <button id="cm-find-submit" type="submit">show me</button>
+    </form>
+    <div class="cm-find__error" id="cm-find-error" role="alert"></div>
+  </div>
+  <div class="cm-find__map-wrap">
+    <div id="cm-find-map"></div>
+    <div class="cm-find__loading" id="cm-find-loading" style="display:none;">Searching…</div>
+    <div id="cm-find-popup-host"></div>
+  </div>
+</div>
+
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.6.0/mapbox-gl.js"></script>
+<script>
+(function () {
+  // -----------------------------------------------------------------------
+  // CONFIG — update these two values for production
+  // -----------------------------------------------------------------------
+  var API_BASE = "https://licensee-vault.preview.emergentagent.com/api";
+  var MAPBOX_TOKEN = "pk.eyJ1IjoiY3JlYXRpdmVtb2pvIiwiYSI6ImNtYjB4eXp0bzAwMDEyam9hY3RsbXFqMHkifQ.REPLACE_ME"; // Replace with your live token
+
+  // -----------------------------------------------------------------------
+  if (!window.mapboxgl) return;
+  mapboxgl.accessToken = MAPBOX_TOKEN;
+
+  var form      = document.getElementById("cm-find-form");
+  var input     = document.getElementById("cm-find-input");
+  var btn       = document.getElementById("cm-find-submit");
+  var errEl     = document.getElementById("cm-find-error");
+  var loadingEl = document.getElementById("cm-find-loading");
+  var popupHost = document.getElementById("cm-find-popup-host");
+
+  var map = new mapboxgl.Map({
+    container: "cm-find-map",
+    style: "mapbox://styles/mapbox/streets-v12",
+    center: [-2.5, 54.5],   // centred on the UK
+    zoom: 5.2,
+  });
+  map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
+  map.addControl(new mapboxgl.FullscreenControl(), "top-right");
+
+  var pinMarker = null;
+  var territoryRendered = false;
+
+  function clearTerritory() {
+    if (territoryRendered && map.getLayer("cm-terr-fill")) {
+      map.removeLayer("cm-terr-fill");
+      map.removeLayer("cm-terr-line");
+      map.removeSource("cm-terr");
+    }
+    territoryRendered = false;
+  }
+
+  function renderTerritory(feature) {
+    clearTerritory();
+    if (!feature || !feature.geometry) return;
+    map.addSource("cm-terr", { type: "geojson", data: feature });
+    map.addLayer({
+      id: "cm-terr-fill",
+      type: "fill",
+      source: "cm-terr",
+      paint: {
+        "fill-color": "#93195a",
+        "fill-opacity": 0.16,
+      },
+    });
+    map.addLayer({
+      id: "cm-terr-line",
+      type: "line",
+      source: "cm-terr",
+      paint: {
+        "line-color": "#93195a",
+        "line-width": 2.4,
+        "line-opacity": 0.95,
+      },
+    });
+    territoryRendered = true;
+  }
+
+  function setPin(pin) {
+    if (pinMarker) { pinMarker.remove(); pinMarker = null; }
+    if (!pin || pin.lat == null || pin.lng == null) return;
+    var el = document.createElement("div");
+    el.style.cssText = "width:30px;height:42px;background-image:url('data:image/svg+xml;utf8," +
+      encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 36"><path d="M12 0C5.4 0 0 5.4 0 12c0 8.4 12 24 12 24s12-15.6 12-24c0-6.6-5.4-12-12-12z" fill="%23D4FF00" stroke="%231A1A1A" stroke-width="1.5"/><circle cx="12" cy="12" r="4.5" fill="%2393195a"/></svg>'
+      ) + "');background-size:contain;background-repeat:no-repeat;";
+    pinMarker = new mapboxgl.Marker({ element: el, anchor: "bottom" })
+      .setLngLat([pin.lng, pin.lat])
+      .addTo(map);
+  }
+
+  function fitToTerritoryOrPin(territory, pin) {
+    if (territory && territory.geometry) {
+      // Compute bbox from the polygon's coordinates.
+      var bounds = new mapboxgl.LngLatBounds();
+      var coords = [];
+      var g = territory.geometry;
+      if (g.type === "Polygon") {
+        g.coordinates.forEach(function (ring) { coords = coords.concat(ring); });
+      } else if (g.type === "MultiPolygon") {
+        g.coordinates.forEach(function (poly) {
+          poly.forEach(function (ring) { coords = coords.concat(ring); });
+        });
+      }
+      coords.forEach(function (c) { bounds.extend(c); });
+      if (pin && pin.lng != null) bounds.extend([pin.lng, pin.lat]);
+      if (!bounds.isEmpty()) {
+        map.fitBounds(bounds, { padding: 80, duration: 900 });
+      }
+    } else if (pin && pin.lng != null) {
+      map.flyTo({ center: [pin.lng, pin.lat], zoom: 9, duration: 900 });
+    }
+  }
+
+  function clearPopup() { popupHost.innerHTML = ""; }
+
+  function escapeHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c];
+    });
+  }
+
+  function renderMatchPopup(f) {
+    var phoneTel = (f.phone || "").replace(/\s+/g, "");
+    var facebookLine = f.facebook
+      ? '<div class="cm-find__row"><a href="' + escapeHtml(f.facebook) + '" target="_blank" rel="noopener"><span style="color:#1877f2">f</span>&nbsp; Visit my page</a></div>'
+      : "";
+    var html =
+      '<div class="cm-find__popup" role="dialog" aria-label="Franchisee details">' +
+        '<button class="cm-find__popup-close" aria-label="Close" onclick="this.closest(\'.cm-find__popup\').remove();">×</button>' +
+        '<div class="cm-find__popup-body">' +
+          '<h3>' + escapeHtml(f.area) + '</h3>' +
+          (f.name ? '<div class="cm-find__name">' + escapeHtml(f.name) + '</div>' : '') +
+          (f.phone ? '<div class="cm-find__row"><a href="tel:' + escapeHtml(phoneTel) + '">' + escapeHtml(f.phone) + '</a></div>' : '') +
+          (f.email ? '<div class="cm-find__row"><a href="mailto:' + escapeHtml(f.email) + '">' + escapeHtml(f.email) + '</a></div>' : '') +
+          facebookLine +
+        '</div>' +
+        '<div class="cm-find__popup-photo">' +
+          (f.photo_url ? '<img src="' + escapeHtml(f.photo_url) + '" alt="' + escapeHtml(f.name || f.area) + '" />' : '') +
+          (f.wp_page_url ? '<a class="cm-find__visit" href="' + escapeHtml(f.wp_page_url) + '">Visit Page</a>' : '') +
+        '</div>' +
+      '</div>';
+    popupHost.innerHTML = html;
+  }
+
+  function renderFallbackPopup(fb) {
+    var phoneTel = (fb.phone || "").replace(/\s+/g, "");
+    var html =
+      '<div class="cm-find__popup" role="dialog" aria-label="No representative">' +
+        '<button class="cm-find__popup-close" aria-label="Close" onclick="this.closest(\'.cm-find__popup\').remove();">×</button>' +
+        '<div class="cm-find__popup-body">' +
+          (fb.message ? '<p class="cm-find__message">' + escapeHtml(fb.message) + '</p>' : '') +
+          (fb.name ? '<div class="cm-find__fallback-cta">Please contact ' + escapeHtml(fb.name) + ' for any information.</div>' : '') +
+          (fb.phone ? '<div class="cm-find__row"><a href="tel:' + escapeHtml(phoneTel) + '">' + escapeHtml(fb.phone) + '</a></div>' : '') +
+          (fb.email ? '<div class="cm-find__row"><a href="mailto:' + escapeHtml(fb.email) + '">' + escapeHtml(fb.email) + '</a></div>' : '') +
+        '</div>' +
+        '<div class="cm-find__popup-photo" style="background:#fff;display:flex;align-items:center;justify-content:center;">' +
+          (fb.photo_url
+            ? '<img src="' + escapeHtml(fb.photo_url) + '" alt="Creative Mojo" />'
+            : '<div style="text-align:center;padding:16px;font-weight:700;color:#1a1a1a;line-height:1.3;">Creative<br/>Mojo</div>') +
+          (fb.wp_page_url ? '<a class="cm-find__visit" href="' + escapeHtml(fb.wp_page_url) + '">Visit Page</a>' : '') +
+        '</div>' +
+      '</div>';
+    popupHost.innerHTML = html;
+  }
+
+  async function search(postcode) {
+    errEl.textContent = "";
+    clearPopup();
+    clearTerritory();
+    if (!postcode || postcode.length < 2) {
+      errEl.textContent = "Please enter a postcode.";
+      return;
+    }
+    loadingEl.style.display = "flex";
+    btn.disabled = true;
+    try {
+      var resp = await fetch(API_BASE + "/public/find-class?postcode=" + encodeURIComponent(postcode));
+      if (!resp.ok) {
+        var detail = "";
+        try { detail = (await resp.json()).detail || ""; } catch (e) {}
+        throw new Error(detail || ("Lookup failed (" + resp.status + ")"));
+      }
+      var data = await resp.json();
+      setPin(data.pin);
+      if (data.match) {
+        renderTerritory(data.territory);
+        renderMatchPopup(data.franchisee);
+      } else {
+        renderFallbackPopup(data.fallback || {});
+      }
+      fitToTerritoryOrPin(data.territory, data.pin);
+    } catch (e) {
+      errEl.textContent = (e && e.message) || "Sorry, we couldn’t complete the lookup.";
+    } finally {
+      loadingEl.style.display = "none";
+      btn.disabled = false;
+    }
+  }
+
+  form.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    search(input.value.trim());
+  });
+})();
+</script>
