@@ -123,12 +123,7 @@ export default function DashboardPage() {
           <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">Overview</div>
           <h1 className="font-display text-xl text-stone-950">Dashboard</h1>
         </div>
-        {lastMigrated && <span className="text-xs text-stone-500 mr-3">Last migrated · {lastMigrated}</span>}
-        <button onClick={runMigration} disabled={migrating} data-testid="run-migration-button"
-          className="px-4 py-2 bg-stone-950 text-white text-xs font-bold uppercase tracking-wider hover:bg-stone-800 transition-colors disabled:opacity-50 flex items-center gap-2 rounded-lg">
-          <RefreshCw className={`w-3.5 h-3.5 ${migrating ? "animate-spin" : ""}`} />
-          {migrating ? "Migrating…" : (hasData ? "Re-run migration" : "Run migration")}
-        </button>
+        {lastMigrated && <span className="text-xs text-stone-500 mr-3" data-testid="last-migrated-stamp" title="Airtable migration finalised — this admin console is now the live source of truth.">Migrated from Airtable · {lastMigrated}</span>}
       </div>
 
       <div className="p-8 space-y-6 max-w-[1500px]">

@@ -5,8 +5,6 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import Layout from "@/components/Layout";
 import LoginPage from "@/pages/LoginPage";
 import DashboardPage from "@/pages/DashboardPage";
-import AirtableInspectorPage from "@/pages/AirtableInspectorPage";
-import MigrationPlanPage from "@/pages/MigrationPlanPage";
 import FranchiseesPage from "@/pages/FranchiseesPage";
 import FranchiseeDetailPage from "@/pages/FranchiseeDetailPage";
 import ContractsPage from "@/pages/ContractsPage";
@@ -70,8 +68,6 @@ export default function App() {
               <Route path="/calendar" element={<CalendarPage />} />
               <Route path="/contacts" element={<ContactsPage />} />
               <Route path="/form-intake" element={<FormIntakePage />} />
-              <Route path="/airtable-inspector" element={<AirtableInspectorPage />} />
-              <Route path="/migration-plan" element={<MigrationPlanPage />} />
               {/* Invoices module — merged from the legacy Pay-Paperwork app */}
               <Route path="/invoices" element={<InvoicesShell />}>
                 <Route index element={<InvoiceList />} />
