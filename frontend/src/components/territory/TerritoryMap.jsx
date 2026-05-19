@@ -205,6 +205,56 @@ export default function TerritoryMap({
         },
       });
 
+      // ----- Boost Mapbox's built-in place labels so towns/cities are
+      // easy to read against our coloured territory fills. We re-raise
+      // each settlement label layer above all our overlays, bump the
+      // font, and thicken the white halo. This runs on initial style
+      // load AND on basemap swaps (style.load fires for both).
+      const BOOSTED_LABELS = [
+        "settlement-major-label",
+        "settlement-minor-label",
+        "settlement-subdivision-label",
+        "state-label",
+      ];
+      for (const id of BOOSTED_LABELS) {
+        const lyr = map.getLayer(id);
+        if (!lyr) continue;
+        // Move on top of every overlay we just added.
+        try { map.moveLayer(id); } catch { /* ignore */ }
+        // Larger, bolder type with a stronger halo. Use Mapbox style
+        // expressions so the size still scales with zoom.
+        try {
+          if (id === "settlement-major-label") {
+            map.setLayoutProperty(id, "text-size", [
+              "interpolate", ["linear"], ["zoom"],
+              4, 13,
+              6, 17,
+              10, 22,
+              14, 26,
+            ]);
+            map.setLayoutProperty(id, "text-font", ["Open Sans Bold", "Arial Unicode MS Bold"]);
+          } else if (id === "settlement-minor-label") {
+            map.setLayoutProperty(id, "text-size", [
+              "interpolate", ["linear"], ["zoom"],
+              6, 11,
+              9, 14,
+              12, 17,
+              14, 19,
+            ]);
+            map.setLayoutProperty(id, "text-font", ["Open Sans Semibold", "Arial Unicode MS Bold"]);
+          } else if (id === "settlement-subdivision-label") {
+            map.setLayoutProperty(id, "text-size", [
+              "interpolate", ["linear"], ["zoom"],
+              10, 11,
+              14, 14,
+            ]);
+          }
+          map.setPaintProperty(id, "text-color", "#0c0a09");
+          map.setPaintProperty(id, "text-halo-color", "#ffffff");
+          map.setPaintProperty(id, "text-halo-width", 2.2);
+        } catch { /* ignore — layer might not support these props */ }
+      }
+
       if (interactive) {
         let hoverId = null;
         map.on("mousemove", "sectors-fill", (e) => {
