@@ -332,6 +332,7 @@ def build_cqc_router(db, require_role):  # noqa: D401
             {"_id": DEFAULT_DEFINITION_ID}, {"$set": doc}, upsert=True,
         )
         # Refresh every franchisee's territory_home_count
+        franchisees_updated = 0
         cur = db.franchisees.find({"territory_sectors": {"$exists": True, "$ne": []}}, {"_id": 0, "id": 1, "territory_sectors": 1})
         async for f in cur:
             cnt = await db.cqc_locations_live.count_documents({
@@ -339,7 +340,27 @@ def build_cqc_router(db, require_role):  # noqa: D401
                 "postcode_sector": {"$in": f["territory_sectors"]},
             })
             await db.franchisees.update_one({"id": f["id"]}, {"$set": {"territory_home_count": cnt}})
-        return body.model_dump()
+            franchisees_updated += 1
+        # Also refresh every saved Territory Plan (prospect / Saved Plans
+        # panel) so the home counts on prospects line up with the new
+        # definition — otherwise plans keep stale numbers from the moment
+        # they were saved.
+        plans_updated = 0
+        cur = db.territory_plans.find({"sectors": {"$exists": True, "$ne": []}}, {"_id": 0, "id": 1, "sectors": 1})
+        async for p in cur:
+            cnt = await db.cqc_locations_live.count_documents({
+                **definition_to_mongo_filter(body),
+                "postcode_sector": {"$in": p["sectors"]},
+            })
+            await db.territory_plans.update_one({"id": p["id"]}, {"$set": {"home_count": cnt}})
+            plans_updated += 1
+        return {
+            **body.model_dump(),
+            "_recount": {
+                "franchisees_updated": franchisees_updated,
+                "plans_updated": plans_updated,
+            },
+        }
 
     @router.get("/cqc/definition/preview")
     async def preview_definition(

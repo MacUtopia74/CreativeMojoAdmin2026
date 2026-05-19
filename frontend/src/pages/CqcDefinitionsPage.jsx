@@ -116,11 +116,18 @@ export default function CqcDefinitionsPage() {
     }
   };
 
+  const [recountMsg, setRecountMsg] = useState("");
+
   const save = async () => {
-    setSaving(true); setErr("");
+    setSaving(true); setErr(""); setRecountMsg("");
     try {
       const { data } = await api.put("/cqc/definition", def);
       setSaved(data);
+      const r = data?._recount;
+      if (r) {
+        setRecountMsg(`Re-counted ${r.franchisees_updated} franchisee${r.franchisees_updated === 1 ? "" : "s"} and ${r.plans_updated} saved plan${r.plans_updated === 1 ? "" : "s"}.`);
+        setTimeout(() => setRecountMsg(""), 6000);
+      }
     } catch (e) { setErr(e?.response?.data?.detail || "Save failed"); }
     finally { setSaving(false); }
   };
@@ -170,6 +177,11 @@ export default function CqcDefinitionsPage() {
       {err && (
         <div className="text-sm text-red-700 bg-red-50 border border-red-200 px-3 py-2 rounded-xl flex items-center gap-1.5">
           <AlertCircle className="w-4 h-4" /> {err}
+        </div>
+      )}
+      {recountMsg && (
+        <div data-testid="def-recount-msg" className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-xl flex items-center gap-1.5">
+          <Save className="w-4 h-4" /> {recountMsg}
         </div>
       )}
 
