@@ -6,6 +6,7 @@ load_dotenv(ROOT_DIR / ".env")
 
 import os
 import logging
+import asyncio
 import re
 import uuid
 import bcrypt
@@ -2289,6 +2290,14 @@ async def on_startup():
     # Airtable seed of migration_table_decisions removed 2026-05-19
     # (Airtable decommissioned — see comment block elsewhere in this file.)
 
+    # Kick off the GF backfill loop in the background — hourly safety net
+    # so missed webhook submissions get reconciled automatically.
+    try:
+        asyncio.create_task(_gf_backfill_loop(db, every_seconds=3600))
+        logger.info("GF backfill scheduler started (hourly)")
+    except Exception as e:
+        logger.warning(f"Could not start GF backfill scheduler: {e}")
+
 
 @app.on_event("shutdown")
 async def on_shutdown():
@@ -2345,6 +2354,10 @@ api.include_router(build_zoom_router(api, db, require_role))
 # Phase 4C — Public "Find a class" lookup for creativemojo.com
 from find_class_routes import attach as build_find_class_router  # noqa: E402
 api.include_router(build_find_class_router(api, db, require_role))
+
+# Gravity Forms backfill — safety net for the live webhook.
+from gf_backfill import attach as build_gf_backfill_router, schedule_periodic as _gf_backfill_loop  # noqa: E402
+api.include_router(build_gf_backfill_router(api, db, require_role))
 
 app.include_router(api)
 
