@@ -34,6 +34,11 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
   - **Supplier keyword filters** on Banking page: 16 seed chips (DENE LODGE, HAZELGATE, etc.) — click-to-filter, add/remove inline, persists in `banking_supplier_keywords`.
 
 
+- **Sales Pipeline — Dormant stage + collapsible columns + editable Notes** ✅ (May 20 2026)
+  - **New "Dormant" stage** (orange) between Territory Map and Lost — for leads who were interested and almost came on board but didn't quite make it. Available to BOTH franchise and licence contacts (unlike `demo_booked`/`converted` which stay franchise-only). Added to `PIPELINE_STAGES` on backend + dashboard funnel.
+  - **Collapsible columns** — kanban switched from `grid grid-cols-6` to `flex` layout. Each column header has a `«` collapse button; collapsed columns become a narrow 40px-wide vertical strip with a rotated label + count. State persists in `localStorage.pipelineCollapsedStages`. Keeps the 7-column layout usable on a 1920 viewport even when 2-3 columns are open.
+  - **Editable running notes** — new `AdminNotesEditor` component in the drawer (below Original Enquiry, above legacy Internal Notes). Auto-saves on blur, ⌘/Ctrl+Enter shortcut, "Saving…" / "Unsaved changes" / "Saved {Nm ago}" indicator, character count, "Save now" inline button. Stored in new `admin_notes` field via `PATCH /api/contacts/{id}/admin-notes` (admin-only). Tracks `admin_notes_updated_at` + `admin_notes_updated_by` for audit.
+
 - **Sales Pipeline — Reply lozenge regression fix + "Mark Contacted" feature** ✅ (May 20 2026)
   - Bug: a new contact (Deborah Tiver, GF entry 6035) appeared in the NEW kanban column overnight but with NO red Reply lozenge. Root cause: `gf_backfill.py` inserts new rows with `in_pipeline=True` but never set `pipeline_status`; the frontend's `c.pipeline_status === "new" && c.email` check required strict equality, so null-status cards fell into the New column via the fallback grouping but never rendered the button. The live webhook handler ALREADY set `pipeline_status="new"` — the backfill safety net didn't.
   - Backend fix: `gf_backfill.py` now writes `"pipeline_status": "new"` on insert AND on stub-repair, mirroring the live webhook. One-off DB sweep set the 1 affected row (Deborah Tiver) to `pipeline_status="new"`.

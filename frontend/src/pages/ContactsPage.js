@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import LinkExistingFranchiseeModal from "@/components/contacts/LinkExistingFranchiseeModal";
-import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus, Plus, Sparkles, Upload, FileText, CheckCircle2, Send, Award, Target, Link2 } from "lucide-react";
+import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, ChevronsLeft, ChevronsRight, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus, Plus, Sparkles, Upload, FileText, CheckCircle2, Send, Award, Target, Link2 } from "lucide-react";
 
 const STAGES = [
   { key: "new", label: "New", color: "bg-stone-100 text-stone-700 border-stone-300", barColor: "bg-stone-400" },
@@ -10,6 +10,7 @@ const STAGES = [
   { key: "qualified", label: "Interested", color: "bg-amber-50 text-amber-800 border-amber-200", barColor: "bg-amber-400" },
   { key: "demo_booked", label: "Shadow Day Booked", color: "bg-purple-50 text-purple-700 border-purple-200", barColor: "bg-purple-400" },
   { key: "converted", label: "Territory Map", color: "bg-emerald-50 text-emerald-700 border-emerald-200", barColor: "bg-emerald-500" },
+  { key: "dormant", label: "Dormant", color: "bg-orange-50 text-orange-800 border-orange-200", barColor: "bg-orange-400" },
   { key: "lost", label: "Lost", color: "bg-red-50 text-red-700 border-red-200", barColor: "bg-red-400" },
 ];
 
@@ -619,7 +620,7 @@ function MoveMenu({ onMove, label = "Move", testid, currentTab, count, contactSo
   );
 }
 
-function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, onDelete, onReply, onConvert, onLinkExisting }) {
+function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, onDelete, onReply, onConvert, onLinkExisting, onAdminNotesUpdated }) {
   const [busy, setBusy] = useState(false);
   const [converting, setConverting] = useState(false);
   if (!contact) return null;
@@ -863,6 +864,9 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
             </div>
           )}
 
+          {/* Editable running admin notes — saved on blur, persists across sessions. */}
+          <AdminNotesEditor contact={contact} onUpdated={onAdminNotesUpdated} />
+
           {contact.notes && (
             <div>
               <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-2">Internal Notes</div>
@@ -871,6 +875,103 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
           )}
         </div>
       </aside>
+    </div>
+  );
+}
+
+function AdminNotesEditor({ contact, onUpdated }) {
+  // Local draft separates the input value from the persisted value so the
+  // user can type freely without losing focus mid-write. Auto-saves on blur
+  // (with a short debounce safety net so accidental clicks don't lose work).
+  const [draft, setDraft] = useState(contact.admin_notes || "");
+  const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState(contact.admin_notes_updated_at || null);
+  const [error, setError] = useState("");
+  const initialRef = contact.admin_notes || "";
+
+  useEffect(() => {
+    // When the drawer switches to a new contact, reset the draft.
+    setDraft(contact.admin_notes || "");
+    setSavedAt(contact.admin_notes_updated_at || null);
+    setError("");
+  }, [contact.id, contact.admin_notes, contact.admin_notes_updated_at]);
+
+  const dirty = draft !== initialRef;
+
+  const save = async () => {
+    if (!dirty || saving) return;
+    setSaving(true);
+    setError("");
+    try {
+      const { data } = await api.patch(`/contacts/${contact.id}/admin-notes`, { admin_notes: draft });
+      setSavedAt(data.admin_notes_updated_at);
+      onUpdated && onUpdated(contact.id, data.admin_notes, data.admin_notes_updated_at);
+    } catch (e) {
+      setError(e?.response?.data?.detail || "Could not save notes.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div data-testid="admin-notes-editor">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Notes</div>
+        <div className="text-[10px] text-stone-500 flex items-center gap-1.5">
+          {saving ? (
+            <>
+              <Loader2 className="w-3 h-3 animate-spin" /> Saving…
+            </>
+          ) : dirty ? (
+            <span className="text-amber-700">Unsaved changes</span>
+          ) : savedAt ? (
+            <span title={`Last saved ${savedAt}`}>
+              Saved {(() => { const d = new Date(savedAt); const diff = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000)); if (diff < 60) return "just now"; if (diff < 3600) return `${Math.floor(diff / 60)}m ago`; if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`; return d.toLocaleDateString("en-GB"); })()}
+            </span>
+          ) : (
+            <span className="text-stone-400">Type to add notes</span>
+          )}
+        </div>
+      </div>
+      <textarea
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={save}
+        onKeyDown={(e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+            e.preventDefault();
+            e.currentTarget.blur();
+          }
+        }}
+        placeholder="Running notes — follow-ups, call summaries, anything you want to remember about this contact…"
+        rows={4}
+        data-testid="admin-notes-textarea"
+        className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-sm focus:outline-none focus:border-stone-900 resize-y"
+      />
+      <div className="flex items-center justify-between mt-1.5">
+        <div className="text-[10px] text-stone-500">
+          {dirty
+            ? "Click outside or press ⌘/Ctrl + Enter to save."
+            : draft.length > 0
+              ? `${draft.length} characters`
+              : ""}
+        </div>
+        {dirty && (
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving}
+            data-testid="admin-notes-save"
+            className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-900 hover:text-stone-950 underline disabled:opacity-40">
+            Save now
+          </button>
+        )}
+      </div>
+      {error && (
+        <div className="mt-1.5 text-xs text-red-700 flex items-center gap-1">
+          <AlertCircle className="w-3 h-3" /> {error}
+        </div>
+      )}
     </div>
   );
 }
@@ -891,6 +992,18 @@ export default function ContactsPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [ageFilter, setAgeFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all"); // 'all' | 'franchise' | 'licence'
+  const [collapsedStages, setCollapsedStages] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem("pipelineCollapsedStages") || "[]")); }
+    catch { return new Set(); }
+  });
+  const toggleStageCollapsed = (key) => {
+    setCollapsedStages((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      try { localStorage.setItem("pipelineCollapsedStages", JSON.stringify([...next])); } catch {/* ignore */}
+      return next;
+    });
+  };
 
   const clearSelection = () => { setSelectedIds(new Set()); setLastSelectedId(null); };
   // Visible items (filtered + age + source) — needed so shift-select knows the range
@@ -1248,15 +1361,48 @@ export default function ContactsPage() {
         {loading ? (
           <div className="text-center text-stone-500 text-sm uppercase tracking-widest p-12 flex items-center justify-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>
         ) : isPipeline && view === "pipeline" ? (
-          <div className="grid grid-cols-2 lg:grid-cols-6 gap-3" data-testid="pipeline-board">
+          <div className="flex gap-3 items-stretch" data-testid="pipeline-board">
             {STAGES.map((stage) => {
               const items = grouped[stage.key] || [];
+              const collapsed = collapsedStages.has(stage.key);
+              if (collapsed) {
+                // Narrow vertical strip — rotated label + count, click anywhere to re-open.
+                return (
+                  <button
+                    key={stage.key}
+                    type="button"
+                    onClick={() => toggleStageCollapsed(stage.key)}
+                    data-testid={`pipeline-column-${stage.key}`}
+                    title={`Expand ${stage.label}`}
+                    className={`w-10 shrink-0 bg-white border border-stone-200 rounded-2xl overflow-hidden hover:border-stone-500 transition-colors`}>
+                    <div className={`px-1 py-2.5 border-b border-stone-200 flex items-center justify-center ${stage.color.split(" ")[0]}`}>
+                      <ChevronsRight className="w-3.5 h-3.5 text-stone-700" />
+                    </div>
+                    <div className="py-4 flex flex-col items-center gap-3" style={{ minHeight: "12rem" }}>
+                      <span className="text-xs font-bold text-stone-700 tabular-nums">{items.length}</span>
+                      <span
+                        className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-700"
+                        style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}>
+                        {stage.label}
+                      </span>
+                    </div>
+                  </button>
+                );
+              }
               return (
-                <div key={stage.key} className="bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid={`pipeline-column-${stage.key}`}>
+                <div key={stage.key} className="flex-1 min-w-0 bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid={`pipeline-column-${stage.key}`}>
                   <div className={`px-3 py-2.5 border-b border-stone-200 ${stage.color.split(" ")[0]}`}>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-900">{stage.label}</span>
-                      <span className="text-xs text-stone-700 font-bold">{items.length}</span>
+                    <div className="flex items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() => toggleStageCollapsed(stage.key)}
+                        data-testid={`pipeline-column-collapse-${stage.key}`}
+                        title={`Collapse ${stage.label}`}
+                        className="shrink-0 w-5 h-5 flex items-center justify-center rounded hover:bg-white/60 text-stone-700">
+                        <ChevronsLeft className="w-3.5 h-3.5" />
+                      </button>
+                      <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-900 truncate">{stage.label}</span>
+                      <span className="text-xs text-stone-700 font-bold tabular-nums">{items.length}</span>
                     </div>
                   </div>
                   <div className="p-2 space-y-1.5 max-h-[calc(100vh-22rem)] overflow-y-auto">
@@ -1416,7 +1562,18 @@ export default function ContactsPage() {
         onDelete={remove}
         onReply={replyByEmail}
         onConvert={convertContact}
-        onLinkExisting={openLinkExisting} />
+        onLinkExisting={openLinkExisting}
+        onAdminNotesUpdated={(id, notes, updatedAt) => {
+          setData((d) => ({
+            ...d,
+            items: d.items.map((c) => c.id === id
+              ? { ...c, admin_notes: notes, admin_notes_updated_at: updatedAt }
+              : c),
+          }));
+          setSelected((sel) => sel && sel.id === id
+            ? { ...sel, admin_notes: notes, admin_notes_updated_at: updatedAt }
+            : sel);
+        }} />
       <LinkExistingFranchiseeModal
         open={!!linkingContact}
         contact={linkingContact}

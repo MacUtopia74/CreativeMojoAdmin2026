@@ -1979,7 +1979,7 @@ class PipelineUpdateRequest(BaseModel):
     pipeline_status: str
 
 
-PIPELINE_STAGES = ["new", "contacted", "qualified", "demo_booked", "converted", "lost", "archive"]
+PIPELINE_STAGES = ["new", "contacted", "qualified", "demo_booked", "converted", "dormant", "lost", "archive"]
 
 
 class ContactImportRow(BaseModel):
@@ -2119,6 +2119,41 @@ async def update_pipeline(contact_id: str, body: PipelineUpdateRequest, _: dict 
     if r.matched_count == 0:
         raise HTTPException(status_code=404, detail="Contact not found")
     return {"ok": True, "pipeline_status": body.pipeline_status}
+
+
+class AdminNotesUpdate(BaseModel):
+    admin_notes: Optional[str] = None
+
+
+@api.patch("/contacts/{contact_id}/admin-notes")
+async def update_contact_admin_notes(
+    contact_id: str,
+    body: AdminNotesUpdate,
+    user: dict = Depends(require_role("admin")),
+):
+    """Free-form running notes the admin can keep on any contact (pipeline or
+    not). Stored in the new ``admin_notes`` field — kept separate from the
+    legacy ``notes`` field which carries copy-over data from the convert flow.
+    Empty / whitespace-only strings are stored as ``None``."""
+    txt = (body.admin_notes or "").strip() or None
+    now = datetime.now(timezone.utc).isoformat()
+    update = {
+        "admin_notes": txt,
+        "admin_notes_updated_at": now,
+        "admin_notes_updated_by": user.get("email"),
+        "updated_at": now,
+    }
+    r = await db.web_form_contacts.update_one({"id": contact_id}, {"$set": update})
+    if r.matched_count == 0:
+        r = await db.contacts.update_one({"id": contact_id}, {"$set": update})
+    if r.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    return {
+        "ok": True,
+        "admin_notes": txt,
+        "admin_notes_updated_at": now,
+        "admin_notes_updated_by": user.get("email"),
+    }
 
 
 @api.patch("/contacts/{contact_id}/promote")

@@ -9,6 +9,7 @@ const PIPELINE_STAGES = [
   { key: "qualified", label: "Interested", color: "bg-amber-400" },
   { key: "demo_booked", label: "Shadow Day Booked", color: "bg-purple-400" },
   { key: "converted", label: "Territory Map", color: "bg-emerald-500" },
+  { key: "dormant", label: "Dormant", color: "bg-orange-400" },
   { key: "lost", label: "Lost", color: "bg-red-400" },
 ];
 
