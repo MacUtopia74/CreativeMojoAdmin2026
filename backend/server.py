@@ -1954,9 +1954,13 @@ async def list_contacts(
 
     items = []
     if q_legacy is not None:
+        # Exclude contacts that have been merged into another record — they
+        # stay in the DB for audit but shouldn't appear in any list view.
+        q_legacy.setdefault("merged_into", None)
         legacy = await db.contacts.find(q_legacy, {"_id": 0}).limit(limit).to_list(limit)
         items.extend(legacy)
     if q_web is not None:
+        q_web.setdefault("merged_into", None)
         web = await db.web_form_contacts.find(q_web, {"_id": 0}).limit(limit).to_list(limit)
         items.extend(web)
 
@@ -2305,6 +2309,198 @@ async def demote_contact(contact_id: str, _: dict = Depends(require_role("admin"
     if r.matched_count == 0:
         raise HTTPException(status_code=404, detail="Contact not found")
     return {"ok": True, "in_pipeline": False}
+
+
+# ----------------------------------------------------------------------------
+# Contact merge — combine two pipeline/CRM contacts (e.g. someone who
+# submitted the form twice) into a single record.
+#
+# Survivor keeps its ``id`` (so any in-flight URL bookmarks still resolve).
+# The "loser" is ARCHIVED (not deleted) — flagged with ``merged_into`` so we
+# keep the audit trail. Field-merge strategy: prefer the survivor's value
+# unless empty, otherwise fall back to the loser's. The frontend uses the
+# preview endpoint to render a side-by-side confirmation modal before
+# committing.
+# ----------------------------------------------------------------------------
+class ContactMergeRequest(BaseModel):
+    survivor_id: str
+    loser_id: str
+    field_overrides: Optional[Dict[str, Optional[str]]] = None
+
+
+# Fields that take part in the auto-pick merge. Anything outside this list
+# stays as-is on the survivor (system/audit fields like id, created_at, etc).
+MERGE_FIELDS = (
+    "first_name", "last_name", "email", "telephone", "mobile", "phone",
+    "address_line_1", "address_line_2", "town_city", "city", "county",
+    "postcode", "country", "establishment_name", "organisation", "website",
+    "potential", "heard_about_us", "referral_source", "comments", "message",
+    "why_contacting", "facebook", "google", "instagram", "twitter",
+)
+
+# Stage ordering — when survivor and loser have different stages, we keep
+# whichever is further along the funnel.
+_STAGE_ORDER = {"new": 0, "contacted": 1, "qualified": 2, "demo_booked": 3, "converted": 4, "dormant": 1, "lost": 5}
+
+
+async def _find_contact(contact_id: str) -> tuple[Optional[dict], Optional[str]]:
+    """Return ``(doc, collection_name)`` or ``(None, None)``."""
+    doc = await db.web_form_contacts.find_one({"id": contact_id}, {"_id": 0})
+    if doc:
+        return doc, "web_form_contacts"
+    doc = await db.contacts.find_one({"id": contact_id}, {"_id": 0})
+    if doc:
+        return doc, "contacts"
+    return None, None
+
+
+def _auto_merge_values(survivor: dict, loser: dict) -> dict:
+    """For each mergeable field, prefer the survivor's value unless empty
+    (None / "" / blank string), then take the loser's value. Returns the
+    merged-value dict for ALL mergeable fields (including unchanged ones).
+    """
+    merged: dict = {}
+    for f in MERGE_FIELDS:
+        s_val = survivor.get(f)
+        l_val = loser.get(f)
+        if s_val not in (None, "", []) and str(s_val).strip() != "":
+            merged[f] = s_val
+        else:
+            merged[f] = l_val if l_val not in (None, "", []) and str(l_val).strip() != "" else s_val
+    return merged
+
+
+@api.post("/contacts/merge/preview")
+async def preview_contact_merge(
+    body: dict,
+    _: dict = Depends(require_role("admin")),
+):
+    """Return both contacts plus the auto-merged values so the frontend can
+    render a side-by-side confirmation modal. Does NOT mutate anything."""
+    sid = (body.get("survivor_id") or "").strip()
+    lid = (body.get("loser_id") or "").strip()
+    if not sid or not lid or sid == lid:
+        raise HTTPException(400, "Provide two different contact IDs.")
+    survivor, _sc = await _find_contact(sid)
+    loser, _lc = await _find_contact(lid)
+    if not survivor:
+        raise HTTPException(404, "Survivor contact not found.")
+    if not loser:
+        raise HTTPException(404, "Loser contact not found.")
+    if survivor.get("merged_into") or loser.get("merged_into"):
+        raise HTTPException(409, "One of the contacts has already been merged.")
+    return {
+        "survivor": survivor,
+        "loser": loser,
+        "merged": _auto_merge_values(survivor, loser),
+        "fields": list(MERGE_FIELDS),
+    }
+
+
+@api.post("/contacts/merge")
+async def merge_contacts(
+    body: ContactMergeRequest,
+    user: dict = Depends(require_role("admin")),
+):
+    """Commit a merge. The survivor record absorbs the auto-merged field
+    values (or per-field overrides if the admin tweaked them in the modal),
+    inherits the most-advanced pipeline stage, and gets a stamped admin-note
+    entry summarising what was merged in. The loser is archived in-place
+    with ``merged_into=<survivor_id>`` and ``in_pipeline=False`` so it
+    disappears from kanban/list views but stays in the DB for audit."""
+    if body.survivor_id == body.loser_id:
+        raise HTTPException(400, "Cannot merge a contact with itself.")
+    survivor, s_coll = await _find_contact(body.survivor_id)
+    loser, l_coll = await _find_contact(body.loser_id)
+    if not survivor or not loser:
+        raise HTTPException(404, "One or both contacts not found.")
+    if survivor.get("merged_into") or loser.get("merged_into"):
+        raise HTTPException(409, "One of the contacts has already been merged.")
+
+    # Resolve final values — auto-merge first, then layer admin overrides.
+    final = _auto_merge_values(survivor, loser)
+    if body.field_overrides:
+        for k, v in body.field_overrides.items():
+            if k in MERGE_FIELDS:
+                final[k] = v if (v or "").strip() else None  # type: ignore[union-attr]
+
+    # Most-advanced pipeline stage wins (in_pipeline stays True if either was
+    # in pipeline and survivor isn't already converted).
+    s_status = survivor.get("pipeline_status") or "new"
+    l_status = loser.get("pipeline_status") or "new"
+    chosen_status = s_status if _STAGE_ORDER.get(s_status, 0) >= _STAGE_ORDER.get(l_status, 0) else l_status
+    in_pipeline = bool((survivor.get("in_pipeline") or loser.get("in_pipeline")) and not survivor.get("converted_to_franchisee_id"))
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # Build the audit-trail note prepended to admin_notes.
+    loser_name = " ".join(filter(None, [loser.get("first_name"), loser.get("last_name")])).strip() or loser.get("email") or "(no name)"
+    loser_email = loser.get("email") or "—"
+    loser_date = str(loser.get("date") or loser.get("created_at") or "")[:10]
+    audit_lines = [
+        f"— Merged from {loser_name} ({loser_email}) on {datetime.now(timezone.utc).strftime('%d/%m/%Y')} by {user.get('email')} —",
+    ]
+    if loser_date:
+        audit_lines.append(f"Original enquiry date: {loser_date}")
+    if loser.get("message"):
+        audit_lines.append(f"Their message:\n{loser['message']}")
+    if loser.get("comments"):
+        audit_lines.append(f"Their comments:\n{loser['comments']}")
+    if loser.get("why_contacting"):
+        audit_lines.append(f"Their reason for contacting: {loser['why_contacting']}")
+    if loser.get("admin_notes"):
+        audit_lines.append(f"Their admin notes:\n{loser['admin_notes']}")
+    audit_note = "\n".join(audit_lines).strip()
+    existing_notes = (survivor.get("admin_notes") or "").strip()
+    new_admin_notes = f"{audit_note}\n\n{existing_notes}".strip() if existing_notes else audit_note
+
+    # Stamp the merged-from history list (so a survivor that's been merged
+    # multiple times keeps a full trail).
+    merged_history = list(survivor.get("merged_from_history") or [])
+    merged_history.append({
+        "loser_id": loser["id"],
+        "loser_name": loser_name,
+        "loser_email": loser.get("email"),
+        "loser_source": loser.get("source"),
+        "loser_gravity_entry_id": loser.get("gravity_entry_id"),
+        "merged_at": now_iso,
+        "merged_by": user.get("email"),
+    })
+
+    survivor_update = {
+        **final,
+        "pipeline_status": chosen_status if in_pipeline else None,
+        "in_pipeline": in_pipeline,
+        "admin_notes": new_admin_notes,
+        "admin_notes_updated_at": now_iso,
+        "admin_notes_updated_by": user.get("email"),
+        "merged_from_history": merged_history,
+        "updated_at": now_iso,
+    }
+    survivor_coll = db.web_form_contacts if s_coll == "web_form_contacts" else db.contacts
+    await survivor_coll.update_one({"id": body.survivor_id}, {"$set": survivor_update})
+
+    # Archive the loser (kept in DB for audit).
+    loser_coll = db.web_form_contacts if l_coll == "web_form_contacts" else db.contacts
+    await loser_coll.update_one(
+        {"id": body.loser_id},
+        {"$set": {
+            "merged_into": body.survivor_id,
+            "merged_at": now_iso,
+            "merged_by": user.get("email"),
+            "in_pipeline": False,
+            "pipeline_status": None,
+            "updated_at": now_iso,
+        }},
+    )
+
+    fresh = await survivor_coll.find_one({"id": body.survivor_id}, {"_id": 0})
+    return {
+        "ok": True,
+        "survivor_id": body.survivor_id,
+        "loser_id": body.loser_id,
+        "survivor": fresh,
+    }
 
 
 @api.delete("/contacts/{contact_id}")

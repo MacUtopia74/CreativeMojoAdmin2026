@@ -268,7 +268,7 @@ export default function PortalDashboardPage() {
                           <FileText className="w-3.5 h-3.5 text-stone-400" />
                           <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Current contract</span>
                         </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 sm:gap-x-6 gap-y-3">
                           <Field icon={Calendar} label="Started" value={profile.current_contract.commencement_date ? new Date(profile.current_contract.commencement_date).toLocaleDateString("en-GB") : "—"} />
                           <Field icon={Clock} label="Expires" value={profile.current_contract.renewal_date ? new Date(profile.current_contract.renewal_date).toLocaleDateString("en-GB") : "—"} />
                           <Field icon={FileText} label="Term" value={profile.current_contract.contract_term_years ? `${profile.current_contract.contract_term_years} year${profile.current_contract.contract_term_years === 1 ? "" : "s"}` : "—"} />

@@ -40,9 +40,10 @@ export default function PortalBottomNav({ onLogout, sectionsRef, onTabSelect, op
 
   const jumpTo = (id) => {
     // Whether this click will EXPAND the panel (true) vs COLLAPSE it
-    // (false) — we only scroll on expand, otherwise re-tapping the same
-    // tab would yank the user back to a now-collapsed pill at the top.
-    // HOME always closes everything → no scroll.
+    // (false) — we only scroll-to-section on expand, otherwise re-tapping
+    // the same tab would yank the user back to a now-collapsed pill at the
+    // top. HOME is a special case: it closes everything AND scrolls all
+    // the way back to the top of the page so the user sees the hero card.
     let willExpand = false;
     if (id !== "portal-section-home") {
       willExpand = !openSections[id];
@@ -51,6 +52,14 @@ export default function PortalBottomNav({ onLogout, sectionsRef, onTabSelect, op
     // Let the parent toggle the corresponding panel (single source of
     // truth for open/closed state).
     onTabSelect && onTabSelect(id);
+
+    if (id === "portal-section-home") {
+      // Scroll all the way back to the very top of the page.
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      });
+      return;
+    }
 
     if (!willExpand) return;
 

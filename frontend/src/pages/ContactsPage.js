@@ -2,7 +2,8 @@ import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import LinkExistingFranchiseeModal from "@/components/contacts/LinkExistingFranchiseeModal";
-import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, ChevronsLeft, ChevronsRight, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus, Plus, Sparkles, Upload, FileText, CheckCircle2, Send, Award, Target, Link2 } from "lucide-react";
+import MergeContactsModal from "@/components/contacts/MergeContactsModal";
+import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, ChevronsLeft, ChevronsRight, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus, Plus, Sparkles, Upload, FileText, CheckCircle2, Send, Award, Target, Link2, GitMerge } from "lucide-react";
 
 const STAGES = [
   { key: "new", label: "New", color: "bg-stone-100 text-stone-700 border-stone-300", barColor: "bg-stone-400" },
@@ -620,7 +621,7 @@ function MoveMenu({ onMove, label = "Move", testid, currentTab, count, contactSo
   );
 }
 
-function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, onDelete, onReply, onConvert, onLinkExisting, onAdminNotesUpdated }) {
+function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, onDelete, onReply, onConvert, onLinkExisting, onAdminNotesUpdated, onMergeWith, allContacts }) {
   const [busy, setBusy] = useState(false);
   const [converting, setConverting] = useState(false);
   if (!contact) return null;
@@ -1198,6 +1199,31 @@ export default function ContactsPage() {
   // post-link side-effects here (in-place row update + navigation).
   const [linkingContact, setLinkingContact] = useState(null);
   const openLinkExisting = (contact) => setLinkingContact(contact);
+
+  // Merge state — `mergePair` holds the two contacts to merge. Triggered
+  // either from the bulk-bar (exactly 2 selected) or from the drawer.
+  const [mergePair, setMergePair] = useState(null);
+  const openMergeFromBulkBar = () => {
+    if (selectedIds.size !== 2) return;
+    const ids = [...selectedIds];
+    const a = data.items.find((c) => c.id === ids[0]);
+    const b = data.items.find((c) => c.id === ids[1]);
+    if (a && b) setMergePair({ a, b });
+  };
+  const handleMerged = (result) => {
+    // Remove the loser from the local list and replace the survivor with
+    // the freshly-returned doc so the kanban + drawer reflect the merge
+    // without needing a full reload.
+    setData((d) => ({
+      ...d,
+      items: d.items
+        .filter((c) => c.id !== result.loser_id)
+        .map((c) => c.id === result.survivor_id ? { ...c, ...result.survivor } : c),
+    }));
+    setSelectedIds(new Set());
+    setMergePair(null);
+    setSelected(result.survivor || null);
+  };
   const handleLinked = (franchiseeId) => {
     if (!linkingContact) return;
     setData((d) => ({
@@ -1299,6 +1325,12 @@ export default function ContactsPage() {
             </div>
             <div className="flex-1" />
             <MoveMenu onMove={bulkMove} label="Move selected" testid="bulk-move" currentTab={tab} count={selectedIds.size} />
+            {selectedIds.size === 2 && (
+              <button onClick={openMergeFromBulkBar} data-testid="bulk-merge"
+                className="touch-target px-3 text-xs font-bold uppercase tracking-wider bg-[#D4FF00] text-stone-950 hover:bg-[#BDE600] rounded-lg flex items-center gap-1.5">
+                <GitMerge className="w-3.5 h-3.5" /> Merge these 2
+              </button>
+            )}
             <button onClick={clearSelection} data-testid="bulk-clear"
               className="px-3 py-1 text-xs font-bold uppercase tracking-wider bg-white/10 hover:bg-white/20 text-white rounded-lg flex items-center gap-1">
               <X className="w-3 h-3" /> Clear
@@ -1594,6 +1626,12 @@ export default function ContactsPage() {
         contact={linkingContact}
         onClose={() => setLinkingContact(null)}
         onLinked={handleLinked} />
+      <MergeContactsModal
+        open={!!mergePair}
+        contactA={mergePair?.a}
+        contactB={mergePair?.b}
+        onClose={() => setMergePair(null)}
+        onMerged={handleMerged} />
       <AddContactModal open={addOpen} onClose={() => setAddOpen(false)}
         defaultTarget={tab === "pipeline" ? "franchise" : tab}
         onCreated={(_c, target) => {
