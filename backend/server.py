@@ -1930,27 +1930,27 @@ async def list_contacts(
         q_legacy = None
         q_web["in_pipeline"] = True
     elif tab == "franchise":
-        # ALL franchise enquiries — pipeline membership is now just a tag, not
-        # an exclusion. Pipeline contacts also appear here, so we never lose
-        # track of someone just because they're being actively chased.
-        q_legacy = None
+        # ALL franchise enquiries from BOTH collections. Pipeline membership
+        # is now just a tag, not an exclusion — pipeline contacts also appear
+        # here so we never lose track of someone being actively chased.
+        q_legacy = {"source": "franchise_enquiry"}
         q_web["source"] = "franchise_enquiry"
     elif tab == "licence":
-        # ALL licence enquiries (including those currently in the pipeline).
-        q_legacy = None
+        q_legacy = {"source": "licence_enquiry"}
         q_web["source"] = "licence_enquiry"
     elif tab == "care_home":
-        # Care-home class enquiries — reference-only, not in pipeline.
-        q_legacy = None
+        # Care-home class enquiries from BOTH collections — reference only.
+        q_legacy = {"source": "care_home_enquiry"}
         q_web["source"] = "care_home_enquiry"
     elif tab == "art_kit":
-        # Deliverable Art Kit enquiries — reference-only, not in pipeline.
-        q_legacy = None
+        # Deliverable Art Kit enquiries from BOTH collections — reference only.
+        q_legacy = {"source": "art_kit_enquiry"}
         q_web["source"] = "art_kit_enquiry"
     elif tab == "general":
-        # General + legacy contacts (legacy gets the long-tail of pre-2024
-        # enquiries; web=general_enquiry covers anything new).
-        q_legacy = {}
+        # General = the un-categorised long tail. Legacy rows that were
+        # re-sourced into a specific category (franchise/care_home/art_kit/
+        # licence) are excluded so they only appear in their proper tab.
+        q_legacy = {"source": {"$in": ["legacy_general_enquiry", "general_enquiry", None]}}
         q_web["source"] = "general_enquiry"
     else:
         if source:
@@ -2059,29 +2059,36 @@ async def contact_counts(_: dict = Depends(require_role("admin"))):
     """Total record counts per Contacts tab. Used for the tab-header badges
     so admins can see at a glance where the long-tail of records lives.
 
-    Only counts live (non-merged) rows. Pipeline counts ``in_pipeline=True``
-    web_form rows; each source tab counts the matching ``source`` value;
-    general lumps web ``general_enquiry`` + the entire legacy collection.
+    Only counts live (non-merged) rows. Each non-general tab unions matching
+    rows across both ``web_form_contacts`` and the legacy ``contacts``
+    collection (post-May-2026 re-categorisation). General lumps web
+    ``general_enquiry`` + legacy rows whose source is still the un-tagged
+    ``legacy_general_enquiry`` (or the explicit ``general_enquiry``).
     """
     not_merged = {"merged_into": {"$in": [None, ""]}}
 
     async def _wfc(filt: dict) -> int:
         return await db.web_form_contacts.count_documents({**filt, **not_merged})
 
+    async def _legacy(filt: dict) -> int:
+        return await db.contacts.count_documents({**filt, **not_merged})
+
     pipeline = await _wfc({"in_pipeline": True})
-    franchise = await _wfc({"source": "franchise_enquiry"})
-    licence = await _wfc({"source": "licence_enquiry"})
-    care_home = await _wfc({"source": "care_home_enquiry"})
-    art_kit = await _wfc({"source": "art_kit_enquiry"})
-    web_general = await _wfc({"source": "general_enquiry"})
-    legacy = await db.contacts.count_documents(not_merged)
+    franchise = await _wfc({"source": "franchise_enquiry"}) + await _legacy({"source": "franchise_enquiry"})
+    licence = await _wfc({"source": "licence_enquiry"}) + await _legacy({"source": "licence_enquiry"})
+    care_home = await _wfc({"source": "care_home_enquiry"}) + await _legacy({"source": "care_home_enquiry"})
+    art_kit = await _wfc({"source": "art_kit_enquiry"}) + await _legacy({"source": "art_kit_enquiry"})
+    general = (
+        await _wfc({"source": "general_enquiry"})
+        + await _legacy({"source": {"$in": ["legacy_general_enquiry", "general_enquiry", None]}})
+    )
     return {
         "pipeline": pipeline,
         "franchise": franchise,
         "licence": licence,
         "care_home": care_home,
         "art_kit": art_kit,
-        "general": web_general + legacy,
+        "general": general,
     }
 
 

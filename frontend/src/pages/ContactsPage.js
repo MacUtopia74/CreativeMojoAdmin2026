@@ -990,6 +990,10 @@ export default function ContactsPage() {
   const [search, setSearch] = useState("");
   const [data, setData] = useState({ items: [], total: 0 });
   const [counts, setCounts] = useState({});
+  // Display cap for the LIST view — chunked 500 at a time so we don't shove
+  // 6k+ DOM rows in at once. "Show 500 more" extends until the dataset is
+  // fully visible. Reset whenever the dataset (tab / search / stage) changes.
+  const [displayLimit, setDisplayLimit] = useState(500);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState(null);
@@ -1095,7 +1099,7 @@ export default function ContactsPage() {
   }, [tab, data.items.length]);
 
   // Reset selection whenever the tab/filter changes
-  useEffect(() => { clearSelection(); setAgeFilter("all"); setSourceFilter("all"); }, [tab, stageFilter]);
+  useEffect(() => { clearSelection(); setAgeFilter("all"); setSourceFilter("all"); setDisplayLimit(500); }, [tab, stageFilter, search]);
 
   const moveContact = async (contactId, target, pipeline_status) => {
     try {
@@ -1599,7 +1603,7 @@ export default function ContactsPage() {
               <tbody>
                 {visibleItems.length === 0 ? (
                   <tr><td colSpan={isPipeline ? 8 : 7} className="px-3 py-10 text-center text-sm text-stone-500">No records.</td></tr>
-                ) : visibleItems.slice(0, 500).map((c) => {
+                ) : visibleItems.slice(0, displayLimit).map((c) => {
                   const checked = selectedIds.has(c.id);
                   const age = daysSince(c.date || c.date_added);
                   return (
@@ -1650,8 +1654,35 @@ export default function ContactsPage() {
                 })}
               </tbody>
             </table>
-            {visibleItems.length > 500 && (
-              <div className="px-3 py-2 text-xs text-stone-500 border-t border-stone-100">Showing first 500 of {visibleItems.length.toLocaleString()}.</div>
+            {visibleItems.length > displayLimit && (
+              <div className="px-3 py-3 text-xs text-stone-500 border-t border-stone-100 flex items-center justify-between gap-3 flex-wrap">
+                <span data-testid="list-pagination-status">
+                  Showing first {displayLimit.toLocaleString()} of {visibleItems.length.toLocaleString()}.
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDisplayLimit((n) => Math.min(visibleItems.length, n + 500))}
+                    data-testid="list-show-more"
+                    className="px-3 py-1.5 border border-stone-300 bg-white text-stone-900 text-[11px] font-bold uppercase tracking-wider hover:bg-stone-50 rounded-lg transition-colors flex items-center gap-1.5"
+                  >
+                    Show 500 more
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDisplayLimit(visibleItems.length)}
+                    data-testid="list-show-all"
+                    className="px-3 py-1.5 border border-stone-300 bg-white text-stone-900 text-[11px] font-bold uppercase tracking-wider hover:bg-stone-50 rounded-lg transition-colors"
+                  >
+                    Show all {visibleItems.length.toLocaleString()}
+                  </button>
+                </div>
+              </div>
+            )}
+            {visibleItems.length > 500 && visibleItems.length <= displayLimit && (
+              <div className="px-3 py-2 text-xs text-stone-500 border-t border-stone-100" data-testid="list-pagination-status">
+                Showing all {visibleItems.length.toLocaleString()} records.
+              </div>
             )}
           </div>
         )}
