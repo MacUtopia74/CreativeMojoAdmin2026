@@ -178,7 +178,13 @@ export default function PortalDashboardPage() {
 
       {/* Generous bottom padding on mobile so content isn't hidden behind the
           fixed bottom-tab nav (~70px tall incl. safe-area). */}
-      <main className="max-w-6xl mx-auto px-5 sm:px-6 py-5 sm:py-8 space-y-5 sm:space-y-6 pb-28 md:pb-8">
+      {/* Generous bottom padding on mobile: enough that ANY section can be
+          scrolled to the top of the viewport even when only one panel is
+          expanded. ~75% of viewport height keeps the smallest section
+          (single collapsed pill) anchorable just-below the sticky header.
+          The bottom-tab nav is ~70px so its breathing room (~pb-28) is
+          included inside this larger pb-[75vh]. */}
+      <main className="max-w-6xl mx-auto px-5 sm:px-6 py-5 sm:py-8 space-y-5 sm:space-y-6 pb-[75vh] md:pb-8">
         {err && (
           <div className="px-4 py-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-2xl flex items-center gap-2">
             <AlertCircle className="w-4 h-4" /> {err}

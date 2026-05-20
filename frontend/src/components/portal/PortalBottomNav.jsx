@@ -39,16 +39,33 @@ export default function PortalBottomNav({ onLogout, sectionsRef, onTabSelect, op
   }, [sectionsRef]);
 
   const jumpTo = (id) => {
+    // Whether this click will EXPAND the panel (true) vs COLLAPSE it
+    // (false) — we only scroll on expand, otherwise re-tapping the same
+    // tab would yank the user back to a now-collapsed pill at the top.
+    // HOME always closes everything → no scroll.
+    let willExpand = false;
+    if (id !== "portal-section-home") {
+      willExpand = !openSections[id];
+    }
+
     // Let the parent toggle the corresponding panel (single source of
     // truth for open/closed state).
     onTabSelect && onTabSelect(id);
+
+    if (!willExpand) return;
+
     // Defer scroll by one frame so React commits the new open state and
-    // section heights settle before measuring.
+    // section heights settle before measuring. Use the LIVE sticky-header
+    // height as the scroll offset so the tapped panel lands flush with
+    // the top of the visible area (just under the header) regardless of
+    // font-scale cycling, safe-area-inset, or notch heights.
     requestAnimationFrame(() => {
       const el = document.getElementById(id);
       if (!el) return;
-      const top = el.getBoundingClientRect().top + window.scrollY - 60;
-      window.scrollTo({ top, behavior: "smooth" });
+      const header = document.querySelector("header.sticky");
+      const headerH = header ? header.getBoundingClientRect().height : 56;
+      const top = el.getBoundingClientRect().top + window.scrollY - headerH - 4;
+      window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
     });
   };
 
