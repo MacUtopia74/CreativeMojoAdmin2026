@@ -221,6 +221,14 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
             {"_id": 0, "gravity_entry_id": 1, "first_name": 1, "last_name": 1, "ingested_via": 1},
         ).to_list(len(ids))
         have_by_id = {e["gravity_entry_id"]: e for e in existing_rows}
+
+        # Tombstones — entries an admin explicitly deleted. Never re-insert.
+        tomb_rows = await db.gf_deleted_entries.find(
+            {"gravity_entry_id": {"$in": ids}},
+            {"_id": 0, "gravity_entry_id": 1},
+        ).to_list(len(ids))
+        tombstoned = {t["gravity_entry_id"] for t in tomb_rows}
+
         labels = FIELD_LABELS_BY_FORM.get(form_id, {})
 
         if form_id == 17:
@@ -234,6 +242,11 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
 
         for entry in entries:
             eid = str(entry["id"])
+
+            # Admin-deleted — skip permanently.
+            if eid in tombstoned:
+                logger.info("GF backfill skipping tombstoned entry %s (form %s)", eid, form_id)
+                continue
 
             # Pull field values using the actual live field-ID layout.
             first = (entry.get("9")  or "").strip() or None

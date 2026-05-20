@@ -1280,7 +1280,19 @@ export default function ContactsPage() {
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
             <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="contact-search"
               placeholder="Search…"
-              className="pl-9 pr-3 py-2 w-56 bg-stone-50 border border-stone-300 text-sm focus:outline-none focus:border-stone-900 rounded-lg" />
+              className={`pl-9 ${search ? "pr-9" : "pr-3"} py-2 w-56 bg-stone-50 border border-stone-300 text-sm focus:outline-none focus:border-stone-900 rounded-lg`} />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                data-testid="contact-search-clear"
+                aria-label="Clear search"
+                title="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-stone-400 hover:text-stone-900 hover:bg-stone-200 rounded-md transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
           <button onClick={() => setImportOpen(true)} data-testid="import-csv-button"
             className="px-3 py-2 border border-stone-300 bg-white text-stone-900 text-xs font-bold uppercase tracking-wider hover:bg-stone-50 transition-colors rounded-lg flex items-center gap-1.5">

@@ -34,6 +34,13 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
   - **Supplier keyword filters** on Banking page: 16 seed chips (DENE LODGE, HAZELGATE, etc.) — click-to-filter, add/remove inline, persists in `banking_supplier_keywords`.
 
 
+
+- **GF Delete Tombstones + Contacts Search Clear button** ✅ (May 20 2026)
+  - Bug: Deleted contacts (Paul Caldeira-Dunkerley) kept reappearing in the kanban NEW column because the hourly GF backfill had no memory of admin deletions.
+  - Fix: New `gf_deleted_entries` collection (keyed by `gravity_entry_id`). `DELETE /api/contacts/{id}` now upserts a tombstone row when the contact has a `gravity_entry_id`. Both `POST /api/intake/gravity-forms` (live webhook) and `gf_backfill.run_backfill` consult the tombstone set and skip any matching entry.
+  - UI: Contacts page search input now shows an inline "X" clear button (`data-testid="contact-search-clear"`) whenever the field has a value.
+  - Regression test: `/app/backend/tests/test_gf_tombstones.py` (seeds a fake GF contact, deletes via API, asserts tombstone created, asserts subsequent webhook POST returns `{"skipped":"tombstoned"}`).
+
 - **Mojo Portal — mobile-first redesign (Option B)** ✅ (May 20 2026)
   - **PWA foundation**: `index.html` updated with `viewport-fit=cover, maximum-scale=5`, `apple-mobile-web-app-capable=yes`, `apple-mobile-web-app-title=Mojo Portal`, `format-detection=telephone=no`. New `public/manifest.json` (name="Creative Mojo Portal", short_name="Mojo Portal", standalone display, `start_url=/portal`). Apple touch icon link.
   - **Safe-area-insets utility classes** in `index.css`: `pb-safe`, `pt-safe`, `pl-safe`, `pr-safe`, `mb-safe` (use `max(0.5rem, env(safe-area-inset-bottom, 0.5rem))`). New `touch-target` utility = 44×44px min (WCAG / Apple HIG). New `ios-no-zoom` utility = `font-size: 16px` (prevents iOS Safari input zoom).

@@ -684,6 +684,16 @@ async def gravity_forms_intake(payload: GravityFormsIntake, request: Request):
     source = FORM_ID_TO_SOURCE.get(payload.form_id, f"form_{payload.form_id}")
     f = payload.fields or {}
 
+    # Tombstone guard — admin deleted this entry; don't recreate it.
+    if payload.entry_id:
+        tomb = await db.gf_deleted_entries.find_one(
+            {"gravity_entry_id": str(payload.entry_id)}, {"_id": 0, "gravity_entry_id": 1}
+        )
+        if tomb:
+            logger.info("Intake: skipping tombstoned entry %s (form %s)",
+                        payload.entry_id, payload.form_id)
+            return {"ok": True, "skipped": "tombstoned", "entry_id": payload.entry_id}
+
     in_pipeline = payload.form_id in FORM_IDS_IN_PIPELINE
 
     doc = {
@@ -2504,13 +2514,42 @@ async def merge_contacts(
 
 
 @api.delete("/contacts/{contact_id}")
-async def delete_contact(contact_id: str, _: dict = Depends(require_role("admin"))):
-    """Permanently delete a contact from either collection."""
+async def delete_contact(contact_id: str, user: dict = Depends(require_role("admin"))):
+    """Permanently delete a contact from either collection.
+
+    If the contact originated from a Gravity Forms submission, also writes a
+    tombstone row to ``gf_deleted_entries`` so the hourly backfill (and the
+    live webhook) skip re-creating it on the next cycle.
+    """
+    # Capture the source entry id BEFORE deleting so we can tombstone it.
+    existing = await db.web_form_contacts.find_one(
+        {"id": contact_id},
+        {"_id": 0, "gravity_entry_id": 1, "form_id": 1, "email": 1,
+         "first_name": 1, "last_name": 1},
+    )
     r = await db.web_form_contacts.delete_one({"id": contact_id})
     if r.deleted_count == 0:
         r = await db.contacts.delete_one({"id": contact_id})
     if r.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Contact not found")
+
+    if existing and existing.get("gravity_entry_id"):
+        try:
+            await db.gf_deleted_entries.update_one(
+                {"gravity_entry_id": str(existing["gravity_entry_id"])},
+                {"$set": {
+                    "gravity_entry_id": str(existing["gravity_entry_id"]),
+                    "form_id": existing.get("form_id"),
+                    "email": existing.get("email"),
+                    "name": f"{existing.get('first_name') or ''} {existing.get('last_name') or ''}".strip() or None,
+                    "deleted_at": datetime.now(timezone.utc).isoformat(),
+                    "deleted_by": user.get("email"),
+                }},
+                upsert=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to tombstone gravity_entry_id=%s: %s",
+                           existing.get("gravity_entry_id"), exc)
     return {"ok": True}
 
 
