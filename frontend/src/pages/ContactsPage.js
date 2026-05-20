@@ -1022,9 +1022,24 @@ export default function ContactsPage() {
       const next = new Set(prev);
       // Shift-click: extend the live selection from the anchor (last clicked checkbox)
       // up to the current one. Only triggers when the anchor is still selected — otherwise
-      // fall through to single-toggle.
+      // fall through to single-toggle. In the kanban view the range must be scoped to
+      // a SINGLE stage so a shift-click in NEW doesn't pull cards in from INTERESTED /
+      // TERRITORY MAP etc. (visibleItems otherwise interleaves stages).
       if (evt && evt.shiftKey && lastSelectedId && lastSelectedId !== id && next.has(lastSelectedId)) {
-        const ids = visibleItems.map((c) => c.id);
+        let rangeItems = visibleItems;
+        if (view === "pipeline") {
+          const anchor = visibleItems.find((c) => c.id === lastSelectedId);
+          const target = visibleItems.find((c) => c.id === id);
+          const anchorStage = (anchor?.pipeline_status && STAGE_MAP[anchor.pipeline_status]) ? anchor.pipeline_status : "new";
+          const targetStage = (target?.pipeline_status && STAGE_MAP[target.pipeline_status]) ? target.pipeline_status : "new";
+          if (anchorStage !== targetStage) {
+            // Cross-column shift — refuse to extend; fall through to single toggle.
+            if (next.has(id)) next.delete(id); else next.add(id);
+            return next;
+          }
+          rangeItems = (grouped[anchorStage] || []);
+        }
+        const ids = rangeItems.map((c) => c.id);
         const a = ids.indexOf(lastSelectedId);
         const b = ids.indexOf(id);
         if (a !== -1 && b !== -1) {

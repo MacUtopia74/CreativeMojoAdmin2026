@@ -34,6 +34,10 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
   - **Supplier keyword filters** on Banking page: 16 seed chips (DENE LODGE, HAZELGATE, etc.) — click-to-filter, add/remove inline, persists in `banking_supplier_keywords`.
 
 
+- **Pipeline kanban — shift-select bug fix** ✅ (May 20 2026)
+  - Bug: shift-clicking checkboxes in the NEW column also selected unrelated cards in INTERESTED / TERRITORY MAP / etc. Root cause: `toggleSelect` walked the range through `visibleItems` (all stages interleaved) rather than the column-specific list.
+  - Fix: when in pipeline view, the shift-range is now scoped to `grouped[anchorStage]`. If the anchor and target are in DIFFERENT stages, the shift modifier is ignored and only the single target is toggled.
+
 - **Sales Pipeline — Form 1 ("Contact Form") now ingested + Lucy Cook mandate linked** ✅ (May 20 2026)
   - **Bug 1**: Clare Shannon (and Paul Caldeira-Dunkerley etc.) were submitted via the general /contact/ form (`form_id=1`) and selected "Franchise enquiry" in the dropdown. We never ingested form 1 — only forms 17/32 — so 21 franchise enquiries were silently lost.
     - Fix: added form 1 to `GF_BACKFILL_FORM_IDS=1,17,32`, extended `FIELD_LABELS_BY_FORM` to map its layout (field 9/12/4/5/13/14/15/16/21/20/6), added `FORM1_REASON_TO_SOURCE` so the "Reason for contacting" dropdown (field 20) drives source assignment: "Franchise enquiry" → `franchise_enquiry`, "Licence enquiry" → `licence_enquiry`, anything else (care-home, art-kit, other) → `general_enquiry` (ingested into CRM but stays OUT of pipeline kanban). Field 21 → `establishment_name`. `pipeline_status="new"` only set when reason is franchise/licence.
