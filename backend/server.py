@@ -930,6 +930,79 @@ async def list_franchisees(
     return {"items": items, "total": await db.franchisees.count_documents(q)}
 
 
+@api.get("/franchisees/alerts/missing-mandate")
+async def list_franchisees_missing_mandate(
+    days: int = 14,
+    _: dict = Depends(require_role("admin")),
+):
+    """Active franchisees who went live ≥ ``days`` ago but still have no
+    GoCardless mandate linked. Surfaces as a red badge on the sidebar so the
+    admin notices the gap quickly. "Went live" = earliest contract's
+    ``commencement_date`` (fallbacks to ``date_added``/``created_at``).
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(days=max(1, int(days)))
+    cutoff_iso = cutoff.date().isoformat()
+
+    # Pull active franchisees with no mandate. "Active" is encoded a few
+    # different ways in legacy data (status, tags) — match generously.
+    base_query = {
+        "$and": [
+            {"$or": [
+                {"status": {"$regex": "^active", "$options": "i"}},
+                {"tags": "Franchisee"},
+            ]},
+            {"$or": [
+                {"gocardless_mandate_id": None},
+                {"gocardless_mandate_id": ""},
+                {"gocardless_mandate_id": {"$exists": False}},
+            ]},
+        ]
+    }
+    candidates = await db.franchisees.find(
+        base_query,
+        {"_id": 0, "id": 1, "first_name": 1, "last_name": 1, "organisation": 1,
+         "franchise_number": 1, "email": 1, "mojo_email": 1, "postcode": 1,
+         "date_added": 1, "created_at": 1, "status": 1},
+    ).to_list(500)
+    if not candidates:
+        return {"count": 0, "items": [], "threshold_days": days}
+
+    # Bulk-fetch the earliest commencement date per franchisee in one go.
+    ids = [c["id"] for c in candidates]
+    commences = await db.contracts.aggregate([
+        {"$match": {"franchisee_id": {"$in": ids}, "commencement_date": {"$ne": None}}},
+        {"$group": {"_id": "$franchisee_id", "first_commencement": {"$min": "$commencement_date"}}},
+    ]).to_list(len(ids))
+    start_by_id = {r["_id"]: r["first_commencement"] for r in commences}
+
+    items: list[dict] = []
+    for f in candidates:
+        start = start_by_id.get(f["id"]) or f.get("date_added") or f.get("created_at")
+        if not start:
+            continue
+        start_str = str(start)[:10]
+        if start_str > cutoff_iso:
+            continue  # too recent — give them grace period
+        try:
+            went_live = datetime.fromisoformat(start_str)
+        except ValueError:
+            continue
+        days_live = (datetime.now(timezone.utc).date() - went_live.date()).days
+        items.append({
+            "id": f["id"],
+            "name": " ".join(filter(None, [f.get("first_name"), f.get("last_name")])).strip() or "(no name)",
+            "organisation": f.get("organisation"),
+            "franchise_number": f.get("franchise_number"),
+            "email": f.get("mojo_email") or f.get("email"),
+            "postcode": f.get("postcode"),
+            "went_live_at": start_str,
+            "days_live": days_live,
+        })
+    # Most overdue first
+    items.sort(key=lambda x: -x["days_live"])
+    return {"count": len(items), "items": items, "threshold_days": days}
+
+
 @api.get("/franchisees/{franchisee_id}")
 async def get_franchisee(franchisee_id: str, _: dict = Depends(require_role("admin"))):
     f = await db.franchisees.find_one({"id": franchisee_id}, {"_id": 0})

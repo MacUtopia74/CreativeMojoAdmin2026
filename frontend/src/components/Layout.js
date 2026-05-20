@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import Logo from "@/components/Logo";
+import api from "@/lib/api";
 import {
   LayoutDashboard,
   Users,
@@ -22,7 +23,7 @@ import {
   KeyRound,
   ShoppingBag,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 // Primary nav — appears at the top of the sidebar.
 const NAV = [
@@ -47,7 +48,7 @@ const ADMIN_NAV = [
   { to: "/admin/users", label: "Admin Users", icon: KeyRound, testid: "nav-admin-users" },
 ];
 
-function NavItem({ to, label, icon: Icon, testid }) {
+function NavItem({ to, label, icon: Icon, testid, badge }) {
   return (
     <NavLink
       to={to}
@@ -62,7 +63,15 @@ function NavItem({ to, label, icon: Icon, testid }) {
       }
     >
       <Icon className="w-4 h-4" strokeWidth={2} />
-      {label}
+      <span className="flex-1">{label}</span>
+      {badge != null && badge > 0 && (
+        <span
+          data-testid={`${testid}-badge`}
+          title={badge === 1 ? "1 alert" : `${badge} alerts`}
+          className="shrink-0 min-w-[20px] h-5 px-1.5 inline-flex items-center justify-center rounded-full bg-red-600 text-white text-[10px] font-bold tabular-nums shadow-sm">
+          {badge > 99 ? "99+" : badge}
+        </span>
+      )}
     </NavLink>
   );
 }
@@ -88,6 +97,23 @@ export default function Layout() {
     navigate("/login");
   };
 
+  // Poll for the "missing GoCardless mandate" alert count. Cheap aggregation
+  // server-side so we can re-fetch every 5 min without worry. The endpoint
+  // is admin-only and silently 401s for non-admins — we just ignore errors.
+  const [missingMandateCount, setMissingMandateCount] = useState(0);
+  useEffect(() => {
+    let active = true;
+    const fetchAlerts = async () => {
+      try {
+        const { data } = await api.get("/franchisees/alerts/missing-mandate");
+        if (active) setMissingMandateCount(data?.count || 0);
+      } catch {/* ignore — non-admin or transient */}
+    };
+    fetchAlerts();
+    const id = setInterval(fetchAlerts, 5 * 60 * 1000);
+    return () => { active = false; clearInterval(id); };
+  }, [user?.email]);
+
   return (
     <div className="min-h-screen flex bg-[#F9F9F8]">
       {/* Sidebar */}
@@ -99,7 +125,10 @@ export default function Layout() {
 
         <nav className="flex-1 py-4 overflow-y-auto">
           {NAV.map((item) => (
-            <NavItem key={item.to} {...item} />
+            <NavItem
+              key={item.to}
+              {...item}
+              badge={item.to === "/franchisees" ? missingMandateCount : undefined} />
           ))}
 
           {/* Admin group — collapsible, sits at the bottom of the nav list */}

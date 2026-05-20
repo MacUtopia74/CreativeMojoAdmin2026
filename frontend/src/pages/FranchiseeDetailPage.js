@@ -33,23 +33,41 @@ const MANDATE_LABELS = {
   consumed: "Consumed",
   unknown: "Unknown",
 };
+// GoCardless dashboard links — clickable everywhere we display a mandate so
+// the admin can jump straight to the live record on manage.gocardless.com.
+const GOCARDLESS_SIGN_IN = "https://manage.gocardless.com/sign-in";
+const gcMandateUrl = (mandateId) =>
+  mandateId ? `https://manage.gocardless.com/mandates/${mandateId}` : GOCARDLESS_SIGN_IN;
+
 function MandatePill({ franchisee }) {
   const s = franchisee.gocardless_mandate_status;
   if (!franchisee.gocardless_mandate_id && !s) {
     return (
       <>
         <div className="font-display text-base text-stone-400 mt-1">Not linked</div>
-        <div className="text-[10px] text-stone-400 mt-0.5">Run GoCardless sync</div>
+        <a
+          href={GOCARDLESS_SIGN_IN}
+          target="_blank"
+          rel="noopener noreferrer"
+          data-testid="mandate-setup-link"
+          className="text-[10px] text-stone-500 underline hover:text-stone-900 mt-0.5 inline-flex items-center gap-1">
+          Set up in GoCardless ↗
+        </a>
       </>
     );
   }
   const style = MANDATE_STYLES[s] || MANDATE_STYLES.unknown;
   return (
     <>
-      <span data-testid="mandate-pill"
-        className={`inline-block mt-1 px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider border rounded-md ${style}`}>
-        {MANDATE_LABELS[s] || s || "Unknown"}
-      </span>
+      <a
+        href={gcMandateUrl(franchisee.gocardless_mandate_id)}
+        target="_blank"
+        rel="noopener noreferrer"
+        data-testid="mandate-pill"
+        title={`Open mandate ${franchisee.gocardless_mandate_id || ""} on GoCardless`}
+        className={`inline-block mt-1 px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider border rounded-md hover:opacity-80 transition-opacity ${style}`}>
+        {MANDATE_LABELS[s] || s || "Unknown"} ↗
+      </a>
       {franchisee.gocardless_mandate_reference && (
         <div className="text-[10px] text-stone-500 mt-0.5 tabular-nums truncate">{franchisee.gocardless_mandate_reference}</div>
       )}
@@ -213,7 +231,17 @@ function GoCardlessPanel({ franchisee, onRefreshed }) {
             </div>
           </div>
           <div className="text-[10px] text-stone-400 tabular-nums">
-            GC Customer: {f.gocardless_customer_id || "—"} · Mandate: {f.gocardless_mandate_id || "—"}
+            GC Customer: {f.gocardless_customer_id ? (
+              <a href={`https://manage.gocardless.com/customers/${f.gocardless_customer_id}`}
+                 target="_blank" rel="noopener noreferrer"
+                 data-testid="gc-customer-link"
+                 className="underline hover:text-stone-900">{f.gocardless_customer_id} ↗</a>
+            ) : "—"} · Mandate: {f.gocardless_mandate_id ? (
+              <a href={gcMandateUrl(f.gocardless_mandate_id)}
+                 target="_blank" rel="noopener noreferrer"
+                 data-testid="gc-mandate-link"
+                 className="underline hover:text-stone-900">{f.gocardless_mandate_id} ↗</a>
+            ) : "—"}
             {f.gocardless_synced_at && <> · Synced {formatDate(f.gocardless_synced_at)}</>}
           </div>
           {err && (

@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import api from "@/lib/api";
-import { Search, AlertCircle, RefreshCw, CreditCard, CheckCircle2, X } from "lucide-react";
+import { Search, AlertCircle, RefreshCw, CreditCard, CheckCircle2, X, ChevronDown } from "lucide-react";
 import { formatDate } from "@/lib/date";
 
 // Live GoCardless mandate pill — mirrors the one on FranchiseeDetailPage so the
@@ -34,11 +34,20 @@ function MandateCell({ franchisee }) {
     }
     return <span className="text-stone-300 text-xs">—</span>;
   }
+  const href = franchisee.gocardless_mandate_id
+    ? `https://manage.gocardless.com/mandates/${franchisee.gocardless_mandate_id}`
+    : "https://manage.gocardless.com/sign-in";
   return (
-    <span data-testid={`mandate-${franchisee.id}`}
-      className={`inline-block px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-md ${MANDATE_STYLE[s] || "bg-stone-100 text-stone-600 border-stone-200"}`}>
-      {MANDATE_LABEL[s] || s}
-    </span>
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={(e) => e.stopPropagation()}
+      data-testid={`mandate-${franchisee.id}`}
+      title={franchisee.gocardless_mandate_id ? `Open ${franchisee.gocardless_mandate_id} on GoCardless` : "Open GoCardless"}
+      className={`inline-block px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-md hover:opacity-80 transition-opacity ${MANDATE_STYLE[s] || "bg-stone-100 text-stone-600 border-stone-200"}`}>
+      {MANDATE_LABEL[s] || s} ↗
+    </a>
   );
 }
 
@@ -172,6 +181,8 @@ export default function FranchiseesPage() {
   const [sortBy, setSortBy] = useState("franchise_number");
   const [sortDir, setSortDir] = useState(1);
   const [gcSyncOpen, setGcSyncOpen] = useState(false);
+  const [missingMandate, setMissingMandate] = useState({ count: 0, items: [], threshold_days: 14 });
+  const [missingMandateExpanded, setMissingMandateExpanded] = useState(false);
   const reload = async () => {
     try {
       const { data } = await api.get("/franchisees", { params: { limit: 500, sort_by: "franchise_number", sort_dir: 1 } });
@@ -191,6 +202,10 @@ export default function FranchiseesPage() {
         setLoading(false);
       }
     })();
+    // Missing-mandate alerts — loaded in parallel, non-blocking.
+    api.get("/franchisees/alerts/missing-mandate")
+      .then(({ data }) => setMissingMandate(data || { count: 0, items: [], threshold_days: 14 }))
+      .catch(() => {/* non-fatal */});
   }, []);
 
   // Segment counts
@@ -261,6 +276,64 @@ export default function FranchiseesPage() {
       </div>
 
       <GoCardlessSyncModal open={gcSyncOpen} onClose={() => setGcSyncOpen(false)} onCommitted={reload} />
+
+      {missingMandate.count > 0 && (
+        <div className="px-8 pt-6" data-testid="missing-mandate-banner">
+          <div className="border border-red-300 bg-red-50 rounded-2xl overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setMissingMandateExpanded((v) => !v)}
+              data-testid="missing-mandate-toggle"
+              className="w-full flex items-center justify-between gap-3 px-5 py-3 hover:bg-red-100/40 transition-colors text-left">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <span className="shrink-0 w-7 h-7 rounded-full bg-red-600 text-white flex items-center justify-center text-xs font-bold tabular-nums">
+                  {missingMandate.count}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-red-700">GoCardless mandate missing</div>
+                  <div className="text-sm font-semibold text-red-900 truncate">
+                    {missingMandate.count === 1
+                      ? "1 active franchisee has been live ≥ "
+                      : `${missingMandate.count} active franchisees have been live ≥ `}
+                    {missingMandate.threshold_days || 14} days without a Direct Debit mandate.
+                  </div>
+                </div>
+              </div>
+              <ChevronDown className={`w-4 h-4 text-red-700 transition-transform ${missingMandateExpanded ? "rotate-180" : ""}`} />
+            </button>
+            {missingMandateExpanded && (
+              <div className="border-t border-red-200 divide-y divide-red-200/60" data-testid="missing-mandate-list">
+                {missingMandate.items.map((m) => (
+                  <div key={m.id} className="flex items-center gap-3 px-5 py-2.5 hover:bg-red-100/40">
+                    <div className="flex-1 min-w-0">
+                      <Link
+                        to={`/franchisees/${m.id}`}
+                        data-testid={`missing-mandate-row-${m.id}`}
+                        className="font-semibold text-stone-950 hover:underline text-sm truncate">
+                        {m.name}{m.franchise_number ? ` · #${m.franchise_number}` : ""}
+                      </Link>
+                      <div className="text-xs text-stone-600 truncate">
+                        {[m.organisation, m.email, m.postcode].filter(Boolean).join(" · ")}
+                      </div>
+                    </div>
+                    <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-red-700 bg-red-100 border border-red-200 px-2 py-0.5 rounded-md tabular-nums">
+                      Live {m.days_live}d · No mandate
+                    </span>
+                    <a
+                      href="https://manage.gocardless.com/sign-in"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      data-testid={`missing-mandate-gc-${m.id}`}
+                      className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-stone-900 bg-white border border-stone-300 hover:bg-stone-50 px-2 py-1 rounded-md">
+                      Open GoCardless ↗
+                    </a>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Segment tabs */}
       <div className="px-8 pt-6">

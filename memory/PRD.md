@@ -34,6 +34,13 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
   - **Supplier keyword filters** on Banking page: 16 seed chips (DENE LODGE, HAZELGATE, etc.) — click-to-filter, add/remove inline, persists in `banking_supplier_keywords`.
 
 
+- **GoCardless mandate links + missing-mandate alert** ✅ (May 20 2026)
+  - Every live mandate pill now opens the GoCardless dashboard in a new tab (`https://manage.gocardless.com/mandates/{id}`). Applies to the Franchisees list table cell, the franchisee detail KPI tile, and the GoCardless panel debug line. GC customer IDs are also clickable (`/customers/{id}`).
+  - If a franchisee has NO mandate, the pill is replaced by a `Set up in GoCardless ↗` link to `https://manage.gocardless.com/sign-in`.
+  - New backend endpoint `GET /api/franchisees/alerts/missing-mandate?days=14` returns count + list of active franchisees who went live ≥ 14 days ago but have no `gocardless_mandate_id`. "Went live" = earliest contract `commencement_date` (with `date_added`/`created_at` fallback).
+  - **Sidebar red badge** on the "Franchisees" nav item showing the count (auto-refreshes every 5 minutes). Tap the badge → land on the Franchisees page which shows a red expandable banner at the top listing every offending franchisee with `Live {Nd} · No mandate` chip + direct `OPEN GOCARDLESS ↗` button.
+  - Currently flagging 2 active franchisees: Lucy Cook #0061 (live 2545d, no mandate) and Monica Diodato #0094 (live 41d, no mandate).
+
 - **Sales Pipeline — Dormant stage + collapsible columns + editable Notes** ✅ (May 20 2026)
   - **New "Dormant" stage** (orange) between Territory Map and Lost — for leads who were interested and almost came on board but didn't quite make it. Available to BOTH franchise and licence contacts (unlike `demo_booked`/`converted` which stay franchise-only). Added to `PIPELINE_STAGES` on backend + dashboard funnel.
   - **Collapsible columns** — kanban switched from `grid grid-cols-6` to `flex` layout. Each column header has a `«` collapse button; collapsed columns become a narrow 40px-wide vertical strip with a rotated label + count. State persists in `localStorage.pipelineCollapsedStages`. Keeps the 7-column layout usable on a 1920 viewport even when 2-3 columns are open.
