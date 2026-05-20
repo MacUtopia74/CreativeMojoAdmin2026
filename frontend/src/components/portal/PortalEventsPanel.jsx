@@ -102,7 +102,7 @@ export default function PortalEventsPanel({ open, onToggle }) {
       <button
         onClick={onToggle}
         data-testid="toggle-events"
-        className={`w-full flex items-center justify-between gap-3 ${open ? "hover:bg-stone-50" : "hover:bg-stone-200"} transition-colors px-6 py-4`}
+        className={`touch-target w-full flex items-center justify-between gap-3 ${open ? "hover:bg-stone-50" : "hover:bg-stone-200"} transition-colors px-4 sm:px-6 py-3.5 sm:py-4`}
       >
         <div className="flex items-center gap-2 min-w-0">
           <CalendarDays className="w-4 h-4 text-stone-700 shrink-0" />
@@ -110,12 +110,12 @@ export default function PortalEventsPanel({ open, onToggle }) {
             Events
           </span>
           {!open && nextEvent && (
-            <span className="text-xs text-stone-500 truncate ml-1">
+            <span className="hidden sm:inline text-xs text-stone-500 truncate ml-1">
               · Next: <strong className="text-stone-800">{nextEvent.title}</strong> · {ukDate(nextEvent.start)}{!nextEvent.all_day && ` at ${ukTime(nextEvent.start)}`}
             </span>
           )}
           {!open && nextEvent?.meeting_url && (
-            <span className="ml-2 inline-flex items-center gap-1 text-[10px] uppercase tracking-wider font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
+            <span className="ml-2 hidden sm:inline-flex items-center gap-1 text-[10px] uppercase tracking-wider font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
               <Video className="w-3 h-3" /> Teams link
             </span>
           )}
@@ -125,12 +125,12 @@ export default function PortalEventsPanel({ open, onToggle }) {
         </span>
       </button>
       {open && (
-        <div className="px-6 pb-6 space-y-4">
+        <div className="px-4 sm:px-6 pb-5 sm:pb-6 space-y-4">
           <div className="flex items-center justify-between gap-3 flex-wrap">
-            <p className="text-sm text-stone-600">
+            <p className="text-sm text-stone-600 max-w-md">
               {viewMode === "list"
-                ? "Upcoming events from HQ. Click Join meeting on any session to open the Teams link."
-                : "Click any event in the grid to see details and join the meeting."}
+                ? "Upcoming events from HQ. Tap Join to open the Teams link."
+                : "Tap any event to see details and join."}
             </p>
             <div className="flex items-center gap-2 flex-wrap">
               {/* List / Calendar view toggle — mirrors the admin Calendar
@@ -228,10 +228,10 @@ export default function PortalEventsPanel({ open, onToggle }) {
                 return (
                   <li
                     key={ev.id}
-                    className={`px-4 py-3 flex items-start gap-3 ${past ? "bg-stone-50/60" : ""}`}
+                    className={`px-3 sm:px-4 py-3 flex items-start gap-3 flex-wrap sm:flex-nowrap ${past ? "bg-stone-50/60" : ""}`}
                     data-testid={`portal-event-${ev.id}`}
                   >
-                    <div className="shrink-0 w-16 text-center pt-0.5">
+                    <div className="shrink-0 w-14 sm:w-16 text-center pt-0.5">
                       <div className="text-[10px] uppercase tracking-wider font-bold text-stone-500">
                         {new Date(ev.start).toLocaleDateString(UK, { month: "short" })}
                       </div>
@@ -240,7 +240,7 @@ export default function PortalEventsPanel({ open, onToggle }) {
                       </div>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-stone-900 truncate">{ev.title}</div>
+                      <div className="font-semibold text-stone-900 leading-tight">{ev.title}</div>
                       <div className="text-xs text-stone-500 mt-0.5 flex items-center gap-3 flex-wrap">
                         <span className="inline-flex items-center gap-1">
                           <Clock className="w-3 h-3" />
@@ -267,7 +267,7 @@ export default function PortalEventsPanel({ open, onToggle }) {
                         target="_blank"
                         rel="noreferrer"
                         data-testid={`portal-event-join-${ev.id}`}
-                        className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-2 text-[11px] font-bold uppercase tracking-wider rounded-lg transition ${
+                        className={`touch-target shrink-0 w-full sm:w-auto justify-center inline-flex items-center gap-1.5 px-3 text-[11px] font-bold uppercase tracking-wider rounded-lg transition ${
                           isTeamsLink
                             ? "bg-blue-600 hover:bg-blue-700 text-white"
                             : "bg-stone-950 hover:bg-stone-800 text-white"

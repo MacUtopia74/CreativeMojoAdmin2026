@@ -60,7 +60,7 @@ export default function PortalLoginPage() {
   };
 
   return (
-    <div className="min-h-screen grid lg:grid-cols-2 bg-[#FBFAF8]" data-testid="portal-login-page">
+    <div className="min-h-screen grid lg:grid-cols-2 bg-[#FBFAF8] pl-safe pr-safe pt-safe pb-safe" data-testid="portal-login-page">
       {/* Hero side */}
       <div className="hidden lg:flex relative bg-stone-950 overflow-hidden">
         <div className="absolute inset-0 opacity-30"
@@ -85,19 +85,20 @@ export default function PortalLoginPage() {
       </div>
 
       {/* Form side */}
-      <div className="flex flex-col justify-center px-6 sm:px-12 lg:px-20 py-10">
+      <div className="flex flex-col justify-center px-5 sm:px-12 lg:px-20 py-8 sm:py-10">
         <div className="w-full max-w-sm mx-auto">
-          <div className="lg:hidden mb-10">
-            <Logo className="h-12" />
+          <div className="lg:hidden mb-8 flex flex-col items-center">
+            <Logo className="h-12 mb-4" />
+            <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">Franchisee Portal</div>
           </div>
 
-          <div className="text-[11px] uppercase tracking-[0.3em] font-bold text-stone-500 mb-2">Franchisee Portal</div>
-          <h2 className="font-display text-3xl text-stone-950 mb-1">
+          <div className="hidden lg:block text-[11px] uppercase tracking-[0.3em] font-bold text-stone-500 mb-2">Franchisee Portal</div>
+          <h2 className="font-display text-2xl sm:text-3xl text-stone-950 mb-1 text-center lg:text-left">
             {step === "email" && "Welcome"}
             {step === "setup" && (isReset ? "Set a new password" : "Create your password")}
             {step === "login" && "Welcome back"}
           </h2>
-          <p className="text-sm text-stone-500 mb-8">
+          <p className="text-sm text-stone-500 mb-7 sm:mb-8 text-center lg:text-left">
             {step === "email" && "Enter your Creative Mojo email to begin."}
             {step === "setup" && (isReset
               ? `Your administrator has reset your password. Choose a new one for ${email}.`
@@ -115,13 +116,13 @@ export default function PortalLoginPage() {
             <form onSubmit={submitEmail} className="space-y-4">
               <div>
                 <label className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-1.5 block">Email</label>
-                <input type="email" required autoFocus value={email}
+                <input type="email" required autoFocus value={email} autoComplete="username" inputMode="email"
                   onChange={(e) => setEmail(e.target.value)}
                   data-testid="portal-email"
-                  className="w-full px-3.5 py-2.5 bg-white border border-stone-300 rounded-lg text-sm focus:outline-none focus:border-stone-950" />
+                  className="w-full px-3.5 py-3 ios-no-zoom bg-white border border-stone-300 rounded-lg focus:outline-none focus:border-stone-950" />
               </div>
               <button type="submit" disabled={busy || !email} data-testid="portal-email-submit"
-                className="w-full px-4 py-2.5 bg-stone-950 text-white text-xs font-bold uppercase tracking-wider rounded-lg flex items-center justify-center gap-2 hover:bg-stone-800 disabled:opacity-50">
+                className="touch-target w-full px-4 bg-stone-950 text-white text-xs font-bold uppercase tracking-wider rounded-lg flex items-center justify-center gap-2 hover:bg-stone-800 disabled:opacity-50">
                 {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Continue <ArrowRight className="w-3.5 h-3.5" /></>}
               </button>
             </form>
@@ -135,11 +136,13 @@ export default function PortalLoginPage() {
                 </label>
                 <div className="relative">
                   <input type={showPw ? "text" : "password"} required autoFocus minLength={8} value={password}
+                    autoComplete={step === "setup" ? "new-password" : "current-password"}
                     onChange={(e) => setPassword(e.target.value)}
                     data-testid="portal-password"
-                    className="w-full pr-10 px-3.5 py-2.5 bg-white border border-stone-300 rounded-lg text-sm focus:outline-none focus:border-stone-950" />
+                    className="w-full pr-12 px-3.5 py-3 ios-no-zoom bg-white border border-stone-300 rounded-lg focus:outline-none focus:border-stone-950" />
                   <button type="button" onClick={() => setShowPw((s) => !s)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700">
+                    aria-label={showPw ? "Hide password" : "Show password"}
+                    className="touch-target absolute right-1 top-1/2 -translate-y-1/2 flex items-center justify-center text-stone-400 hover:text-stone-700">
                     {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
@@ -150,14 +153,14 @@ export default function PortalLoginPage() {
               {step === "setup" && (
                 <div>
                   <label className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-1.5 block">Confirm Password</label>
-                  <input type={showPw ? "text" : "password"} required minLength={8} value={confirm}
+                  <input type={showPw ? "text" : "password"} required minLength={8} value={confirm} autoComplete="new-password"
                     onChange={(e) => setConfirm(e.target.value)}
                     data-testid="portal-confirm"
-                    className="w-full px-3.5 py-2.5 bg-white border border-stone-300 rounded-lg text-sm focus:outline-none focus:border-stone-950" />
+                    className="w-full px-3.5 py-3 ios-no-zoom bg-white border border-stone-300 rounded-lg focus:outline-none focus:border-stone-950" />
                 </div>
               )}
               <button type="submit" disabled={busy || !password} data-testid="portal-pw-submit"
-                className="w-full px-4 py-2.5 bg-stone-950 text-white text-xs font-bold uppercase tracking-wider rounded-lg flex items-center justify-center gap-2 hover:bg-stone-800 disabled:opacity-50">
+                className="touch-target w-full px-4 bg-stone-950 text-white text-xs font-bold uppercase tracking-wider rounded-lg flex items-center justify-center gap-2 hover:bg-stone-800 disabled:opacity-50">
                 {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : (
                   step === "setup"
                     ? (isReset ? "Submit new password" : "Create account")
@@ -171,14 +174,14 @@ export default function PortalLoginPage() {
                     type="button"
                     onClick={() => setShowForgot(true)}
                     data-testid="portal-forgot-password-link"
-                    className="text-stone-700 font-bold hover:underline underline-offset-2"
+                    className="touch-target text-stone-700 font-bold hover:underline underline-offset-2 px-3"
                   >
                     Forgot your password?
                   </button>
                 </div>
               )}
               <button type="button" onClick={() => { setStep("email"); setPassword(""); setConfirm(""); setErr(""); }}
-                className="w-full text-[11px] text-stone-500 hover:text-stone-900 mt-2">
+                className="touch-target w-full text-[11px] text-stone-500 hover:text-stone-900 mt-2">
                 ← Use a different email
               </button>
             </form>

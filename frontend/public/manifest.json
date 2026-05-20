@@ -1,0 +1,15 @@
+{
+  "name": "Creative Mojo Portal",
+  "short_name": "Mojo Portal",
+  "description": "Files, contracts, calendar and territory map for Creative Mojo franchisees.",
+  "start_url": "/portal",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#FBFAF8",
+  "theme_color": "#0c0a09",
+  "orientation": "portrait-primary",
+  "categories": ["business", "productivity"],
+  "icons": [
+    { "src": "/favicon.ico", "sizes": "any", "type": "image/x-icon" }
+  ]
+}

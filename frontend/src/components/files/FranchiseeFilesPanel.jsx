@@ -137,52 +137,55 @@ export default function FranchiseeFilesPanel({ franchisee, canUpload = true }) {
       </div>
 
       <div className="space-y-4 pt-5">
-        {/* Tab strip — large, pill-shaped, very clearly two selectable sections */}
-        <div className="flex items-center gap-2 flex-wrap" data-testid="franchisee-files-tabs" role="tablist">
+        {/* Tab strip — horizontally scrollable on phones so neither tab
+            shrinks awkwardly. Mobile-first padding + 44px tap target. */}
+        <div className="flex items-center gap-2 -mx-1 px-1 overflow-x-auto scrollbar-none" data-testid="franchisee-files-tabs" role="tablist">
           <button onClick={() => setTab("own")} data-testid="ff-tab-own" role="tab" aria-selected={tab === "own"}
-            className={`px-5 py-3 text-sm font-bold rounded-xl border-2 transition-all flex items-center gap-2 ${tab === "own"
+            className={`touch-target shrink-0 px-4 sm:px-5 py-2.5 sm:py-3 text-xs sm:text-sm font-bold rounded-xl border-2 transition-all flex items-center gap-2 ${tab === "own"
               ? "bg-stone-950 text-white border-stone-950 shadow-sm"
               : "bg-white text-stone-700 border-stone-300 hover:border-stone-500"}`}>
             <Folder className="w-4 h-4" />
-            My own franchise documents
+            <span className="hidden sm:inline">My own franchise documents</span>
+            <span className="sm:hidden">My documents</span>
           </button>
           <button onClick={() => setTab("brand")} data-testid="ff-tab-brand" role="tab" aria-selected={tab === "brand"}
-            className={`px-5 py-3 text-sm font-bold rounded-xl border-2 transition-all flex items-center gap-2 ${tab === "brand"
+            className={`touch-target shrink-0 px-4 sm:px-5 py-2.5 sm:py-3 text-xs sm:text-sm font-bold rounded-xl border-2 transition-all flex items-center gap-2 ${tab === "brand"
               ? "bg-stone-950 text-white border-stone-950 shadow-sm"
               : "bg-white text-stone-700 border-stone-300 hover:border-stone-500"}`}>
             <Folder className="w-4 h-4" />
-            Files for all franchisees
+            <span className="hidden sm:inline">Files for all franchisees</span>
+            <span className="sm:hidden">Shared files</span>
           </button>
         </div>
 
       {/* Search + view toggle */}
       <div className="flex items-center gap-2 flex-wrap">
-        <div className="relative flex-1 min-w-[240px]">
+        <div className="relative flex-1 min-w-full sm:min-w-[240px]">
           <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input value={search} onChange={(e) => setSearch(e.target.value)} data-testid="ff-search"
-            placeholder="Search every file you can access by name (e.g. cat, halloween, stencil)…"
-            className="w-full pl-9 pr-9 py-2.5 text-sm bg-white border border-stone-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-500" />
+            placeholder="Search files by name…"
+            className="w-full pl-9 pr-9 py-2.5 ios-no-zoom bg-white border border-stone-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-500" />
           {search && (
             <button onClick={() => setSearch("")} aria-label="Clear search"
-              className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center hover:bg-stone-100 rounded-md">
+              className="touch-target absolute right-1 top-1/2 -translate-y-1/2 flex items-center justify-center hover:bg-stone-100 rounded-md">
               <X className="w-4 h-4 text-stone-500" />
             </button>
           )}
         </div>
         <div className="inline-flex bg-white border border-stone-300 rounded-xl overflow-hidden text-xs font-bold">
           <button onClick={() => setViewMode("list")} data-testid="ff-view-list"
-            className={`px-3 py-2 flex items-center gap-1.5 ${viewMode === "list" ? "bg-stone-950 text-white" : "text-stone-700 hover:bg-stone-50"}`}>
+            className={`touch-target px-3 flex items-center gap-1.5 ${viewMode === "list" ? "bg-stone-950 text-white" : "text-stone-700 hover:bg-stone-50"}`}>
             <ListIcon className="w-3.5 h-3.5" /> List
           </button>
           <button onClick={() => setViewMode("grid")} data-testid="ff-view-grid"
-            className={`px-3 py-2 flex items-center gap-1.5 ${viewMode === "grid" ? "bg-stone-950 text-white" : "text-stone-700 hover:bg-stone-50"}`}>
+            className={`touch-target px-3 flex items-center gap-1.5 ${viewMode === "grid" ? "bg-stone-950 text-white" : "text-stone-700 hover:bg-stone-50"}`}>
             <LayoutGrid className="w-3.5 h-3.5" /> Grid
           </button>
         </div>
         {tab === "own" && rootPrefix && !search && (
           <button onClick={zipAll} data-testid="franchisee-files-zip"
-            className="px-3 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-xl flex items-center gap-1.5">
-            <Package className="w-3.5 h-3.5" /> Download all as ZIP
+            className="touch-target px-3 text-xs font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-xl flex items-center gap-1.5">
+            <Package className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Download all as ZIP</span><span className="sm:hidden">ZIP</span>
           </button>
         )}
       </div>
@@ -295,12 +298,12 @@ function TreeList({ tree, onOpenFolder, onPreview, onDownload, downloadingKey })
     <div className="bg-white border border-stone-200 rounded-xl divide-y divide-stone-100 overflow-hidden" data-testid="ff-list">
       {tree.folders.map((f) => (
         <button key={f.key} onClick={() => onOpenFolder(f.key)} data-testid={`ff-folder-${f.name}`}
-          className="w-full px-4 py-3 flex items-center justify-between gap-3 hover:bg-stone-50 text-left">
+          className="touch-target w-full px-3 sm:px-4 py-3 flex items-center justify-between gap-3 hover:bg-stone-50 text-left">
           <div className="flex items-center gap-3 min-w-0">
             <Folder className="w-5 h-5 text-[#14532D] shrink-0" />
             <span className="text-sm text-stone-900 truncate">{prettyFolderName(f.name)}</span>
           </div>
-          <span className="text-xs text-stone-500 tabular-nums shrink-0">{f.files} files · {fmtBytes(f.bytes)}</span>
+          <span className="text-[11px] text-stone-500 tabular-nums shrink-0">{f.files} files</span>
         </button>
       ))}
       {tree.files.map((it) => (
@@ -356,8 +359,8 @@ function FileTile({ file, onPreview, onDownload, downloadingKey, showPath = fals
 
 function FileRow({ file, onPreview, onDownload, downloadingKey, showPath = false }) {
   return (
-    <div className="px-4 py-2.5 flex items-center justify-between gap-3 hover:bg-stone-50" data-testid={`ff-file-row-${file.key}`}>
-      <button onClick={() => onPreview(file)} className="flex items-center gap-3 min-w-0 flex-1 text-left" data-testid={`ff-preview-row-${file.key}`}>
+    <div className="px-3 sm:px-4 py-3 flex items-center justify-between gap-3 hover:bg-stone-50" data-testid={`ff-file-row-${file.key}`}>
+      <button onClick={() => onPreview(file)} className="flex items-center gap-3 min-w-0 flex-1 text-left touch-target" data-testid={`ff-preview-row-${file.key}`}>
         <div className="w-12 h-12 shrink-0 rounded-md overflow-hidden border border-stone-200 bg-white">
           <FileThumbnail file={file} className="w-full h-full" />
         </div>
@@ -366,14 +369,16 @@ function FileRow({ file, onPreview, onDownload, downloadingKey, showPath = false
           {showPath && file.key && (
             <div className="text-[11px] text-stone-500 truncate" title={file.key}>{file.key.replace(/\/[^/]+$/, "")}</div>
           )}
+          <div className="text-[11px] text-stone-500 tabular-nums sm:hidden mt-0.5">{fmtBytes(file.size)}</div>
         </div>
       </button>
       <div className="flex items-center gap-3 shrink-0">
-        <span className="text-xs text-stone-500 tabular-nums">{fmtBytes(file.size)}</span>
+        <span className="hidden sm:inline text-xs text-stone-500 tabular-nums">{fmtBytes(file.size)}</span>
         <button onClick={() => onDownload(file.key)} disabled={downloadingKey === file.key}
           data-testid={`ff-dl-row-${file.key}`}
-          className="px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-md flex items-center gap-1 disabled:opacity-50">
-          {downloadingKey === file.key ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Download className="w-3 h-3" /> Save</>}
+          aria-label={`Download ${file.name}`}
+          className="touch-target px-3 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-md flex items-center gap-1 disabled:opacity-50">
+          {downloadingKey === file.key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><Download className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Save</span></>}
         </button>
       </div>
     </div>

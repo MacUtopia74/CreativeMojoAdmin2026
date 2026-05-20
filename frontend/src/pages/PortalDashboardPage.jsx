@@ -10,6 +10,7 @@ import FranchiseeTerritoryWidget from "@/components/territory/FranchiseeTerritor
 import RecentFilesStrip from "@/components/files/RecentFilesStrip";
 import FilePreviewModal from "@/components/files/FilePreviewModal";
 import PortalEventsPanel from "@/components/portal/PortalEventsPanel";
+import PortalBottomNav from "@/components/portal/PortalBottomNav";
 import {
   LogOut, Phone, Mail, Globe, MapPin, Calendar, ShieldCheck, ShieldAlert,
   FolderOpen, User as UserIcon, Loader2, AlertCircle, Smartphone,
@@ -142,15 +143,12 @@ export default function PortalDashboardPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FBFAF8]" style={{ zoom: FONT_SCALES[fontScale].zoom }} data-testid="portal-dashboard">
-      {/* Top bar */}
-      <header className="bg-white border-b border-stone-200">
-        <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between gap-3">
-          <Logo className="h-10" />
-          <div className="flex items-center gap-4">
-            {/* Font size cycler — bumps through S → M → L → XL via CSS
-                `zoom`, which scales every visual element (text, icons,
-                map labels) in one go. */}
+    <div className="min-h-screen bg-[#FBFAF8] pl-safe pr-safe" style={{ zoom: FONT_SCALES[fontScale].zoom }} data-testid="portal-dashboard">
+      {/* Top bar — compact on mobile (logo + sign-out only), full on desktop */}
+      <header className="bg-white border-b border-stone-200 sticky top-0 z-30 pt-safe">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-2 sm:py-3 flex items-center justify-between gap-2">
+          <Logo className="h-8 sm:h-10 shrink-0" />
+          <div className="flex items-center gap-2 sm:gap-4">
             <button
               onClick={() => {
                 const order = ["small", "medium", "large", "xlarge"];
@@ -159,25 +157,28 @@ export default function PortalDashboardPage() {
               }}
               title={`Text size: ${FONT_SCALES[fontScale].label} — click for the next size`}
               data-testid="portal-font-size"
-              className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider border border-stone-300 hover:bg-stone-50 rounded-lg flex items-center gap-1.5"
+              className="touch-target px-2.5 sm:px-3 text-[10px] font-bold uppercase tracking-wider border border-stone-300 hover:bg-stone-50 rounded-lg flex items-center gap-1.5"
             >
               <Type className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Change font size · {FONT_SCALES[fontScale].label}</span>
-              <span className="sm:hidden">{FONT_SCALES[fontScale].label}</span>
+              <span className="hidden md:inline">Change font size · {FONT_SCALES[fontScale].label}</span>
+              <span className="md:hidden">{FONT_SCALES[fontScale].label}</span>
             </button>
-            <div className="text-right hidden sm:block">
+            <div className="text-right hidden lg:block">
               <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Signed in as</div>
               <div className="text-xs text-stone-900 font-mono">{user?.email}</div>
             </div>
+            {/* Desktop sign-out — bottom nav handles this on mobile */}
             <button onClick={logout} data-testid="portal-logout"
-              className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-lg flex items-center gap-1.5">
+              className="hidden md:flex touch-target px-3 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-lg items-center gap-1.5">
               <LogOut className="w-3 h-3" /> Sign out
             </button>
           </div>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-6 py-8 space-y-6">
+      {/* Generous bottom padding on mobile so content isn't hidden behind the
+          fixed bottom-tab nav (~70px tall incl. safe-area). */}
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8 space-y-5 sm:space-y-6 pb-28 md:pb-8">
         {err && (
           <div className="px-4 py-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-2xl flex items-center gap-2">
             <AlertCircle className="w-4 h-4" /> {err}
@@ -189,46 +190,52 @@ export default function PortalDashboardPage() {
 
         {profile && (
           <>
-            {/* Hero card */}
-            <div className="bg-white border border-stone-200 rounded-2xl px-8 py-7 flex items-center justify-between gap-6 flex-wrap" data-testid="portal-hero">
-              <div className="flex items-center gap-5">
-                {profile.photo_url ? (
-                  <img src={profile.photo_url} alt={profile.full_name || profile.first_name} className="w-20 h-20 rounded-full object-cover border-2 border-stone-200" />
-                ) : (
-                  <div className="w-20 h-20 rounded-full bg-stone-100 flex items-center justify-center text-stone-400">
-                    <UserIcon className="w-10 h-10" />
+            {/* Hero card — stacks vertically on mobile, horizontal on sm+ */}
+            <section
+              id="portal-section-home"
+              className="bg-white border border-stone-200 rounded-2xl px-4 sm:px-8 py-5 sm:py-7 scroll-mt-20"
+              data-testid="portal-hero">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5 sm:gap-6">
+                <div className="flex items-center gap-4 sm:gap-5 min-w-0">
+                  {profile.photo_url ? (
+                    <img src={profile.photo_url} alt={profile.full_name || profile.first_name} className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover border-2 border-stone-200 shrink-0" />
+                  ) : (
+                    <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-stone-100 flex items-center justify-center text-stone-400 shrink-0">
+                      <UserIcon className="w-8 h-8 sm:w-10 sm:h-10" />
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <div className="text-[10px] sm:text-xs uppercase tracking-[0.3em] font-bold text-stone-500">
+                      Franchise #{profile.franchise_number || "—"}
+                    </div>
+                    <div className="font-display text-xl sm:text-3xl text-stone-950 leading-tight truncate">{profile.organisation || profile.full_name || ""}</div>
+                    <div className="text-sm sm:text-base text-stone-600 mt-0.5 truncate">{profile.first_name} {profile.last_name}</div>
                   </div>
-                )}
-                <div>
-                  <div className="text-xs uppercase tracking-[0.3em] font-bold text-stone-500">
-                    Franchise #{profile.franchise_number || "—"}
-                  </div>
-                  <div className="font-display text-3xl text-stone-950 leading-tight">{profile.organisation || profile.full_name || ""}</div>
-                  <div className="text-base text-stone-600 mt-0.5">{profile.first_name} {profile.last_name}</div>
+                </div>
+                <div className="flex items-center justify-between sm:justify-end gap-6 sm:gap-8 flex-wrap">
+                  {years != null && (
+                    <div className="text-center sm:text-right" data-testid="portal-years">
+                      <div className="font-display text-3xl sm:text-4xl text-stone-950 tabular-nums leading-none">{years.toFixed(1)}</div>
+                      <div className="text-[10px] sm:text-[11px] uppercase tracking-[0.2em] font-bold text-stone-500 mt-1.5">Years as a franchisee</div>
+                    </div>
+                  )}
+                  {profile.gocardless_mandate_status && (
+                    <div>
+                      <div className="text-[10px] sm:text-[11px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-1.5">Direct Debit</div>
+                      <MandateBadge status={profile.gocardless_mandate_status} />
+                    </div>
+                  )}
                 </div>
               </div>
-              <div className="flex items-center gap-8 flex-wrap">
-                {years != null && (
-                  <div className="text-center" data-testid="portal-years">
-                    <div className="font-display text-4xl text-stone-950 tabular-nums leading-none">{years.toFixed(1)}</div>
-                    <div className="text-[11px] uppercase tracking-[0.2em] font-bold text-stone-500 mt-1.5">Years as a franchisee</div>
-                  </div>
-                )}
-                {profile.gocardless_mandate_status && (
-                  <div>
-                    <div className="text-[11px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-1.5">Direct Debit</div>
-                    <MandateBadge status={profile.gocardless_mandate_status} />
-                  </div>
-                )}
-              </div>
-            </div>
+            </section>
 
-            {/* Your details — full-width landscape strip across the top.
-                Collapsible so the franchisee can shrink it to a header bar
-                if they want even more room for the map and files below. */}
-            <div className={`${detailsOpen ? "bg-white" : "bg-stone-100"} border border-stone-200 rounded-2xl overflow-hidden transition-colors`} data-testid="portal-contact">
+            {/* Profile / details — collapsible, full-width */}
+            <section
+              id="portal-section-profile"
+              className={`${detailsOpen ? "bg-white" : "bg-stone-100"} border border-stone-200 rounded-2xl overflow-hidden transition-colors scroll-mt-20`}
+              data-testid="portal-contact">
               <button onClick={() => setDetailsOpen((v) => !v)} data-testid="toggle-details"
-                className={`w-full flex items-center justify-between gap-3 ${detailsOpen ? "hover:bg-stone-50" : "hover:bg-stone-200"} transition-colors px-6 py-4`}>
+                className={`touch-target w-full flex items-center justify-between gap-3 ${detailsOpen ? "hover:bg-stone-50" : "hover:bg-stone-200"} transition-colors px-4 sm:px-6 py-3.5 sm:py-4`}>
                 <div className="flex items-center gap-2">
                   <UserIcon className="w-4 h-4 text-stone-700" />
                   <span className="text-xs uppercase tracking-[0.3em] font-bold text-stone-700">Your details</span>
@@ -238,16 +245,13 @@ export default function PortalDashboardPage() {
                 </span>
               </button>
               {detailsOpen && (
-                <div className="px-6 pb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
+                <div className="px-4 sm:px-6 pb-5 sm:pb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
                   <Field icon={Mail} label="Email" value={profile.mojo_email || profile.email} href={`mailto:${profile.mojo_email || profile.email}`} />
                   <Field icon={Phone} label="Phone" value={profile.phone} href={`tel:${profile.phone}`} />
                   <Field icon={Smartphone} label="Mobile" value={profile.mobile} href={`tel:${profile.mobile}`} />
                   <Field icon={Globe} label="Website" value={profile.website} href={profile.website} />
                   <Field icon={Calendar} label="Started with us" value={profile.start_date ? new Date(profile.start_date).toLocaleDateString("en-GB") : null} />
                   {profile.end_date && <Field icon={Clock} label="End date" value={new Date(profile.end_date).toLocaleDateString("en-GB")} />}
-                  {/* Current contract — only renders if we have something on
-                      file. Three side-by-side fields keep this readable on
-                      both desktop and tablet widths. */}
                   {profile.current_contract && (
                     <div className="sm:col-span-2 lg:col-span-3 mt-2 pt-4 border-t border-stone-200">
                       <div className="flex items-center gap-2 mb-3">
@@ -267,7 +271,7 @@ export default function PortalDashboardPage() {
                         <MapPin className="w-4 h-4 text-stone-400 mt-0.5 shrink-0" />
                         <div className="min-w-0">
                           <div className="text-[11px] uppercase tracking-[0.2em] font-bold text-stone-500">Address</div>
-                          <div className="text-base text-stone-900 leading-relaxed">
+                          <div className="text-sm sm:text-base text-stone-900 leading-relaxed">
                             {addressLines.join(", ")}
                           </div>
                         </div>
@@ -276,22 +280,27 @@ export default function PortalDashboardPage() {
                   )}
                 </div>
               )}
-            </div>
+            </section>
 
-            {/* Territory widget — also full-width, also collapsible. Taller
-                map (`mapHeight=640`) since the details panel above is now a
-                strip rather than a sidebar. */}
+            {/* Territory — taller on desktop, sensibly sized on phone */}
             {territoryOpen ? (
-              <div className="relative">
+              <section className="relative">
                 <button onClick={() => setTerritoryOpen(false)} data-testid="toggle-territory"
-                  className="absolute top-5 right-5 z-10 w-7 h-7 rounded-full border border-stone-300 bg-white hover:bg-stone-100 flex items-center justify-center" aria-label="Hide territory">
+                  className="touch-target absolute top-3 sm:top-5 right-3 sm:right-5 z-10 rounded-full border border-stone-300 bg-white hover:bg-stone-100 flex items-center justify-center" aria-label="Hide territory">
                   <ChevronUp className="w-3.5 h-3.5 text-stone-600" />
                 </button>
-                <FranchiseeTerritoryWidget mapHeight={640} />
-              </div>
+                {/* On phones default to ~360px high; desktop keeps the
+                    generous 640px so the wider map is still useful. */}
+                <div className="block md:hidden">
+                  <FranchiseeTerritoryWidget mapHeight={360} />
+                </div>
+                <div className="hidden md:block">
+                  <FranchiseeTerritoryWidget mapHeight={640} />
+                </div>
+              </section>
             ) : (
               <button onClick={() => setTerritoryOpen(true)} data-testid="toggle-territory"
-                className="w-full bg-stone-100 border border-stone-200 rounded-2xl px-6 py-4 flex items-center justify-between gap-3 hover:bg-stone-200 transition-colors">
+                className="touch-target w-full bg-stone-100 border border-stone-200 rounded-2xl px-4 sm:px-6 py-3.5 sm:py-4 flex items-center justify-between gap-3 hover:bg-stone-200 transition-colors">
                 <div className="flex items-center gap-2">
                   <MapPin className="w-4 h-4 text-stone-700" />
                   <span className="text-xs uppercase tracking-[0.3em] font-bold text-stone-700">Your territory</span>
@@ -302,20 +311,21 @@ export default function PortalDashboardPage() {
               </button>
             )}
 
-            {/* Events — sits between territory and files. Lists upcoming
-                events from the shared Google Calendar with a one-click
-                "Join Teams meeting" button on any event that has one. */}
-            <PortalEventsPanel
-              open={eventsOpen}
-              onToggle={() => setEventsOpen((v) => !v)}
-            />
+            {/* Events */}
+            <section id="portal-section-events" className="scroll-mt-20">
+              <PortalEventsPanel
+                open={eventsOpen}
+                onToggle={() => setEventsOpen((v) => !v)}
+              />
+            </section>
 
-            {/* Files — primary daily-use tool. Collapsible like the other
-                two panels so the franchisee can shrink it on small screens
-                or when they want a quick map-only view. Default open. */}
-            <div className={`${filesOpen ? "bg-white" : "bg-stone-100"} border border-stone-200 rounded-2xl overflow-hidden transition-colors`} data-testid="portal-files">
+            {/* Files — primary daily tool */}
+            <section
+              id="portal-section-files"
+              className={`${filesOpen ? "bg-white" : "bg-stone-100"} border border-stone-200 rounded-2xl overflow-hidden transition-colors scroll-mt-20`}
+              data-testid="portal-files">
               <button onClick={() => setFilesOpen((v) => !v)} data-testid="toggle-files"
-                className={`w-full flex items-center justify-between gap-3 ${filesOpen ? "hover:bg-stone-50" : "hover:bg-stone-200"} transition-colors px-6 py-4`}>
+                className={`touch-target w-full flex items-center justify-between gap-3 ${filesOpen ? "hover:bg-stone-50" : "hover:bg-stone-200"} transition-colors px-4 sm:px-6 py-3.5 sm:py-4`}>
                 <div className="flex items-center gap-2">
                   <FolderOpen className="w-4 h-4 text-stone-700" />
                   <span className="text-xs uppercase tracking-[0.3em] font-bold text-stone-700">Your files</span>
@@ -325,9 +335,7 @@ export default function PortalDashboardPage() {
                 </span>
               </button>
               {filesOpen && (
-                <div className="px-6 pb-6">
-                  {/* Live recents — last 30 days of activity scoped to this
-                      franchisee's own folder + shared brand files. */}
+                <div className="px-4 sm:px-6 pb-5 sm:pb-6">
                   <RecentFilesStrip
                     onOpenFile={(f) => setPreviewFile(f)}
                     onDownload={downloadRecent}
@@ -336,10 +344,14 @@ export default function PortalDashboardPage() {
                   <FranchiseeFilesPanel franchisee={profile} />
                 </div>
               )}
-            </div>
+            </section>
           </>
         )}
       </main>
+
+      {/* Mobile-only bottom-tab nav — anchored to viewport bottom */}
+      <PortalBottomNav onLogout={logout} sectionsRef={profile} />
+
       {previewFile && <FilePreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />}
     </div>
   );
