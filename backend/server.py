@@ -2998,6 +2998,14 @@ async def on_startup():
     except Exception as e:
         logger.warning(f"Could not start GF backfill scheduler: {e}")
 
+    # Phase 2 — Woo orders hourly re-sync safety net (only fires if creds set).
+    try:
+        from woocommerce_integration import schedule_periodic as _woo_loop
+        asyncio.create_task(_woo_loop(db, every_seconds=3600))
+        logger.info("Woo orders resync scheduler started (hourly)")
+    except Exception as e:
+        logger.warning(f"Could not start Woo resync scheduler: {e}")
+
 
 @app.on_event("shutdown")
 async def on_shutdown():
@@ -3010,6 +3018,10 @@ async def on_shutdown():
 # Phase 1.5 — GoCardless live mandate integration
 from gocardless_integration import build_router as build_gocardless_router  # noqa: E402
 api.include_router(build_gocardless_router(db, require_role))
+
+# Phase 2 — WooCommerce live sync (Stage A: read-only orders + product mirror)
+import woocommerce_integration  # noqa: E402
+woocommerce_integration.attach(api, db, require_role)
 
 # Phase 3 — FileCamp → R2 migration + admin file browser
 from filecamp_migration import build_router as build_migration_router  # noqa: E402

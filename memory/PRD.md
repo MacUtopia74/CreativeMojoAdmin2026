@@ -85,6 +85,18 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
   - Regression tests: ``/app/backend/tests/test_cross_tab_search.py`` — 3 tests covering (a) Ali Imperiale findable from Pipeline tab, (b) a seeded contact findable from every tab, (c) defensively, Pipeline tab WITHOUT search still scopes to ``in_pipeline=True``.
 
   - **`FilePreviewModal`**: modal goes full-screen on mobile (`items-stretch sm:items-center`, `p-0 sm:p-6`, `h-full sm:h-auto`, no rounded corners on phone), `playsInline` on video to avoid forced fullscreen on iOS, key path hidden on small screens, close-button enlarged to touch-target.
+
+- **Phase 2 Stage A — Orders module (WooCommerce read-only mirror)** ✅ (May 20 2026)
+  - New ``/app/backend/woocommerce_integration.py`` — async ``httpx`` client over WooCommerce REST API v3 with HTTP Basic Auth, paginated backfill honouring ``X-WP-TotalPages``, HMAC-SHA256 webhook signature verification (``X-WC-Webhook-Signature``), production-status mapping (Woo ``processing`` → "Ready To Ship", ``pending``/``on-hold`` → "Awaiting Assembly", terminal → "Completed"), and hourly safety re-sync over a 2h sliding window.
+  - **New endpoints**: ``GET /api/orders`` (tabs: active/completed/all/draft + search), ``GET /api/orders/counts``, ``GET /api/orders/{id}``, ``GET /api/woo/products/autocomplete``, ``POST /api/admin/woo/backfill-orders`` (background task), ``POST /api/admin/woo/sync-products``, ``POST /api/intake/woocommerce`` (HMAC-verified webhook).
+  - **New Mongo collections**: ``woo_orders`` (keyed by Woo ID, full raw payload + derived fields ``production_status``, ``payment_status``, ``channel_label``, ``invoiced``, ``status``), ``woo_products`` (autocomplete source).
+  - **New frontend page** ``/app/frontend/src/pages/OrdersPage.jsx`` at route ``/orders`` — mirrors the legacy admin's "Active Orders" page pixel-by-pixel: ACTIVE/COMPLETED/ALL/DRAFT tab pills with count badges, Show Products toggle (lime ``#D4FF00`` switch), table with channel pills (``Direct`` / ``Woo#NNNN``), navy "Ready To Ship" + rose "Awaiting Assembly" production pills, green/grey payment pills, relative due-date labels (``in 10 days`` / ``in 1 day``). Sidebar nav: new "Orders" entry above the existing "Mojo Orders (Legacy)" iframe page.
+  - **Stage-A demo banner** renders only while seed data is present — auto-hides once real Woo credentials are wired and the backfill replaces seed records.
+  - **Demo seed** at ``/app/backend/seed_woo_demo.py`` — 12 orders + 20 products mirroring the user's reference screenshots. Idempotent (re-run replaces); cleared automatically once live Woo data arrives.
+  - **Env additions** (placeholders pre-added in ``backend/.env``): ``WOO_BASE_URL``, ``WOO_CONSUMER_KEY``, ``WOO_CONSUMER_SECRET``, ``WOO_WEBHOOK_SECRET``.
+  - Regression suite: ``/app/backend/tests/test_orders_stage_a.py`` — 6 tests (counts, active tab, completed tab, search, webhook 401-on-unsigned, autocomplete). Total project pytest count now 15/15 passing.
+  - **Stage B + C scope** (not yet built): manual order create, order detail edit with product autocomplete + shipping field + Actions menu (Mark Completed / Complete & Invoice / Create Invoice / Mark Paid / Change Customer), bulk-actions row, Xero integration (customer pull, invoice creation, payment status sync).
+
   - **Tested at 390×844 (iPhone 12 Pro)** — `window.matchMedia(min-width:768px) = false`, bottom nav `display: block`, all 4 tabs scroll-to-section correctly with active-state highlight, no horizontal scroll. Admin pages untouched.
 
 - **Pipeline kanban — shift-select bug fix** ✅ (May 20 2026)

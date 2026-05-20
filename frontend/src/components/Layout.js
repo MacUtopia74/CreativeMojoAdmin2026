@@ -36,7 +36,8 @@ const NAV = [
   { to: "/territory-builder", label: "Territory Builder", icon: Target, testid: "nav-territory-builder" },
   { to: "/find-class", label: "Find-a-Class", icon: MapPin, testid: "nav-find-class" },
   { to: "/cqc-definitions", label: "CQC Definitions", icon: Stethoscope, testid: "nav-cqc-definitions" },
-  { to: "/mojo-orders", label: "Mojo Orders", icon: ShoppingBag, testid: "nav-mojo-orders" },
+  { to: "/orders", label: "Orders", icon: ShoppingBag, testid: "nav-orders" },
+  { to: "/mojo-orders", label: "Mojo Orders (Legacy)", icon: ShoppingBag, testid: "nav-mojo-orders" },
 ];
 
 // Secondary "Admin" nav — power-user tools, tucked away in a collapsible
