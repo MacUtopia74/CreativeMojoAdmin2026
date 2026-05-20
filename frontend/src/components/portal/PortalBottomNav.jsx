@@ -100,22 +100,15 @@ export default function PortalBottomNav({ onLogout, sectionsRef, onTabSelect, op
               aria-pressed={isOn}
               className={`touch-target relative flex flex-col items-center justify-center gap-0.5 py-2 transition-all ${
                 isOn
-                  ? "text-stone-950"
+                  ? "text-stone-950 bg-stone-950/15"
                   : viewportHint
                     ? "text-stone-950/85"
                     : "text-stone-950/55"
               }`}>
-              {/* "ON" pill — soft dark backplate behind the icon when active */}
-              {isOn && (
-                <span className="absolute top-1 inset-x-2 h-7 rounded-full bg-stone-950/15" aria-hidden="true" />
-              )}
-              <Icon className={`relative z-10 w-5 h-5 ${isOn ? "stroke-[2.5]" : ""}`} />
-              <span className={`relative z-10 text-[10px] font-bold uppercase tracking-wider ${isOn ? "" : "opacity-80"}`}>
+              <Icon className={`w-5 h-5 ${isOn ? "stroke-[2.5]" : ""}`} />
+              <span className={`text-[10px] font-bold uppercase tracking-wider ${isOn ? "" : "opacity-80"}`}>
                 {t.label}
               </span>
-              {isOn && (
-                <span className="mt-0.5 w-6 h-0.5 rounded-full bg-stone-950" aria-hidden="true" />
-              )}
             </button>
           );
         })}
