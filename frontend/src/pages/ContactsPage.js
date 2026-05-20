@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import LinkExistingFranchiseeModal from "@/components/contacts/LinkExistingFranchiseeModal";
 import MergeContactsModal from "@/components/contacts/MergeContactsModal";
+import DuplicatesModal from "@/components/contacts/DuplicatesModal";
 import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, ChevronsLeft, ChevronsRight, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus, Plus, Sparkles, Upload, FileText, CheckCircle2, Send, Award, Target, Link2, GitMerge } from "lucide-react";
 
 const STAGES = [
@@ -1201,8 +1202,11 @@ export default function ContactsPage() {
   const openLinkExisting = (contact) => setLinkingContact(contact);
 
   // Merge state — `mergePair` holds the two contacts to merge. Triggered
-  // either from the bulk-bar (exactly 2 selected) or from the drawer.
+  // either from the bulk-bar (exactly 2 selected), the drawer, or the
+  // Duplicate Finder modal.
   const [mergePair, setMergePair] = useState(null);
+  const [duplicatesOpen, setDuplicatesOpen] = useState(false);
+  const [duplicatesReloadAt, setDuplicatesReloadAt] = useState(0);
   const openMergeFromBulkBar = () => {
     if (selectedIds.size !== 2) return;
     const ids = [...selectedIds];
@@ -1223,6 +1227,9 @@ export default function ContactsPage() {
     setSelectedIds(new Set());
     setMergePair(null);
     setSelected(result.survivor || null);
+    // If the merge was launched from the Duplicate Finder, refresh the
+    // group list so the loser drops off and groups of 2 disappear.
+    if (duplicatesOpen) setDuplicatesReloadAt(Date.now());
   };
   const handleLinked = (franchiseeId) => {
     if (!linkingContact) return;
@@ -1294,6 +1301,10 @@ export default function ContactsPage() {
               </button>
             )}
           </div>
+          <button onClick={() => setDuplicatesOpen(true)} data-testid="find-duplicates-button"
+            className="px-3 py-2 border border-stone-300 bg-white text-stone-900 text-xs font-bold uppercase tracking-wider hover:bg-stone-50 transition-colors rounded-lg flex items-center gap-1.5">
+            <GitMerge className="w-3.5 h-3.5" /> Find Duplicates
+          </button>
           <button onClick={() => setImportOpen(true)} data-testid="import-csv-button"
             className="px-3 py-2 border border-stone-300 bg-white text-stone-900 text-xs font-bold uppercase tracking-wider hover:bg-stone-50 transition-colors rounded-lg flex items-center gap-1.5">
             <Upload className="w-3.5 h-3.5" /> Import CSV
@@ -1644,6 +1655,11 @@ export default function ContactsPage() {
         contactB={mergePair?.b}
         onClose={() => setMergePair(null)}
         onMerged={handleMerged} />
+      <DuplicatesModal
+        open={duplicatesOpen}
+        reloadAt={duplicatesReloadAt}
+        onClose={() => setDuplicatesOpen(false)}
+        onPickPair={(a, b) => setMergePair({ a, b })} />
       <AddContactModal open={addOpen} onClose={() => setAddOpen(false)}
         defaultTarget={tab === "pipeline" ? "franchise" : tab}
         onCreated={(_c, target) => {

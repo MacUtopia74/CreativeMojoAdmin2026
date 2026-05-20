@@ -44,6 +44,14 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
 - **Mojo Portal — mobile-first redesign (Option B)** ✅ (May 20 2026)
   - **PWA foundation**: `index.html` updated with `viewport-fit=cover, maximum-scale=5`, `apple-mobile-web-app-capable=yes`, `apple-mobile-web-app-title=Mojo Portal`, `format-detection=telephone=no`. New `public/manifest.json` (name="Creative Mojo Portal", short_name="Mojo Portal", standalone display, `start_url=/portal`). Apple touch icon link.
   - **Safe-area-insets utility classes** in `index.css`: `pb-safe`, `pt-safe`, `pl-safe`, `pr-safe`, `mb-safe` (use `max(0.5rem, env(safe-area-inset-bottom, 0.5rem))`). New `touch-target` utility = 44×44px min (WCAG / Apple HIG). New `ios-no-zoom` utility = `font-size: 16px` (prevents iOS Safari input zoom).
+
+- **Contacts Duplicate Finder** ✅ (May 20 2026)
+  - New `GET /api/contacts/duplicates` endpoint — groups all live (non-merged) contacts across `web_form_contacts` + `contacts` collections by case-insensitive trimmed email, returns only groups with 2+ members, sorted by count desc.
+  - Initial scan found **1,735 duplicate email groups containing 3,916 contacts** (top offenders: `info@creativemojo.com` x8, `camilla.nygaard@hotmail.com` x8, several at x6).
+  - New `<DuplicatesModal>` component (`/app/frontend/src/components/contacts/DuplicatesModal.jsx`): toolbar "Find Duplicates" button on ContactsPage opens a modal listing groups with collapsible accordion. Each row shows name, source pill, pipeline stage, postcode, created date, GF entry id. Admin checks two rows then "Merge Selected" hands off to the existing `<MergeContactsModal>`.
+  - Auto-reloads after each merge so survivor + dropped loser update in place; groups that fall below 2 contacts disappear automatically.
+  - Email filter input at top of modal narrows the list (shows first 200 groups, refine filter to access tail).
+
   - **New `PortalBottomNav` component** — fixed bottom tab bar visible only `<md` (≤767px). 5 tabs: HOME / FILES / EVENTS / PROFILE / SIGN OUT. Smooth-scrolls to section anchors via `getElementById + scrollTo`. Active state tracked via `IntersectionObserver` (rootMargin `-30% 0px -50% 0px`). Respects `pb-safe` so it sits above the iPhone home indicator.
   - **`PortalDashboardPage`** rewritten mobile-first: hero stacks vertically `sm:row`, profile/territory/events/files panels are independently collapsible and full-width, all CTAs `touch-target` sized, header sign-out hidden on mobile (handled by bottom nav), bottom padding `pb-28 md:pb-8` so the fixed nav doesn't cover content. Territory widget uses `mapHeight=360` on phones, `640` on desktop.
   - **`PortalLoginPage`**: `pl-safe pr-safe pt-safe pb-safe`, centered headings on mobile, mobile logo with "Franchisee Portal" caption, `inputMode=email`, `ios-no-zoom` input class, `autoComplete=username/new-password/current-password`, 44px tap targets on all buttons including eye-toggle.

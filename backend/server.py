@@ -2023,6 +2023,72 @@ async def list_contacts(
     return {"items": items[:limit], "total": len(items)}
 
 
+@api.get("/contacts/duplicates")
+async def list_duplicate_contacts(_: dict = Depends(require_role("admin"))):
+    """Surface groups of contacts that share the same (case-insensitive,
+    trimmed) email address so an admin can route them out via the existing
+    merge flow.
+
+    Only returns groups with 2+ live members (already-merged loser rows are
+    excluded). Pulls from both ``web_form_contacts`` and the legacy
+    ``contacts`` collection so nothing slips the net.
+    """
+    projection = {
+        "_id": 0,
+        "id": 1,
+        "first_name": 1,
+        "last_name": 1,
+        "email": 1,
+        "telephone": 1,
+        "phone": 1,
+        "mobile": 1,
+        "postcode": 1,
+        "source": 1,
+        "form_id": 1,
+        "in_pipeline": 1,
+        "pipeline_status": 1,
+        "created_at": 1,
+        "gravity_entry_id": 1,
+        "admin_notes": 1,
+    }
+    base_filter = {
+        "email": {"$nin": [None, ""]},
+        "merged_into": {"$in": [None, ""]},
+    }
+    rows: list[dict] = []
+    for coll_name in ("web_form_contacts", "contacts"):
+        coll = db[coll_name]
+        async for doc in coll.find(base_filter, projection):
+            email_norm = (doc.get("email") or "").strip().lower()
+            if not email_norm:
+                continue
+            doc["_email_norm"] = email_norm
+            doc["_collection"] = coll_name
+            rows.append(doc)
+
+    by_email: dict[str, list[dict]] = {}
+    for r in rows:
+        by_email.setdefault(r["_email_norm"], []).append(r)
+
+    groups = []
+    for email, members in by_email.items():
+        if len(members) < 2:
+            continue
+        members.sort(key=lambda m: str(m.get("created_at") or ""), reverse=True)
+        groups.append({
+            "match_key": "email",
+            "match_value": email,
+            "count": len(members),
+            "contacts": members,
+        })
+    groups.sort(key=lambda g: g["count"], reverse=True)
+    return {
+        "groups": groups,
+        "total_groups": len(groups),
+        "total_contacts": sum(g["count"] for g in groups),
+    }
+
+
 @api.get("/contacts/{contact_id}")
 async def get_contact(contact_id: str, _: dict = Depends(require_role("admin"))):
     c = await db.contacts.find_one({"id": contact_id}, {"_id": 0})
