@@ -687,9 +687,6 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
               {isInPipeline && <StageBadge status={contact.pipeline_status} />}
               <SourcePill source={contact.source} />
               {contact.referral_source && <ReferralBadge source={contact.referral_source} />}
-              {contact.potential && /yes|hot|high/i.test(String(contact.potential)) && (
-                <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[#D4FF00]/20 border border-[#D4FF00]/60 text-stone-900 rounded-full">Hot Lead</span>
-              )}
             </div>
             {contact.referral_source && (
               <div className="text-xs text-stone-500 mt-2">
@@ -1377,6 +1374,25 @@ export default function ContactsPage() {
         <div className="border-b border-stone-200" />
       </div>
 
+      {search && search.trim() && (
+        <div className="px-8 pt-3" data-testid="cross-tab-search-banner">
+          <div className="bg-stone-50 border border-stone-200 rounded-xl px-4 py-2 flex items-center gap-3 text-xs text-stone-700">
+            <Search className="w-3.5 h-3.5 text-stone-500 shrink-0" />
+            <span>
+              Searching across <strong>all tabs</strong> for &ldquo;{search.trim()}&rdquo; — results show their source pill so you can tell which tab each contact lives in.
+            </span>
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              data-testid="cross-tab-search-clear"
+              className="ml-auto px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-white border border-stone-300 hover:bg-stone-100 rounded-md transition-colors"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Bulk action bar — appears when one or more contacts selected */}
       {selectedIds.size > 0 && (
         <div className="px-8 pt-4">
@@ -1517,12 +1533,11 @@ export default function ContactsPage() {
                   <div className="p-2 space-y-1.5 max-h-[calc(100vh-22rem)] overflow-y-auto">
                     {items.slice(0, 100).map((c) => {
                       const age = daysSince(c.date || c.date_added);
-                      const isHot = c.potential && /yes|hot|high/i.test(String(c.potential));
                       const checked = selectedIds.has(c.id);
                       const srcStyle = SOURCE_STYLE[c.source] || SOURCE_STYLE.general_enquiry;
                       return (
                         <div key={c.id} onClick={() => setSelected(c)}
-                          className={`bg-white border rounded-xl p-2.5 hover:border-stone-500 cursor-pointer text-xs ${isHot ? "border-[#D4FF00]" : "border-stone-200"} ${srcStyle.border} ${checked ? "ring-2 ring-stone-950" : ""}`}
+                          className={`bg-white border border-stone-200 rounded-xl p-2.5 hover:border-stone-500 cursor-pointer text-xs ${srcStyle.border} ${checked ? "ring-2 ring-stone-950" : ""}`}
                           data-testid={`pipeline-card-${c.id}`}>
                           <div className="flex items-start justify-between gap-2">
                             <button onClick={(e) => { e.stopPropagation(); toggleSelect(c.id, e); }} data-testid={`card-select-${c.id}`} className="shrink-0 text-stone-400 hover:text-stone-950">
@@ -1532,7 +1547,6 @@ export default function ContactsPage() {
                               <span className="truncate">{[c.first_name, c.last_name].filter(Boolean).join(" ") || "Unnamed"}</span>
                               <ManualBadge addedBy={c.manually_added_by} />
                             </div>
-                            {isHot && <span className="text-[9px] font-bold uppercase tracking-wider bg-[#D4FF00] text-stone-950 px-1 rounded">Hot</span>}
                           </div>
                           {c.establishment_name && <div className="text-stone-600 truncate mt-0.5 pl-5">{c.establishment_name}</div>}
                           <div className="flex items-center justify-between mt-1.5 text-[10px] pl-5 gap-2">

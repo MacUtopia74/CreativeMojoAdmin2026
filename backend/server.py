@@ -1922,11 +1922,24 @@ async def list_contacts(
     limit: int = Query(500, le=10000),
     _: dict = Depends(require_role("admin")),
 ):
-    """Combines legacy contacts + web form contacts under one query."""
+    """Combines legacy contacts + web form contacts under one query.
+
+    Search behaviour: when ``search`` is non-empty the tab filter is
+    intentionally bypassed and the query runs across BOTH collections
+    (regardless of source / pipeline membership). This stops people
+    disappearing from the default Pipeline view just because they happen
+    to live in General/Care Home/etc — admins can now find anyone in the
+    system from any tab. Each result still carries its ``source`` so the
+    UI's SourcePill makes the proper tab obvious.
+    """
+    is_search = bool(search and search.strip())
     q_legacy = {}
     q_web = {}
-    # Tab shorthand
-    if tab == "pipeline":
+    # Tab shorthand — only applied when NOT searching.
+    if is_search:
+        # Global search: hit both collections, no source / pipeline gate.
+        pass
+    elif tab == "pipeline":
         q_legacy = None
         q_web["in_pipeline"] = True
     elif tab == "franchise":

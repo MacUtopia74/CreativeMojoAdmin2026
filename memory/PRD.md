@@ -77,6 +77,13 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
 
   - **`FranchiseeFilesPanel`**: tab strip becomes horizontally scrollable on phones with shortened labels ("My documents", "Shared files"), search input full-width on mobile + 16px font, view-toggle + ZIP button touch-target sized. File rows: filesize moves below filename on mobile, download button always 44px tall, label "Save" hidden on phone showing just the icon.
   - **`PortalEventsPanel`**: header toggle + content padding scales `px-4 sm:px-6`, "Join meeting" button becomes full-width below event details on mobile, next-event teaser hidden when collapsed on phone (keeps header compact).
+
+- **Hot badge removed + Cross-tab search** ✅ (May 20 2026)
+  - "Hot Lead" badge (driven by Airtable's legacy ``potential`` field) was a stale stamp on 9 web-form contacts — removed from both the kanban card and the contact-drawer header so it no longer creates noise.
+  - **Cross-tab search**: ``/api/contacts`` now ignores the ``tab`` filter when ``search`` is non-empty and queries BOTH ``web_form_contacts`` + legacy ``contacts`` collections regardless of source / pipeline membership. Bug context: Ali Imperiale (``aliimperiale@btinternet.com``) was in the legacy collection with ``source=legacy_general_enquiry``; default Pipeline-tab search couldn't see her even though she existed.
+  - **Cross-tab banner** (``data-testid="cross-tab-search-banner"``) appears whenever the search box is non-empty, telling the user results may come from any tab and showing each contact's source pill so it's obvious which tab they belong to.
+  - Regression tests: ``/app/backend/tests/test_cross_tab_search.py`` — 3 tests covering (a) Ali Imperiale findable from Pipeline tab, (b) a seeded contact findable from every tab, (c) defensively, Pipeline tab WITHOUT search still scopes to ``in_pipeline=True``.
+
   - **`FilePreviewModal`**: modal goes full-screen on mobile (`items-stretch sm:items-center`, `p-0 sm:p-6`, `h-full sm:h-auto`, no rounded corners on phone), `playsInline` on video to avoid forced fullscreen on iOS, key path hidden on small screens, close-button enlarged to touch-target.
   - **Tested at 390×844 (iPhone 12 Pro)** — `window.matchMedia(min-width:768px) = false`, bottom nav `display: block`, all 4 tabs scroll-to-section correctly with active-state highlight, no horizontal scroll. Admin pages untouched.
 
