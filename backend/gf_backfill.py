@@ -131,7 +131,11 @@ FIELD_LABELS_BY_FORM: dict[int, dict[str, str]] = {
 FORM1_REASON_TO_SOURCE: dict[str, str] = {
     "franchise enquiry": "franchise_enquiry",
     "licence enquiry":   "licence_enquiry",
+    "care home class enquiry":   "care_home_enquiry",
+    "deliverable art kit enquiry": "art_kit_enquiry",
+    "other": "general_enquiry",
 }
+PIPELINE_SOURCES: set = {"franchise_enquiry", "licence_enquiry"}
 
 
 def _heard_about_us(entry: dict) -> Optional[str]:
@@ -273,7 +277,7 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
                 source   = FORM1_REASON_TO_SOURCE.get(reason.lower(), "general_enquiry")
                 # Only franchise / licence enquiries enter the sales pipeline;
                 # care-home/art-kit/other land in CRM but stay out of kanban.
-                in_pipeline_flag = source in ("franchise_enquiry", "licence_enquiry")
+                in_pipeline_flag = source in PIPELINE_SOURCES
             else:
                 # Form 17 (Franchise)
                 postcode = (entry.get("16") or "").strip() or None

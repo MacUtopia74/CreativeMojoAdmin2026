@@ -603,6 +603,21 @@ FORM_ID_TO_SOURCE = {
 # that should be triaged by the sales team immediately, not parked in the contacts tabs.
 FORM_IDS_IN_PIPELINE: set = {17, 32}
 
+# Form 1 (General Contact) is the catch-all WordPress form whose "Reason for
+# contacting" dropdown drives where the submission ends up. Map each option to
+# the matching source category so e.g. care-home and art-kit enquiries land in
+# their own tabs instead of polluting the franchise pipeline.
+FORM1_REASON_TO_SOURCE: dict[str, str] = {
+    "franchise enquiry": "franchise_enquiry",
+    "licence enquiry":   "licence_enquiry",
+    "care home class enquiry":   "care_home_enquiry",
+    "deliverable art kit enquiry": "art_kit_enquiry",
+    "other": "general_enquiry",
+}
+# Pipeline-eligible source categories — the only ones that show up in the
+# sales kanban. Care home / art kit / general are reference-only contacts.
+PIPELINE_SOURCES: set = {"franchise_enquiry", "licence_enquiry"}
+
 
 def _pick(fields_by_label: dict, *candidates: str) -> Optional[str]:
     """Find a field value by trying multiple label variants (case-insensitive, partial match)."""
@@ -694,7 +709,14 @@ async def gravity_forms_intake(payload: GravityFormsIntake, request: Request):
                         payload.entry_id, payload.form_id)
             return {"ok": True, "skipped": "tombstoned", "entry_id": payload.entry_id}
 
-    in_pipeline = payload.form_id in FORM_IDS_IN_PIPELINE
+    # Form 1 (general contact) — refine source based on "Reason for contacting"
+    # so care-home/art-kit/other land in their dedicated tabs rather than the
+    # generic bucket.
+    why = _pick(f, "Reason for Contacting", "Why you are contacting us", "Subject", "Reason")
+    if payload.form_id == 1 and why:
+        source = FORM1_REASON_TO_SOURCE.get(why.strip().lower(), "general_enquiry")
+
+    in_pipeline = source in PIPELINE_SOURCES
 
     doc = {
         "id": str(uuid.uuid4()),
@@ -714,10 +736,11 @@ async def gravity_forms_intake(payload: GravityFormsIntake, request: Request):
         "city": _pick(f, "City/Town", "City", "Town"),
         "county": _pick(f, "County", "Region"),
         "postcode": _pick(f, "Postcode", "Postal Code", "Zip"),
-        "why_contacting": _pick(f, "Why you are contacting us", "Subject", "Reason"),
+        "why_contacting": why,
         "message": _pick(f, "Your Message", "Message", "Comments", "Notes"),
         "country_tag": _pick(f, "Country"),
         "referral_source": _detect_referral_source(f),
+        "reason_for_contacting": why if payload.form_id == 1 else None,
         "raw_fields": f,
         "in_pipeline": in_pipeline,
         "pipeline_status": "new" if in_pipeline else None,
@@ -1894,9 +1917,9 @@ async def list_contacts(
     source: Optional[str] = None,
     pipeline_status: Optional[str] = None,
     in_pipeline: Optional[bool] = None,
-    tab: Optional[str] = None,  # 'pipeline' | 'franchise' | 'licence' | 'general'
+    tab: Optional[str] = None,  # 'pipeline' | 'franchise' | 'licence' | 'care_home' | 'art_kit' | 'general'
     search: Optional[str] = None,
-    limit: int = Query(500, le=2000),
+    limit: int = Query(500, le=10000),
     _: dict = Depends(require_role("admin")),
 ):
     """Combines legacy contacts + web form contacts under one query."""
@@ -1916,6 +1939,14 @@ async def list_contacts(
         # ALL licence enquiries (including those currently in the pipeline).
         q_legacy = None
         q_web["source"] = "licence_enquiry"
+    elif tab == "care_home":
+        # Care-home class enquiries — reference-only, not in pipeline.
+        q_legacy = None
+        q_web["source"] = "care_home_enquiry"
+    elif tab == "art_kit":
+        # Deliverable Art Kit enquiries — reference-only, not in pipeline.
+        q_legacy = None
+        q_web["source"] = "art_kit_enquiry"
     elif tab == "general":
         # General + legacy contacts (legacy gets the long-tail of pre-2024
         # enquiries; web=general_enquiry covers anything new).
@@ -2023,6 +2054,38 @@ async def list_contacts(
     return {"items": items[:limit], "total": len(items)}
 
 
+@api.get("/contacts/counts")
+async def contact_counts(_: dict = Depends(require_role("admin"))):
+    """Total record counts per Contacts tab. Used for the tab-header badges
+    so admins can see at a glance where the long-tail of records lives.
+
+    Only counts live (non-merged) rows. Pipeline counts ``in_pipeline=True``
+    web_form rows; each source tab counts the matching ``source`` value;
+    general lumps web ``general_enquiry`` + the entire legacy collection.
+    """
+    not_merged = {"merged_into": {"$in": [None, ""]}}
+
+    async def _wfc(filt: dict) -> int:
+        return await db.web_form_contacts.count_documents({**filt, **not_merged})
+
+    pipeline = await _wfc({"in_pipeline": True})
+    franchise = await _wfc({"source": "franchise_enquiry"})
+    licence = await _wfc({"source": "licence_enquiry"})
+    care_home = await _wfc({"source": "care_home_enquiry"})
+    art_kit = await _wfc({"source": "art_kit_enquiry"})
+    web_general = await _wfc({"source": "general_enquiry"})
+    legacy = await db.contacts.count_documents(not_merged)
+    return {
+        "pipeline": pipeline,
+        "franchise": franchise,
+        "licence": licence,
+        "care_home": care_home,
+        "art_kit": art_kit,
+        "general": web_general + legacy,
+    }
+
+
+
 @api.get("/contacts/duplicates")
 async def list_duplicate_contacts(_: dict = Depends(require_role("admin"))):
     """Surface groups of contacts that share the same (case-insensitive,
@@ -2047,6 +2110,7 @@ async def list_duplicate_contacts(_: dict = Depends(require_role("admin"))):
         "form_id": 1,
         "in_pipeline": 1,
         "pipeline_status": 1,
+        "date": 1,
         "created_at": 1,
         "gravity_entry_id": 1,
         "admin_notes": 1,
@@ -2074,7 +2138,10 @@ async def list_duplicate_contacts(_: dict = Depends(require_role("admin"))):
     for email, members in by_email.items():
         if len(members) < 2:
             continue
-        members.sort(key=lambda m: str(m.get("created_at") or ""), reverse=True)
+        members.sort(
+            key=lambda m: str(m.get("date") or m.get("created_at") or ""),
+            reverse=True,
+        )
         groups.append({
             "match_key": "email",
             "match_value": email,

@@ -22,6 +22,8 @@ import api from "@/lib/api";
 const SOURCE_PILL = {
   franchise_enquiry: { label: "Franchise", cls: "bg-stone-100 text-stone-800 border-stone-300" },
   licence_enquiry:   { label: "Licence",   cls: "bg-indigo-50 text-indigo-800 border-indigo-300" },
+  care_home_enquiry: { label: "Care Home", cls: "bg-teal-50 text-teal-800 border-teal-300" },
+  art_kit_enquiry:   { label: "Art Kit",   cls: "bg-amber-50 text-amber-900 border-amber-300" },
   general_enquiry:   { label: "General",   cls: "bg-stone-100 text-stone-700 border-stone-200" },
   legacy_general_enquiry: { label: "Legacy", cls: "bg-stone-100 text-stone-500 border-stone-200" },
 };
@@ -41,6 +43,7 @@ const fmtDate = (s) => {
   if (!s) return "";
   try {
     const d = new Date(s);
+    if (isNaN(d.getTime())) return String(s);
     return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" });
   } catch { return ""; }
 };
@@ -290,7 +293,7 @@ export default function DuplicatesModal({ open, onClose, onPickPair, reloadAt = 
                                     {c.in_pipeline ? (STAGE_LABEL[c.pipeline_status] || c.pipeline_status || "—") : <span className="text-stone-400">—</span>}
                                   </td>
                                   <td className="px-3 py-2 text-stone-700 font-mono">{c.postcode || "—"}</td>
-                                  <td className="px-3 py-2 text-stone-500 whitespace-nowrap">{fmtDate(c.created_at)}</td>
+                                  <td className="px-3 py-2 text-stone-500 whitespace-nowrap">{fmtDate(c.date || c.created_at)}</td>
                                   <td className="px-3 py-2 text-stone-500 font-mono">{c.gravity_entry_id || "—"}</td>
                                 </tr>
                               );

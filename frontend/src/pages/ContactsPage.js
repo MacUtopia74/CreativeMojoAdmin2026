@@ -4,7 +4,7 @@ import api from "@/lib/api";
 import LinkExistingFranchiseeModal from "@/components/contacts/LinkExistingFranchiseeModal";
 import MergeContactsModal from "@/components/contacts/MergeContactsModal";
 import DuplicatesModal from "@/components/contacts/DuplicatesModal";
-import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, ChevronsLeft, ChevronsRight, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus, Plus, Sparkles, Upload, FileText, CheckCircle2, Send, Award, Target, Link2, GitMerge } from "lucide-react";
+import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, ChevronsLeft, ChevronsRight, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus, Plus, Sparkles, Upload, FileText, CheckCircle2, Send, Award, Target, Link2, GitMerge, Home, Package } from "lucide-react";
 
 const STAGES = [
   { key: "new", label: "New", color: "bg-stone-100 text-stone-700 border-stone-300", barColor: "bg-stone-400" },
@@ -39,6 +39,8 @@ const TABS = [
   { key: "pipeline", label: "Sales Pipeline", hint: "Leads being actively worked", icon: Briefcase },
   { key: "franchise", label: "Franchise Contacts", hint: "Franchise enquiries not in the pipeline", icon: Users, accent: "stone" },
   { key: "licence", label: "Licence Contacts", hint: "Licence enquiries not in the pipeline", icon: UserPlus, accent: "indigo" },
+  { key: "care_home", label: "Care Home Contacts", hint: "Care-home class enquiries (reference only)", icon: Home, accent: "teal" },
+  { key: "art_kit", label: "Art Kit Contacts", hint: "Deliverable Art Kit enquiries (reference only)", icon: Package, accent: "amber" },
   { key: "general", label: "General Contacts", hint: "General enquiries & legacy contacts", icon: Users },
 ];
 
@@ -47,6 +49,8 @@ const TABS = [
 const SOURCE_STYLE = {
   franchise_enquiry:        { label: "Franchise", pill: "bg-stone-100 text-stone-800 border-stone-300", barColor: "bg-stone-500", border: "border-l-4 border-l-stone-500" },
   licence_enquiry:          { label: "Licence",   pill: "bg-indigo-50 text-indigo-800 border-indigo-300", barColor: "bg-indigo-500", border: "border-l-4 border-l-indigo-500" },
+  care_home_enquiry:        { label: "Care Home", pill: "bg-teal-50 text-teal-800 border-teal-300", barColor: "bg-teal-500", border: "border-l-4 border-l-teal-500" },
+  art_kit_enquiry:          { label: "Art Kit",   pill: "bg-amber-50 text-amber-900 border-amber-300", barColor: "bg-amber-500", border: "border-l-4 border-l-amber-500" },
   general_enquiry:          { label: "General",   pill: "bg-stone-100 text-stone-700 border-stone-200", barColor: "bg-stone-400", border: "" },
   legacy_general_enquiry:   { label: "Legacy",    pill: "bg-stone-100 text-stone-500 border-stone-200", barColor: "bg-stone-300", border: "" },
 };
@@ -985,6 +989,7 @@ export default function ContactsPage() {
   const [stageFilter, setStageFilter] = useState("");
   const [search, setSearch] = useState("");
   const [data, setData] = useState({ items: [], total: 0 });
+  const [counts, setCounts] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState(null);
@@ -1060,7 +1065,7 @@ export default function ContactsPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const params = { tab, search: search || undefined, limit: 2000 };
+      const params = { tab, search: search || undefined, limit: 10000 };
       if (tab === "pipeline" && stageFilter) params.pipeline_status = stageFilter;
       const { data } = await api.get("/contacts", { params });
       setData(data);
@@ -1068,11 +1073,26 @@ export default function ContactsPage() {
     finally { setLoading(false); }
   };
 
+  // Tab-header badges: total live records per category. Reloads whenever a
+  // contact is added / merged / moved so the numbers stay accurate.
+  const loadCounts = async () => {
+    try {
+      const { data } = await api.get("/contacts/counts");
+      setCounts(data || {});
+    } catch (e) { /* badges are non-critical, swallow */ }
+  };
+
   useEffect(() => {
     const t = setTimeout(load, search ? 250 : 0);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, stageFilter, search]);
+
+  // Counts are cheap — refresh whenever any mutation changes the dataset.
+  useEffect(() => {
+    loadCounts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, data.items.length]);
 
   // Reset selection whenever the tab/filter changes
   useEffect(() => { clearSelection(); setAgeFilter("all"); setSourceFilter("all"); }, [tab, stageFilter]);
@@ -1317,10 +1337,11 @@ export default function ContactsPage() {
       </div>
 
       <div className="px-8 pt-6">
-        <div className="flex gap-1 -mb-px" data-testid="mode-tabs">
+        <div className="flex flex-wrap gap-1 -mb-px" data-testid="mode-tabs">
           {TABS.map((t) => {
             const active = tab === t.key;
             const Icon = t.icon;
+            const count = counts[t.key];
             return (
               <button key={t.key} onClick={() => { setTab(t.key); setStageFilter(""); }} data-testid={`mode-${t.key}`}
                 className={`px-5 py-3 text-sm font-bold transition-colors rounded-t-xl flex items-start gap-2 ${
@@ -1328,7 +1349,21 @@ export default function ContactsPage() {
                 }`}>
                 <Icon className="w-4 h-4 mt-0.5" />
                 <span className="text-left">
-                  {t.label}
+                  <span className="inline-flex items-center gap-1.5">
+                    {t.label}
+                    {typeof count === "number" && (
+                      <span
+                        data-testid={`tab-count-${t.key}`}
+                        className={`tabular-nums text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${
+                          active
+                            ? "bg-stone-950 text-white border-stone-950"
+                            : "bg-stone-100 text-stone-700 border-stone-200"
+                        }`}
+                      >
+                        {count.toLocaleString()}
+                      </span>
+                    )}
+                  </span>
                   <div className={`text-[10px] font-normal mt-0.5 ${active ? "text-stone-600" : "text-stone-400"}`}>{t.hint}</div>
                 </span>
               </button>
