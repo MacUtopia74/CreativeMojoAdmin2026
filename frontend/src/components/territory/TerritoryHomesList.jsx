@@ -162,19 +162,17 @@ export default function TerritoryHomesList({ homes = [], onZoomHome, openIndex, 
   return (
     <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid="territory-homes-list">
       <div className="px-4 py-3 border-b border-stone-200 flex items-center justify-between gap-3 flex-wrap bg-stone-50">
-        <div className="flex items-center gap-3">
-          <button onClick={() => setListExpanded(false)} data-testid="collapse-homes-list"
-            className="w-7 h-7 rounded-full border border-stone-300 hover:bg-white flex items-center justify-center" aria-label="Hide list">
-            <ChevronDown className="w-4 h-4 text-stone-600 rotate-180" />
-          </button>
-          <div>
-            <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">CQC homes in your territory</div>
-            <div className="text-sm text-stone-900 mt-0.5"><strong>{filtered.length}</strong>{filtered.length !== homes.length && <span className="text-stone-500"> of {homes.length}</span>} homes · click any row to expand</div>
-          </div>
+        <div className="min-w-0">
+          <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">CQC homes in your territory</div>
+          <div className="text-sm text-stone-900 mt-0.5"><strong>{filtered.length}</strong>{filtered.length !== homes.length && <span className="text-stone-500"> of {homes.length}</span>} homes · click any row to expand</div>
         </div>
+        <button onClick={() => setListExpanded(false)} data-testid="collapse-homes-list"
+          className="touch-target shrink-0 w-7 h-7 rounded-full border border-stone-950 bg-stone-950 text-white hover:bg-stone-800 flex items-center justify-center" aria-label="Hide list">
+          <ChevronDown className="w-3.5 h-3.5 rotate-180" />
+        </button>
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name, town, postcode, manager…"
           data-testid="homes-search"
-          className="px-3 py-1.5 text-sm bg-white border border-stone-200 rounded-lg w-full sm:w-72 focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-400" />
+          className="px-3 py-2 ios-no-zoom bg-white border border-stone-200 rounded-lg w-full sm:w-72 focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-400" />
       </div>
       <div className="max-h-[520px] overflow-y-auto">
         {filtered.map((h, i) => {

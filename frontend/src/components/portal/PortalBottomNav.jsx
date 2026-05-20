@@ -14,21 +14,16 @@ const TABS = [
   { id: "portal-section-profile", label: "Profile", icon: UserIcon, testid: "tab-profile" },
 ];
 
-export default function PortalBottomNav({ onLogout, sectionsRef }) {
+export default function PortalBottomNav({ onLogout, sectionsRef, onTabSelect }) {
   const [active, setActive] = useState("portal-section-home");
 
   useEffect(() => {
-    // Track which section is currently in view — the one whose top is
-    // nearest the top of the viewport wins. We re-build the observer
-    // when the section refs change.
     const targets = TABS
       .map((t) => document.getElementById(t.id))
       .filter(Boolean);
     if (targets.length === 0) return;
     const io = new IntersectionObserver(
       (entries) => {
-        // Pick the entry with the highest intersection ratio AND that
-        // is at least partially above the midpoint of the viewport.
         const visible = entries
           .filter((e) => e.isIntersecting)
           .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
@@ -41,12 +36,20 @@ export default function PortalBottomNav({ onLogout, sectionsRef }) {
   }, [sectionsRef]);
 
   const jumpTo = (id) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    // Offset by the sticky header (~3.5rem) so the section title isn't
-    // hidden behind it.
-    const top = el.getBoundingClientRect().top + window.scrollY - 60;
-    window.scrollTo({ top, behavior: "smooth" });
+    // Tell the parent to expand THIS section and collapse all others
+    // (accordion behaviour requested by client). The parent will set the
+    // matching `xxxOpen` flag to true and the rest to false BEFORE we
+    // scroll, so the layout reaches its final height first — otherwise
+    // scrollTo lands on a stale offset.
+    onTabSelect && onTabSelect(id);
+    // Defer scroll by one frame so React commits the new open/closed
+    // state and DOM heights settle before we measure.
+    requestAnimationFrame(() => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const top = el.getBoundingClientRect().top + window.scrollY - 60;
+      window.scrollTo({ top, behavior: "smooth" });
+    });
     setActive(id);
   };
 
@@ -54,7 +57,7 @@ export default function PortalBottomNav({ onLogout, sectionsRef }) {
     <nav
       data-testid="portal-bottom-nav"
       aria-label="Portal navigation"
-      className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t border-stone-200 pb-safe pl-safe pr-safe">
+      className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-[#D4FF00] border-t border-stone-950/20 pb-safe pl-safe pr-safe shadow-[0_-4px_14px_rgba(0,0,0,0.06)]">
       <div className="grid grid-cols-5">
         {TABS.map((t) => {
           const Icon = t.icon;
@@ -66,14 +69,14 @@ export default function PortalBottomNav({ onLogout, sectionsRef }) {
               onClick={() => jumpTo(t.id)}
               data-testid={t.testid}
               className={`touch-target flex flex-col items-center justify-center gap-0.5 py-2 transition-colors ${
-                isActive ? "text-stone-950" : "text-stone-500"
+                isActive ? "text-stone-950" : "text-stone-950/70"
               }`}>
               <Icon className={`w-5 h-5 ${isActive ? "stroke-[2.5]" : ""}`} />
               <span className={`text-[10px] font-bold uppercase tracking-wider ${isActive ? "" : "opacity-80"}`}>
                 {t.label}
               </span>
               {isActive && (
-                <span className="absolute mt-9 w-1 h-1 rounded-full bg-[#DEDD0C]" aria-hidden="true" />
+                <span className="mt-0.5 w-6 h-0.5 rounded-full bg-stone-950" aria-hidden="true" />
               )}
             </button>
           );
@@ -82,7 +85,7 @@ export default function PortalBottomNav({ onLogout, sectionsRef }) {
           type="button"
           onClick={onLogout}
           data-testid="tab-logout"
-          className="touch-target flex flex-col items-center justify-center gap-0.5 py-2 text-stone-500 hover:text-red-700 transition-colors">
+          className="touch-target flex flex-col items-center justify-center gap-0.5 py-2 text-stone-950/70 hover:text-red-700 transition-colors">
           <LogOut className="w-5 h-5" />
           <span className="text-[10px] font-bold uppercase tracking-wider opacity-80">Sign out</span>
         </button>

@@ -146,8 +146,8 @@ export default function PortalDashboardPage() {
     <div className="min-h-screen bg-[#FBFAF8] pl-safe pr-safe" style={{ zoom: FONT_SCALES[fontScale].zoom }} data-testid="portal-dashboard">
       {/* Top bar — compact on mobile (logo + sign-out only), full on desktop */}
       <header className="bg-white border-b border-stone-200 sticky top-0 z-30 pt-safe">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-2 sm:py-3 flex items-center justify-between gap-2">
-          <Logo className="h-8 sm:h-10 shrink-0" />
+        <div className="max-w-6xl mx-auto px-5 sm:px-6 py-2 sm:py-3 flex items-center justify-between gap-2">
+          <Logo className="h-7 sm:h-10 shrink-0 max-w-[40%]" />
           <div className="flex items-center gap-2 sm:gap-4">
             <button
               onClick={() => {
@@ -178,7 +178,7 @@ export default function PortalDashboardPage() {
 
       {/* Generous bottom padding on mobile so content isn't hidden behind the
           fixed bottom-tab nav (~70px tall incl. safe-area). */}
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8 space-y-5 sm:space-y-6 pb-28 md:pb-8">
+      <main className="max-w-6xl mx-auto px-5 sm:px-6 py-5 sm:py-8 space-y-5 sm:space-y-6 pb-28 md:pb-8">
         {err && (
           <div className="px-4 py-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-2xl flex items-center gap-2">
             <AlertCircle className="w-4 h-4" /> {err}
@@ -196,7 +196,7 @@ export default function PortalDashboardPage() {
               className="bg-white border border-stone-200 rounded-2xl px-4 sm:px-8 py-5 sm:py-7 scroll-mt-20"
               data-testid="portal-hero">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5 sm:gap-6">
-                <div className="flex items-center gap-4 sm:gap-5 min-w-0">
+                <div className="flex items-start sm:items-center gap-4 sm:gap-5 min-w-0">
                   {profile.photo_url ? (
                     <img src={profile.photo_url} alt={profile.full_name || profile.first_name} className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover border-2 border-stone-200 shrink-0" />
                   ) : (
@@ -204,12 +204,12 @@ export default function PortalDashboardPage() {
                       <UserIcon className="w-8 h-8 sm:w-10 sm:h-10" />
                     </div>
                   )}
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="text-[10px] sm:text-xs uppercase tracking-[0.3em] font-bold text-stone-500">
                       Franchise #{profile.franchise_number || "—"}
                     </div>
-                    <div className="font-display text-xl sm:text-3xl text-stone-950 leading-tight truncate">{profile.organisation || profile.full_name || ""}</div>
-                    <div className="text-sm sm:text-base text-stone-600 mt-0.5 truncate">{profile.first_name} {profile.last_name}</div>
+                    <div className="font-display text-lg sm:text-3xl text-stone-950 leading-tight break-words">{profile.organisation || profile.full_name || ""}</div>
+                    <div className="text-sm sm:text-base text-stone-600 mt-0.5 break-words">{profile.first_name} {profile.last_name}</div>
                   </div>
                 </div>
                 <div className="flex items-center justify-between sm:justify-end gap-6 sm:gap-8 flex-wrap">
@@ -350,7 +350,37 @@ export default function PortalDashboardPage() {
       </main>
 
       {/* Mobile-only bottom-tab nav — anchored to viewport bottom */}
-      <PortalBottomNav onLogout={logout} sectionsRef={profile} />
+      <PortalBottomNav
+        onLogout={logout}
+        sectionsRef={profile}
+        onTabSelect={(id) => {
+          // Accordion behaviour requested by client: tapping a bottom-nav
+          // tab expands ONLY the matching section and collapses everything
+          // else (so the user can clearly see only what they tapped to
+          // look at). HOME collapses every panel so the hero card is the
+          // first thing in view.
+          if (id === "portal-section-home") {
+            setDetailsOpen(false);
+            setTerritoryOpen(false);
+            setEventsOpen(false);
+            setFilesOpen(false);
+          } else if (id === "portal-section-profile") {
+            setDetailsOpen(true);
+            setTerritoryOpen(false);
+            setEventsOpen(false);
+            setFilesOpen(false);
+          } else if (id === "portal-section-events") {
+            setEventsOpen(true);
+            setDetailsOpen(false);
+            setTerritoryOpen(false);
+            setFilesOpen(false);
+          } else if (id === "portal-section-files") {
+            setFilesOpen(true);
+            setDetailsOpen(false);
+            setTerritoryOpen(false);
+            setEventsOpen(false);
+          }
+        }} />
 
       {previewFile && <FilePreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />}
     </div>
