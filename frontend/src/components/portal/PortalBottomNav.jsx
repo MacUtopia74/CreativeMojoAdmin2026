@@ -5,13 +5,14 @@
 // IntersectionObserver. Respects iOS safe-area-inset-bottom so it
 // sits cleanly above the home indicator.
 import { useEffect, useState } from "react";
-import { Home, FolderOpen, CalendarDays, User as UserIcon, LogOut } from "lucide-react";
+import { Home, User as UserIcon, MapPin, CalendarDays, FolderOpen, LogOut } from "lucide-react";
 
 const TABS = [
-  { id: "portal-section-home", label: "Home", icon: Home, testid: "tab-home" },
-  { id: "portal-section-files", label: "Files", icon: FolderOpen, testid: "tab-files" },
-  { id: "portal-section-events", label: "Events", icon: CalendarDays, testid: "tab-events" },
-  { id: "portal-section-profile", label: "Profile", icon: UserIcon, testid: "tab-profile" },
+  { id: "portal-section-home",    label: "Home",    icon: Home,         testid: "tab-home" },
+  { id: "portal-section-profile", label: "Profile", icon: UserIcon,     testid: "tab-profile" },
+  { id: "portal-section-map",     label: "Map",     icon: MapPin,       testid: "tab-map" },
+  { id: "portal-section-events",  label: "Events",  icon: CalendarDays, testid: "tab-events" },
+  { id: "portal-section-files",   label: "Files",   icon: FolderOpen,   testid: "tab-files" },
 ];
 
 export default function PortalBottomNav({ onLogout, sectionsRef, onTabSelect }) {
@@ -57,8 +58,8 @@ export default function PortalBottomNav({ onLogout, sectionsRef, onTabSelect }) 
     <nav
       data-testid="portal-bottom-nav"
       aria-label="Portal navigation"
-      className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-[#D4FF00] border-t border-stone-950/20 pb-safe pl-safe pr-safe shadow-[0_-4px_14px_rgba(0,0,0,0.06)]">
-      <div className="grid grid-cols-5">
+      className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-[#dddd16] border-t border-stone-950/20 pb-safe pl-safe pr-safe shadow-[0_-4px_14px_rgba(0,0,0,0.06)]">
+      <div className="grid grid-cols-6">
         {TABS.map((t) => {
           const Icon = t.icon;
           const isActive = active === t.id;

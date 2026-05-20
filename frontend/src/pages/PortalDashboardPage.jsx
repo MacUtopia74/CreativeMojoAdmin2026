@@ -229,7 +229,10 @@ export default function PortalDashboardPage() {
               </div>
             </section>
 
-            {/* Profile / details — collapsible, full-width */}
+            {/* Profile / details — collapsible, full-width. Includes the
+                franchisee's own private file area (R2 personal folder) at
+                the bottom, so everything pertinent to their franchise
+                lives in one place. */}
             <section
               id="portal-section-profile"
               className={`${detailsOpen ? "bg-white" : "bg-stone-100"} border border-stone-200 rounded-2xl overflow-hidden transition-colors scroll-mt-20`}
@@ -238,78 +241,93 @@ export default function PortalDashboardPage() {
                 className={`touch-target w-full flex items-center justify-between gap-3 ${detailsOpen ? "hover:bg-stone-50" : "hover:bg-stone-200"} transition-colors px-4 sm:px-6 py-3.5 sm:py-4`}>
                 <div className="flex items-center gap-2">
                   <UserIcon className="w-4 h-4 text-stone-700" />
-                  <span className="text-xs uppercase tracking-[0.3em] font-bold text-stone-700">Your details</span>
+                  <span className="text-xs uppercase tracking-[0.3em] font-bold text-stone-700">Your franchise details</span>
                 </div>
                 <span className={`w-7 h-7 rounded-full border flex items-center justify-center transition-colors ${detailsOpen ? "border-stone-300 bg-white" : "border-stone-950 bg-stone-950 text-white"}`}>
                   {detailsOpen ? <ChevronUp className="w-3.5 h-3.5 text-stone-600" /> : <ChevronDown className="w-3.5 h-3.5" />}
                 </span>
               </button>
               {detailsOpen && (
-                <div className="px-4 sm:px-6 pb-5 sm:pb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
-                  <Field icon={Mail} label="Email" value={profile.mojo_email || profile.email} href={`mailto:${profile.mojo_email || profile.email}`} />
-                  <Field icon={Phone} label="Phone" value={profile.phone} href={`tel:${profile.phone}`} />
-                  <Field icon={Smartphone} label="Mobile" value={profile.mobile} href={`tel:${profile.mobile}`} />
-                  <Field icon={Globe} label="Website" value={profile.website} href={profile.website} />
-                  <Field icon={Calendar} label="Started with us" value={profile.start_date ? new Date(profile.start_date).toLocaleDateString("en-GB") : null} />
-                  {profile.end_date && <Field icon={Clock} label="End date" value={new Date(profile.end_date).toLocaleDateString("en-GB")} />}
-                  {profile.current_contract && (
-                    <div className="sm:col-span-2 lg:col-span-3 mt-2 pt-4 border-t border-stone-200">
-                      <div className="flex items-center gap-2 mb-3">
-                        <FileText className="w-3.5 h-3.5 text-stone-400" />
-                        <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Current contract</span>
+                <>
+                  <div className="px-4 sm:px-6 pb-5 sm:pb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
+                    <Field icon={Mail} label="Email" value={profile.mojo_email || profile.email} href={`mailto:${profile.mojo_email || profile.email}`} />
+                    <Field icon={Phone} label="Phone" value={profile.phone} href={`tel:${profile.phone}`} />
+                    <Field icon={Smartphone} label="Mobile" value={profile.mobile} href={`tel:${profile.mobile}`} />
+                    <Field icon={Globe} label="Website" value={profile.website} href={profile.website} />
+                    <Field icon={Calendar} label="Started with us" value={profile.start_date ? new Date(profile.start_date).toLocaleDateString("en-GB") : null} />
+                    {profile.end_date && <Field icon={Clock} label="End date" value={new Date(profile.end_date).toLocaleDateString("en-GB")} />}
+                    {profile.current_contract && (
+                      <div className="sm:col-span-2 lg:col-span-3 mt-2 pt-4 border-t border-stone-200">
+                        <div className="flex items-center gap-2 mb-3">
+                          <FileText className="w-3.5 h-3.5 text-stone-400" />
+                          <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Current contract</span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-3">
+                          <Field icon={Calendar} label="Started" value={profile.current_contract.commencement_date ? new Date(profile.current_contract.commencement_date).toLocaleDateString("en-GB") : "—"} />
+                          <Field icon={Clock} label="Expires" value={profile.current_contract.renewal_date ? new Date(profile.current_contract.renewal_date).toLocaleDateString("en-GB") : "—"} />
+                          <Field icon={FileText} label="Term" value={profile.current_contract.contract_term_years ? `${profile.current_contract.contract_term_years} year${profile.current_contract.contract_term_years === 1 ? "" : "s"}` : "—"} />
+                        </div>
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-3">
-                        <Field icon={Calendar} label="Started" value={profile.current_contract.commencement_date ? new Date(profile.current_contract.commencement_date).toLocaleDateString("en-GB") : "—"} />
-                        <Field icon={Clock} label="Expires" value={profile.current_contract.renewal_date ? new Date(profile.current_contract.renewal_date).toLocaleDateString("en-GB") : "—"} />
-                        <Field icon={FileText} label="Term" value={profile.current_contract.contract_term_years ? `${profile.current_contract.contract_term_years} year${profile.current_contract.contract_term_years === 1 ? "" : "s"}` : "—"} />
-                      </div>
-                    </div>
-                  )}
-                  {addressLines.length > 0 && (
-                    <div className="sm:col-span-2 lg:col-span-3" data-testid="portal-address">
-                      <div className="flex items-start gap-3">
-                        <MapPin className="w-4 h-4 text-stone-400 mt-0.5 shrink-0" />
-                        <div className="min-w-0">
-                          <div className="text-[11px] uppercase tracking-[0.2em] font-bold text-stone-500">Address</div>
-                          <div className="text-sm sm:text-base text-stone-900 leading-relaxed">
-                            {addressLines.join(", ")}
+                    )}
+                    {addressLines.length > 0 && (
+                      <div className="sm:col-span-2 lg:col-span-3" data-testid="portal-address">
+                        <div className="flex items-start gap-3">
+                          <MapPin className="w-4 h-4 text-stone-400 mt-0.5 shrink-0" />
+                          <div className="min-w-0">
+                            <div className="text-[11px] uppercase tracking-[0.2em] font-bold text-stone-500">Address</div>
+                            <div className="text-sm sm:text-base text-stone-900 leading-relaxed">
+                              {addressLines.join(", ")}
+                            </div>
                           </div>
                         </div>
                       </div>
+                    )}
+                  </div>
+
+                  {/* Own franchise files — the franchisee's private R2 folder.
+                      Locked to the "own" scope so the tab switcher is hidden.
+                      This is the "documents pertinent to YOUR franchise" half
+                      of the file split — shared/brand files live in the
+                      FILES panel below. */}
+                  <div className="border-t border-stone-200 px-4 sm:px-6 pb-5 sm:pb-6 pt-4 sm:pt-5">
+                    <div className="flex items-center gap-2 mb-3">
+                      <FolderOpen className="w-3.5 h-3.5 text-stone-400" />
+                      <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">My franchise documents</span>
                     </div>
-                  )}
-                </div>
+                    <FranchiseeFilesPanel franchisee={profile} lockedTab="own" />
+                  </div>
+                </>
               )}
             </section>
 
-            {/* Territory — taller on desktop, sensibly sized on phone */}
-            {territoryOpen ? (
-              <section className="relative">
-                <button onClick={() => setTerritoryOpen(false)} data-testid="toggle-territory"
-                  className="touch-target absolute top-3 sm:top-5 right-3 sm:right-5 z-10 rounded-full border border-stone-300 bg-white hover:bg-stone-100 flex items-center justify-center" aria-label="Hide territory">
-                  <ChevronUp className="w-3.5 h-3.5 text-stone-600" />
+            {/* Territory map */}
+            <section id="portal-section-map" className="scroll-mt-20">
+              {territoryOpen ? (
+                <div className="relative">
+                  <button onClick={() => setTerritoryOpen(false)} data-testid="toggle-territory"
+                    className="touch-target absolute top-3 sm:top-5 right-3 sm:right-5 z-10 rounded-full border border-stone-300 bg-white hover:bg-stone-100 flex items-center justify-center" aria-label="Hide territory map">
+                    <ChevronUp className="w-3.5 h-3.5 text-stone-600" />
+                  </button>
+                  <div className="block md:hidden">
+                    <FranchiseeTerritoryWidget mapHeight={360} />
+                  </div>
+                  <div className="hidden md:block">
+                    <FranchiseeTerritoryWidget mapHeight={640} />
+                  </div>
+                </div>
+              ) : (
+                <button onClick={() => setTerritoryOpen(true)} data-testid="toggle-territory"
+                  className="touch-target w-full bg-stone-100 border border-stone-200 rounded-2xl px-4 sm:px-6 py-3.5 sm:py-4 flex items-center justify-between gap-3 hover:bg-stone-200 transition-colors">
+                  <div className="flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-stone-700" />
+                    <span className="text-xs uppercase tracking-[0.3em] font-bold text-stone-700">Your territory map</span>
+                  </div>
+                  <span className="w-7 h-7 rounded-full border border-stone-950 bg-stone-950 text-white flex items-center justify-center">
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  </span>
                 </button>
-                {/* On phones default to ~360px high; desktop keeps the
-                    generous 640px so the wider map is still useful. */}
-                <div className="block md:hidden">
-                  <FranchiseeTerritoryWidget mapHeight={360} />
-                </div>
-                <div className="hidden md:block">
-                  <FranchiseeTerritoryWidget mapHeight={640} />
-                </div>
-              </section>
-            ) : (
-              <button onClick={() => setTerritoryOpen(true)} data-testid="toggle-territory"
-                className="touch-target w-full bg-stone-100 border border-stone-200 rounded-2xl px-4 sm:px-6 py-3.5 sm:py-4 flex items-center justify-between gap-3 hover:bg-stone-200 transition-colors">
-                <div className="flex items-center gap-2">
-                  <MapPin className="w-4 h-4 text-stone-700" />
-                  <span className="text-xs uppercase tracking-[0.3em] font-bold text-stone-700">Your territory</span>
-                </div>
-                <span className="w-7 h-7 rounded-full border border-stone-950 bg-stone-950 text-white flex items-center justify-center">
-                  <ChevronDown className="w-3.5 h-3.5" />
-                </span>
-              </button>
-            )}
+              )}
+            </section>
 
             {/* Events */}
             <section id="portal-section-events" className="scroll-mt-20">
@@ -319,7 +337,8 @@ export default function PortalDashboardPage() {
               />
             </section>
 
-            {/* Files — primary daily tool */}
+            {/* Shared files only — own files moved into Your Franchise
+                Details above. */}
             <section
               id="portal-section-files"
               className={`${filesOpen ? "bg-white" : "bg-stone-100"} border border-stone-200 rounded-2xl overflow-hidden transition-colors scroll-mt-20`}
@@ -328,7 +347,7 @@ export default function PortalDashboardPage() {
                 className={`touch-target w-full flex items-center justify-between gap-3 ${filesOpen ? "hover:bg-stone-50" : "hover:bg-stone-200"} transition-colors px-4 sm:px-6 py-3.5 sm:py-4`}>
                 <div className="flex items-center gap-2">
                   <FolderOpen className="w-4 h-4 text-stone-700" />
-                  <span className="text-xs uppercase tracking-[0.3em] font-bold text-stone-700">Your files</span>
+                  <span className="text-xs uppercase tracking-[0.3em] font-bold text-stone-700">Files</span>
                 </div>
                 <span className={`w-7 h-7 rounded-full border flex items-center justify-center transition-colors ${filesOpen ? "border-stone-300 bg-white" : "border-stone-950 bg-stone-950 text-white"}`}>
                   {filesOpen ? <ChevronUp className="w-3.5 h-3.5 text-stone-600" /> : <ChevronDown className="w-3.5 h-3.5" />}
@@ -341,7 +360,7 @@ export default function PortalDashboardPage() {
                     onDownload={downloadRecent}
                     onOpenFolder={() => { /* the panel below is the browser */ }}
                   />
-                  <FranchiseeFilesPanel franchisee={profile} />
+                  <FranchiseeFilesPanel franchisee={profile} lockedTab="brand" />
                 </div>
               )}
             </section>
@@ -354,11 +373,8 @@ export default function PortalDashboardPage() {
         onLogout={logout}
         sectionsRef={profile}
         onTabSelect={(id) => {
-          // Accordion behaviour requested by client: tapping a bottom-nav
-          // tab expands ONLY the matching section and collapses everything
-          // else (so the user can clearly see only what they tapped to
-          // look at). HOME collapses every panel so the hero card is the
-          // first thing in view.
+          // Accordion behaviour: tapping a bottom-nav tab expands ONLY the
+          // matching section and collapses everything else.
           if (id === "portal-section-home") {
             setDetailsOpen(false);
             setTerritoryOpen(false);
@@ -367,6 +383,11 @@ export default function PortalDashboardPage() {
           } else if (id === "portal-section-profile") {
             setDetailsOpen(true);
             setTerritoryOpen(false);
+            setEventsOpen(false);
+            setFilesOpen(false);
+          } else if (id === "portal-section-map") {
+            setTerritoryOpen(true);
+            setDetailsOpen(false);
             setEventsOpen(false);
             setFilesOpen(false);
           } else if (id === "portal-section-events") {

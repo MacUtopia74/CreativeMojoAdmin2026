@@ -124,7 +124,7 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
             <div className="flex items-center gap-2 text-xs uppercase tracking-[0.3em] font-bold text-stone-500 mb-1">
-              <MapIcon className="w-3.5 h-3.5" /> Your territory
+              <MapIcon className="w-3.5 h-3.5" /> Your territory map
             </div>
             {hasTerritory ? (
               <h2 className="font-display text-2xl text-stone-950">

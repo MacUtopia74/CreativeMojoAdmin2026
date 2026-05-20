@@ -32,8 +32,13 @@ function fmtBytes(b) {
 
 const BRAND_ROOT = "shared/files-for-all-franchisees/";
 
-export default function FranchiseeFilesPanel({ franchisee, canUpload = true }) {
-  const [tab, setTab] = useState("own"); // "own" | "brand"
+export default function FranchiseeFilesPanel({ franchisee, canUpload = true, lockedTab = null }) {
+  // ``lockedTab`` — when "own" or "brand", the panel renders ONLY that tab and
+  // hides the tab strip. Used by the portal which splits the two scopes
+  // across two physical sections (own files inside the YOUR FRANCHISE DETAILS
+  // panel, shared files in the FILES panel). Admin pages pass ``null`` so
+  // both tabs continue to render.
+  const [tab, setTab] = useState(lockedTab || "own");
   const [prefix, setPrefix] = useState(""); // relative to current root
   const [tree, setTree] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -121,42 +126,44 @@ export default function FranchiseeFilesPanel({ franchisee, canUpload = true }) {
   return (
     <div className="overflow-hidden" data-testid="franchisee-files-panel">
       {/* Green header strip — mirrors the yellow "Recently added" strip
-          directly above. Makes the visual hierarchy obvious: two sibling
-          sections inside the Files panel. Flush left/right with no
-          inner border so it lines up with the parent card. */}
-      <div className="-mx-5 px-5 py-3 bg-[#C8F2C8] flex items-center gap-2.5" data-testid="files-section-header">
-        <div className="w-7 h-7 rounded-md flex items-center justify-center bg-stone-950">
-          <FolderOpen className="w-4 h-4 text-[#C8F2C8]" />
+          directly above. Hidden when the panel is locked to a single scope
+          (the parent already provides its own header in that case). */}
+      {!lockedTab && (
+        <div className="-mx-5 px-5 py-3 bg-[#C8F2C8] flex items-center gap-2.5" data-testid="files-section-header">
+          <div className="w-7 h-7 rounded-md flex items-center justify-center bg-stone-950">
+            <FolderOpen className="w-4 h-4 text-[#C8F2C8]" />
+          </div>
+          <span className="text-sm font-display font-bold tracking-tight text-stone-950">
+            Franchise File Access
+          </span>
+          <span className="text-[11px] uppercase tracking-[0.2em] font-bold text-stone-800">
+            · all files
+          </span>
         </div>
-        <span className="text-sm font-display font-bold tracking-tight text-stone-950">
-          Franchise File Access
-        </span>
-        <span className="text-[11px] uppercase tracking-[0.2em] font-bold text-stone-800">
-          · all files
-        </span>
-      </div>
+      )}
 
-      <div className="space-y-4 pt-5">
-        {/* Tab strip — horizontally scrollable on phones so neither tab
-            shrinks awkwardly. Mobile-first padding + 44px tap target. */}
-        <div className="flex items-center gap-2 -mx-1 px-1 overflow-x-auto scrollbar-none" data-testid="franchisee-files-tabs" role="tablist">
-          <button onClick={() => setTab("own")} data-testid="ff-tab-own" role="tab" aria-selected={tab === "own"}
-            className={`touch-target shrink-0 px-4 sm:px-5 py-2.5 sm:py-3 text-xs sm:text-sm font-bold rounded-xl border-2 transition-all flex items-center gap-2 ${tab === "own"
-              ? "bg-stone-950 text-white border-stone-950 shadow-sm"
-              : "bg-white text-stone-700 border-stone-300 hover:border-stone-500"}`}>
-            <Folder className="w-4 h-4" />
-            <span className="hidden sm:inline">My own franchise documents</span>
-            <span className="sm:hidden">My documents</span>
-          </button>
-          <button onClick={() => setTab("brand")} data-testid="ff-tab-brand" role="tab" aria-selected={tab === "brand"}
-            className={`touch-target shrink-0 px-4 sm:px-5 py-2.5 sm:py-3 text-xs sm:text-sm font-bold rounded-xl border-2 transition-all flex items-center gap-2 ${tab === "brand"
-              ? "bg-stone-950 text-white border-stone-950 shadow-sm"
-              : "bg-white text-stone-700 border-stone-300 hover:border-stone-500"}`}>
-            <Folder className="w-4 h-4" />
-            <span className="hidden sm:inline">Files for all franchisees</span>
-            <span className="sm:hidden">Shared files</span>
-          </button>
-        </div>
+      <div className={lockedTab ? "space-y-4" : "space-y-4 pt-5"}>
+        {/* Tab strip — hidden when ``lockedTab`` forces a single scope. */}
+        {!lockedTab && (
+          <div className="flex items-center gap-2 -mx-1 px-1 overflow-x-auto scrollbar-none" data-testid="franchisee-files-tabs" role="tablist">
+            <button onClick={() => setTab("own")} data-testid="ff-tab-own" role="tab" aria-selected={tab === "own"}
+              className={`touch-target shrink-0 px-4 sm:px-5 py-2.5 sm:py-3 text-xs sm:text-sm font-bold rounded-xl border-2 transition-all flex items-center gap-2 ${tab === "own"
+                ? "bg-stone-950 text-white border-stone-950 shadow-sm"
+                : "bg-white text-stone-700 border-stone-300 hover:border-stone-500"}`}>
+              <Folder className="w-4 h-4" />
+              <span className="hidden sm:inline">My own franchise documents</span>
+              <span className="sm:hidden">My documents</span>
+            </button>
+            <button onClick={() => setTab("brand")} data-testid="ff-tab-brand" role="tab" aria-selected={tab === "brand"}
+              className={`touch-target shrink-0 px-4 sm:px-5 py-2.5 sm:py-3 text-xs sm:text-sm font-bold rounded-xl border-2 transition-all flex items-center gap-2 ${tab === "brand"
+                ? "bg-stone-950 text-white border-stone-950 shadow-sm"
+                : "bg-white text-stone-700 border-stone-300 hover:border-stone-500"}`}>
+              <Folder className="w-4 h-4" />
+              <span className="hidden sm:inline">Files for all franchisees</span>
+              <span className="sm:hidden">Shared files</span>
+            </button>
+          </div>
+        )}
 
       {/* Search + view toggle */}
       <div className="flex items-center gap-2 flex-wrap">
