@@ -15,8 +15,10 @@ const TABS = [
   { id: "portal-section-files",   label: "Files",   icon: FolderOpen,   testid: "tab-files" },
 ];
 
-export default function PortalBottomNav({ onLogout, sectionsRef, onTabSelect }) {
-  const [active, setActive] = useState("portal-section-home");
+export default function PortalBottomNav({ onLogout, sectionsRef, onTabSelect, openSections = {} }) {
+  // Track which section is in the viewport (intersection-based) — used as a
+  // secondary "you're here" hint when nothing is explicitly expanded.
+  const [activeByViewport, setActiveByViewport] = useState("portal-section-home");
 
   useEffect(() => {
     const targets = TABS
@@ -28,7 +30,7 @@ export default function PortalBottomNav({ onLogout, sectionsRef, onTabSelect }) 
         const visible = entries
           .filter((e) => e.isIntersecting)
           .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
-        if (visible.length > 0) setActive(visible[0].target.id);
+        if (visible.length > 0) setActiveByViewport(visible[0].target.id);
       },
       { rootMargin: "-30% 0px -50% 0px", threshold: [0, 0.25, 0.5, 0.75, 1] },
     );
@@ -37,21 +39,17 @@ export default function PortalBottomNav({ onLogout, sectionsRef, onTabSelect }) 
   }, [sectionsRef]);
 
   const jumpTo = (id) => {
-    // Tell the parent to expand THIS section and collapse all others
-    // (accordion behaviour requested by client). The parent will set the
-    // matching `xxxOpen` flag to true and the rest to false BEFORE we
-    // scroll, so the layout reaches its final height first — otherwise
-    // scrollTo lands on a stale offset.
+    // Let the parent toggle the corresponding panel (single source of
+    // truth for open/closed state).
     onTabSelect && onTabSelect(id);
-    // Defer scroll by one frame so React commits the new open/closed
-    // state and DOM heights settle before we measure.
+    // Defer scroll by one frame so React commits the new open state and
+    // section heights settle before measuring.
     requestAnimationFrame(() => {
       const el = document.getElementById(id);
       if (!el) return;
       const top = el.getBoundingClientRect().top + window.scrollY - 60;
       window.scrollTo({ top, behavior: "smooth" });
     });
-    setActive(id);
   };
 
   return (
@@ -62,21 +60,43 @@ export default function PortalBottomNav({ onLogout, sectionsRef, onTabSelect }) 
       <div className="grid grid-cols-6">
         {TABS.map((t) => {
           const Icon = t.icon;
-          const isActive = active === t.id;
+          // ON state = the section's panel is currently expanded. HOME is
+          // a special-case "everything collapsed" state.
+          let isOn = false;
+          if (t.id === "portal-section-home") {
+            isOn = !openSections["portal-section-profile"]
+                && !openSections["portal-section-map"]
+                && !openSections["portal-section-events"]
+                && !openSections["portal-section-files"];
+          } else {
+            isOn = !!openSections[t.id];
+          }
+          // Secondary hint: if nothing is on but the user has scrolled
+          // into a section, surface it subtly.
+          const viewportHint = !isOn && activeByViewport === t.id && t.id !== "portal-section-home";
           return (
             <button
               key={t.id}
               type="button"
               onClick={() => jumpTo(t.id)}
               data-testid={t.testid}
-              className={`touch-target flex flex-col items-center justify-center gap-0.5 py-2 transition-colors ${
-                isActive ? "text-stone-950" : "text-stone-950/70"
+              aria-pressed={isOn}
+              className={`touch-target relative flex flex-col items-center justify-center gap-0.5 py-2 transition-all ${
+                isOn
+                  ? "text-stone-950"
+                  : viewportHint
+                    ? "text-stone-950/85"
+                    : "text-stone-950/55"
               }`}>
-              <Icon className={`w-5 h-5 ${isActive ? "stroke-[2.5]" : ""}`} />
-              <span className={`text-[10px] font-bold uppercase tracking-wider ${isActive ? "" : "opacity-80"}`}>
+              {/* "ON" pill — soft dark backplate behind the icon when active */}
+              {isOn && (
+                <span className="absolute top-1 inset-x-2 h-7 rounded-full bg-stone-950/15" aria-hidden="true" />
+              )}
+              <Icon className={`relative z-10 w-5 h-5 ${isOn ? "stroke-[2.5]" : ""}`} />
+              <span className={`relative z-10 text-[10px] font-bold uppercase tracking-wider ${isOn ? "" : "opacity-80"}`}>
                 {t.label}
               </span>
-              {isActive && (
+              {isOn && (
                 <span className="mt-0.5 w-6 h-0.5 rounded-full bg-stone-950" aria-hidden="true" />
               )}
             </button>
@@ -86,7 +106,7 @@ export default function PortalBottomNav({ onLogout, sectionsRef, onTabSelect }) 
           type="button"
           onClick={onLogout}
           data-testid="tab-logout"
-          className="touch-target flex flex-col items-center justify-center gap-0.5 py-2 text-stone-950/70 hover:text-red-700 transition-colors">
+          className="touch-target flex flex-col items-center justify-center gap-0.5 py-2 text-stone-950/55 hover:text-red-700 transition-colors">
           <LogOut className="w-5 h-5" />
           <span className="text-[10px] font-bold uppercase tracking-wider opacity-80">Sign out</span>
         </button>

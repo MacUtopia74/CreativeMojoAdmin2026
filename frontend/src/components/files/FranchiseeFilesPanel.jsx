@@ -165,20 +165,25 @@ export default function FranchiseeFilesPanel({ franchisee, canUpload = true, loc
           </div>
         )}
 
-      {/* Search + view toggle */}
+      {/* Search + view toggle. Search is hidden in "own" locked mode (the
+          Profile panel) — franchisees have so few personal files that the
+          input adds clutter without value. Browsing the small folder
+          structure is faster. */}
       <div className="flex items-center gap-2 flex-wrap">
-        <div className="relative flex-1 min-w-full sm:min-w-[240px]">
-          <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} data-testid="ff-search"
-            placeholder="Search files by name…"
-            className="w-full pl-9 pr-9 py-2.5 ios-no-zoom bg-white border border-stone-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-500" />
-          {search && (
-            <button onClick={() => setSearch("")} aria-label="Clear search"
-              className="touch-target absolute right-1 top-1/2 -translate-y-1/2 flex items-center justify-center hover:bg-stone-100 rounded-md">
-              <X className="w-4 h-4 text-stone-500" />
-            </button>
-          )}
-        </div>
+        {lockedTab !== "own" && (
+          <div className="relative flex-1 min-w-full sm:min-w-[240px]">
+            <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} data-testid="ff-search"
+              placeholder="Search files by name…"
+              className="w-full pl-9 pr-9 py-2.5 ios-no-zoom bg-white border border-stone-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-500" />
+            {search && (
+              <button onClick={() => setSearch("")} aria-label="Clear search"
+                className="touch-target absolute right-1 top-1/2 -translate-y-1/2 flex items-center justify-center hover:bg-stone-100 rounded-md">
+                <X className="w-4 h-4 text-stone-500" />
+              </button>
+            )}
+          </div>
+        )}
         <div className="inline-flex bg-white border border-stone-300 rounded-xl overflow-hidden text-xs font-bold">
           <button onClick={() => setViewMode("list")} data-testid="ff-view-list"
             className={`touch-target px-3 flex items-center gap-1.5 ${viewMode === "list" ? "bg-stone-950 text-white" : "text-stone-700 hover:bg-stone-50"}`}>

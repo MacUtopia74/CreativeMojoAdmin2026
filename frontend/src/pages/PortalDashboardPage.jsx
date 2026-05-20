@@ -372,34 +372,59 @@ export default function PortalDashboardPage() {
       <PortalBottomNav
         onLogout={logout}
         sectionsRef={profile}
+        openSections={{
+          "portal-section-profile": detailsOpen,
+          "portal-section-map": territoryOpen,
+          "portal-section-events": eventsOpen,
+          "portal-section-files": filesOpen,
+        }}
         onTabSelect={(id) => {
-          // Accordion behaviour: tapping a bottom-nav tab expands ONLY the
-          // matching section and collapses everything else.
+          // Accordion + re-tap-toggle: tapping a tab expands ONLY its
+          // section. Tapping the SAME tab again collapses that section
+          // (giving the user an obvious on/off toggle they can use to
+          // hide the panel without scrolling away). HOME always closes
+          // everything.
           if (id === "portal-section-home") {
             setDetailsOpen(false);
             setTerritoryOpen(false);
             setEventsOpen(false);
             setFilesOpen(false);
           } else if (id === "portal-section-profile") {
-            setDetailsOpen(true);
-            setTerritoryOpen(false);
-            setEventsOpen(false);
-            setFilesOpen(false);
+            if (detailsOpen) {
+              setDetailsOpen(false);
+            } else {
+              setDetailsOpen(true);
+              setTerritoryOpen(false);
+              setEventsOpen(false);
+              setFilesOpen(false);
+            }
           } else if (id === "portal-section-map") {
-            setTerritoryOpen(true);
-            setDetailsOpen(false);
-            setEventsOpen(false);
-            setFilesOpen(false);
+            if (territoryOpen) {
+              setTerritoryOpen(false);
+            } else {
+              setTerritoryOpen(true);
+              setDetailsOpen(false);
+              setEventsOpen(false);
+              setFilesOpen(false);
+            }
           } else if (id === "portal-section-events") {
-            setEventsOpen(true);
-            setDetailsOpen(false);
-            setTerritoryOpen(false);
-            setFilesOpen(false);
+            if (eventsOpen) {
+              setEventsOpen(false);
+            } else {
+              setEventsOpen(true);
+              setDetailsOpen(false);
+              setTerritoryOpen(false);
+              setFilesOpen(false);
+            }
           } else if (id === "portal-section-files") {
-            setFilesOpen(true);
-            setDetailsOpen(false);
-            setTerritoryOpen(false);
-            setEventsOpen(false);
+            if (filesOpen) {
+              setFilesOpen(false);
+            } else {
+              setFilesOpen(true);
+              setDetailsOpen(false);
+              setTerritoryOpen(false);
+              setEventsOpen(false);
+            }
           }
         }} />
 
