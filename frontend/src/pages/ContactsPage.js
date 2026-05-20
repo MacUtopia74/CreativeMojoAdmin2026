@@ -652,6 +652,14 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
                 <Send className="w-3.5 h-3.5" /> Reply
               </button>
             )}
+            {isInPipeline && (!contact.pipeline_status || contact.pipeline_status === "new") && (
+              <button onClick={() => onStageChange(contact.id, "contacted")}
+                data-testid="drawer-mark-contacted"
+                title="Mark Contacted — use this if you've replied in your own email app"
+                className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider bg-white border border-stone-300 text-stone-700 hover:bg-stone-950 hover:text-white hover:border-stone-950 rounded-lg flex items-center gap-1 transition-colors">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Mark contacted
+              </button>
+            )}
             <button onClick={confirmDelete} disabled={busy} data-testid="drawer-delete"
               className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-red-700 hover:bg-red-50 rounded-lg flex items-center gap-1 disabled:opacity-50">
               <Trash2 className="w-3.5 h-3.5" /> Delete
@@ -1004,8 +1012,9 @@ export default function ContactsPage() {
     const body = `${greeting}\n\nThanks for getting in touch with Creative Mojo.\n\n`;
     const mailto = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     window.location.href = mailto;
-    // Auto-advance to "Contacted" if currently "new" — no roundtrip wait
-    if (contact.pipeline_status === "new") {
+    // Auto-advance to "Contacted" if currently "new" (or has no stage yet — a
+    // fallback-grouped card visually in the New column).
+    if (!contact.pipeline_status || contact.pipeline_status === "new") {
       updateStage(contact.id, "contacted");
     }
   };
@@ -1279,13 +1288,23 @@ export default function ContactsPage() {
                               )}
                             </div>
                             <div className="flex items-center gap-1.5 shrink-0">
-                              {c.pipeline_status === "new" && c.email && (
-                                <button onClick={(e) => { e.stopPropagation(); replyByEmail(c); }}
-                                  data-testid={`reply-${c.id}`}
-                                  title={`Send reply to ${c.email}`}
-                                  className="px-2 py-0.5 rounded-md bg-[#E2462A] hover:bg-[#C73B22] text-white text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 shadow-sm">
-                                  <Send className="w-2.5 h-2.5" /> Reply
-                                </button>
+                              {(!c.pipeline_status || c.pipeline_status === "new") && (
+                                <>
+                                  {c.email && (
+                                    <button onClick={(e) => { e.stopPropagation(); replyByEmail(c); }}
+                                      data-testid={`reply-${c.id}`}
+                                      title={`Send reply to ${c.email} (auto-advances to Contacted)`}
+                                      className="px-2 py-0.5 rounded-md bg-[#E2462A] hover:bg-[#C73B22] text-white text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 shadow-sm">
+                                      <Send className="w-2.5 h-2.5" /> Reply
+                                    </button>
+                                  )}
+                                  <button onClick={(e) => { e.stopPropagation(); updateStage(c.id, "contacted"); }}
+                                    data-testid={`mark-contacted-${c.id}`}
+                                    title="Mark Contacted — use this if you've replied in your own email app"
+                                    className="px-1.5 py-0.5 rounded-md bg-white border border-stone-300 text-stone-700 hover:bg-stone-950 hover:text-white hover:border-stone-950 text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 transition-colors">
+                                    <CheckCircle2 className="w-2.5 h-2.5" />
+                                  </button>
+                                </>
                               )}
                               <AgeBadge days={age} />
                             </div>

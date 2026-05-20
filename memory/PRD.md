@@ -34,6 +34,13 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
   - **Supplier keyword filters** on Banking page: 16 seed chips (DENE LODGE, HAZELGATE, etc.) — click-to-filter, add/remove inline, persists in `banking_supplier_keywords`.
 
 
+- **Sales Pipeline — Reply lozenge regression fix + "Mark Contacted" feature** ✅ (May 20 2026)
+  - Bug: a new contact (Deborah Tiver, GF entry 6035) appeared in the NEW kanban column overnight but with NO red Reply lozenge. Root cause: `gf_backfill.py` inserts new rows with `in_pipeline=True` but never set `pipeline_status`; the frontend's `c.pipeline_status === "new" && c.email` check required strict equality, so null-status cards fell into the New column via the fallback grouping but never rendered the button. The live webhook handler ALREADY set `pipeline_status="new"` — the backfill safety net didn't.
+  - Backend fix: `gf_backfill.py` now writes `"pipeline_status": "new"` on insert AND on stub-repair, mirroring the live webhook. One-off DB sweep set the 1 affected row (Deborah Tiver) to `pipeline_status="new"`.
+  - Frontend fix: Reply button visibility loosened to `(!c.pipeline_status || c.pipeline_status === "new") && c.email`. Auto-advance logic in `replyByEmail` mirrored.
+  - Feature: NEW `Mark contacted` mini-button (white pill with check icon) sits next to Reply on every kanban card in the NEW column, and as a separate header CTA in the drawer. Click → just advances stage to "contacted" without opening any email client. Use when you've already replied via your own email app.
+  - Test IDs: `mark-contacted-{id}` (kanban), `drawer-mark-contacted` (drawer).
+
 - **Sales Pipeline — "Link to existing franchisee" flow** ✅ (May 19 2026)
   - Use case: pipeline contacts who are actually *already* in the franchisees collection from the historic migration. The standard "Convert" flow created an unwanted duplicate franchisees row; this skips that.
   - New backend endpoints (admin-only):

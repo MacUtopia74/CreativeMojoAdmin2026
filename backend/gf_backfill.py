@@ -264,6 +264,7 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
                 "gravity_entry_id": eid,
                 "date": entry.get("date_created"),
                 "in_pipeline": True,
+                "pipeline_status": "new",  # mirror the live webhook handler
                 "ingested_via": "gf_backfill",
                 "updated_at": now,
             }
