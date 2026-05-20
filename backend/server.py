@@ -1003,6 +1003,48 @@ async def list_franchisees_missing_mandate(
     return {"count": len(items), "items": items, "threshold_days": days}
 
 
+@api.post("/franchisees/{franchisee_id}/link-gocardless-by-email")
+async def link_franchisee_gocardless_by_email(
+    franchisee_id: str,
+    body: dict,
+    user: dict = Depends(require_role("admin")),
+):
+    """Append an additional email to a franchisee's ``secondary_email`` and
+    immediately re-run the single-franchisee GoCardless refresh. Used to
+    repair cases where the GC customer has a different email to the one we
+    have on file (typical legacy data drift)."""
+    email = (body.get("email") or "").strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(400, "Provide a valid email address.")
+    f = await db.franchisees.find_one({"id": franchisee_id}, {"_id": 0})
+    if not f:
+        raise HTTPException(404, "Franchisee not found")
+    existing = (f.get("secondary_email") or "").strip()
+    addrs = [e.strip() for e in existing.split(",") if e.strip()]
+    if email not in [a.lower() for a in addrs]:
+        addrs.append(email)
+    new_val = ",".join(addrs)
+    now = datetime.now(timezone.utc).isoformat()
+    await db.franchisees.update_one(
+        {"id": franchisee_id},
+        {"$set": {"secondary_email": new_val, "updated_at": now}},
+    )
+    # Re-import lazily to avoid circular imports at module load.
+    from gocardless_integration import refresh_single_franchisee  # type: ignore[attr-defined]
+    try:
+        refreshed = await refresh_single_franchisee(db, franchisee_id)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(500, f"Email saved, but GC refresh failed: {exc}")
+    fresh = await db.franchisees.find_one({"id": franchisee_id}, {"_id": 0})
+    return {
+        "ok": True,
+        "linked": bool(fresh and fresh.get("gocardless_customer_id")),
+        "mandate_status": fresh.get("gocardless_mandate_status") if fresh else None,
+        "secondary_email": new_val,
+        "refresh": refreshed,
+    }
+
+
 @api.get("/franchisees/{franchisee_id}")
 async def get_franchisee(franchisee_id: str, _: dict = Depends(require_role("admin"))):
     f = await db.franchisees.find_one({"id": franchisee_id}, {"_id": 0})

@@ -172,6 +172,93 @@ function GoCardlessSyncModal({ open, onClose, onCommitted }) {
   );
 }
 
+function MissingMandateRow({ item, onResolved }) {
+  const [showLink, setShowLink] = useState(false);
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const submit = async () => {
+    const e = (email || "").trim().toLowerCase();
+    if (!e || !e.includes("@")) {
+      setErr("Enter a valid email.");
+      return;
+    }
+    setBusy(true); setErr("");
+    try {
+      const { data } = await api.post(`/franchisees/${item.id}/link-gocardless-by-email`, { email: e });
+      if (data?.linked) {
+        onResolved && onResolved(item.id);
+      } else {
+        setErr(data?.refresh?.reason || "No matching GoCardless customer for that email.");
+      }
+    } catch (ex) {
+      setErr(ex?.response?.data?.detail || "Could not link.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="px-5 py-2.5 hover:bg-red-100/40" data-testid={`missing-mandate-row-${item.id}`}>
+      <div className="flex items-center gap-3">
+        <div className="flex-1 min-w-0">
+          <Link
+            to={`/franchisees/${item.id}`}
+            className="font-semibold text-stone-950 hover:underline text-sm truncate">
+            {item.name}{item.franchise_number ? ` · #${item.franchise_number}` : ""}
+          </Link>
+          <div className="text-xs text-stone-600 truncate">
+            {[item.organisation, item.email, item.postcode].filter(Boolean).join(" · ")}
+          </div>
+        </div>
+        <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-red-700 bg-red-100 border border-red-200 px-2 py-0.5 rounded-md tabular-nums">
+          Live {item.days_live}d · No mandate
+        </span>
+        <button
+          type="button"
+          onClick={() => setShowLink((v) => !v)}
+          data-testid={`missing-mandate-link-toggle-${item.id}`}
+          className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-stone-900 bg-white border border-stone-300 hover:bg-stone-50 px-2 py-1 rounded-md">
+          Link by email
+        </button>
+        <a
+          href="https://manage.gocardless.com/sign-in"
+          target="_blank"
+          rel="noopener noreferrer"
+          data-testid={`missing-mandate-gc-${item.id}`}
+          className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-stone-900 bg-white border border-stone-300 hover:bg-stone-50 px-2 py-1 rounded-md">
+          Open GoCardless ↗
+        </a>
+      </div>
+      {showLink && (
+        <div className="mt-2 flex items-center gap-2" data-testid={`missing-mandate-link-form-${item.id}`}>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="GoCardless customer email (e.g. lucy91@gmail.com)"
+            data-testid={`missing-mandate-email-${item.id}`}
+            className="flex-1 px-3 py-1.5 text-xs bg-white border border-stone-300 rounded-lg focus:outline-none focus:border-stone-900"
+            onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+          />
+          <button
+            type="button"
+            onClick={submit}
+            disabled={busy}
+            data-testid={`missing-mandate-link-submit-${item.id}`}
+            className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 disabled:opacity-40 rounded-lg">
+            {busy ? "Linking…" : "Add + Re-sync"}
+          </button>
+          {err && (
+            <span className="text-[11px] text-red-700">{err}</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function FranchiseesPage() {
   const [all, setAll] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -304,30 +391,19 @@ export default function FranchiseesPage() {
             {missingMandateExpanded && (
               <div className="border-t border-red-200 divide-y divide-red-200/60" data-testid="missing-mandate-list">
                 {missingMandate.items.map((m) => (
-                  <div key={m.id} className="flex items-center gap-3 px-5 py-2.5 hover:bg-red-100/40">
-                    <div className="flex-1 min-w-0">
-                      <Link
-                        to={`/franchisees/${m.id}`}
-                        data-testid={`missing-mandate-row-${m.id}`}
-                        className="font-semibold text-stone-950 hover:underline text-sm truncate">
-                        {m.name}{m.franchise_number ? ` · #${m.franchise_number}` : ""}
-                      </Link>
-                      <div className="text-xs text-stone-600 truncate">
-                        {[m.organisation, m.email, m.postcode].filter(Boolean).join(" · ")}
-                      </div>
-                    </div>
-                    <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-red-700 bg-red-100 border border-red-200 px-2 py-0.5 rounded-md tabular-nums">
-                      Live {m.days_live}d · No mandate
-                    </span>
-                    <a
-                      href="https://manage.gocardless.com/sign-in"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      data-testid={`missing-mandate-gc-${m.id}`}
-                      className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-stone-900 bg-white border border-stone-300 hover:bg-stone-50 px-2 py-1 rounded-md">
-                      Open GoCardless ↗
-                    </a>
-                  </div>
+                  <MissingMandateRow
+                    key={m.id}
+                    item={m}
+                    onResolved={(updatedId) => {
+                      // Remove from local banner state — next page refresh /
+                      // 5-min sidebar poll will reconcile the rest.
+                      setMissingMandate((prev) => ({
+                        ...prev,
+                        count: Math.max(0, prev.count - 1),
+                        items: prev.items.filter((x) => x.id !== updatedId),
+                      }));
+                      reload();
+                    }} />
                 ))}
               </div>
             )}

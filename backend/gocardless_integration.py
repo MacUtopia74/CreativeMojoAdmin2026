@@ -144,6 +144,62 @@ def _paginate_customers(client: gocardless_pro.Client, limit: int = 500):
 # ---------------------------------------------------------------------------
 # Router (no global auth — each endpoint declares require_role manually)
 # ---------------------------------------------------------------------------
+async def refresh_single_franchisee(db, franchisee_id: str) -> dict:
+    """Module-level helper that mirrors the ``POST /gocardless/franchisees/{id}/refresh``
+    route logic so other endpoints (e.g. link-by-email) can re-use it without
+    going through HTTP. Returns ``{"linked": bool, "reason": str?}`` shape.
+    """
+    if not gc_configured():
+        raise RuntimeError("GoCardless not configured.")
+    f = await db.franchisees.find_one({"id": franchisee_id}, {"_id": 0})
+    if not f:
+        raise RuntimeError("Franchisee not found.")
+    client = get_gc_client()
+    mandate_id = f.get("gocardless_mandate_id")
+    customer_id = f.get("gocardless_customer_id")
+    if not mandate_id:
+        emails: list[str] = []
+        for key in ("email", "mojo_email", "secondary_email"):
+            v = f.get(key)
+            if not v:
+                continue
+            if isinstance(v, list):
+                emails.extend([str(x) for x in v])
+            else:
+                emails.extend(str(v).split(","))
+        email_set = {e.strip().lower() for e in emails if e and "@" in e}
+        if email_set:
+            try:
+                for cust in _paginate_customers(client):
+                    if (cust.email or "").strip().lower() in email_set:
+                        customer_id = cust.id
+                        break
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Customer lookup failed: %s", exc)
+        if customer_id:
+            try:
+                mpage = client.mandates.list(params={"customer": customer_id, "limit": 5})
+                if mpage.records:
+                    actives = [m for m in mpage.records if m.status == "active"]
+                    mandate_id = (actives[0] if actives else mpage.records[0]).id
+            except Exception:  # noqa: BLE001
+                pass
+    if not mandate_id:
+        return {"linked": False, "reason": "No matching GoCardless customer/mandate."}
+    summary = await _fetch_mandate_summary(client, mandate_id)
+    await db.franchisees.update_one({"id": franchisee_id}, {"$set": {
+        "gocardless_customer_id": customer_id,
+        "gocardless_mandate_id": mandate_id,
+        "gocardless_mandate_status": summary.get("status"),
+        "gocardless_mandate_reference": summary.get("reference"),
+        "gocardless_mandate_scheme": summary.get("scheme"),
+        "gocardless_last_payment": summary.get("last_payment"),
+        "gocardless_next_payment": summary.get("next_payment"),
+        "gocardless_synced_at": _now_iso(),
+    }})
+    return {"linked": True, "mandate_status": summary.get("status")}
+
+
 def build_router(db, require_role) -> APIRouter:
     """Build the GoCardless APIRouter. db & require_role are injected from server.py."""
     router = APIRouter()

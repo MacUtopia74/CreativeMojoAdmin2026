@@ -67,6 +67,24 @@ def _legacy_normalise_payload(entry: dict, form_title: str) -> dict:  # noqa: AR
 #  25.1 "SPAM MAIL" agreement (always "Ok, i'll check my spam!")
 #   7.1 "I agree" privacy
 FIELD_LABELS_BY_FORM: dict[int, dict[str, str]] = {
+    # General "Contact Form" on /contact/ — used for ALL types of enquiry
+    # (franchise, licence, care-home class, art-kit, other). Field 20 is the
+    # "Reason for contacting" dropdown which drives the ``source`` mapping.
+    1: {
+        "9":  "First Name",
+        "12": "Surname Name",
+        "5":  "Telephone Number",
+        "4":  "Email",
+        "21": "Establishment Name",
+        "13": "1st Line of Address",
+        "14": "City/Town",
+        "15": "County",
+        "16": "Postcode",
+        "20": "Reason for Contacting",
+        "6":  "Comments",
+        "24.1": "Anti-Spam Confirmation",
+        "7.1":  "Privacy",
+    },
     17: {
         "9":  "First Name",
         "12": "Surname Name",
@@ -104,6 +122,15 @@ FIELD_LABELS_BY_FORM: dict[int, dict[str, str]] = {
         "25.1": "SPAM MAIL",
         "7.1":  "Privacy",
     },
+}
+
+
+# Form-1 only — translate the "Reason for contacting" dropdown into one of our
+# pipeline source codes. Anything outside this list lands in the general
+# enquiries bucket and stays OUT of the pipeline kanban.
+FORM1_REASON_TO_SOURCE: dict[str, str] = {
+    "franchise enquiry": "franchise_enquiry",
+    "licence enquiry":   "licence_enquiry",
 }
 
 
@@ -200,6 +227,8 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
             form_title = "Franchise Enquiry Contact Form"
         elif form_id == 32:
             form_title = "Licence Enquiry Contact Form"
+        elif form_id == 1:
+            form_title = "Contact Form"
         else:
             form_title = "Gravity Form (id %s)" % form_id
 
@@ -215,15 +244,29 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
             town  = (entry.get("14") or "").strip() or None
             county = (entry.get("15") or "").strip() or None
             comments = (entry.get("6") or "").strip() or None
+            establishment = (entry.get("21") or "").strip() or None  # form 1 only
 
-            # Form 32 (Licence) has split postcode (28) + country (16). Form
-            # 17 (Franchise) just has postcode (16) and no country field.
+            # Form-specific quirks.
             if form_id == 32:
+                # Licence: split postcode (28) + country (16)
                 postcode = (entry.get("28") or "").strip() or None
                 country  = (entry.get("16") or "").strip() or None
-            else:
+                source = "licence_enquiry"
+                in_pipeline_flag = True
+            elif form_id == 1:
                 postcode = (entry.get("16") or "").strip() or None
                 country  = None
+                reason   = (entry.get("20") or "").strip()
+                source   = FORM1_REASON_TO_SOURCE.get(reason.lower(), "general_enquiry")
+                # Only franchise / licence enquiries enter the sales pipeline;
+                # care-home/art-kit/other land in CRM but stay out of kanban.
+                in_pipeline_flag = source in ("franchise_enquiry", "licence_enquiry")
+            else:
+                # Form 17 (Franchise)
+                postcode = (entry.get("16") or "").strip() or None
+                country  = None
+                source = "franchise_enquiry"
+                in_pipeline_flag = True
 
             full_name = f"{first or ''} {last or ''}".strip()
 
@@ -253,6 +296,7 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
                 "county": county,
                 "postcode": postcode,
                 "country": country,
+                "establishment_name": establishment,
                 "comments": comments,
                 "heard_about_us": _heard_about_us(entry),
                 "facebook": (entry.get("24.1") or None) or None,
@@ -260,11 +304,12 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
                 "raw_fields": friendly,
                 "form_id": str(form_id),
                 "form_title": form_title,
-                "source": "licence_enquiry" if form_id == 32 else "franchise_enquiry",
+                "source": source,
+                "reason_for_contacting": (entry.get("20") or None) if form_id == 1 else None,
                 "gravity_entry_id": eid,
                 "date": entry.get("date_created"),
-                "in_pipeline": True,
-                "pipeline_status": "new",  # mirror the live webhook handler
+                "in_pipeline": in_pipeline_flag,
+                "pipeline_status": "new" if in_pipeline_flag else None,
                 "ingested_via": "gf_backfill",
                 "updated_at": now,
             }

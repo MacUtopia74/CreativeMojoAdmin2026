@@ -34,6 +34,15 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
   - **Supplier keyword filters** on Banking page: 16 seed chips (DENE LODGE, HAZELGATE, etc.) — click-to-filter, add/remove inline, persists in `banking_supplier_keywords`.
 
 
+- **Sales Pipeline — Form 1 ("Contact Form") now ingested + Lucy Cook mandate linked** ✅ (May 20 2026)
+  - **Bug 1**: Clare Shannon (and Paul Caldeira-Dunkerley etc.) were submitted via the general /contact/ form (`form_id=1`) and selected "Franchise enquiry" in the dropdown. We never ingested form 1 — only forms 17/32 — so 21 franchise enquiries were silently lost.
+    - Fix: added form 1 to `GF_BACKFILL_FORM_IDS=1,17,32`, extended `FIELD_LABELS_BY_FORM` to map its layout (field 9/12/4/5/13/14/15/16/21/20/6), added `FORM1_REASON_TO_SOURCE` so the "Reason for contacting" dropdown (field 20) drives source assignment: "Franchise enquiry" → `franchise_enquiry`, "Licence enquiry" → `licence_enquiry`, anything else (care-home, art-kit, other) → `general_enquiry` (ingested into CRM but stays OUT of pipeline kanban). Field 21 → `establishment_name`. `pipeline_status="new"` only set when reason is franchise/licence.
+    - One-off run: `{inserted: 179, updated: 0, errors: []}` — recovered 21 missed franchise enquiries (now in pipeline) + 108 general enquiries (CRM only).
+  - **Bug 2**: Lucy Cook had Active mandate on GoCardless but flagged as missing. Root cause: GC customer email was `lucy91@gmail.com` whereas her DB `secondary_email` was `lucycook91@gmail.com,Lucindacook@hotmail.co.uk` — different addresses, no match.
+    - One-off fix: appended `lucy91@gmail.com` to her `secondary_email` and re-ran `/gocardless/franchisees/{id}/refresh` → linked → mandate `MD000H1RDFF8H3` status `active`. Banner count 2 → 1.
+  - **New endpoint**: `POST /api/franchisees/{id}/link-gocardless-by-email {email}` appends the email + immediately re-runs single-franchisee refresh. Backed by extracted module-level `refresh_single_franchisee()` helper in `gocardless_integration.py`.
+  - **New UI**: each missing-mandate banner row now has a **`LINK BY EMAIL`** toggle → reveals an email input + `ADD + RE-SYNC` button. On success, the row disappears + the franchisee list reloads. Solves future Lucy-style mismatches without DB surgery.
+
 - **GoCardless mandate links + missing-mandate alert** ✅ (May 20 2026)
   - Every live mandate pill now opens the GoCardless dashboard in a new tab (`https://manage.gocardless.com/mandates/{id}`). Applies to the Franchisees list table cell, the franchisee detail KPI tile, and the GoCardless panel debug line. GC customer IDs are also clickable (`/customers/{id}`).
   - If a franchisee has NO mandate, the pill is replaced by a `Set up in GoCardless ↗` link to `https://manage.gocardless.com/sign-in`.
