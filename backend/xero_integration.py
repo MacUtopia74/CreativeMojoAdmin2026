@@ -481,17 +481,26 @@ def attach(api, db, require_role):
             safe = search.replace("\\", "").replace('"', "")
             safe_lower = safe.lower()
             # Try cache first — return immediately if we have any matches.
-            q = {"$or": [
-                {"name_lc": {"$regex": safe_lower}},
-                {"email_lc": {"$regex": safe_lower}},
-            ]}
+            # Exclude ARCHIVED contacts so historic accounts the user has
+            # tidied up in Xero stop appearing in the picker.
+            q = {
+                "status": {"$ne": "ARCHIVED"},
+                "$or": [
+                    {"name_lc": {"$regex": safe_lower}},
+                    {"email_lc": {"$regex": safe_lower}},
+                ],
+            }
             cached = await db.xero_contacts_cache.find(q, {"_id": 0}).limit(25).to_list(25)
             if cached:
                 return {"contacts": [
                     {"contact_id": c["contact_id"], "name": c["name"], "email": c.get("email"), "status": c.get("status")}
                     for c in cached
                 ], "from_cache": True}
-            params["where"] = f'Name.ToLower().Contains("{safe_lower}") OR EmailAddress.ToLower().Contains("{safe_lower}")'
+            # Ask Xero only for ACTIVE contacts when going live too.
+            params["where"] = (
+                f'(Name.ToLower().Contains("{safe_lower}") OR EmailAddress.ToLower().Contains("{safe_lower}"))'
+                ' AND ContactStatus=="ACTIVE"'
+            )
         data = await _xero_get(db, "/Contacts", params=params)
         contacts = [
             {
@@ -501,6 +510,7 @@ def attach(api, db, require_role):
                 "status": c.get("ContactStatus"),
             }
             for c in (data.get("Contacts") or [])
+            if (c.get("ContactStatus") or "ACTIVE") != "ARCHIVED"
         ]
         # Upsert to cache for next time.
         if contacts:
@@ -524,10 +534,18 @@ def attach(api, db, require_role):
     @api.post("/xero/contacts/sync")
     async def sync_xero_contacts(_: dict = Depends(require_role("admin"))):
         """Pull every Xero contact into our cache. Used during reconcile
-        so we can match orders → Xero contacts entirely offline."""
+        so we can match orders → Xero contacts entirely offline.
+
+        We also tag any cache entries no longer returned by Xero as
+        ``ARCHIVED`` — so when the franchise owner tidies up old legacy
+        accounts in Xero, those names stop showing up in the picker
+        without us having to delete the row (we still need it for
+        historic order links)."""
         access_token, tenant_id = await get_valid_token(db)
         page = 1
         total = 0
+        seen_ids: set[str] = set()
+        sync_started_at = _now().isoformat()
         async with httpx.AsyncClient(timeout=30) as client:
             while True:
                 r = await client.get(
@@ -545,18 +563,20 @@ def attach(api, db, require_role):
                 if not batch:
                     break
                 for c in batch:
+                    cid = c.get("ContactID")
+                    seen_ids.add(cid)
                     name = c.get("Name") or ""
                     email = c.get("EmailAddress") or ""
                     await db.xero_contacts_cache.update_one(
-                        {"contact_id": c.get("ContactID")},
+                        {"contact_id": cid},
                         {"$set": {
-                            "contact_id": c.get("ContactID"),
+                            "contact_id": cid,
                             "name": name,
                             "name_lc": name.lower(),
                             "email": email,
                             "email_lc": email.lower(),
-                            "status": c.get("ContactStatus"),
-                            "synced_at": _now().isoformat(),
+                            "status": c.get("ContactStatus") or "ACTIVE",
+                            "synced_at": sync_started_at,
                         }},
                         upsert=True,
                     )
@@ -564,7 +584,15 @@ def attach(api, db, require_role):
                 if len(batch) < 500:
                     break
                 page += 1
-        return {"ok": True, "synced": total}
+
+        # Mark any cache rows we DIDN'T see this run as ARCHIVED so they
+        # disappear from the picker. We keep the row so historic order
+        # linkages still resolve.
+        archived_result = await db.xero_contacts_cache.update_many(
+            {"contact_id": {"$nin": list(seen_ids)} if seen_ids else {}, "status": {"$ne": "ARCHIVED"}},
+            {"$set": {"status": "ARCHIVED", "archived_at": sync_started_at}},
+        )
+        return {"ok": True, "synced": total, "archived": archived_result.modified_count}
 
     @api.post("/xero/contacts/create")
     async def create_xero_contact(
@@ -690,10 +718,10 @@ def attach(api, db, require_role):
             name = (o.get("customer_label") or "").lower()
             suggestion = None
             if email:
-                suggestion = await db.xero_contacts_cache.find_one({"email_lc": email}, {"_id": 0})
+                suggestion = await db.xero_contacts_cache.find_one({"email_lc": email, "status": {"$ne": "ARCHIVED"}}, {"_id": 0})
             if not suggestion and name:
                 # Try exact name match first
-                suggestion = await db.xero_contacts_cache.find_one({"name_lc": name}, {"_id": 0})
+                suggestion = await db.xero_contacts_cache.find_one({"name_lc": name, "status": {"$ne": "ARCHIVED"}}, {"_id": 0})
             items.append({
                 "id": o["id"],
                 "display_order_id": o.get("display_order_id"),
@@ -732,7 +760,7 @@ def attach(api, db, require_role):
         # Build an in-memory map of email/name -> contact_id for speed
         cache_emails: dict[str, dict] = {}
         cache_names: dict[str, dict] = {}
-        async for c in db.xero_contacts_cache.find({}, {"_id": 0}):
+        async for c in db.xero_contacts_cache.find({"status": {"$ne": "ARCHIVED"}}, {"_id": 0}):
             if c.get("email_lc"):
                 cache_emails[c["email_lc"]] = c
             if c.get("name_lc"):
