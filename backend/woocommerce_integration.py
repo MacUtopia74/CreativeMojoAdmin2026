@@ -339,17 +339,37 @@ def attach(api, db, require_role):
         request: Request,
         x_wc_webhook_signature: Optional[str] = Header(None, alias="X-WC-Webhook-Signature"),
         x_wc_webhook_topic: Optional[str] = Header(None, alias="X-WC-Webhook-Topic"),
+        x_wc_webhook_source: Optional[str] = Header(None, alias="X-WC-Webhook-Source"),
+        x_wc_webhook_id: Optional[str] = Header(None, alias="X-WC-Webhook-ID"),
     ):
         raw = await request.body()
         if not verify_webhook_signature(raw, x_wc_webhook_signature):
-            logger.warning("Woo webhook signature mismatch (topic=%s)", x_wc_webhook_topic)
+            # Compute the signature we WOULD have accepted so we can diff it
+            # against what Woo sent (first 8 chars only — never leak the full
+            # secret-derived digest in case logs are exfiltrated).
+            secret = os.environ.get("WOO_WEBHOOK_SECRET") or ""
+            expected = base64.b64encode(
+                hmac.new(secret.encode(), raw, hashlib.sha256).digest()
+            ).decode() if secret else ""
+            logger.warning(
+                "Woo webhook signature mismatch · topic=%s · webhook_id=%s · "
+                "source=%s · body_bytes=%d · received_sig=%s… · expected_sig=%s… · "
+                "secret_len=%d",
+                x_wc_webhook_topic, x_wc_webhook_id, x_wc_webhook_source,
+                len(raw),
+                (x_wc_webhook_signature or "")[:8],
+                expected[:8],
+                len(secret),
+            )
             raise HTTPException(401, "Invalid webhook signature")
         try:
             payload = await request.json()
         except Exception:
             raise HTTPException(400, "Invalid JSON")
+        # Woo sends a test ping ("webhook_id" only, no order) on save — ack it.
         if not payload.get("id"):
-            return {"ok": True, "skipped": "no-id"}
+            logger.info("Woo webhook test ping accepted (topic=%s)", x_wc_webhook_topic)
+            return {"ok": True, "skipped": "no-id-test-ping"}
         doc = _summarise_order(payload)
         await db.woo_orders.update_one({"id": doc["id"]}, {"$set": doc}, upsert=True)
         logger.info("Woo webhook: upserted order %s (topic=%s)", doc["id"], x_wc_webhook_topic)
