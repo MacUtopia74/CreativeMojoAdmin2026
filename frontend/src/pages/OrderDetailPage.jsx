@@ -165,7 +165,7 @@ export default function OrderDetailPage() {
             CRM · ORDER {isDraft ? "DRAFT" : ""}
           </div>
           <h1 className="text-3xl font-display font-black text-stone-950 mt-1 flex items-center gap-3">
-            <span>#{order.woo_number || order.id}</span>
+            <span>#{order.legacy_order_id || order.woo_number || order.id}</span>
             <span className={`px-3 py-1 rounded-full text-[11px] font-semibold ${PRODUCTION_PILL[order.production_status] || "bg-stone-300 text-stone-800"}`}>
               {order.production_status}
             </span>

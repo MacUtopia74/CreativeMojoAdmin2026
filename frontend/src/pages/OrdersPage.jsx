@@ -404,8 +404,11 @@ function OrderRow({ order, showProducts, selected = false, onSelect, onOpen }) {
       </td>
       <td className="px-3 py-3 align-top">
         <span className="inline-block px-2.5 py-1 bg-white border border-stone-300 rounded-md text-xs font-mono font-semibold">
-          {order.woo_number || order.id}
+          {order.legacy_order_id || order.woo_number || order.id}
         </span>
+        {order.legacy_import && (
+          <div className="text-[9px] uppercase tracking-wider text-stone-400 mt-1 font-bold">Legacy</div>
+        )}
       </td>
       <td className="px-3 py-3 align-top text-stone-700 whitespace-nowrap">
         {fmtDate(order.date_created)}

@@ -106,17 +106,18 @@ def _derive_status_fields(woo: dict) -> dict:
 
 
 import re as _re
+import html as _html
 
 _HTML_TAG_RE = _re.compile(r"<[^>]+>")
 
 
 def _strip_html(s: str) -> str:
     """Woo stores product titles with inline HTML (e.g. ``<strong>FREE</strong>
-    Queen Camilla Colouring-In Sheet``). The admin UI shows the text verbatim,
-    so strip tags + collapse whitespace before persisting."""
+    Queen Camilla Colouring-In Sheet``) AND with HTML-encoded entities like
+    ``&amp;``. Strip tags, unescape entities, then collapse whitespace."""
     if not s:
         return s
-    return _re.sub(r"\s+", " ", _HTML_TAG_RE.sub("", s)).strip()
+    return _re.sub(r"\s+", " ", _html.unescape(_HTML_TAG_RE.sub("", s))).strip()
 
 
 def _summarise_order(woo: dict) -> dict:
