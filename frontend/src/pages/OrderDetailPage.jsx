@@ -20,17 +20,25 @@ import api from "@/lib/api";
 const PRODUCTION_OPTIONS = [
   "Awaiting Assembly",
   "In Production",
+  "Awaiting Labels",
   "Ready To Ship",
-  "Dispatched",
-  "Completed",
+  "Complete",
 ];
 
+// Colour palette mirrors the legacy admin's status pills exactly so any
+// admin moving between the two systems sees the same visual cues.
 const PRODUCTION_PILL = {
-  "Ready To Ship":     "bg-stone-900 text-white",
-  "Awaiting Assembly": "bg-rose-500 text-white",
-  "In Production":     "bg-amber-500 text-white",
+  "Awaiting Assembly": "bg-rose-600 text-white",
+  "In Production":     "bg-orange-500 text-white",
+  "Awaiting Labels":   "bg-cyan-600 text-white",
+  "Ready To Ship":     "bg-indigo-950 text-white",
+  "Complete":          "bg-emerald-500 text-white",
+  // Back-compat for legacy data that used "Completed"
+  "Completed":         "bg-emerald-500 text-white",
   "Dispatched":        "bg-emerald-600 text-white",
-  "Completed":         "bg-stone-400 text-white",
+  "Cancelled":         "bg-stone-500 text-white",
+  "Refunded":          "bg-stone-500 text-white",
+  "Failed":            "bg-rose-700 text-white",
 };
 
 const formatGBP = (v) => {
