@@ -132,10 +132,23 @@ export default function OrderDetailPage() {
   const handleAction = async (action, extra = {}) => {
     setActionsOpen(false);
     setSaving(true);
+    setError("");
     try {
-      const { data } = await api.post(`/orders/${orderId}/action`, { action, ...extra });
-      setOrder(data.order);
-      if (action === "mark_active") navigate(`/orders/${orderId}`);
+      if (action === "create_invoice") {
+        const { data } = await api.post(`/xero/orders/${orderId}/create-invoice`);
+        if (data?.already_invoiced) {
+          alert(`Already invoiced — Xero #${data.xero_invoice_number || data.xero_invoice_id}`);
+        }
+        await load();
+      } else if (action === "complete_and_invoice") {
+        await api.post(`/orders/${orderId}/action`, { action: "mark_completed" });
+        await api.post(`/xero/orders/${orderId}/create-invoice`);
+        await load();
+      } else {
+        const { data } = await api.post(`/orders/${orderId}/action`, { action, ...extra });
+        setOrder(data.order);
+        if (action === "mark_active") navigate(`/orders/${orderId}`);
+      }
     } catch (e) {
       setError(e?.response?.data?.detail || "Action failed.");
     } finally { setSaving(false); }
@@ -181,6 +194,18 @@ export default function OrderDetailPage() {
               order.payment_status === "Paid" ? "bg-emerald-500 text-white" : "bg-stone-400 text-white"
             }`}>{order.payment_status}</span>
             {order.invoiced && <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-900 border border-amber-200">Invoiced</span>}
+            {order.xero_invoice_id && (
+              <a
+                href={`https://go.xero.com/AccountsReceivable/View.aspx?InvoiceID=${order.xero_invoice_id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="xero-invoice-link"
+                className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-sky-100 text-sky-900 border border-sky-200 hover:bg-sky-200"
+                onClick={(e) => e.stopPropagation()}
+              >
+                Xero {order.xero_invoice_number ? `#${order.xero_invoice_number}` : "Invoice"} · {order.xero_invoice_status || "DRAFT"}
+              </a>
+            )}
           </h1>
         </div>
 

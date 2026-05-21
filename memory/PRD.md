@@ -24,6 +24,10 @@ Swiss & high-contrast light theme. Cabinet Grotesk (display) + Manrope (body). Y
 - **Phase 1.6** ✅ Sales pipeline (simple): Kanban view of enquiries with stages New → Contacted → Qualified → Demo Booked → Converted → Lost
 - **Phase 1.7** ✅ One-click Convert to Franchisee/Licencee from sales pipeline; Franchisee detail page consolidates contracts (Contracts sidebar tab retired)
 - **Phase 2** Order management + WooCommerce live sync + Gantt view
+  - **Stage A** ✅ Read-only Woo sync: 246 orders + 325 products mirrored via REST + webhook.
+  - **Stage B** ✅ Editable orders, Actions menu, manual Create Order modal, bulk-action bar, legacy CSV import + continuous numbering.
+  - **Stage C** ✅ Xero accounting integration (May 21 2026) — OAuth 2.0 flow with secure token storage + auto-refresh, draft invoice creation from any order in one click, Xero invoice ID/Number/Status shown on order header, payment webhook with HMAC signature verification that flips local `payment_status` to "Paid" when Xero invoice is settled. Admin connects via `/admin/xero` settings page. New `xero_tokens` collection. Routes: `/api/xero/{status,connect,callback,disconnect,contacts,webhook}` + `/api/xero/orders/{id}/{create-invoice,invoice}`. Env vars: `XERO_CLIENT_ID`, `XERO_CLIENT_SECRET`, `XERO_REDIRECT_URI`, `XERO_WEBHOOK_SIGNING_KEY`.
+  - **Inline Production status dropdown** ✅ (May 21 2026) — Production column on `/orders` now editable inline as a coloured Airtable-style pill with 5 options: Awaiting Assembly (rose), In Production (orange), Awaiting Labels (teal), Ready To Ship (stone), Complete (emerald). PATCHes `/api/orders/{id}` optimistically.
 - **Phase 3** Franchisee logins + Cloudflare R2 file storage + file browser (FileCamp retired)
 - **Phase 4** Territory mapping tool + public find-a-class embed (replaces DaD Postcode Lookup)
 - **Phase 5** Licensee portal + 8-download/month quota + optional GoCardless webhook

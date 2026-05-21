@@ -22,6 +22,7 @@ import {
   Banknote,
   KeyRound,
   ShoppingBag,
+  Calculator,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -47,6 +48,7 @@ const ADMIN_NAV = [
   { to: "/banking", label: "Banking", icon: Banknote, testid: "nav-banking" },
   { to: "/form-intake", label: "Form Intake", icon: Inbox, testid: "nav-form-intake" },
   { to: "/admin/users", label: "Admin Users", icon: KeyRound, testid: "nav-admin-users" },
+  { to: "/admin/xero", label: "Xero", icon: Calculator, testid: "nav-admin-xero" },
 ];
 
 function NavItem({ to, label, icon: Icon, testid, badge }) {

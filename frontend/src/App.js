@@ -26,6 +26,7 @@ import OrderDetailPage from "@/pages/OrderDetailPage";
 import FindClassAdminPage from "@/pages/FindClassAdminPage";
 import AdminUsersPage from "@/pages/AdminUsersPage";
 import ChangePasswordPage from "@/pages/ChangePasswordPage";
+import XeroSettingsPage from "@/pages/XeroSettingsPage";
 // Invoices module (merged from Pay-Paperwork)
 import InvoiceList from "@/pages/invoices/InvoiceList";
 import CreateInvoice from "@/pages/invoices/CreateInvoice";
@@ -89,6 +90,7 @@ export default function App() {
               <Route path="/find-class" element={<FindClassAdminPage />} />
               <Route path="/admin/users" element={<AdminUsersPage />} />
               <Route path="/admin/password-resets" element={<AdminUsersPage />} />
+              <Route path="/admin/xero" element={<XeroSettingsPage />} />
             </Route>
           </Routes>
         </BrowserRouter>

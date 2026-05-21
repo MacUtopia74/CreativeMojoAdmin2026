@@ -1,0 +1,34 @@
+{
+  "summary": "Iteration 19 — Phase 2 Stage C (Xero integration graceful-failure paths) + inline Production-status dropdown on /orders Active tab. 12/12 new backend tests pass plus 4/4 existing Xero unit tests still green. Frontend smoke covering /admin/xero unconfigured card and full PATCH-via-dropdown round-trip on Orders Active tab — all PASS.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_xero_stage_c.py",
+    "/app/test_reports/pytest/iter19_xero_stage_c.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "xero_integration.py L394-415 /xero/contacts: search param is interpolated directly into the Xero ``where`` filter (``Name.ToLower().Contains(\"<user-input>\")``). Because it is forwarded to Xero (not Mongo) the blast radius is small, but a search containing a double-quote will produce a malformed filter and Xero will reject the query. Worth escaping or stripping quotes before building the where clause.",
+    "xero_integration.py L160 get_valid_token: when the stored doc has expires_at in the past AND no refresh_token, the code raises 401 — but for the /xero/status endpoint that path is bypassed (status uses _load_token_doc directly). That is the correct shape; flag only because if a future caller starts using get_valid_token from a non-write context they may get a confusing 401 rather than a friendly 400. Consider adding a 'soft' variant.",
+    "xero_integration.py L497 webhook: on signature mismatch the route returns 401 with an empty body — Xero documents that the intent-to-receive handshake needs 401 only when no key is configured. For a *configured* key with a *bad* signature, returning 401 is correct per the same spec, but emitting an audit log entry would help diagnose mis-keyed deployments. Currently only a warning-level log on the GET/POST helpers, not the webhook.",
+    "ProductionStatusDropdown.jsx L72: on PATCH failure uses native alert(); a toast (sonner is already imported elsewhere in this repo) would be more consistent and non-blocking.",
+    "ProductionStatusDropdown.jsx L80: fallback chain ``PRODUCTION_PILL_CLASS[displayLabel] || PRODUCTION_PILL_CLASS[local]`` always resolves the first term because displayLabel == local when local != 'Completed'. The second clause is dead code — harmless but worth simplifying."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_xero_stage_c.py (new — 12 tests)"
+  ],
+  "success_rate": {"backend": "100% (12/12 new + 4/4 existing Xero unit)", "frontend": "100% of requested smoke flows"},
+  "test_credentials": "admin@creativemojo.co.uk / CreativeMojo2026! (from /app/memory/test_credentials.md). Cookie-based auth via POST /api/auth/login works as documented.",
+  "seed_data_creation": "No persistent test data created. PATCH tests touched production order legacy-1386 (display 8067) but always restored production_status to 'Ready To Ship' in the test teardown and in the UI cleanup step.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Stage C regression suite: /app/backend/tests/test_xero_stage_c.py (12 tests, ~1.5s). Covers: GET /api/xero/status (configured=false), GET /api/xero/connect (400 + XERO_CLIENT_ID hint), GET /api/xero/contacts (400 not connected), POST /api/xero/orders/{id}/create-invoice (400 with 'Settings → Xero' hint), POST /api/xero/webhook (401 when no signing key), PATCH /api/orders/{id} for all 5 production statuses. Pre-existing unit suite test_xero_integration.py (payload builder + HMAC math) still passes. Frontend verified end-to-end: /admin/xero renders xero-unconfigured-card with all three env-var lines (CLIENT_ID/SECRET/REDIRECT_URI); /orders Active tab renders 11 production-status-trigger pills, opening one shows the 5-option menu, picking 'In Production' fires PATCH /api/orders/legacy-1386 → 200 and the pill updates optimistically (no URL change / no full reload).",
+  "rca_of_the_issue": "N/A — no failures observed."
+}

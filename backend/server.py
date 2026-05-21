@@ -3023,6 +3023,10 @@ api.include_router(build_gocardless_router(db, require_role))
 import woocommerce_integration  # noqa: E402
 woocommerce_integration.attach(api, db, require_role)
 
+# Phase 2 — Stage C: Xero accounting integration (OAuth + draft invoices + payment webhook)
+import xero_integration  # noqa: E402
+xero_integration.attach(api, db, require_role)
+
 # Phase 3 — FileCamp → R2 migration + admin file browser
 from filecamp_migration import build_router as build_migration_router  # noqa: E402
 from files_routes import build_router as build_files_router  # noqa: E402

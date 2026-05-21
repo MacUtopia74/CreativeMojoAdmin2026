@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import api from "@/lib/api";
 import CreateOrderModal from "@/components/orders/CreateOrderModal";
+import ProductionStatusDropdown from "@/components/orders/ProductionStatusDropdown";
 
 const TABS = [
   { key: "active",    label: "ACTIVE",    activeBg: "bg-[#dddd16] text-stone-950" },
@@ -443,11 +444,11 @@ function OrderRow({ order, showProducts, selected = false, onSelect, onOpen }) {
         )}
       </td>
       <td className="px-3 py-3 align-top">
-        <span className={`inline-block px-3 py-1 rounded-full text-[11px] font-semibold ${
-          PRODUCTION_PILL[order.production_status] || "bg-stone-300 text-stone-800"
-        }`}>
-          {order.production_status}
-        </span>
+        <ProductionStatusDropdown
+          orderId={order.id}
+          value={order.production_status}
+          onChange={(next) => { order.production_status = next; }}
+        />
       </td>
       <td className="px-3 py-3 align-top text-center">
         {order.invoiced ? (
