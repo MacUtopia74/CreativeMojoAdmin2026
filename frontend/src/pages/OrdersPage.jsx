@@ -418,13 +418,17 @@ function OrderRow({ order, showProducts, selected = false, onSelect, onOpen }) {
         <div>{order.customer_label}</div>
       </td>
       <td className="px-3 py-3 align-top max-w-[280px]">
-        {showProducts && (order.line_items || []).map((li, i) => (
+        {order.line_items_unavailable ? (
+          <span className="text-[11px] text-stone-400 italic" data-testid={`legacy-no-items-${order.id}`}>
+            Legacy import — line items not migrated
+          </span>
+        ) : showProducts && (order.line_items || []).map((li, i) => (
           <div key={i} className="flex items-start gap-2 mb-1 last:mb-0">
             <span className="text-[11px] text-stone-500 mt-0.5 font-mono">×{li.quantity}</span>
             <span className="text-stone-800 text-[13px] leading-tight">{li.name}</span>
           </div>
         ))}
-        {!showProducts && (
+        {!order.line_items_unavailable && !showProducts && (
           <span className="text-xs text-stone-400">
             {(order.line_items || []).length} item{(order.line_items || []).length === 1 ? "" : "s"}
           </span>
