@@ -272,7 +272,7 @@ export default function CalendarPage() {
             <strong className="text-stone-900">{status.calendar_id || "your shared calendar"}</strong>. You'll be redirected to Google to grant access, then sent back here.
           </p>
           <button onClick={connect} data-testid="cal-connect-btn"
-            className="mt-5 px-5 py-3 text-sm font-bold uppercase tracking-wider bg-[#D4FF00] text-stone-950 hover:bg-[#BDE600] rounded-lg inline-flex items-center gap-2">
+            className="mt-5 px-5 py-3 text-sm font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-[#aaaa11] rounded-lg inline-flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4" /> Connect Google Calendar
           </button>
           {err && <div className="mt-3 text-xs text-red-700 bg-red-50 border border-red-200 px-3 py-2 rounded-lg">{err}</div>}
@@ -603,7 +603,7 @@ function EventModal({ event, defaults, onClose, onSaved }) {
         <div className="px-5 py-4 border-t border-stone-200 flex justify-end gap-2 bg-stone-50">
           <button onClick={onClose} className="px-3 py-2 text-xs font-bold rounded-lg border border-stone-300 bg-white hover:bg-stone-50">Cancel</button>
           <button onClick={save} disabled={saving || !title.trim()} data-testid="cal-save"
-            className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-[#D4FF00] text-stone-950 hover:bg-[#BDE600] rounded-lg disabled:opacity-50 flex items-center gap-1.5">
+            className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-[#aaaa11] rounded-lg disabled:opacity-50 flex items-center gap-1.5">
             {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
             {event ? "Save changes" : "Create event"}
           </button>

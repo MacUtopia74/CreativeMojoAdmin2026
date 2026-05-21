@@ -58,7 +58,7 @@ function NavItem({ to, label, icon: Icon, testid, badge }) {
       className={({ isActive }) =>
         `flex items-center gap-3 px-6 py-2.5 text-sm font-semibold transition-colors duration-150 border-l-2 ${
           isActive
-            ? "bg-white text-stone-950 border-l-[#D4FF00]"
+            ? "bg-white text-stone-950 border-l-[#dddd16]"
             : "text-stone-600 hover:text-stone-950 border-l-transparent hover:bg-white/50"
         }`
       }

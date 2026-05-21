@@ -75,7 +75,7 @@ function StatementDropZone({ onUploaded, compact = false }) {
       onClick={() => fileRef.current?.click()}
       data-testid="banking-statement-dropzone"
       className={`cursor-pointer rounded-2xl border-2 border-dashed transition-all
-        ${dragOver ? "border-[#D4FF00] bg-stone-50" : "border-stone-300 hover:border-stone-400 bg-white"}
+        ${dragOver ? "border-[#dddd16] bg-stone-50" : "border-stone-300 hover:border-stone-400 bg-white"}
         ${compact ? "p-4" : "p-10"} text-center`}
     >
       <input
@@ -93,7 +93,7 @@ function StatementDropZone({ onUploaded, compact = false }) {
       ) : (
         <>
           <div className={`mx-auto ${compact ? "w-10 h-10" : "w-14 h-14"} rounded-full bg-stone-950 flex items-center justify-center`}>
-            <Upload className={`${compact ? "w-5 h-5" : "w-7 h-7"} text-[#D4FF00]`} />
+            <Upload className={`${compact ? "w-5 h-5" : "w-7 h-7"} text-[#dddd16]`} />
           </div>
           <div className={compact ? "mt-2" : "mt-4"}>
             <p className="font-bold text-stone-900">

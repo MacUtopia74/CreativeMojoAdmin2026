@@ -11,7 +11,7 @@ export default function PlaceholderPage({ title, subtitle, phase = "Phase 1", de
       </div>
       <div className="p-12">
         <div className="max-w-xl bg-white border border-stone-200 p-10 rounded-2xl" data-testid={`placeholder-${title.toLowerCase()}`}>
-          <div className="w-10 h-10 bg-[#D4FF00] flex items-center justify-center mb-6 rounded-lg">
+          <div className="w-10 h-10 bg-[#dddd16] flex items-center justify-center mb-6 rounded-lg">
             <Construction className="w-5 h-5 text-stone-950" />
           </div>
           <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Pending Migration</div>

@@ -67,7 +67,7 @@ export default function FilePreviewModal({ file, onClose }) {
           <div className="flex items-center gap-2 shrink-0">
             {dlUrl && (
               <a href={dlUrl} target="_blank" rel="noreferrer" data-testid="preview-download"
-                className="touch-target inline-flex items-center gap-1.5 px-3 text-[10px] font-bold uppercase tracking-wider bg-[#D4FF00] text-stone-950 hover:bg-[#BDE600] rounded-lg">
+                className="touch-target inline-flex items-center gap-1.5 px-3 text-[10px] font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-[#aaaa11] rounded-lg">
                 <Download className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Download</span>
               </a>
             )}

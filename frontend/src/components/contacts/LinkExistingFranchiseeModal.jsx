@@ -224,7 +224,7 @@ function FranchiseeRow({ f, picked, setPicked, suggested = false }) {
       data-testid={`link-row-${f.id}`}
       className={`w-full text-left px-3 py-2.5 flex items-center gap-3 transition-colors ${
         isPicked
-          ? "bg-[#D4FF00]/20 border border-stone-950 rounded-lg"
+          ? "bg-[#dddd16]/20 border border-stone-950 rounded-lg"
           : suggested
             ? "bg-amber-50/60 hover:bg-amber-50 border border-amber-200 rounded-lg"
             : "hover:bg-stone-50"

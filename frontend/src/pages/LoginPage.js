@@ -50,7 +50,7 @@ export default function LoginPage() {
             <Logo className="h-14" variant="white" />
           </div>
           <div className="space-y-4">
-            <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-[#D4FF00]">Admin Console</div>
+            <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-[#dddd16]">Admin Console</div>
             <h1 className="font-display font-black text-5xl leading-[0.95] tracking-tight max-w-md">
               Bringing craft<br />to care.
             </h1>
@@ -120,7 +120,7 @@ export default function LoginPage() {
               type="submit"
               disabled={submitting}
               data-testid="login-submit-button"
-              className="w-full flex items-center justify-center gap-2 px-6 py-3.5 bg-[#D4FF00] hover:bg-[#BDE600] text-stone-950 font-bold text-sm uppercase tracking-wider transition-colors disabled:opacity-50 rounded-xl"
+              className="w-full flex items-center justify-center gap-2 px-6 py-3.5 bg-[#dddd16] hover:bg-[#aaaa11] text-stone-950 font-bold text-sm uppercase tracking-wider transition-colors disabled:opacity-50 rounded-xl"
             >
               {submitting ? "Signing in…" : "Sign in"}
               {!submitting && <ArrowRight className="w-4 h-4" />}

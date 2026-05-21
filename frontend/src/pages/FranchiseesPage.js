@@ -159,7 +159,7 @@ function GoCardlessSyncModal({ open, onClose, onCommitted }) {
                 <div className="flex items-center justify-between pt-2 border-t border-stone-200">
                   <button onClick={() => { setReport(null); setErr(""); }} className="text-xs text-stone-500 hover:text-stone-900">Reset</button>
                   <button onClick={() => run(false)} disabled={busy} data-testid="gc-sync-commit"
-                    className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-[#D4FF00] text-stone-950 hover:bg-[#BDE600] rounded-lg flex items-center gap-1.5 disabled:opacity-50">
+                    className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-[#aaaa11] rounded-lg flex items-center gap-1.5 disabled:opacity-50">
                     <CheckCircle2 className="w-3.5 h-3.5" /> Commit to database
                   </button>
                 </div>
@@ -430,7 +430,7 @@ export default function FranchiseesPage() {
               >
                 {s.label}
                 <span className={`ml-2 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md ${
-                  active ? "bg-[#D4FF00] text-stone-950" : "bg-stone-100 text-stone-600"
+                  active ? "bg-[#dddd16] text-stone-950" : "bg-stone-100 text-stone-600"
                 }`}>{count}</span>
               </button>
             );

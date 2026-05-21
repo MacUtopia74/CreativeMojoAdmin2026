@@ -110,12 +110,12 @@ html, body {
 .btn-primary:disabled { opacity: 0.5; }
 
 .btn-accent {
-  background: #D4FF00;
+  background: #dddd16;
   color: rgb(12 10 9);
   border-radius: 10px;
   font-weight: 700;
 }
-.btn-accent:hover { background: #BDE600; }
+.btn-accent:hover { background: #aaaa11; }
 
 .btn-ghost {
   background: white;
@@ -135,4 +135,4 @@ html, body {
 ::-webkit-scrollbar-thumb { background: #d6d3d1; border-radius: 8px; }
 ::-webkit-scrollbar-thumb:hover { background: #a8a29e; }
 
-::selection { background: #D4FF00; color: #0c0a09; }
+::selection { background: #dddd16; color: #0c0a09; }

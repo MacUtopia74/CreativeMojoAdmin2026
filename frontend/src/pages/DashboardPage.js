@@ -268,10 +268,10 @@ export default function DashboardPage() {
                 const fname = [franchisee?.first_name, franchisee?.last_name].filter(Boolean).join(" ");
                 return (
                   <Link key={contract.id} to={`/franchisees/${franchisee?.id || ""}`}
-                    className={`block border rounded-xl p-3 hover:shadow-md transition-all ${isToday ? "bg-[#D4FF00]/10 border-[#14532D]/40" : "bg-white border-stone-200 hover:border-stone-400"}`}>
+                    className={`block border rounded-xl p-3 hover:shadow-md transition-all ${isToday ? "bg-[#dddd16]/10 border-[#14532D]/40" : "bg-white border-stone-200 hover:border-stone-400"}`}>
                     <div className="flex items-center gap-2 mb-1">
                       <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md tabular-nums ${
-                        isToday ? "bg-[#D4FF00] text-stone-950" : "bg-stone-100 text-stone-700"
+                        isToday ? "bg-[#dddd16] text-stone-950" : "bg-stone-100 text-stone-700"
                       }`}>
                         {isToday ? "Today" : `In ${days_until} ${days_until === 1 ? "Day" : "Days"}`}
                       </span>
@@ -373,7 +373,7 @@ export default function DashboardPage() {
                     <div key={m.value} className="flex items-center gap-3 text-sm">
                       <div className="flex-1 truncate font-semibold text-stone-900">{m.value || "(blank)"}</div>
                       <div className="w-20 h-2 bg-stone-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-[#D4FF00]" style={{ width: `${pct}%` }} />
+                        <div className="h-full bg-[#dddd16]" style={{ width: `${pct}%` }} />
                       </div>
                       <div className="w-10 text-right text-xs text-stone-700 tabular-nums font-bold">{m.count}</div>
                     </div>
@@ -448,7 +448,7 @@ export default function DashboardPage() {
               <div key={p.phase} className="bg-white p-4">
                 <div className="flex items-center gap-2">
                   <div className={`w-2 h-2 rounded-full ${
-                    p.state === "complete" ? "bg-emerald-500" : p.state === "next" ? "bg-[#D4FF00] animate-pulse" : "bg-stone-300"
+                    p.state === "complete" ? "bg-emerald-500" : p.state === "next" ? "bg-[#dddd16] animate-pulse" : "bg-stone-300"
                   }`} />
                   <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">{p.phase}</div>
                 </div>

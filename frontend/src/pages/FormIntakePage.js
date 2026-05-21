@@ -143,7 +143,7 @@ export default function FormIntakePage() {
               { t: "(Optional) Turn off the old Zapier Zap", d: <>Once you've seen a few live submissions land successfully, deactivate the Zap pointing to Airtable. You can keep it for a few weeks as a safety net if you prefer.</> },
             ].map((step, i) => (
               <li key={i} className="flex items-start gap-3">
-                <div className="w-6 h-6 bg-[#D4FF00] flex items-center justify-center text-xs font-bold text-stone-950 shrink-0 rounded-lg">{i + 1}</div>
+                <div className="w-6 h-6 bg-[#dddd16] flex items-center justify-center text-xs font-bold text-stone-950 shrink-0 rounded-lg">{i + 1}</div>
                 <div>
                   <div className="text-sm font-semibold text-stone-950">{step.t}</div>
                   <div className="text-sm text-stone-600 mt-0.5 leading-relaxed">{step.d}</div>

@@ -164,7 +164,7 @@ export default function CqcDefinitionsPage() {
             </button>
           )}
           <button onClick={save} disabled={!dirty || saving} data-testid="def-save"
-            className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-[#D4FF00] text-stone-950 hover:bg-[#BDE600] rounded-lg disabled:opacity-50 flex items-center gap-1.5">
+            className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-[#aaaa11] rounded-lg disabled:opacity-50 flex items-center gap-1.5">
             {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
             Save & re-count
           </button>

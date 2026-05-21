@@ -475,7 +475,7 @@ export default function TerritoryBuilderPage() {
             franchiseeOverlay={showOverlay ? overlay : null}
           />
           <div className="text-[11px] text-stone-500 mt-2 flex items-center gap-3 flex-wrap">
-            <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-[#D4FF00] border border-[#14532D]" /> Selected sector</span>
+            <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-[#dddd16] border border-[#14532D]" /> Selected sector</span>
             <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-stone-200 border border-stone-400" /> Available sector</span>
             <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-red-500 border-2 border-white shadow" /> Contact's postcode</span>
             <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-indigo-500 border-2 border-white shadow" /> Existing franchisee HQ</span>
@@ -505,7 +505,7 @@ export default function TerritoryBuilderPage() {
             )}
             <div className="flex items-center gap-2 mt-3">
               <button onClick={save} disabled={saving || !selected.length} data-testid="save-plan"
-                className="flex-1 px-3 py-2 text-xs font-bold uppercase tracking-wider bg-[#D4FF00] text-stone-950 hover:bg-[#BDE600] rounded-lg disabled:opacity-50 flex items-center justify-center gap-1.5">
+                className="flex-1 px-3 py-2 text-xs font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-[#aaaa11] rounded-lg disabled:opacity-50 flex items-center justify-center gap-1.5">
                 {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                 {franchiseeId ? "Lock territory" : (savedPlan ? "Update plan" : "Save plan")}
               </button>
@@ -614,7 +614,7 @@ export default function TerritoryBuilderPage() {
                     className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 text-xs rounded-lg text-left ${isSel ? "bg-stone-950 text-white" : "hover:bg-stone-50 text-stone-800"}`}>
                     <span className="font-bold">{s.sector}</span>
                     <span className="tabular-nums">{s.home_count} homes · {(s.distance_km / KM_PER_MI).toFixed(1)} mi</span>
-                    {isSel ? <CheckCircle2 className="w-3.5 h-3.5 text-[#D4FF00] shrink-0" /> : <Plus className="w-3.5 h-3.5 text-stone-400 shrink-0" />}
+                    {isSel ? <CheckCircle2 className="w-3.5 h-3.5 text-[#dddd16] shrink-0" /> : <Plus className="w-3.5 h-3.5 text-stone-400 shrink-0" />}
                   </button>
                 );
               })}
@@ -707,7 +707,7 @@ export default function TerritoryBuilderPage() {
                     setPasteText("");
                     setPastePreview(null);
                   }}
-                  className="px-3 py-2 text-xs font-bold uppercase tracking-wider rounded-lg bg-[#D4FF00] text-stone-950 hover:bg-[#BDE600]">
+                  className="px-3 py-2 text-xs font-bold uppercase tracking-wider rounded-lg bg-[#dddd16] text-stone-950 hover:bg-[#aaaa11]">
                   Add to selection
                 </button>
               </div>

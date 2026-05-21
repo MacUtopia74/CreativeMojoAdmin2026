@@ -99,7 +99,7 @@ export default function ChangePasswordPage() {
             type="submit"
             disabled={busy || !current || !next || !confirm}
             data-testid="cp-submit"
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-[#D4FF00] hover:bg-[#BDE600] text-stone-950 font-bold text-sm uppercase tracking-wider rounded-xl disabled:opacity-50"
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-[#dddd16] hover:bg-[#aaaa11] text-stone-950 font-bold text-sm uppercase tracking-wider rounded-xl disabled:opacity-50"
           >
             {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : (
               <>Update password <ArrowRight className="w-4 h-4" /></>

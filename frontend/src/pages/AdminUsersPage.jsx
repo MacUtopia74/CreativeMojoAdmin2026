@@ -190,7 +190,7 @@ function UsersTab() {
         <button
           onClick={() => setShowCreate(true)}
           data-testid="users-new-btn"
-          className="ml-auto inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold uppercase tracking-wider bg-[#D4FF00] hover:bg-[#BDE600] text-stone-950 rounded-lg"
+          className="ml-auto inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold uppercase tracking-wider bg-[#dddd16] hover:bg-[#aaaa11] text-stone-950 rounded-lg"
         >
           <Plus className="w-3.5 h-3.5" /> New User
         </button>
@@ -493,7 +493,7 @@ function CreateUserModal({ open, franchisees, onClose, onCreated }) {
               type="submit"
               disabled={busy}
               data-testid="create-user-submit"
-              className="px-5 py-2 text-xs font-bold uppercase tracking-wider bg-[#D4FF00] hover:bg-[#BDE600] text-stone-950 rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+              className="px-5 py-2 text-xs font-bold uppercase tracking-wider bg-[#dddd16] hover:bg-[#aaaa11] text-stone-950 rounded-lg flex items-center gap-1.5 disabled:opacity-50"
             >
               {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
               Create user
@@ -548,14 +548,14 @@ function CredentialsRevealModal({ data, onClose }) {
           <div className="bg-stone-950 rounded-xl px-4 py-3 space-y-2">
             <div className="flex items-center gap-2">
               <span className="text-[10px] uppercase tracking-wider text-stone-400 w-16 shrink-0">Email</span>
-              <code className="font-mono text-sm text-[#D4FF00] select-all">{data.email}</code>
+              <code className="font-mono text-sm text-[#dddd16] select-all">{data.email}</code>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] uppercase tracking-wider text-stone-400 w-16 shrink-0">Password</span>
-              <code data-testid="created-password" className="font-mono text-sm text-[#D4FF00] tracking-widest select-all">{data.password}</code>
+              <code data-testid="created-password" className="font-mono text-sm text-[#dddd16] tracking-widest select-all">{data.password}</code>
             </div>
           </div>
-          <button onClick={copy} data-testid="created-copy" className="w-full px-3 py-2 text-xs font-bold uppercase tracking-wider bg-[#D4FF00] hover:bg-[#BDE600] text-stone-950 rounded-lg flex items-center justify-center gap-2">
+          <button onClick={copy} data-testid="created-copy" className="w-full px-3 py-2 text-xs font-bold uppercase tracking-wider bg-[#dddd16] hover:bg-[#aaaa11] text-stone-950 rounded-lg flex items-center justify-center gap-2">
             {copied ? <><CheckCircle2 className="w-3.5 h-3.5" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy credentials</>}
           </button>
           <div className="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
@@ -668,7 +668,7 @@ function ResetsTab() {
                       disabled={busyId === r.id}
                       onClick={() => fulfill(r)}
                       data-testid={`reset-fulfill-${r.id}`}
-                      className="px-3 py-2 text-xs font-bold uppercase tracking-wider bg-[#D4FF00] hover:bg-[#BDE600] text-stone-950 rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+                      className="px-3 py-2 text-xs font-bold uppercase tracking-wider bg-[#dddd16] hover:bg-[#aaaa11] text-stone-950 rounded-lg flex items-center gap-1.5 disabled:opacity-50"
                     >
                       {busyId === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <KeyRound className="w-3.5 h-3.5" />}
                       Generate temp password
@@ -728,8 +728,8 @@ function RevealModal({ data, onClose }) {
             Share with <strong>{data.user_name || data.email}</strong> via Signal/SMS/phone. They must change it on next login.
           </div>
           <div className="bg-stone-950 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
-            <code data-testid="reveal-temp-pwd" className="font-mono text-base text-[#D4FF00] tracking-widest select-all">{data.temp_password}</code>
-            <button onClick={copy} data-testid="reveal-copy" className="px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-[#D4FF00] hover:bg-[#BDE600] text-stone-950 rounded-md flex items-center gap-1.5">
+            <code data-testid="reveal-temp-pwd" className="font-mono text-base text-[#dddd16] tracking-widest select-all">{data.temp_password}</code>
+            <button onClick={copy} data-testid="reveal-copy" className="px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-[#dddd16] hover:bg-[#aaaa11] text-stone-950 rounded-md flex items-center gap-1.5">
               {copied ? <><CheckCircle2 className="w-3.5 h-3.5" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy</>}
             </button>
           </div>

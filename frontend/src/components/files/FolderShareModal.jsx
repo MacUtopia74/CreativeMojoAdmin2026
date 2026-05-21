@@ -69,7 +69,7 @@ export default function FolderShareModal({ folder, onClose }) {
                 <input readOnly value={url} data-testid="folder-share-url"
                   className="flex-1 px-3 py-2 text-xs bg-stone-50 border border-stone-300 rounded-lg font-mono text-stone-700" />
                 <button onClick={copy} data-testid="folder-share-copy"
-                  className="px-3 py-2 text-xs font-bold uppercase tracking-wider bg-[#D4FF00] hover:bg-[#BDE600] text-stone-950 rounded-lg flex items-center gap-1.5">
+                  className="px-3 py-2 text-xs font-bold uppercase tracking-wider bg-[#dddd16] hover:bg-[#aaaa11] text-stone-950 rounded-lg flex items-center gap-1.5">
                   {copied ? <><CheckCircle2 className="w-3.5 h-3.5" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy</>}
                 </button>
               </div>

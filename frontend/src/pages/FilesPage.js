@@ -258,7 +258,7 @@ function MigrationPanel({ db, onMigrationDone }) {
                   refreshStatus();
                 }} className="text-xs text-stone-500 hover:text-stone-900" data-testid="plan-discard">Discard plan</button>
                 <button onClick={commit} disabled={running} data-testid="migration-commit"
-                  className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-[#D4FF00] text-stone-950 hover:bg-[#BDE600] rounded-lg flex items-center gap-1.5 disabled:opacity-50">
+                  className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-[#aaaa11] rounded-lg flex items-center gap-1.5 disabled:opacity-50">
                   <CloudUpload className="w-3.5 h-3.5" /> Commit Migration ({plan.files_total.toLocaleString()} files · {fmtBytes(plan.bytes_total)})
                 </button>
               </div>
@@ -345,7 +345,7 @@ function ShareModal({ file, onClose }) {
                 <input readOnly value={url} data-testid="share-url"
                   className="flex-1 px-3 py-2 text-xs bg-stone-50 border border-stone-300 rounded-lg font-mono text-stone-700" />
                 <button onClick={copy} data-testid="share-copy"
-                  className="px-3 py-2 text-xs font-bold uppercase tracking-wider bg-[#D4FF00] hover:bg-[#BDE600] text-stone-950 rounded-lg flex items-center gap-1.5">
+                  className="px-3 py-2 text-xs font-bold uppercase tracking-wider bg-[#dddd16] hover:bg-[#aaaa11] text-stone-950 rounded-lg flex items-center gap-1.5">
                   {copied ? <><CheckCircle2 className="w-3.5 h-3.5" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy</>}
                 </button>
               </div>
@@ -779,7 +779,7 @@ export default function FilesPage() {
                         {tree.folders.map((f) => (
                           <div key={f.key} className="group flex flex-col items-stretch border border-stone-200 hover:border-stone-400 hover:shadow-md transition-all rounded-xl overflow-hidden text-left bg-white relative">
                             <button onClick={() => setPrefix(f.key)} data-testid={`folder-grid-${f.name}`}
-                              className="aspect-square bg-[#D4FF00]/15 flex items-center justify-center border-b border-[#D4FF00]/30">
+                              className="aspect-square bg-[#dddd16]/15 flex items-center justify-center border-b border-[#dddd16]/30">
                               <Folder className="w-14 h-14 text-[#14532D] group-hover:scale-105 transition-transform" />
                             </button>
                             <div className="p-2.5 flex items-start justify-between gap-2">

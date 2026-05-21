@@ -450,7 +450,7 @@ export default function FranchiseeDetailPage() {
                 <XIcon className="w-3.5 h-3.5" /> Cancel
               </button>
               <button onClick={saveEdit} disabled={saving} data-testid="save-edit"
-                className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider bg-[#D4FF00] hover:bg-[#BDE600] text-stone-950 rounded-lg flex items-center gap-1.5 disabled:opacity-50">
+                className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider bg-[#dddd16] hover:bg-[#aaaa11] text-stone-950 rounded-lg flex items-center gap-1.5 disabled:opacity-50">
                 <Check className="w-3.5 h-3.5" /> {saving ? "Saving…" : "Save"}
               </button>
             </>
@@ -498,7 +498,7 @@ export default function FranchiseeDetailPage() {
           <div className="space-y-3">
             <div className="flex items-center gap-2 flex-wrap">
               {statusTag && <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-md ${statusColor}`}>{statusTag}</span>}
-              {feeTag && <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[#D4FF00]/15 border border-[#D4FF00]/60 text-stone-900 rounded-md">{feeTag}</span>}
+              {feeTag && <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[#dddd16]/15 border border-[#dddd16]/60 text-stone-900 rounded-md">{feeTag}</span>}
               {f.franchise_number && <span className="text-xs text-stone-500">Franchise #{f.franchise_number}</span>}
             </div>
             <div>

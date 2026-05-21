@@ -170,7 +170,7 @@ export default function AddContractModal({ franchisee, previous = null, onClose,
             Cancel
           </button>
           <button onClick={save} disabled={saving || !start} data-testid="add-contract-save"
-            className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-[#D4FF00] text-stone-950 hover:bg-[#BDE600] rounded-lg disabled:opacity-50 flex items-center gap-1.5">
+            className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-[#aaaa11] rounded-lg disabled:opacity-50 flex items-center gap-1.5">
             {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
             {previous ? "Save renewal" : "Save contract"}
           </button>

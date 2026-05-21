@@ -22,10 +22,10 @@ import api from "@/lib/api";
 import CreateOrderModal from "@/components/orders/CreateOrderModal";
 
 const TABS = [
-  { key: "active",    label: "ACTIVE",    activeBg: "bg-[#D4FF00] text-stone-950" },
-  { key: "completed", label: "COMPLETED", activeBg: "bg-[#D4FF00] text-stone-950" },
-  { key: "all",       label: "ALL",       activeBg: "bg-[#D4FF00] text-stone-950" },
-  { key: "draft",     label: "DRAFT",     activeBg: "bg-[#D4FF00] text-stone-950" },
+  { key: "active",    label: "ACTIVE",    activeBg: "bg-[#dddd16] text-stone-950" },
+  { key: "completed", label: "COMPLETED", activeBg: "bg-[#dddd16] text-stone-950" },
+  { key: "all",       label: "ALL",       activeBg: "bg-[#dddd16] text-stone-950" },
+  { key: "draft",     label: "DRAFT",     activeBg: "bg-[#dddd16] text-stone-950" },
 ];
 
 const PRODUCTION_PILL = {
@@ -181,7 +181,7 @@ export default function OrdersPage() {
               onClick={() => setTab(t.key)}
               data-testid={`orders-tab-${t.key}`}
               className={`px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-lg border transition-colors ${
-                active ? t.activeBg + " border-[#D4FF00]" : "bg-white text-stone-700 border-stone-300 hover:bg-stone-100"
+                active ? t.activeBg + " border-[#dddd16]" : "bg-white text-stone-700 border-stone-300 hover:bg-stone-100"
               }`}
             >
               <span>{t.label}</span>
@@ -208,7 +208,7 @@ export default function OrdersPage() {
             onClick={() => setShowProducts((s) => !s)}
             data-testid="show-products-toggle"
             className={`relative w-10 h-5 rounded-full transition-colors ${
-              showProducts ? "bg-[#D4FF00]" : "bg-stone-300"
+              showProducts ? "bg-[#dddd16]" : "bg-stone-300"
             }`}
           >
             <span

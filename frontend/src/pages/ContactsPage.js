@@ -121,8 +121,8 @@ function AgeBadge({ days }) {
 function ManualBadge({ addedBy }) {
   if (!addedBy) return null;
   return (
-    <span title={`Added manually by ${addedBy}`} className="inline-flex items-center gap-0.5 text-[#D4FF00]" data-testid="manual-badge">
-      <Sparkles className="w-3 h-3" fill="#D4FF00" stroke="#A89A00" strokeWidth={1} />
+    <span title={`Added manually by ${addedBy}`} className="inline-flex items-center gap-0.5 text-[#dddd16]" data-testid="manual-badge">
+      <Sparkles className="w-3 h-3" fill="#dddd16" stroke="#A89A00" strokeWidth={1} />
     </span>
   );
 }
@@ -258,7 +258,7 @@ function AddContactModal({ open, onClose, onCreated, defaultTarget = "franchise"
             Cancel
           </button>
           <button type="submit" disabled={submitting} data-testid="add-contact-submit"
-            className="px-5 py-2 text-xs font-bold uppercase tracking-wider bg-[#D4FF00] hover:bg-[#BDE600] text-stone-950 rounded-lg disabled:opacity-50 flex items-center gap-1.5">
+            className="px-5 py-2 text-xs font-bold uppercase tracking-wider bg-[#dddd16] hover:bg-[#aaaa11] text-stone-950 rounded-lg disabled:opacity-50 flex items-center gap-1.5">
             {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
             Save contact
           </button>
@@ -516,7 +516,7 @@ function ImportCsvModal({ open, onClose, onImported, defaultTarget = "licence" }
           </button>
           {step === 2 && (
             <button onClick={submit} disabled={busy || parsedRows.length === 0} data-testid="import-submit"
-              className="px-5 py-2 text-xs font-bold uppercase tracking-wider bg-[#D4FF00] hover:bg-[#BDE600] text-stone-950 rounded-lg disabled:opacity-50 flex items-center gap-1.5">
+              className="px-5 py-2 text-xs font-bold uppercase tracking-wider bg-[#dddd16] hover:bg-[#aaaa11] text-stone-950 rounded-lg disabled:opacity-50 flex items-center gap-1.5">
               {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
               Import {parsedRows.length} contact{parsedRows.length === 1 ? "" : "s"}
             </button>
@@ -694,8 +694,8 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
               </div>
             )}
             {contact.manually_added_by && (
-              <div className="mt-3 px-3 py-2 bg-[#D4FF00]/10 border border-[#D4FF00]/40 rounded-lg flex items-center gap-2 text-xs text-stone-800" data-testid="drawer-manual-flag">
-                <Sparkles className="w-3.5 h-3.5 text-stone-700" fill="#D4FF00" />
+              <div className="mt-3 px-3 py-2 bg-[#dddd16]/10 border border-[#dddd16]/40 rounded-lg flex items-center gap-2 text-xs text-stone-800" data-testid="drawer-manual-flag">
+                <Sparkles className="w-3.5 h-3.5 text-stone-700" fill="#dddd16" />
                 <span>
                   Added manually by <strong>{contact.manually_added_by}</strong>
                   {contact.created_at && (
@@ -711,7 +711,7 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
           </div>
 
           {/* Convert to Franchisee/Licencee — 1-click promotion to operational record */}
-          <div className={`p-4 border rounded-xl ${alreadyConverted ? "bg-emerald-50 border-emerald-200" : "bg-gradient-to-br from-[#D4FF00]/10 to-stone-50 border-stone-300"}`} data-testid="drawer-convert-section">
+          <div className={`p-4 border rounded-xl ${alreadyConverted ? "bg-emerald-50 border-emerald-200" : "bg-gradient-to-br from-[#dddd16]/10 to-stone-50 border-stone-300"}`} data-testid="drawer-convert-section">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-sm font-semibold text-stone-950 flex items-center gap-1.5">
@@ -813,7 +813,7 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
                 Promote them to actively work them as a potential franchisee.
               </div>
               <button onClick={() => onPromote(contact.id)} data-testid="drawer-promote"
-                className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-[#D4FF00] text-stone-950 hover:bg-[#BDE600] rounded-lg flex items-center gap-1.5">
+                className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-[#aaaa11] rounded-lg flex items-center gap-1.5">
                 <ArrowUpCircle className="w-3.5 h-3.5" /> Promote to sales pipeline
               </button>
             </div>
@@ -1398,14 +1398,14 @@ export default function ContactsPage() {
         <div className="px-8 pt-4">
           <div className="bg-stone-950 text-white rounded-2xl px-5 py-3 flex items-center gap-4 shadow-lg" data-testid="bulk-action-bar">
             <div className="flex items-center gap-2">
-              <CheckSquare className="w-4 h-4 text-[#D4FF00]" />
+              <CheckSquare className="w-4 h-4 text-[#dddd16]" />
               <span className="text-sm font-bold tabular-nums">{selectedIds.size} selected</span>
             </div>
             <div className="flex-1" />
             <MoveMenu onMove={bulkMove} label="Move selected" testid="bulk-move" currentTab={tab} count={selectedIds.size} />
             {selectedIds.size === 2 && (
               <button onClick={openMergeFromBulkBar} data-testid="bulk-merge"
-                className="touch-target px-3 text-xs font-bold uppercase tracking-wider bg-[#D4FF00] text-stone-950 hover:bg-[#BDE600] rounded-lg flex items-center gap-1.5">
+                className="touch-target px-3 text-xs font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-[#aaaa11] rounded-lg flex items-center gap-1.5">
                 <GitMerge className="w-3.5 h-3.5" /> Merge these 2
               </button>
             )}
@@ -1621,7 +1621,7 @@ export default function ContactsPage() {
                   const checked = selectedIds.has(c.id);
                   const age = daysSince(c.date || c.date_added);
                   return (
-                  <tr key={c.id} onClick={() => setSelected(c)} className={`border-b border-stone-100 last:border-0 hover:bg-stone-50 cursor-pointer ${checked ? "bg-[#D4FF00]/5" : ""}`} data-testid={`contact-row-${c.id}`}>
+                  <tr key={c.id} onClick={() => setSelected(c)} className={`border-b border-stone-100 last:border-0 hover:bg-stone-50 cursor-pointer ${checked ? "bg-[#dddd16]/5" : ""}`} data-testid={`contact-row-${c.id}`}>
                     <td className="px-3 py-2" onClick={(e) => { e.stopPropagation(); toggleSelect(c.id, e); }}>
                       <button data-testid={`select-${c.id}`} className="text-stone-500 hover:text-stone-900">
                         {checked ? <CheckSquare className="w-4 h-4 text-stone-950" /> : <Square className="w-4 h-4" />}
@@ -1633,7 +1633,7 @@ export default function ContactsPage() {
                         <ManualBadge addedBy={c.manually_added_by} />
                         {!isPipeline && c.in_pipeline && (
                           <span data-testid={`in-pipeline-${c.id}`}
-                            className="px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider bg-[#D4FF00] text-stone-950 border border-stone-950 flex items-center gap-1"
+                            className="px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 border border-stone-950 flex items-center gap-1"
                             title="Also in the Sales Pipeline">
                             <Kanban className="w-2.5 h-2.5" />
                             In Pipeline{c.pipeline_status ? ` · ${c.pipeline_status.replace(/_/g, " ")}` : ""}

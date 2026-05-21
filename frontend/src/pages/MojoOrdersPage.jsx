@@ -69,7 +69,7 @@ export default function MojoOrdersPage() {
       <div className={`bg-white border-b border-stone-200 ${fullscreen ? "px-6" : "px-8"} py-4 flex items-center justify-between gap-4 flex-wrap`}>
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-10 h-10 rounded-lg bg-stone-950 flex items-center justify-center shrink-0">
-            <ShoppingBag className="w-5 h-5 text-[#D4FF00]" />
+            <ShoppingBag className="w-5 h-5 text-[#dddd16]" />
           </div>
           <div className="min-w-0">
             <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">
@@ -111,7 +111,7 @@ export default function MojoOrdersPage() {
             admin given the cookie restrictions; sign-in works perfectly
             in a real new tab. */}
         <div className="bg-stone-950 text-white rounded-2xl p-6 flex items-center gap-5 flex-wrap shadow-sm" data-testid="mojo-orders-launcher">
-          <div className="w-12 h-12 rounded-xl bg-[#D4FF00] flex items-center justify-center shrink-0">
+          <div className="w-12 h-12 rounded-xl bg-[#dddd16] flex items-center justify-center shrink-0">
             <ShoppingBag className="w-6 h-6 text-stone-950" />
           </div>
           <div className="flex-1 min-w-0">
@@ -127,7 +127,7 @@ export default function MojoOrdersPage() {
             target="_blank"
             rel="noreferrer"
             data-testid="mojo-orders-open-new"
-            className="px-5 py-3 text-sm font-bold uppercase tracking-wider bg-[#D4FF00] hover:bg-[#BDE600] text-stone-950 rounded-xl flex items-center gap-2 shrink-0"
+            className="px-5 py-3 text-sm font-bold uppercase tracking-wider bg-[#dddd16] hover:bg-[#aaaa11] text-stone-950 rounded-xl flex items-center gap-2 shrink-0"
           >
             <ExternalLink className="w-4 h-4" />
             Open Mojo Orders

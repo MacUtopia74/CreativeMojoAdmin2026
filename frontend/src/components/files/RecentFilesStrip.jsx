@@ -159,7 +159,7 @@ export default function RecentFilesStrip({ onOpenFile, onDownload, onOpenFolder,
                     <button key={f.key} onClick={() => onOpenFolder?.(f.key)}
                       data-testid={`recent-folder-tile-${f.key}`}
                       className="group flex flex-col items-stretch border border-stone-200 hover:border-stone-400 hover:shadow-sm transition-all rounded-xl overflow-hidden bg-white text-left">
-                      <div className="aspect-square bg-[#D4FF00]/15 flex items-center justify-center border-b border-[#D4FF00]/30">
+                      <div className="aspect-square bg-[#dddd16]/15 flex items-center justify-center border-b border-[#dddd16]/30">
                         <Folder className="w-10 h-10 text-[#14532D] group-hover:scale-105 transition-transform" />
                       </div>
                       <div className="p-2">

@@ -19,8 +19,8 @@ import "mapbox-gl/dist/mapbox-gl.css";
 const TOKEN = process.env.REACT_APP_MAPBOX_TOKEN;
 
 // Brand-friendly palette aligned with the rest of the admin (Creative Mojo
-// uses #D4FF00 lime as its accent; pair with a dark green outline).
-const FILL_SELECTED = "#D4FF00";   // brand yellow-green
+// uses #dddd16 lime as its accent; pair with a dark green outline).
+const FILL_SELECTED = "#dddd16";   // brand yellow-green
 const FILL_AVAILABLE = "#E7E5E4";  // stone-200, very light
 const OUTLINE_DARK = "#14532D";    // green-900, strong dark green
 const OUTLINE_LIGHT = "#A8A29E";   // stone-400, soft separator

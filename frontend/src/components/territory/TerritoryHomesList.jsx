@@ -142,11 +142,11 @@ export default function TerritoryHomesList({ homes = [], onZoomHome, openIndex, 
         className="w-full flex items-center justify-between gap-3 bg-stone-950 hover:bg-stone-800 text-white rounded-2xl px-5 py-4 transition-colors group"
       >
         <span className="flex items-center gap-3 min-w-0">
-          <span className="w-9 h-9 rounded-full bg-[#D4FF00] text-stone-950 flex items-center justify-center shrink-0">
+          <span className="w-9 h-9 rounded-full bg-[#dddd16] text-stone-950 flex items-center justify-center shrink-0">
             <ListIcon className="w-4 h-4" />
           </span>
           <span className="text-left min-w-0">
-            <span className="block text-[10px] uppercase tracking-[0.3em] font-bold text-[#D4FF00]">CQC homes in your territory</span>
+            <span className="block text-[10px] uppercase tracking-[0.3em] font-bold text-[#dddd16]">CQC homes in your territory</span>
             <span className="block text-sm font-semibold truncate">
               Expand to show list of {homes.length} home{homes.length === 1 ? "" : "s"}
             </span>
