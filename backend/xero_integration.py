@@ -47,7 +47,7 @@ import os
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -313,7 +313,7 @@ def attach(api, db, require_role):
             "redirect_uri": redirect_uri,
             "scope": scopes,
             "state": state,
-        })
+        }, quote_via=quote)
         return {"url": url}
 
     @api.get("/xero/callback")
