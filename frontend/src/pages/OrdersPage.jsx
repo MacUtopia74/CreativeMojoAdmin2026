@@ -160,7 +160,7 @@ export default function OrdersPage() {
   const items = data.items || [];
 
   return (
-    <div className="min-h-screen bg-stone-50" data-testid="orders-page">
+    <div className="min-h-screen bg-stone-100" data-testid="orders-page">
       {/* Page header */}
       <div className="bg-white border-b border-stone-200 px-8 py-6 flex items-center justify-between gap-4">
         <div>
