@@ -308,6 +308,17 @@ async def schedule_periodic(db, every_seconds: int = 3600):
 def attach(api, db, require_role):
     """Register all Orders + Woo-sync endpoints on the parent FastAPI router."""
 
+    async def _next_display_order_id(db) -> int:
+        """Return the next continuous order number — picks up right after
+        the highest existing `display_order_id` (which already covers
+        live Woo + legacy + previous manual drafts)."""
+        top = await db.woo_orders.find_one(
+            {"display_order_id": {"$ne": None}},
+            sort=[("display_order_id", -1)],
+            projection={"_id": 0, "display_order_id": 1},
+        )
+        return int((top or {}).get("display_order_id") or 8066) + 1
+
     @api.get("/orders")
     async def list_orders(
         tab: str = Query("active"),  # active | completed | all | draft
@@ -380,6 +391,9 @@ def attach(api, db, require_role):
         """
         import uuid as _uuid
         oid = f"draft-{_uuid.uuid4().hex[:8]}"
+        # Reserve a continuous display number up-front so the admin sees
+        # the human ID (e.g. 8068) from the moment they create the draft.
+        next_display = await _next_display_order_id(db)
         line_items = [
             {
                 "id": idx + 1,
@@ -397,6 +411,7 @@ def attach(api, db, require_role):
         now = datetime.now(timezone.utc).isoformat()
         doc = {
             "id": oid,
+            "display_order_id": next_display,
             "woo_id": None,
             "woo_number": None,
             "customer_label": (body.get("customer_label") or "").strip() or "New Customer",
@@ -510,7 +525,8 @@ def attach(api, db, require_role):
             updates["is_draft"] = False
             updates["status"] = "active"
             updates["woo_status"] = "processing"
-            updates["production_status"] = "Awaiting Assembly"
+            # NB: We do NOT overwrite display_order_id here — drafts are
+            # already assigned a continuous number at creation time.
         elif action == "mark_paid":
             updates["payment_status"] = "Paid"
             updates["date_paid"] = now
@@ -552,12 +568,25 @@ def attach(api, db, require_role):
         action = body.get("action")
         if not ids or not action:
             raise HTTPException(400, "ids and action are required")
-        if action not in {"mark_completed", "mark_paid", "delete"}:
+        if action not in {"mark_completed", "mark_paid", "mark_active", "delete"}:
             raise HTTPException(400, f"Unsupported bulk action: {action!r}")
         now = datetime.now(timezone.utc).isoformat()
         if action == "delete":
             r = await db.woo_orders.delete_many({"id": {"$in": ids}})
             return {"ok": True, "deleted": r.deleted_count}
+        if action == "mark_active":
+            # Promote drafts to active orders. Display number was already
+            # allocated at draft creation, so we just flip the flag.
+            r = await db.woo_orders.update_many(
+                {"id": {"$in": ids}, "is_draft": True},
+                {"$set": {
+                    "is_draft": False,
+                    "status": "active",
+                    "updated_at": now,
+                    "updated_by": user.get("email"),
+                }},
+            )
+            return {"ok": True, "promoted": r.modified_count}
         upd: dict = {"updated_at": now, "updated_by": user.get("email")}
         if action == "mark_completed":
             upd["status"] = "completed"
