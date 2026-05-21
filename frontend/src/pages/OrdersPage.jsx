@@ -16,7 +16,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   ShoppingBag, Search, X, Plus, RefreshCw, Loader2, AlertCircle,
-  CheckSquare, Square, CheckCircle2, CreditCard,
+  CheckSquare, Square, CheckCircle2, CreditCard, FileText,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import api from "@/lib/api";
@@ -154,6 +154,28 @@ export default function OrdersPage() {
       await loadCounts();
     } catch (e) {
       setError(e?.response?.data?.detail || "Bulk action failed.");
+    } finally { setBulkPending(false); }
+  };
+
+  // Bulk-create Xero invoices for every selected order. Skips any that
+  // already have a Xero invoice (server-side) so the user can fire it
+  // safely after partial runs.
+  const runBulkXero = async () => {
+    if (selectedIds.size === 0) return;
+    if (!window.confirm(`Create Xero draft invoices for ${selectedIds.size} order(s)?\n\nOrders already invoiced will be skipped.`)) return;
+    setBulkPending(true);
+    setError("");
+    try {
+      const { data } = await api.post("/xero/orders/bulk-create-invoices", { ids: Array.from(selectedIds) });
+      let msg = `Created ${data.created} draft invoice(s) in Xero.`;
+      if (data.skipped) msg += ` Skipped ${data.skipped} already-invoiced.`;
+      if (data.failed) msg += ` ${data.failed} failed — check console.`;
+      if (data.errors?.length) console.warn("Xero bulk-create errors:", data.errors);
+      alert(msg);
+      clearSelection();
+      await load();
+    } catch (e) {
+      setError(e?.response?.data?.detail || "Bulk Xero invoice creation failed.");
     } finally { setBulkPending(false); }
   };
 
@@ -296,6 +318,15 @@ export default function OrdersPage() {
             </button>
             <button
               type="button"
+              onClick={runBulkXero}
+              disabled={bulkPending}
+              data-testid="orders-bulk-send-xero"
+              className="px-3 py-1.5 bg-[#13B5EA] hover:bg-[#0e9ed1] text-white text-[11px] font-bold uppercase tracking-wider rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <FileText className="w-3.5 h-3.5" /> Send to Xero
+            </button>
+            <button
+              type="button"
               onClick={selectAllVisible}
               data-testid="orders-bulk-select-all"
               className="ml-auto px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-stone-300 hover:text-white"
@@ -398,7 +429,7 @@ function OrderRow({ order, showProducts, hideLegacyIds, selected = false, onSele
 
   return (
     <tr
-      className={`border-b-2 border-stone-200 last:border-b-0 cursor-pointer ${selected ? "bg-amber-50/40" : "hover:bg-stone-50/50"}`}
+      className={`border-b border-stone-200 last:border-b-0 cursor-pointer ${selected ? "bg-amber-50/40" : "hover:bg-stone-50/50"}`}
       onClick={(e) => {
         // Don't open the detail page when the click was on the checkbox.
         if (e.target.closest("[data-row-checkbox]")) return;

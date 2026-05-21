@@ -833,6 +833,54 @@ def attach(api, db, require_role):
             "online_invoice_url": f"https://go.xero.com/AccountsReceivable/View.aspx?InvoiceID={xi.get('InvoiceID')}",
         }
 
+    @api.post("/xero/orders/bulk-create-invoices")
+    async def bulk_create_invoices(
+        body: dict,
+        _: dict = Depends(require_role("admin")),
+    ):
+        """Create DRAFT Xero invoices for a list of order IDs in one go.
+
+        Body: ``{ids: ["uuid1", "uuid2", ...]}``. Idempotent per order —
+        if an order already has ``xero_invoice_id`` it's counted as
+        skipped rather than failed. Returns a per-id status array so the
+        UI can show a small summary toast."""
+        ids = (body or {}).get("ids") or []
+        if not ids:
+            raise HTTPException(400, "ids[] required")
+        results = {"created": 0, "skipped": 0, "failed": 0, "errors": []}
+        for oid in ids:
+            order = await db.woo_orders.find_one({"id": oid}, {"_id": 0})
+            if not order:
+                results["failed"] += 1
+                results["errors"].append({"id": oid, "error": "not found"})
+                continue
+            if order.get("xero_invoice_id"):
+                results["skipped"] += 1
+                continue
+            try:
+                payload = _build_xero_invoice_payload(order)
+                resp = await _xero_post(db, "/Invoices", payload)
+                invs = resp.get("Invoices") or []
+                if not invs:
+                    raise RuntimeError("no invoice returned")
+                xi = invs[0]
+                await db.woo_orders.update_one({"id": oid}, {"$set": {
+                    "xero_invoice_id": xi.get("InvoiceID"),
+                    "xero_invoice_number": xi.get("InvoiceNumber"),
+                    "xero_invoice_status": xi.get("Status"),
+                    "invoiced": True,
+                    "invoice_pending_xero": False,
+                    "updated_at": _now().isoformat(),
+                }})
+                results["created"] += 1
+            except HTTPException as e:
+                results["failed"] += 1
+                results["errors"].append({"id": oid, "error": e.detail[:200] if isinstance(e.detail, str) else str(e.detail)})
+            except Exception as e:  # noqa: BLE001
+                results["failed"] += 1
+                results["errors"].append({"id": oid, "error": str(e)[:200]})
+        return {"ok": True, **results}
+
     # ----- Webhook ---------------------------------------------------------
     @api.post("/xero/webhook")
     async def xero_webhook(request: Request):
