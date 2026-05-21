@@ -193,12 +193,20 @@ async def backfill_orders(db, months: int = 24) -> dict:
 
 
 async def sync_products(db) -> dict:
-    """Refresh the local mirror of Woo products (powers the autocomplete)."""
+    """Refresh the local mirror of Woo products (powers the autocomplete).
+
+    Variable products in Woo have their actual purchasable SKUs/prices on
+    child ``variations`` (e.g. "Group Art Kit" → Medium / Large / 1-2-1).
+    We pull those too and store each variation as its own row, tagged with
+    ``parent_id`` + ``variant_label`` so the autocomplete can show every
+    purchasable option separately."""
     checked = upserted = 0
+    variations_synced = 0
     errors: list[str] = []
     try:
         async for page in _iter_paginated("/products", params={"status": "publish"}):
             ops: list[UpdateOne] = []
+            variable_parent_ids: list[int] = []
             for raw in page:
                 checked += 1
                 doc = {
@@ -211,16 +219,57 @@ async def sync_products(db) -> dict:
                     "regular_price": raw.get("regular_price"),
                     "stock_status": raw.get("stock_status"),
                     "attributes": raw.get("attributes") or [],
+                    "is_variation": False,
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 }
                 ops.append(UpdateOne({"id": doc["id"]}, {"$set": doc}, upsert=True))
+                if raw.get("type") == "variable":
+                    variable_parent_ids.append(int(raw.get("id")))
             if ops:
                 r = await db.woo_products.bulk_write(ops, ordered=False)
                 upserted += (r.upserted_count or 0) + (r.modified_count or 0)
+
+            # Variations are fetched per-parent.
+            for parent_id in variable_parent_ids:
+                try:
+                    parent_doc = await db.woo_products.find_one({"woo_id": parent_id}, {"name": 1, "_id": 0})
+                    parent_name = (parent_doc or {}).get("name") or f"Product {parent_id}"
+                    async for vpage in _iter_paginated(f"/products/{parent_id}/variations", params={}):
+                        vops: list[UpdateOne] = []
+                        for vraw in vpage:
+                            variations_synced += 1
+                            # Build a "Medium" / "Large" style label from the variation attributes.
+                            attrs = vraw.get("attributes") or []
+                            label_parts = [a.get("option") for a in attrs if a.get("option")]
+                            variant_label = " / ".join(label_parts) if label_parts else (vraw.get("sku") or "Variation")
+                            vdoc = {
+                                "id": str(vraw.get("id")),
+                                "woo_id": vraw.get("id"),
+                                "parent_id": parent_id,
+                                "parent_name": parent_name,
+                                "name": f"{parent_name} – {variant_label}",
+                                "variant_label": variant_label,
+                                "sku": vraw.get("sku"),
+                                "type": "variation",
+                                "price": vraw.get("price"),
+                                "regular_price": vraw.get("regular_price"),
+                                "stock_status": vraw.get("stock_status"),
+                                "attributes": attrs,
+                                "is_variation": True,
+                                "downloadable": vraw.get("downloadable", False),
+                                "updated_at": datetime.now(timezone.utc).isoformat(),
+                            }
+                            vops.append(UpdateOne({"id": vdoc["id"]}, {"$set": vdoc}, upsert=True))
+                        if vops:
+                            r = await db.woo_products.bulk_write(vops, ordered=False)
+                            upserted += (r.upserted_count or 0) + (r.modified_count or 0)
+                except Exception as inner:  # noqa: BLE001
+                    errors.append(f"variations for {parent_id}: {inner}")
+                    logger.warning("Variation sync failed for product %s: %s", parent_id, inner)
     except Exception as exc:  # noqa: BLE001
         errors.append(str(exc))
         logger.warning("Woo product sync failed: %s", exc)
-    return {"checked": checked, "upserted": upserted, "errors": errors}
+    return {"checked": checked, "upserted": upserted, "variations_synced": variations_synced, "errors": errors}
 
 
 # ---------------------------------------------------------------- webhook
@@ -537,17 +586,31 @@ def attach(api, db, require_role):
     @api.get("/woo/products/autocomplete")
     async def products_autocomplete(
         q: str = Query("", min_length=0),
-        limit: int = Query(15, ge=1, le=50),
+        limit: int = Query(25, ge=1, le=100),
         _: dict = Depends(require_role("admin")),
     ):
-        filt: dict = {}
+        """Returns a flat list with both simple products and per-variation
+        rows (so picking "World Cup 2026 – Large" is a single click).
+
+        For variable parents we HIDE the parent itself (it's not purchasable)
+        and only surface the child variations. Simple/external/grouped
+        products surface normally."""
+        filt: dict = {"type": {"$ne": "variable"}}  # never show pure parents
         if q.strip():
             import re
             rx = {"$regex": re.escape(q.strip()), "$options": "i"}
-            filt["$or"] = [{"name": rx}, {"sku": rx}]
+            filt["$or"] = [
+                {"name": rx},
+                {"parent_name": rx},
+                {"sku": rx},
+                {"variant_label": rx},
+            ]
         items = await db.woo_products.find(
-            filt, {"_id": 0, "id": 1, "name": 1, "sku": 1, "price": 1}
-        ).limit(limit).to_list(limit)
+            filt,
+            {"_id": 0, "id": 1, "name": 1, "sku": 1, "price": 1, "type": 1,
+             "parent_id": 1, "parent_name": 1, "variant_label": 1, "is_variation": 1,
+             "downloadable": 1, "stock_status": 1},
+        ).sort([("parent_name", 1), ("name", 1)]).limit(limit).to_list(limit)
         return {"items": items}
 
     @api.post("/admin/woo/backfill-orders")

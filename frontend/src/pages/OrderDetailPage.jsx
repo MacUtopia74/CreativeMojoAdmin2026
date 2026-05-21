@@ -17,30 +17,10 @@ import {
 } from "lucide-react";
 import api from "@/lib/api";
 import XeroContactPicker from "@/components/orders/XeroContactPicker";
+import ProductionStatusDropdown from "@/components/orders/ProductionStatusDropdown";
 
-const PRODUCTION_OPTIONS = [
-  "Awaiting Assembly",
-  "In Production",
-  "Awaiting Labels",
-  "Ready To Ship",
-  "Complete",
-];
-
-// Colour palette mirrors the legacy admin's status pills exactly so any
-// admin moving between the two systems sees the same visual cues.
-const PRODUCTION_PILL = {
-  "Awaiting Assembly": "bg-rose-600 text-white",
-  "In Production":     "bg-orange-500 text-white",
-  "Awaiting Labels":   "bg-cyan-600 text-white",
-  "Ready To Ship":     "bg-indigo-950 text-white",
-  "Complete":          "bg-emerald-500 text-white",
-  // Back-compat for legacy data that used "Completed"
-  "Completed":         "bg-emerald-500 text-white",
-  "Dispatched":        "bg-emerald-600 text-white",
-  "Cancelled":         "bg-stone-500 text-white",
-  "Refunded":          "bg-stone-500 text-white",
-  "Failed":            "bg-rose-700 text-white",
-};
+// Colour palette is now centralised in ProductionStatusDropdown.jsx
+// (PRODUCTION_PILL_CLASS) — header just renders that component.
 
 const formatGBP = (v) => {
   const n = parseFloat(v || 0);
@@ -61,7 +41,6 @@ export default function OrderDetailPage() {
   const [lineItems, setLineItems] = useState([]);
   const [shippingTotal, setShippingTotal] = useState("");
   const [dueDate, setDueDate] = useState("");
-  const [productionStatus, setProductionStatus] = useState("Awaiting Assembly");
 
   const load = async () => {
     setLoading(true);
@@ -72,7 +51,6 @@ export default function OrderDetailPage() {
       setLineItems((data.line_items || []).map((li, i) => ({ ...li, _key: i })));
       setShippingTotal(data.shipping_total || "0.00");
       setDueDate(data.due_date || "");
-      setProductionStatus(data.production_status || "Awaiting Assembly");
     } catch (e) {
       setError(e?.response?.data?.detail || "Could not load order.");
     } finally {
@@ -122,7 +100,6 @@ export default function OrderDetailPage() {
         })),
         shipping_total: parseFloat(shippingTotal || 0),
         due_date: dueDate || null,
-        production_status: productionStatus,
       });
       setOrder(data.order);
     } catch (e) {
@@ -186,11 +163,13 @@ export default function OrderDetailPage() {
           <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mt-2">
             CRM · ORDER {isDraft ? "DRAFT" : ""}
           </div>
-          <h1 className="text-3xl font-display font-black text-stone-950 mt-1 flex items-center gap-3">
+          <h1 className="text-3xl font-display font-black text-stone-950 mt-1 flex items-center gap-3 flex-wrap">
             <span>#{order.display_order_id || order.woo_number || order.legacy_order_id || order.id}</span>
-            <span className={`px-3 py-1 rounded-full text-[11px] font-semibold ${PRODUCTION_PILL[order.production_status] || "bg-stone-300 text-stone-800"}`}>
-              {order.production_status}
-            </span>
+            <ProductionStatusDropdown
+              orderId={order.id}
+              value={order.production_status}
+              onChange={(next) => setOrder((o) => ({ ...o, production_status: next }))}
+            />
             <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${
               order.payment_status === "Paid" ? "bg-emerald-500 text-white" : "bg-stone-400 text-white"
             }`}>{order.payment_status}</span>
@@ -243,14 +222,17 @@ export default function OrderDetailPage() {
         <div className="lg:col-span-2 space-y-6">
           <Card title="Line Items">
             <AddProductRow onAdd={handleAddProduct} />
-            <div className="mt-4 divide-y divide-stone-100">
-              {lineItems.length === 0 ? (
-                <div className="py-6 text-center text-sm text-stone-500" data-testid="line-items-empty">
-                  No items yet — search for a product above and click <strong>Add to Order</strong>.
-                </div>
-              ) : lineItems.map((li) => (
-                <LineItemRow key={li._key} li={li} onUpdate={updateLine} onRemove={removeLine} />
-              ))}
+            <div className="mt-4">
+              {lineItems.length > 0 && <LineItemsHeader />}
+              <div className="divide-y divide-stone-100">
+                {lineItems.length === 0 ? (
+                  <div className="py-6 text-center text-sm text-stone-500" data-testid="line-items-empty">
+                    No items yet — search for a product above and click <strong>Add to Order</strong>.
+                  </div>
+                ) : lineItems.map((li) => (
+                  <LineItemRow key={li._key} li={li} onUpdate={updateLine} onRemove={removeLine} />
+                ))}
+              </div>
             </div>
             <div className="mt-4 border-t border-stone-200 pt-4 flex items-center justify-between gap-4 flex-wrap">
               <div className="flex items-center gap-2 text-sm">
@@ -303,16 +285,6 @@ export default function OrderDetailPage() {
                 className="px-2 py-1 border border-stone-300 rounded-md text-sm focus:outline-none focus:border-stone-900"
               />
             </Row>
-            <Row k="Production" inputable>
-              <select
-                value={productionStatus}
-                onChange={(e) => setProductionStatus(e.target.value)}
-                data-testid="order-production-select"
-                className="px-2 py-1 border border-stone-300 rounded-md text-sm focus:outline-none focus:border-stone-900"
-              >
-                {PRODUCTION_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
-              </select>
-            </Row>
             <Row k="Payment" v={order.payment_status} />
             {order.date_paid && <Row k="Paid on" v={new Date(order.date_paid).toLocaleDateString("en-GB")} />}
           </Card>
@@ -355,21 +327,32 @@ function Row({ k, v, inputable, children }) {
 
 function LineItemRow({ li, onUpdate, onRemove }) {
   return (
-    <div className="flex items-center gap-3 py-3" data-testid={`line-item-${li._key}`}>
-      <div className="flex-1 min-w-0">
-        <div className="font-medium text-stone-900 text-sm leading-tight truncate">{li.name}</div>
-        {li.sku && <div className="text-[11px] text-stone-400 font-mono">{li.sku}</div>}
-      </div>
+    <div className="grid grid-cols-[100px_1fr_72px_96px_96px_auto] items-center gap-3 py-3" data-testid={`line-item-${li._key}`}>
+      <input
+        type="text"
+        value={li.sku || ""}
+        onChange={(e) => onUpdate(li._key, { sku: e.target.value })}
+        placeholder="SKU"
+        data-testid={`line-sku-${li._key}`}
+        className="px-2 py-1 border border-stone-300 rounded-md text-[11px] font-mono text-stone-700 focus:outline-none focus:border-stone-900"
+      />
+      <input
+        type="text"
+        value={li.name || ""}
+        onChange={(e) => onUpdate(li._key, { name: e.target.value })}
+        placeholder="Product name"
+        data-testid={`line-name-${li._key}`}
+        className="px-2 py-1 border border-stone-300 rounded-md text-sm text-stone-900 focus:outline-none focus:border-stone-900"
+      />
       <input
         type="number"
         min="1"
         value={li.quantity}
         onChange={(e) => onUpdate(li._key, { quantity: e.target.value })}
         data-testid={`line-qty-${li._key}`}
-        className="w-14 px-2 py-1 border border-stone-300 rounded-md text-sm tabular-nums focus:outline-none focus:border-stone-900"
+        className="px-2 py-1 border border-stone-300 rounded-md text-sm tabular-nums focus:outline-none focus:border-stone-900 text-center"
       />
-      <div className="text-xs text-stone-400">×</div>
-      <div className="flex items-center gap-0.5">
+      <div className="flex items-center gap-1">
         <span className="text-stone-400 text-xs">£</span>
         <input
           type="number"
@@ -377,10 +360,10 @@ function LineItemRow({ li, onUpdate, onRemove }) {
           value={li.subtotal}
           onChange={(e) => onUpdate(li._key, { subtotal: e.target.value })}
           data-testid={`line-price-${li._key}`}
-          className="w-20 px-2 py-1 border border-stone-300 rounded-md text-sm tabular-nums focus:outline-none focus:border-stone-900"
+          className="w-full px-2 py-1 border border-stone-300 rounded-md text-sm tabular-nums focus:outline-none focus:border-stone-900"
         />
       </div>
-      <div className="w-20 text-right text-sm font-semibold tabular-nums">
+      <div className="text-right text-sm font-semibold tabular-nums">
         {formatGBP((parseFloat(li.subtotal) || 0) * (parseInt(li.quantity, 10) || 1))}
       </div>
       <button
@@ -396,6 +379,15 @@ function LineItemRow({ li, onUpdate, onRemove }) {
   );
 }
 
+// Header row above LineItemRow grid so the columns are labelled.
+function LineItemsHeader() {
+  return (
+    <div className="grid grid-cols-[100px_1fr_72px_96px_96px_auto] gap-3 px-0 pb-2 border-b border-stone-200 text-[10px] uppercase tracking-wider font-bold text-stone-500">
+      <span>SKU</span><span>Name</span><span className="text-center">Qty</span><span>Price</span><span className="text-right">Subtotal</span><span></span>
+    </div>
+  );
+}
+
 function AddProductRow({ onAdd }) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState([]);
@@ -407,7 +399,7 @@ function AddProductRow({ onAdd }) {
     if (!q.trim()) { setResults([]); return; }
     const t = setTimeout(async () => {
       try {
-        const { data } = await api.get("/woo/products/autocomplete", { params: { q, limit: 8 } });
+        const { data } = await api.get("/woo/products/autocomplete", { params: { q, limit: 25 } });
         setResults(data.items || []);
         setOpen(true);
       } catch { setResults([]); }
@@ -421,6 +413,22 @@ function AddProductRow({ onAdd }) {
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
 
+  // Group variations under their parent product so admins see, e.g.:
+  //   World Cup 2026
+  //     ↳ Group Art Kit – Medium    £40
+  //     ↳ Group Art Kit – Large     £50
+  //     ↳ 1-2-1 Kit                 £15
+  const grouped = (() => {
+    const map = new Map();
+    for (const p of results) {
+      const key = p.is_variation ? `parent:${p.parent_id}` : `item:${p.id}`;
+      const groupLabel = p.is_variation ? p.parent_name : p.name;
+      if (!map.has(key)) map.set(key, { label: groupLabel, items: [] });
+      map.get(key).items.push(p);
+    }
+    return Array.from(map.values());
+  })();
+
   return (
     <div className="flex items-center gap-2" ref={wrapRef}>
       <div className="relative flex-1">
@@ -429,29 +437,53 @@ function AddProductRow({ onAdd }) {
           value={q}
           onChange={(e) => { setQ(e.target.value); setSelected(null); }}
           onFocus={() => results.length && setOpen(true)}
-          placeholder="Type a product name…"
+          placeholder="Type a product name (variations & 1-2-1 kits included)…"
           data-testid="product-search-input"
           className="w-full px-3 py-2 border border-stone-300 rounded-lg text-sm focus:outline-none focus:border-stone-900"
         />
         {open && results.length > 0 && (
           <div
             data-testid="product-autocomplete-dropdown"
-            className="absolute left-0 right-0 top-full mt-1 max-h-60 overflow-y-auto z-20 bg-white border border-stone-200 rounded-lg shadow-lg"
+            className="absolute left-0 right-0 top-full mt-1 max-h-72 overflow-y-auto z-20 bg-white border border-stone-200 rounded-lg shadow-lg"
           >
-            {results.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => { setSelected(p); setQ(p.name); setOpen(false); }}
-                data-testid={`product-option-${p.id}`}
-                className="w-full text-left px-3 py-2 text-sm hover:bg-stone-50 border-b border-stone-100 last:border-b-0"
-              >
-                <div className="font-medium text-stone-900 leading-tight">{p.name}</div>
-                <div className="text-[11px] text-stone-500 flex items-center gap-2">
-                  {p.sku && <span className="font-mono">{p.sku}</span>}
-                  <span>{formatGBP(p.price)}</span>
-                </div>
-              </button>
+            {grouped.map((g, gi) => (
+              <div key={gi}>
+                {g.items.length > 1 && (
+                  <div className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider font-bold text-stone-500 bg-stone-50 border-b border-stone-100">
+                    {g.label}
+                  </div>
+                )}
+                {g.items.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => {
+                      setSelected(p);
+                      setQ(p.is_variation ? p.name : (p.name || ""));
+                      setOpen(false);
+                    }}
+                    data-testid={`product-option-${p.id}`}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-stone-50 border-b border-stone-100 last:border-b-0 flex items-center gap-2"
+                  >
+                    {p.is_variation && <span className="text-stone-300 text-xs">↳</span>}
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-stone-900 leading-tight truncate">
+                        {p.is_variation ? p.variant_label : p.name}
+                        {p.downloadable && (
+                          <span className="ml-2 inline-block px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider font-bold bg-sky-100 text-sky-800">PDF</span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-stone-500 flex items-center gap-2">
+                        {p.sku && <span className="font-mono">{p.sku}</span>}
+                        <span className="tabular-nums">{formatGBP(p.price)}</span>
+                        {p.stock_status && p.stock_status !== "instock" && (
+                          <span className="text-rose-600 uppercase">{p.stock_status}</span>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
             ))}
           </div>
         )}
@@ -460,8 +492,10 @@ function AddProductRow({ onAdd }) {
         type="button"
         disabled={!selected && !q.trim()}
         onClick={() => {
-          const product = selected || { name: q, price: "0.00" };
-          onAdd(product);
+          const product = selected || { name: q, price: "0.00", sku: "" };
+          // For variations we want the friendlier "Parent – Variant" label on the line item.
+          const lineName = product.is_variation ? product.name : product.name;
+          onAdd({ ...product, name: lineName });
           setQ(""); setSelected(null); setResults([]);
         }}
         data-testid="add-to-order-button"
