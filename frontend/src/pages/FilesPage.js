@@ -419,7 +419,7 @@ const UploadButton = forwardRef(function UploadButton({ prefix, onUploaded }, ex
   // handler can route dropped files through the same upload pipeline
   // (progress UI, error handling, onUploaded callback) without duplicating
   // any logic.
-  useImperativeHandle(externalRef, () => ({ handleFiles, isUploading: () => !!progress }), [progress]);
+  useImperativeHandle(externalRef, () => ({ handleFiles, isUploading: () => !!progress }), [progress, uploadFile]);
 
   return (
     <>
@@ -616,27 +616,37 @@ export default function FilesPage() {
 
   useEffect(() => {
     if (trashMode) return; // never allow drop into trash view
+    // Always preventDefault on drag/drop window-wide. Without this Chrome
+    // navigates the tab away to display the dropped file (the symptom the
+    // user saw — being "spit back to the top level" was actually the
+    // browser opening the PDF as a new document).
+    const hasFiles = (e) => {
+      try {
+        const t = e.dataTransfer?.types;
+        if (!t) return false;
+        for (let i = 0; i < t.length; i++) if (t[i] === "Files") return true;
+        return false;
+      } catch { return false; }
+    };
     const onDragEnter = (e) => {
-      if (!Array.from(e.dataTransfer?.types || []).includes("Files")) return;
       e.preventDefault();
+      if (!hasFiles(e)) return;
       dragCounter.current += 1;
       setDragActive(true);
     };
-    const onDragOver = (e) => {
-      if (!Array.from(e.dataTransfer?.types || []).includes("Files")) return;
-      e.preventDefault();
-    };
+    const onDragOver = (e) => { e.preventDefault(); };
     const onDragLeave = (e) => {
-      if (!Array.from(e.dataTransfer?.types || []).includes("Files")) return;
+      e.preventDefault();
+      if (!hasFiles(e)) return;
       dragCounter.current = Math.max(0, dragCounter.current - 1);
       if (dragCounter.current === 0) setDragActive(false);
     };
     const onDrop = (e) => {
-      const files = e.dataTransfer?.files;
-      if (!files || files.length === 0) return;
       e.preventDefault();
       dragCounter.current = 0;
       setDragActive(false);
+      const files = e.dataTransfer?.files;
+      if (!files || files.length === 0) return;
       uploadRef.current?.handleFiles(files);
     };
     window.addEventListener("dragenter", onDragEnter);

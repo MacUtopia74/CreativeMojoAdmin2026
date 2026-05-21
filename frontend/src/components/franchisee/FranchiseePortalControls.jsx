@@ -1,19 +1,42 @@
 // Admin-side controls for a single franchisee's portal access. Lives
-// on FranchiseeDetailPage. Lets you enable/disable login and reset
-// their password (used when they forget it or you're handing the
-// account to a new owner).
+// on FranchiseeDetailPage. Lets you:
+//   - One-click create a portal login (mints user + ensures R2 folders +
+//     hands back a one-time temporary password)
+//   - Enable/disable login
+//   - Reset their password
 import { useState } from "react";
 import api from "@/lib/api";
-import { Power, PowerOff, RotateCcw, ShieldCheck, Loader2, Copy, CheckCircle2 } from "lucide-react";
+import {
+  Power, PowerOff, RotateCcw, ShieldCheck, Loader2, Copy, CheckCircle2,
+  UserPlus, KeyRound, Eye, EyeOff,
+} from "lucide-react";
 
 export default function FranchiseePortalControls({ franchisee, onChanged }) {
   const enabled = !!franchisee?.portal_enabled;
-  const email = franchisee?.mojo_email || franchisee?.email;
+  const email = franchisee?.email || franchisee?.mojo_email;
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  // Result of a create-portal-login call, so we can show the temp password
+  // in a copy-friendly card until the admin closes it.
+  const [createdLogin, setCreatedLogin] = useState(null);
+  const [showPassword, setShowPassword] = useState(false);
+
+  const createPortalLogin = async () => {
+    if (!email) { alert("This franchisee has no email on file — set their primary email first."); return; }
+    if (!window.confirm(`Create a portal login for ${email}?\n\nThis will mint a user account linked to this franchisee, ensure their R2 folders exist, and generate a one-time temporary password.`)) return;
+    setBusy(true);
+    try {
+      const { data } = await api.post(`/franchisees/${franchisee.id}/create-portal-login`);
+      setCreatedLogin(data);
+      onChanged?.();
+    } catch (e) {
+      alert(e?.response?.data?.detail || "Could not create portal login.");
+    } finally { setBusy(false); }
+  };
+
   const toggle = async () => {
-    if (!email) { alert("This franchisee has no email on file — set their Creative Mojo email first."); return; }
+    if (!email) { alert("This franchisee has no email on file — set their primary email first."); return; }
     if (enabled && !window.confirm(`Disable portal access for ${email}?\n\nThey will not be able to sign in until you re-enable it.`)) return;
     setBusy(true);
     try {
@@ -36,7 +59,12 @@ export default function FranchiseePortalControls({ franchisee, onChanged }) {
   const portalUrl = `${window.location.origin}/portal/login`;
   const copyUrl = async () => {
     try { await navigator.clipboard.writeText(portalUrl); setCopied(true); setTimeout(() => setCopied(false), 1800); }
-    catch (e) { /* ignore */ }
+    catch { /* ignore */ }
+  };
+  const copyTempPw = async () => {
+    if (!createdLogin?.temporary_password) return;
+    try { await navigator.clipboard.writeText(createdLogin.temporary_password); }
+    catch { /* ignore */ }
   };
 
   return (
@@ -51,17 +79,76 @@ export default function FranchiseePortalControls({ franchisee, onChanged }) {
             <div className="text-sm font-bold text-stone-950">{enabled ? "Enabled" : "Disabled"}</div>
           </div>
         </div>
-        <button onClick={toggle} disabled={busy} data-testid="portal-toggle-btn"
-          className={`px-3 py-2 text-[10px] font-bold uppercase tracking-wider rounded-lg flex items-center gap-1.5 disabled:opacity-50 ${enabled ? "bg-white border border-red-300 text-red-700 hover:bg-red-50" : "bg-[#DEDD0C] text-stone-950 hover:brightness-95"}`}>
-          {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : enabled ? <PowerOff className="w-3 h-3" /> : <Power className="w-3 h-3" />}
-          {enabled ? "Disable" : "Enable portal"}
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={createPortalLogin}
+            disabled={busy || !email}
+            data-testid="create-portal-login-btn"
+            title="Create or relink the franchisee's user account + R2 folders"
+            className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider rounded-lg flex items-center gap-1.5 disabled:opacity-50 bg-stone-950 text-white hover:bg-stone-800"
+          >
+            {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <UserPlus className="w-3 h-3" />}
+            Create portal login
+          </button>
+          <button onClick={toggle} disabled={busy} data-testid="portal-toggle-btn"
+            className={`px-3 py-2 text-[10px] font-bold uppercase tracking-wider rounded-lg flex items-center gap-1.5 disabled:opacity-50 ${enabled ? "bg-white border border-red-300 text-red-700 hover:bg-red-50" : "bg-[#DEDD0C] text-stone-950 hover:brightness-95"}`}>
+            {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : enabled ? <PowerOff className="w-3 h-3" /> : <Power className="w-3 h-3" />}
+            {enabled ? "Disable" : "Enable portal"}
+          </button>
+        </div>
       </div>
 
+      {/* One-time temp-password card — shown only directly after a
+          successful create-portal-login. Hides as soon as the admin
+          closes it; the password isn't stored anywhere admin-visible
+          (only hashed in the users table). */}
+      {createdLogin && (
+        <div className="rounded-xl border-2 border-emerald-200 bg-emerald-50 p-4" data-testid="created-login-card">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-emerald-600 text-white shrink-0">
+              {createdLogin.already_existed ? <KeyRound className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-bold text-emerald-900">
+                {createdLogin.already_existed ? "Existing user linked" : "Portal login created"}
+              </div>
+              <div className="text-xs text-emerald-800 mt-1">{createdLogin.message}</div>
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-xs">
+                <span className="text-stone-600 uppercase tracking-wider font-bold">Email</span>
+                <span className="font-mono text-stone-900 truncate">{createdLogin.email}</span>
+                {createdLogin.temporary_password && (
+                  <>
+                    <span className="text-stone-600 uppercase tracking-wider font-bold">Temp password</span>
+                    <span className="flex items-center gap-2 flex-wrap">
+                      <code className="px-2 py-1 bg-white border border-emerald-300 rounded text-stone-900 font-mono">
+                        {showPassword ? createdLogin.temporary_password : "••••••••••••••"}
+                      </code>
+                      <button type="button" onClick={() => setShowPassword((v) => !v)}
+                        className="text-stone-500 hover:text-stone-900" title={showPassword ? "Hide" : "Show"}>
+                        {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                      <button type="button" onClick={copyTempPw}
+                        className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white rounded hover:bg-stone-800 flex items-center gap-1">
+                        <Copy className="w-3 h-3" /> Copy
+                      </button>
+                    </span>
+                  </>
+                )}
+              </div>
+              <button onClick={() => setCreatedLogin(null)}
+                data-testid="dismiss-created-login"
+                className="mt-3 text-[11px] font-bold uppercase tracking-wider text-emerald-900 hover:text-emerald-700">
+                I've saved it — dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="text-xs text-stone-600 leading-relaxed">
-        When enabled, they can sign in at the portal URL below using their Creative Mojo email
-        {email ? <> (<span className="font-mono text-stone-900">{email}</span>)</> : <span className="text-red-700"> — no email on file, please set Creative Mojo email first</span>}.
-        First-time sign-in lets them choose their own password. Need to reset it? Use the button below — they'll set a new one on next login.
+        When enabled, they can sign in at the portal URL below using their email
+        {email ? <> (<span className="font-mono text-stone-900">{email}</span>)</> : <span className="text-red-700"> — no email on file, please set primary email first</span>}.
+        On first sign-in they're prompted to choose their own password.
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">

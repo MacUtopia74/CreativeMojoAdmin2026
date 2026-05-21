@@ -1216,6 +1216,90 @@ async def franchisees_bootstrap_folders_all(
     return summary
 
 
+@api.post("/franchisees/{franchisee_id}/create-portal-login")
+async def create_portal_login(
+    franchisee_id: str,
+    user: dict = Depends(require_role("admin")),
+):
+    """One-click create-or-link a portal login for this franchisee.
+
+    Behaviour:
+    * If a user with the franchisee's email already exists, we attach
+      ``role=franchisee`` + ``franchisee_id`` to it (no password change)
+      and return ``already_existed=True``.
+    * Otherwise we mint a fresh user with a strong random temporary
+      password and return it so the admin can pass it to the franchisee
+      on a one-off basis (next step: email transport so we can mail it
+      automatically).
+    * Standard folders are also ensured (idempotent — safe to re-run).
+    """
+    from franchisee_folders import ensure_franchisee_folders
+    f = await db.franchisees.find_one({"id": franchisee_id}, {"_id": 0})
+    if not f:
+        raise HTTPException(404, detail="Franchisee not found")
+
+    # Pick the most-trusted email field we have on file.
+    email = (f.get("email") or f.get("primary_email") or f.get("contact_email")
+             or f.get("mojo_email") or "").strip().lower()
+    if not email:
+        raise HTTPException(400, detail="This franchisee has no email on file — add one before creating a portal login.")
+
+    name = (f.get("full_name") or f"{f.get('first_name', '')} {f.get('last_name', '')}".strip()
+            or f.get("organisation") or email)
+
+    # Make sure their R2 folder layout exists so first login lands well.
+    await ensure_franchisee_folders(db, f, user_email=user.get("email"))
+
+    existing = await db.users.find_one({"email": email})
+    if existing:
+        await db.users.update_one(
+            {"id": existing["id"]},
+            {"$set": {
+                "role": "franchisee",
+                "franchisee_id": franchisee_id,
+                "active": True,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "updated_by": user.get("email"),
+            }},
+        )
+        return {
+            "ok": True,
+            "already_existed": True,
+            "email": email,
+            "user_id": existing["id"],
+            "name": existing.get("name") or name,
+            "temporary_password": None,
+            "message": "Existing user updated and linked to this franchisee.",
+        }
+
+    # Strong, human-readable temp password — 14 chars, mixed case + digits.
+    import secrets, string
+    alphabet = string.ascii_letters + string.digits
+    temp_password = "".join(secrets.choice(alphabet) for _ in range(14))
+    new_id = str(uuid.uuid4())
+    await db.users.insert_one({
+        "id": new_id,
+        "email": email,
+        "name": name,
+        "role": "franchisee",
+        "franchisee_id": franchisee_id,
+        "password_hash": hash_password(temp_password),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_by": user.get("email"),
+        "active": True,
+        "must_change_password": True,
+    })
+    return {
+        "ok": True,
+        "already_existed": False,
+        "email": email,
+        "user_id": new_id,
+        "name": name,
+        "temporary_password": temp_password,
+        "message": "Portal login created. Share the temporary password securely — the franchisee will be asked to change it on first login.",
+    }
+
+
 @api.get("/portal/me")
 async def portal_me(user: dict = Depends(require_role("franchisee"))):
     """Returns the logged-in franchisee's own profile + key data their
