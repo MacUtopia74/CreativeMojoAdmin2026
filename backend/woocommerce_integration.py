@@ -253,22 +253,23 @@ def attach(api, db, require_role):
     ):
         """Return orders matching the chosen tab + optional search string.
 
-        Tabs map to:
-          • active     → ``status == 'active'`` AND not in a terminal Woo state
-          • completed  → ``status == 'completed'`` (includes cancelled/refunded)
-          • draft      → manually-created orders flagged ``is_draft=True``
-          • all        → no status filter
+        Search behaviour mirrors Contacts: when ``search`` is non-empty the
+        tab filter is bypassed so admins can find any order from any tab.
+        Each result still carries its ``status`` / ``channel`` so the UI
+        pills make it obvious which tab it really lives in.
         """
+        is_search = bool(search and search.strip())
         q: dict = {}
-        if tab == "active":
-            q["status"] = "active"
-            q["is_draft"] = {"$ne": True}
-        elif tab == "completed":
-            q["status"] = "completed"
-        elif tab == "draft":
-            q["is_draft"] = True
-        # "all" → no filter
-        if search and search.strip():
+        if not is_search:
+            if tab == "active":
+                q["status"] = "active"
+                q["is_draft"] = {"$ne": True}
+            elif tab == "completed":
+                q["status"] = "completed"
+            elif tab == "draft":
+                q["is_draft"] = True
+            # "all" → no filter
+        if is_search:
             import re
             rx = {"$regex": re.escape(search.strip()), "$options": "i"}
             q["$or"] = [
@@ -343,6 +344,12 @@ def attach(api, db, require_role):
         x_wc_webhook_id: Optional[str] = Header(None, alias="X-WC-Webhook-ID"),
     ):
         raw = await request.body()
+        # Woo sends a one-off, UNSIGNED test ping on webhook save —
+        # tiny body (~13 bytes), no X-WC-Webhook-Signature header. Accept
+        # silently so the logs stay clean and Woo marks the webhook alive.
+        if not x_wc_webhook_signature and len(raw) < 64:
+            logger.info("Woo webhook test ping accepted (body_bytes=%d)", len(raw))
+            return {"ok": True, "skipped": "test-ping"}
         if not verify_webhook_signature(raw, x_wc_webhook_signature):
             # Compute the signature we WOULD have accepted so we can diff it
             # against what Woo sent (first 8 chars only — never leak the full
