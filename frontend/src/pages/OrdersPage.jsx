@@ -325,10 +325,10 @@ export default function OrdersPage() {
           </div>
         )}
 
-        <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden">
+        <div className="bg-white border-2 border-stone-300 rounded-2xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-stone-50 border-b border-stone-200">
+              <thead className="bg-stone-50 border-b-2 border-stone-300">
                 <tr className="text-stone-500 uppercase tracking-wider text-[10px]">
                   <th className="px-2 py-3 text-left font-bold w-8"></th>
                   <th className="px-2 py-3 text-left font-bold">ID</th>
@@ -398,7 +398,7 @@ function OrderRow({ order, showProducts, hideLegacyIds, selected = false, onSele
 
   return (
     <tr
-      className={`border-b border-stone-100 last:border-b-0 cursor-pointer ${selected ? "bg-amber-50/40" : "hover:bg-stone-50/50"}`}
+      className={`border-b-2 border-stone-200 last:border-b-0 cursor-pointer ${selected ? "bg-amber-50/40" : "hover:bg-stone-50/50"}`}
       onClick={(e) => {
         // Don't open the detail page when the click was on the checkbox.
         if (e.target.closest("[data-row-checkbox]")) return;
