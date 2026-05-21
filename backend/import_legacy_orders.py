@@ -24,47 +24,73 @@ logger = logging.getLogger("creative-mojo-admin.legacy-import")
 
 
 def _parse_uk_date(s: str) -> str | None:
-    """``07/05/2026`` → ISO ``2026-05-07T00:00:00+00:00``."""
+    """``07/05/2026`` or ``07/05/26`` → ISO ``2026-05-07T00:00:00+00:00``."""
     if not s or not s.strip():
         return None
-    try:
-        d = datetime.strptime(s.strip(), "%d/%m/%Y").replace(tzinfo=timezone.utc)
-        return d.isoformat()
-    except ValueError:
-        return None
+    for fmt in ("%d/%m/%Y", "%d/%m/%y"):
+        try:
+            d = datetime.strptime(s.strip(), fmt).replace(tzinfo=timezone.utc)
+            return d.isoformat()
+        except ValueError:
+            continue
+    return None
 
 
-def _row_to_order(row: list[str], default_status: str) -> dict | None:
-    """Map a single CSV row to the ``woo_orders`` doc shape.
+def _detect_schema(header: list[str]) -> str:
+    """Tell the active-orders CSV layout from the completed-orders one.
 
-    Returns None when the row is malformed (missing order ID) so callers
-    can count skips.
+    The active export adds two columns the completed one doesn't:
+      • a ``text-green-500`` "in X days" relative-date string at index 4
+      • a final ``css-…-singleValue`` production-status column
+
+    Returns ``"active"`` or ``"completed"``.
     """
-    if len(row) < 8 or not row[1].strip():
+    return "active" if any("green-500" in (h or "") for h in header) else "completed"
+
+
+def _row_to_order(row: list[str], schema: str, force_status: str | None = None) -> dict | None:
+    """Map a single CSV row (in either schema) to the ``woo_orders`` shape."""
+    if len(row) < 8 or not (row[1] or "").strip():
         return None
 
     order_id = row[1].strip()
     created = _parse_uk_date(row[2])
     due = _parse_uk_date(row[3])
-    customer = (row[4] or "").strip() or "Unknown customer"
-    payment_raw = (row[7] or "").strip().lower()
-    channel_raw = (row[8] or "").strip()
-    woo_id = (row[10] if len(row) > 10 else "").strip() or None
 
-    is_woo = channel_raw == "Woo#" and woo_id
+    if schema == "active":
+        # Active CSV column map:
+        # 0:url 1:order_id 2:created 3:due 4:"in X days" 5:customer
+        # 6:customer_url 7:channel_main ("Direct"/"n/a") 8:payment 9:channel_woo_marker
+        # 10:woo_url 11:woo_id 12:production_status
+        customer = (row[5] or "").strip() or "Unknown customer"
+        channel_main = (row[7] or "").strip()  # "Direct" / "n/a"
+        channel_woo = (row[9] if len(row) > 9 else "").strip()  # "Woo#" / ""
+        payment_raw = (row[8] or "").strip().lower()
+        woo_id = (row[11] if len(row) > 11 else "").strip() or None
+        production = (row[12] if len(row) > 12 else "").strip() or "Awaiting Assembly"
+        status = force_status or "active"
+        channel_raw = channel_woo or channel_main  # prefer Woo#
+    else:
+        # Completed CSV: cust at 4, status at 6, payment at 7, channel at 8, woo URL/id at 9/10
+        customer = (row[4] or "").strip() or "Unknown customer"
+        channel_raw = (row[8] or "").strip()
+        payment_raw = (row[7] or "").strip().lower()
+        woo_id = (row[10] if len(row) > 10 else "").strip() or None
+        production = "Completed"
+        status = force_status or "completed"
+
+    is_woo = ("Woo" in channel_raw) and woo_id
     channel = "woocommerce" if is_woo else "direct"
     channel_label = f"Woo#{woo_id}" if is_woo else "Direct"
     payment_status = "Paid" if payment_raw == "paid" else "Pending"
 
     now = datetime.now(timezone.utc).isoformat()
-    # Use a stable id keyed on the LEGACY order id so re-runs upsert
-    # cleanly. Different from Woo IDs which key woocommerce-sourced orders.
     canonical_id = f"legacy-{order_id}" if not is_woo else str(woo_id)
     return {
         "id": canonical_id,
         "legacy_order_id": order_id,
         "legacy_import": True,
-        "woo_id": int(woo_id) if (is_woo and woo_id.isdigit()) else None,
+        "woo_id": int(woo_id) if (is_woo and woo_id and woo_id.isdigit()) else None,
         "woo_number": woo_id if is_woo else None,
         "customer_label": customer,
         "customer_email": None,
@@ -75,15 +101,15 @@ def _row_to_order(row: list[str], default_status: str) -> dict | None:
         "date_paid": created if payment_status == "Paid" else None,
         "due_date": due.split("T")[0] if due else None,
         "currency": "GBP",
-        "total": "0.00",  # CSV has no totals; admin can edit later
+        "total": "0.00",
         "shipping_total": "0.00",
         "line_items": [],
-        "line_items_unavailable": True,  # tells UI to render a hint instead of "0 items"
-        "invoiced": payment_status == "Paid",
-        "status": "completed",
+        "line_items_unavailable": True,
+        "invoiced": payment_status == "Paid" and status == "completed",
+        "status": status,
         "is_draft": False,
-        "woo_status": default_status if not is_woo else "completed",
-        "production_status": "Completed",
+        "woo_status": "completed" if status == "completed" else "processing",
+        "production_status": production,
         "payment_status": payment_status,
         "channel": channel,
         "channel_label": channel_label,
@@ -112,9 +138,11 @@ async def main(csv_path: str, dry_run: bool = False) -> None:
 
     with open(csv_path, newline="", encoding="utf-8") as fh:
         reader = csv.reader(fh)
-        next(reader, None)  # skip header
+        header = next(reader, [])
+        schema = _detect_schema(header)
+        print(f"Detected schema: {schema}")
         for row in reader:
-            doc = _row_to_order(row, default_status="completed")
+            doc = _row_to_order(row, schema=schema)
             if not doc:
                 skipped_malformed += 1
                 continue
