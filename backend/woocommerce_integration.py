@@ -105,6 +105,20 @@ def _derive_status_fields(woo: dict) -> dict:
     }
 
 
+import re as _re
+
+_HTML_TAG_RE = _re.compile(r"<[^>]+>")
+
+
+def _strip_html(s: str) -> str:
+    """Woo stores product titles with inline HTML (e.g. ``<strong>FREE</strong>
+    Queen Camilla Colouring-In Sheet``). The admin UI shows the text verbatim,
+    so strip tags + collapse whitespace before persisting."""
+    if not s:
+        return s
+    return _re.sub(r"\s+", " ", _HTML_TAG_RE.sub("", s)).strip()
+
+
 def _summarise_order(woo: dict) -> dict:
     """Reduce the (huge) raw Woo order to the doc shape we store in Mongo."""
     derived = _derive_status_fields(woo)
@@ -114,7 +128,7 @@ def _summarise_order(woo: dict) -> dict:
         {
             "id": li.get("id"),
             "product_id": li.get("product_id"),
-            "name": li.get("name"),
+            "name": _strip_html(li.get("name") or ""),
             "sku": li.get("sku"),
             "quantity": li.get("quantity"),
             "subtotal": li.get("subtotal"),
@@ -297,6 +311,225 @@ def attach(api, db, require_role):
         if not doc:
             raise HTTPException(404, "Order not found")
         return doc
+
+    # ------------------------------------------------------------ Stage B mutations
+    @api.post("/orders")
+    async def create_manual_order(
+        body: dict,
+        user: dict = Depends(require_role("admin")),
+    ):
+        """Create a manually-entered Draft order. These never sync to Woo
+        (channel='direct') and start in the Draft tab. The admin works on
+        them locally and flips them Active via the Actions menu, which
+        moves them onto the Active tab.
+
+        Body shape: ``{customer_label, customer_email?, line_items[], shipping_total?, due_date?}``
+        ``line_items`` items are ``{name, sku?, quantity, subtotal}``.
+        """
+        import uuid as _uuid
+        oid = f"draft-{_uuid.uuid4().hex[:8]}"
+        line_items = [
+            {
+                "id": idx + 1,
+                "product_id": li.get("product_id"),
+                "name": li.get("name") or "",
+                "sku": li.get("sku"),
+                "quantity": int(li.get("quantity") or 1),
+                "subtotal": str(li.get("subtotal") or "0.00"),
+                "total": f"{float(li.get('subtotal') or 0) * int(li.get('quantity') or 1):.2f}",
+            }
+            for idx, li in enumerate(body.get("line_items") or [])
+        ]
+        shipping_total = float(body.get("shipping_total") or 0)
+        order_total = shipping_total + sum(float(li["total"]) for li in line_items)
+        now = datetime.now(timezone.utc).isoformat()
+        doc = {
+            "id": oid,
+            "woo_id": None,
+            "woo_number": None,
+            "customer_label": (body.get("customer_label") or "").strip() or "New Customer",
+            "customer_email": body.get("customer_email"),
+            "billing": {
+                "company": body.get("customer_label"),
+                "email": body.get("customer_email"),
+            },
+            "shipping": {},
+            "date_created": now,
+            "date_modified": now,
+            "date_paid": None,
+            "due_date": body.get("due_date"),
+            "currency": "GBP",
+            "total": f"{order_total:.2f}",
+            "shipping_total": f"{shipping_total:.2f}",
+            "line_items": line_items,
+            "invoiced": False,
+            "is_draft": True,
+            "status": "active",  # will be promoted off draft via PATCH
+            "woo_status": "manual-draft",
+            "production_status": "Awaiting Assembly",
+            "payment_status": "Pending",
+            "channel": "direct",
+            "channel_label": "Direct",
+            "created_by": user.get("email"),
+            "updated_at": now,
+        }
+        await db.woo_orders.insert_one(doc)
+        return {"ok": True, "id": oid, "order": {k: v for k, v in doc.items() if k != "_id"}}
+
+    @api.patch("/orders/{order_id}")
+    async def update_order(
+        order_id: str,
+        body: dict,
+        user: dict = Depends(require_role("admin")),
+    ):
+        """In-place edit of a single order. Whitelisted fields only so we
+        never accidentally let a PATCH overwrite the Woo source-of-truth
+        payload. Accepts: ``shipping_total``, ``due_date``, ``customer_label``,
+        ``customer_email``, ``production_status``, ``payment_status``,
+        ``status``, ``is_draft``, ``invoiced``, ``line_items`` (full replace),
+        ``admin_notes``.
+        """
+        existing = await db.woo_orders.find_one({"id": order_id}, {"_id": 0})
+        if not existing:
+            raise HTTPException(404, "Order not found")
+        allowed = {
+            "shipping_total", "due_date", "customer_label", "customer_email",
+            "production_status", "payment_status", "status", "is_draft",
+            "invoiced", "line_items", "admin_notes",
+        }
+        updates: dict = {}
+        for k, v in (body or {}).items():
+            if k in allowed:
+                updates[k] = v
+        if "line_items" in updates:
+            # Normalise + recompute totals when caller swaps the line items.
+            li_norm = []
+            for i, li in enumerate(updates["line_items"] or []):
+                qty = int(li.get("quantity") or 1)
+                sub = float(li.get("subtotal") or 0)
+                li_norm.append({
+                    "id": li.get("id") or (i + 1),
+                    "product_id": li.get("product_id"),
+                    "name": li.get("name") or "",
+                    "sku": li.get("sku"),
+                    "quantity": qty,
+                    "subtotal": f"{sub:.2f}",
+                    "total": f"{sub * qty:.2f}",
+                })
+            updates["line_items"] = li_norm
+            ship = float(updates.get("shipping_total") or existing.get("shipping_total") or 0)
+            updates["total"] = f"{ship + sum(float(li['total']) for li in li_norm):.2f}"
+        elif "shipping_total" in updates:
+            ship = float(updates["shipping_total"] or 0)
+            li_total = sum(float(li.get("total") or 0) for li in existing.get("line_items") or [])
+            updates["shipping_total"] = f"{ship:.2f}"
+            updates["total"] = f"{ship + li_total:.2f}"
+        updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+        updates["updated_by"] = user.get("email")
+        await db.woo_orders.update_one({"id": order_id}, {"$set": updates})
+        fresh = await db.woo_orders.find_one({"id": order_id}, {"_id": 0, "raw": 0})
+        return {"ok": True, "order": fresh}
+
+    @api.post("/orders/{order_id}/action")
+    async def order_action(
+        order_id: str,
+        body: dict,
+        user: dict = Depends(require_role("admin")),
+    ):
+        """Apply one of the five Actions-menu shortcuts from the legacy admin.
+
+        ``action`` ∈ {
+          ``mark_completed``, ``complete_and_invoice``, ``create_invoice``,
+          ``mark_paid``, ``mark_active``, ``change_customer``
+        }
+        Invoice actions write a placeholder until Stage C wires Xero.
+        """
+        existing = await db.woo_orders.find_one({"id": order_id}, {"_id": 0})
+        if not existing:
+            raise HTTPException(404, "Order not found")
+        action = (body or {}).get("action")
+        now = datetime.now(timezone.utc).isoformat()
+        updates: dict = {"updated_at": now, "updated_by": user.get("email")}
+        if action == "mark_completed":
+            updates["status"] = "completed"
+            updates["production_status"] = "Completed"
+        elif action == "mark_active":
+            updates["is_draft"] = False
+            updates["status"] = "active"
+            updates["woo_status"] = "processing"
+            updates["production_status"] = "Awaiting Assembly"
+        elif action == "mark_paid":
+            updates["payment_status"] = "Paid"
+            updates["date_paid"] = now
+        elif action == "create_invoice":
+            updates["invoiced"] = True
+            updates["invoice_pending_xero"] = True  # Stage C will pick this up
+        elif action == "complete_and_invoice":
+            updates["status"] = "completed"
+            updates["production_status"] = "Completed"
+            updates["invoiced"] = True
+            updates["invoice_pending_xero"] = True
+        elif action == "change_customer":
+            new_label = (body.get("customer_label") or "").strip()
+            new_email = (body.get("customer_email") or "").strip()
+            if not new_label:
+                raise HTTPException(400, "customer_label required for change_customer")
+            updates["customer_label"] = new_label
+            updates["customer_email"] = new_email or existing.get("customer_email")
+            updates["billing"] = {
+                **(existing.get("billing") or {}),
+                "company": new_label,
+                "email": new_email or (existing.get("billing") or {}).get("email"),
+            }
+        else:
+            raise HTTPException(400, f"Unknown action: {action!r}")
+        await db.woo_orders.update_one({"id": order_id}, {"$set": updates})
+        fresh = await db.woo_orders.find_one({"id": order_id}, {"_id": 0, "raw": 0})
+        return {"ok": True, "order": fresh}
+
+    @api.post("/orders/bulk-action")
+    async def orders_bulk_action(
+        body: dict,
+        user: dict = Depends(require_role("admin")),
+    ):
+        """Apply one action to many orders at once. Currently used to mass-
+        archive the 220+ stale "active" Woo orders that were never marked
+        complete in WooCommerce."""
+        ids = body.get("ids") or []
+        action = body.get("action")
+        if not ids or not action:
+            raise HTTPException(400, "ids and action are required")
+        if action not in {"mark_completed", "mark_paid", "delete"}:
+            raise HTTPException(400, f"Unsupported bulk action: {action!r}")
+        now = datetime.now(timezone.utc).isoformat()
+        if action == "delete":
+            r = await db.woo_orders.delete_many({"id": {"$in": ids}})
+            return {"ok": True, "deleted": r.deleted_count}
+        upd: dict = {"updated_at": now, "updated_by": user.get("email")}
+        if action == "mark_completed":
+            upd["status"] = "completed"
+            upd["production_status"] = "Completed"
+        elif action == "mark_paid":
+            upd["payment_status"] = "Paid"
+            upd["date_paid"] = now
+        r = await db.woo_orders.update_many({"id": {"$in": ids}}, {"$set": upd})
+        return {"ok": True, "matched": r.matched_count, "modified": r.modified_count}
+
+    @api.delete("/orders/{order_id}")
+    async def delete_order(
+        order_id: str,
+        _: dict = Depends(require_role("admin")),
+    ):
+        """Hard-delete a manual draft order. Live Woo-sourced orders are
+        kept (deleting them locally would just have the next sync recreate
+        them anyway) — caller is told to use ``mark_completed`` instead."""
+        existing = await db.woo_orders.find_one({"id": order_id}, {"_id": 0, "is_draft": 1, "channel": 1})
+        if not existing:
+            raise HTTPException(404, "Order not found")
+        if existing.get("channel") == "woocommerce":
+            raise HTTPException(400, "Cannot delete a WooCommerce-sourced order — mark it completed instead.")
+        r = await db.woo_orders.delete_one({"id": order_id})
+        return {"ok": True, "deleted": r.deleted_count}
 
     @api.get("/woo/products/autocomplete")
     async def products_autocomplete(

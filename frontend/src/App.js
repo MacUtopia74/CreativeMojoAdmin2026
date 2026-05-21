@@ -22,6 +22,7 @@ import PortalDashboardPage from "@/pages/PortalDashboardPage";
 import BankingPage from "@/pages/BankingPage";
 import MojoOrdersPage from "@/pages/MojoOrdersPage";
 import OrdersPage from "@/pages/OrdersPage";
+import OrderDetailPage from "@/pages/OrderDetailPage";
 import FindClassAdminPage from "@/pages/FindClassAdminPage";
 import AdminUsersPage from "@/pages/AdminUsersPage";
 import ChangePasswordPage from "@/pages/ChangePasswordPage";
@@ -84,6 +85,7 @@ export default function App() {
               <Route path="/banking" element={<BankingPage />} />
               <Route path="/mojo-orders" element={<MojoOrdersPage />} />
               <Route path="/orders" element={<OrdersPage />} />
+              <Route path="/orders/:orderId" element={<OrderDetailPage />} />
               <Route path="/find-class" element={<FindClassAdminPage />} />
               <Route path="/admin/users" element={<AdminUsersPage />} />
               <Route path="/admin/password-resets" element={<AdminUsersPage />} />

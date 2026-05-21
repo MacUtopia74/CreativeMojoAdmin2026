@@ -13,11 +13,13 @@
 // product autocomplete, status workflow, and Xero invoicing arrive in
 // Stages B+C.
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   ShoppingBag, Search, X, Plus, RefreshCw, Loader2, AlertCircle,
+  CheckSquare, Square, CheckCircle2, CreditCard,
 } from "lucide-react";
 import api from "@/lib/api";
+import CreateOrderModal from "@/components/orders/CreateOrderModal";
 
 const TABS = [
   { key: "active",    label: "ACTIVE",    activeBg: "bg-[#D4FF00] text-stone-950" },
@@ -71,6 +73,7 @@ const dueLabel = (iso) => {
 };
 
 export default function OrdersPage() {
+  const navigate = useNavigate();
   const [tab, setTab] = useState("active");
   const [search, setSearch] = useState("");
   const [showProducts, setShowProducts] = useState(true);
@@ -78,6 +81,9 @@ export default function OrdersPage() {
   const [error, setError] = useState("");
   const [data, setData] = useState({ items: [], total: 0 });
   const [counts, setCounts] = useState({ active: 0, completed: 0, all: 0, draft: 0 });
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [createOpen, setCreateOpen] = useState(false);
+  const [bulkPending, setBulkPending] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -108,6 +114,34 @@ export default function OrdersPage() {
   }, [tab, search]);
 
   useEffect(() => { loadCounts(); }, [data.items.length]);
+  // Reset selection on tab/search change
+  useEffect(() => { setSelectedIds(new Set()); }, [tab, search]);
+
+  const toggleSelect = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const selectAllVisible = () => {
+    setSelectedIds(new Set((data.items || []).map((o) => o.id)));
+  };
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const runBulk = async (action) => {
+    if (selectedIds.size === 0) return;
+    if (!window.confirm(`Apply "${action.replace(/_/g, " ")}" to ${selectedIds.size} order(s)?`)) return;
+    setBulkPending(true);
+    try {
+      await api.post("/orders/bulk-action", { ids: Array.from(selectedIds), action });
+      clearSelection();
+      await load();
+      await loadCounts();
+    } catch (e) {
+      setError(e?.response?.data?.detail || "Bulk action failed.");
+    } finally { setBulkPending(false); }
+  };
 
   const items = data.items || [];
 
@@ -127,10 +161,9 @@ export default function OrdersPage() {
         </div>
         <button
           type="button"
+          onClick={() => setCreateOpen(true)}
           data-testid="create-order-button"
-          disabled
-          title="Manual order creation arrives in Stage B"
-          className="px-4 py-2 border border-stone-300 bg-white text-stone-900 text-xs font-bold uppercase tracking-wider hover:bg-stone-50 rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-4 py-2 border border-stone-300 bg-white text-stone-900 text-xs font-bold uppercase tracking-wider hover:bg-stone-50 rounded-lg transition-colors flex items-center gap-2"
         >
           <Plus className="w-3.5 h-3.5" /> Create Order
         </button>
@@ -222,6 +255,51 @@ export default function OrdersPage() {
         </div>
       </div>
 
+      {/* Bulk action bar — appears when one or more orders are selected */}
+      {selectedIds.size > 0 && (
+        <div className="px-8" data-testid="orders-bulk-bar">
+          <div className="bg-stone-950 text-white rounded-xl px-4 py-2.5 flex items-center gap-3 flex-wrap">
+            <span className="text-sm font-bold" data-testid="orders-bulk-count">
+              {selectedIds.size} selected
+            </span>
+            <button
+              type="button"
+              onClick={() => runBulk("mark_completed")}
+              disabled={bulkPending}
+              data-testid="orders-bulk-mark-completed"
+              className="px-3 py-1.5 bg-stone-800 hover:bg-stone-700 text-white text-[11px] font-bold uppercase tracking-wider rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" /> Mark Completed
+            </button>
+            <button
+              type="button"
+              onClick={() => runBulk("mark_paid")}
+              disabled={bulkPending}
+              data-testid="orders-bulk-mark-paid"
+              className="px-3 py-1.5 bg-stone-800 hover:bg-stone-700 text-white text-[11px] font-bold uppercase tracking-wider rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <CreditCard className="w-3.5 h-3.5" /> Mark Paid
+            </button>
+            <button
+              type="button"
+              onClick={selectAllVisible}
+              data-testid="orders-bulk-select-all"
+              className="ml-auto px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-stone-300 hover:text-white"
+            >
+              Select all on page ({items.length})
+            </button>
+            <button
+              type="button"
+              onClick={clearSelection}
+              data-testid="orders-bulk-clear"
+              className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-stone-300 hover:text-white"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Stage A banner — only renders until Woo creds are wired */}
       <OrdersStageBanner />
 
@@ -265,7 +343,14 @@ export default function OrdersPage() {
                     </td>
                   </tr>
                 ) : items.map((o) => (
-                  <OrderRow key={o.id} order={o} showProducts={showProducts} />
+                  <OrderRow
+                    key={o.id}
+                    order={o}
+                    showProducts={showProducts}
+                    selected={selectedIds.has(o.id)}
+                    onSelect={() => toggleSelect(o.id)}
+                    onOpen={() => navigate(`/orders/${o.id}`)}
+                  />
                 ))}
               </tbody>
             </table>
@@ -279,18 +364,43 @@ export default function OrdersPage() {
           </Link>
         </div>
       </div>
+
+      <CreateOrderModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={(newId) => {
+          setCreateOpen(false);
+          navigate(`/orders/${newId}`);
+        }}
+      />
     </div>
   );
 }
 
-function OrderRow({ order, showProducts }) {
+function OrderRow({ order, showProducts, selected = false, onSelect, onOpen }) {
   const due = dueLabel(order.due_date);
   const isWoo = (order.channel || "").toLowerCase() === "woocommerce";
 
   return (
-    <tr className="border-b border-stone-100 last:border-b-0 hover:bg-stone-50/50" data-testid={`order-row-${order.id}`}>
-      <td className="px-3 py-3 align-top">
-        <input type="checkbox" className="w-4 h-4 accent-stone-900 cursor-pointer" disabled />
+    <tr
+      className={`border-b border-stone-100 last:border-b-0 cursor-pointer ${selected ? "bg-amber-50/40" : "hover:bg-stone-50/50"}`}
+      onClick={(e) => {
+        // Don't open the detail page when the click was on the checkbox.
+        if (e.target.closest("[data-row-checkbox]")) return;
+        onOpen?.();
+      }}
+      data-testid={`order-row-${order.id}`}
+    >
+      <td className="px-3 py-3 align-top" data-row-checkbox>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onSelect?.(); }}
+          aria-label="Select row"
+          data-testid={`order-select-${order.id}`}
+          className="text-stone-400 hover:text-stone-950"
+        >
+          {selected ? <CheckSquare className="w-4 h-4 text-stone-950" /> : <Square className="w-4 h-4" />}
+        </button>
       </td>
       <td className="px-3 py-3 align-top">
         <span className="inline-block px-2.5 py-1 bg-white border border-stone-300 rounded-md text-xs font-mono font-semibold">
@@ -348,15 +458,14 @@ function OrderRow({ order, showProducts }) {
         }
       </td>
       <td className="px-3 py-3 align-top">
-        <button
-          type="button"
-          disabled
-          title="Order editing arrives in Stage B"
-          className="px-3 py-1 border border-stone-300 bg-white text-[11px] font-bold uppercase tracking-wider rounded-md text-stone-700 hover:bg-stone-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        <Link
+          to={`/orders/${order.id}`}
+          onClick={(e) => e.stopPropagation()}
           data-testid={`order-edit-${order.id}`}
+          className="px-3 py-1 border border-stone-300 bg-white text-[11px] font-bold uppercase tracking-wider rounded-md text-stone-700 hover:bg-stone-50 inline-block"
         >
           Edit
-        </button>
+        </Link>
       </td>
     </tr>
   );
