@@ -103,7 +103,7 @@ export default function ProductionStatusDropdown({
         <div
           role="listbox"
           data-testid={`production-status-menu-${orderId}`}
-          className="absolute z-30 mt-1 left-0 w-44 bg-white border border-stone-200 rounded-lg shadow-lg py-1.5"
+          className="absolute z-30 mt-1 left-0 w-48 bg-white border border-stone-200 rounded-lg shadow-lg p-1.5 space-y-1"
         >
           {PRODUCTION_OPTIONS.map((opt) => (
             <button
@@ -111,9 +111,9 @@ export default function ProductionStatusDropdown({
               type="button"
               onClick={() => pick(opt)}
               data-testid={`production-status-option-${orderId}-${opt.replace(/\s+/g, "-").toLowerCase()}`}
-              className="w-full px-2 py-1.5 flex items-center hover:bg-stone-50"
+              className="w-full flex items-center hover:bg-stone-50 rounded"
             >
-              <span className={`inline-block px-3 py-1 rounded-full text-[11px] font-semibold ${PRODUCTION_PILL_CLASS[opt]}`}>
+              <span className={`w-full px-3 py-1.5 rounded-full text-xs font-semibold text-center ${PRODUCTION_PILL_CLASS[opt]}`}>
                 {opt}
               </span>
             </button>
