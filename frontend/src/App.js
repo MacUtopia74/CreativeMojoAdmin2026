@@ -20,7 +20,6 @@ import CqcDefinitionsPage from "@/pages/CqcDefinitionsPage";
 import CalendarPage from "@/pages/CalendarPage";
 import PortalDashboardPage from "@/pages/PortalDashboardPage";
 import BankingPage from "@/pages/BankingPage";
-import MojoOrdersPage from "@/pages/MojoOrdersPage";
 import OrdersPage from "@/pages/OrdersPage";
 import OrderDetailPage from "@/pages/OrderDetailPage";
 import FindClassAdminPage from "@/pages/FindClassAdminPage";
@@ -85,7 +84,6 @@ export default function App() {
                 <Route path=":id/edit" element={<EditInvoice />} />
               </Route>
               <Route path="/banking" element={<BankingPage />} />
-              <Route path="/mojo-orders" element={<MojoOrdersPage />} />
               <Route path="/orders" element={<OrdersPage />} />
               <Route path="/orders/reconcile" element={<OrdersReconciliationPage />} />
               <Route path="/orders/:orderId" element={<OrderDetailPage />} />
