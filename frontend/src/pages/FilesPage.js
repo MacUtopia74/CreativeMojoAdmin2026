@@ -5,7 +5,7 @@
 //   • Top search bar (whole-bucket name search)
 //
 // Migration panel lives at the top — Dry-Run / Commit / live progress.
-import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useState, useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
 import api from "@/lib/api";
 import { formatDate } from "@/lib/date";
@@ -366,7 +366,7 @@ function ShareModal({ file, onClose }) {
 // the file is POSTed to /api/files/upload which streams the body to R2 and
 // indexes it. This bypasses the need for R2 bucket CORS (our API token
 // scope doesn't permit setting CORS).
-function UploadButton({ prefix, onUploaded }) {
+const UploadButton = forwardRef(function UploadButton({ prefix, onUploaded }, externalRef) {
   const inputRef = useRef(null);
   const [progress, setProgress] = useState(null); // { current, total, name, pct }
 
@@ -415,6 +415,12 @@ function UploadButton({ prefix, onUploaded }) {
     }
   };
 
+  // Expose handleFiles to the parent FilesPage so its drag-and-drop
+  // handler can route dropped files through the same upload pipeline
+  // (progress UI, error handling, onUploaded callback) without duplicating
+  // any logic.
+  useImperativeHandle(externalRef, () => ({ handleFiles, isUploading: () => !!progress }), [progress]);
+
   return (
     <>
       <input ref={inputRef} type="file" multiple className="hidden" onChange={(e) => handleFiles(e.target.files)}
@@ -434,7 +440,7 @@ function UploadButton({ prefix, onUploaded }) {
       )}
     </>
   );
-}
+});
 
 function NewFolderButton({ prefix, onCreated }) {
   const [busy, setBusy] = useState(false);
@@ -599,8 +605,71 @@ export default function FilesPage() {
     } finally { setDownloadingKey(null); }
   };
 
+  // ---- Drag-and-drop upload ------------------------------------------------
+  // We let the user drop files onto the main content pane and route them
+  // through the same UploadButton handler (progress UI, error handling).
+  // A full-page overlay only appears while files are actively being
+  // dragged over the window — otherwise it'd block hover-states on links.
+  const uploadRef = useRef(null);
+  const [dragActive, setDragActive] = useState(false);
+  const dragCounter = useRef(0);
+
+  useEffect(() => {
+    if (trashMode) return; // never allow drop into trash view
+    const onDragEnter = (e) => {
+      if (!Array.from(e.dataTransfer?.types || []).includes("Files")) return;
+      e.preventDefault();
+      dragCounter.current += 1;
+      setDragActive(true);
+    };
+    const onDragOver = (e) => {
+      if (!Array.from(e.dataTransfer?.types || []).includes("Files")) return;
+      e.preventDefault();
+    };
+    const onDragLeave = (e) => {
+      if (!Array.from(e.dataTransfer?.types || []).includes("Files")) return;
+      dragCounter.current = Math.max(0, dragCounter.current - 1);
+      if (dragCounter.current === 0) setDragActive(false);
+    };
+    const onDrop = (e) => {
+      const files = e.dataTransfer?.files;
+      if (!files || files.length === 0) return;
+      e.preventDefault();
+      dragCounter.current = 0;
+      setDragActive(false);
+      uploadRef.current?.handleFiles(files);
+    };
+    window.addEventListener("dragenter", onDragEnter);
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("dragleave", onDragLeave);
+    window.addEventListener("drop", onDrop);
+    return () => {
+      window.removeEventListener("dragenter", onDragEnter);
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("dragleave", onDragLeave);
+      window.removeEventListener("drop", onDrop);
+    };
+  }, [trashMode]);
+
   return (
     <div className="min-h-screen bg-[#FBFAF8]" data-testid="files-page">
+      {/* Drag overlay — shown only while a file is actively dragged over
+          the window. Sits above everything so the user gets unambiguous
+          feedback that they can drop. */}
+      {dragActive && (
+        <div
+          data-testid="files-drop-overlay"
+          className="fixed inset-0 z-[200] bg-stone-950/40 backdrop-blur-sm flex items-center justify-center pointer-events-none"
+        >
+          <div className="bg-white border-4 border-dashed border-[#dddd16] rounded-3xl px-12 py-10 max-w-md text-center shadow-2xl">
+            <CloudUpload className="w-12 h-12 text-[#aaaa11] mx-auto mb-3" />
+            <div className="text-xl font-display font-black text-stone-950">Drop files to upload</div>
+            <div className="text-sm text-stone-600 mt-2">
+              They'll land in <span className="font-mono text-[12px] bg-stone-100 px-1.5 py-0.5 rounded">{prefix || "admin/uploads/"}</span>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Topbar — heading + global search + sidebar toggle. Search lives
           here (not in the yellow panel) so it's always reachable and the
           yellow panel stays focused on folder actions. */}
@@ -754,7 +823,7 @@ export default function FilesPage() {
                       </button>
                     </div>
                     <NewFolderButton prefix={prefix} onCreated={() => { reloadTree(prefix); reloadScopes(); }} />
-                    <UploadButton prefix={prefix} onUploaded={() => { reloadTree(prefix); reloadScopes(); }} />
+                    <UploadButton ref={uploadRef} prefix={prefix} onUploaded={() => { reloadTree(prefix); reloadScopes(); }} />
                   </div>
                 </div>
                 <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden">

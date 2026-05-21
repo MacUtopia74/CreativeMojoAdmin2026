@@ -311,7 +311,10 @@ export default function CalendarPage() {
                 slotLabelFormat={{ hour: "2-digit", minute: "2-digit", meridiem: false }}
                 eventClick={(info) => {
                   info.jsEvent.preventDefault();
-                  setModal({ event: info.event.extendedProps });
+                  // FullCalendar puts the id on the event itself, but our
+                  // modal expects a flat object — merge them so the
+                  // delete button can see event.id.
+                  setModal({ event: { id: info.event.id, ...info.event.extendedProps } });
                 }}
                 datesSet={(info) => {
                   // Whenever the user clicks prev/next or switches view we
@@ -391,6 +394,7 @@ export default function CalendarPage() {
           defaults={modal.defaults}
           onClose={() => setModal(null)}
           onSaved={() => { setModal(null); setRefreshTick((t) => t + 1); }}
+          onDelete={async (id) => { await deleteEvent(id); setModal(null); }}
         />
       )}
     </div>
@@ -443,7 +447,7 @@ function EventRow({ event, onEdit, onDelete }) {
   );
 }
 
-function EventModal({ event, defaults, onClose, onSaved }) {
+function EventModal({ event, defaults, onClose, onSaved, onDelete }) {
   const [title, setTitle] = useState(event?.title || "");
   const [description, setDescription] = useState(event?.description || "");
   const [location, setLocation] = useState(event?.location || "");
@@ -600,13 +604,28 @@ function EventModal({ event, defaults, onClose, onSaved }) {
           </div>
           {err && <div className="text-xs text-red-700 bg-red-50 border border-red-200 px-3 py-2 rounded-lg flex items-center gap-1.5"><AlertCircle className="w-3.5 h-3.5" /> {err}</div>}
         </div>
-        <div className="px-5 py-4 border-t border-stone-200 flex justify-end gap-2 bg-stone-50">
-          <button onClick={onClose} className="px-3 py-2 text-xs font-bold rounded-lg border border-stone-300 bg-white hover:bg-stone-50">Cancel</button>
-          <button onClick={save} disabled={saving || !title.trim()} data-testid="cal-save"
-            className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-[#aaaa11] rounded-lg disabled:opacity-50 flex items-center gap-1.5">
-            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-            {event ? "Save changes" : "Create event"}
-          </button>
+        <div className="px-5 py-4 border-t border-stone-200 flex justify-between items-center gap-2 bg-stone-50">
+          {event?.id && onDelete ? (
+            <button
+              onClick={() => {
+                if (window.confirm("Delete this calendar event? It will also disappear from the franchisee portal.")) {
+                  onDelete(event.id);
+                }
+              }}
+              data-testid="cal-modal-delete"
+              className="px-3 py-2 text-xs font-bold uppercase tracking-wider rounded-lg border border-rose-300 bg-white text-rose-700 hover:bg-rose-50 flex items-center gap-1.5"
+            >
+              <Trash2 className="w-3.5 h-3.5" /> Delete
+            </button>
+          ) : <span />}
+          <div className="flex gap-2">
+            <button onClick={onClose} className="px-3 py-2 text-xs font-bold rounded-lg border border-stone-300 bg-white hover:bg-stone-50">Cancel</button>
+            <button onClick={save} disabled={saving || !title.trim()} data-testid="cal-save"
+              className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-[#aaaa11] rounded-lg disabled:opacity-50 flex items-center gap-1.5">
+              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+              {event ? "Save changes" : "Create event"}
+            </button>
+          </div>
         </div>
       </div>
       {zoomModalOpen && (
