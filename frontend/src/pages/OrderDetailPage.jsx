@@ -36,6 +36,7 @@ export default function OrderDetailPage() {
   const [error, setError] = useState("");
   const [actionsOpen, setActionsOpen] = useState(false);
   const [changeCustomerOpen, setChangeCustomerOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Edit buffers — committed to the server on Save Order
   const [lineItems, setLineItems] = useState([]);
@@ -108,6 +109,19 @@ export default function OrderDetailPage() {
     } catch (e) {
       setError(e?.response?.data?.detail || "Save failed.");
     } finally { setSaving(false); }
+  };
+
+  const handleDelete = async () => {
+    if (!window.confirm("Permanently delete this order? This cannot be undone.")) return;
+    setDeleting(true);
+    setError("");
+    try {
+      await api.delete(`/orders/${orderId}`);
+      navigate("/orders");
+    } catch (e) {
+      setError(e?.response?.data?.detail || "Delete failed.");
+      setDeleting(false);
+    }
   };
 
   const handleAction = async (action, extra = {}) => {
@@ -218,46 +232,9 @@ export default function OrderDetailPage() {
         </div>
       )}
 
-      {/* Two-column body */}
-      <div className="px-8 py-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left: line items + add product */}
-        <div className="lg:col-span-2 space-y-6">
-          <Card title="Line Items">
-            <AddProductRow onAdd={handleAddProduct} />
-            <div className="mt-4">
-              {lineItems.length > 0 && <LineItemsHeader />}
-              <div className="divide-y divide-stone-100">
-                {lineItems.length === 0 ? (
-                  <div className="py-6 text-center text-sm text-stone-500" data-testid="line-items-empty">
-                    No items yet — search for a product above and click <strong>Add to Order</strong>.
-                  </div>
-                ) : lineItems.map((li) => (
-                  <LineItemRow key={li._key} li={li} onUpdate={updateLine} onRemove={removeLine} />
-                ))}
-              </div>
-            </div>
-            <div className="mt-4 border-t border-stone-200 pt-4 flex items-center justify-between gap-4 flex-wrap">
-              <div className="flex items-center gap-2 text-sm">
-                <span className="text-stone-600">Shipping</span>
-                <span className="text-stone-400">£</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={shippingTotal}
-                  onChange={(e) => setShippingTotal(e.target.value)}
-                  data-testid="order-shipping-input"
-                  className="w-24 px-2 py-1 border border-stone-300 rounded-md text-sm tabular-nums focus:outline-none focus:border-stone-900"
-                />
-              </div>
-              <div className="text-lg font-bold text-stone-950 tabular-nums" data-testid="order-total">
-                Total: {formatGBP(orderTotal)}
-              </div>
-            </div>
-          </Card>
-        </div>
-
-        {/* Right: customer + meta */}
-        <div className="space-y-6">
+      {/* Top row: customer left, order info + addresses right */}
+      <div className="px-8 pt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div>
           <Card title="Customer">
             {/* Large customer name — easy to scan at a glance, especially
                 useful when checking what's on the bench against what's
@@ -284,17 +261,9 @@ export default function OrderDetailPage() {
               <UserCog className="w-3 h-3" /> Change customer
             </button>
           </Card>
+        </div>
 
-          <Card title="Delivery Address">
-            <AddressBlock addr={order.shipping} />
-          </Card>
-
-          {(order.billing?.address_1 || order.billing?.city) && (
-            <Card title="Billing Address">
-              <AddressBlock addr={order.billing} />
-            </Card>
-          )}
-
+        <div className="space-y-6">
           <Card title="Order Info">
             <Row k="Channel" v={order.channel === "woocommerce" ? `Woo#${order.woo_number || order.id}` : "Direct"} />
             <Row k="Created" v={new Date(order.date_created).toLocaleString("en-GB")} />
@@ -320,6 +289,72 @@ export default function OrderDetailPage() {
             <Row k="Payment" v={order.payment_status} />
             {order.date_paid && <Row k="Paid on" v={new Date(order.date_paid).toLocaleDateString("en-GB")} />}
           </Card>
+
+          <Card title="Delivery Address">
+            <AddressBlock addr={order.shipping} />
+          </Card>
+
+          {(order.billing?.address_1 || order.billing?.city) && (
+            <Card title="Billing Address">
+              <AddressBlock addr={order.billing} />
+            </Card>
+          )}
+        </div>
+      </div>
+
+      {/* Bottom: line items full width */}
+      <div className="px-8 pt-6 pb-2">
+        <Card title="Line Items">
+          <AddProductRow onAdd={handleAddProduct} />
+          <div className="mt-4">
+            {lineItems.length > 0 && <LineItemsHeader />}
+            <div className="divide-y divide-stone-100">
+              {lineItems.length === 0 ? (
+                <div className="py-6 text-center text-sm text-stone-500" data-testid="line-items-empty">
+                  No items yet — search for a product above and click <strong>Add to Order</strong>.
+                </div>
+              ) : lineItems.map((li) => (
+                <LineItemRow key={li._key} li={li} onUpdate={updateLine} onRemove={removeLine} />
+              ))}
+            </div>
+          </div>
+          <div className="mt-4 border-t border-stone-200 pt-4 flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-stone-600">Shipping</span>
+              <span className="text-stone-400">£</span>
+              <input
+                type="number"
+                step="0.01"
+                value={shippingTotal}
+                onChange={(e) => setShippingTotal(e.target.value)}
+                data-testid="order-shipping-input"
+                className="w-24 px-2 py-1 border border-stone-300 rounded-md text-sm tabular-nums focus:outline-none focus:border-stone-900"
+              />
+            </div>
+            <div className="text-lg font-bold text-stone-950 tabular-nums" data-testid="order-total">
+              Total: {formatGBP(orderTotal)}
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* Danger zone — destructive actions sit at the very bottom so they
+          can't be hit by accident while editing fields above. */}
+      <div className="px-8 pb-12 pt-2">
+        <div className="rounded-2xl border border-rose-200 bg-rose-50/50 p-4 flex items-center justify-between gap-4 flex-wrap" data-testid="danger-zone">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-rose-700">Danger zone</div>
+            <p className="text-sm text-stone-700 mt-0.5">Permanently delete this order. This can't be undone.</p>
+          </div>
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={deleting}
+            data-testid="delete-order-button"
+            className="px-4 py-2 bg-rose-600 text-white text-xs font-bold uppercase tracking-wider rounded-lg hover:bg-rose-700 disabled:opacity-50 flex items-center gap-2"
+          >
+            {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />} Delete Order
+          </button>
         </div>
       </div>
 

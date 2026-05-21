@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertCircle, CheckCircle2, Loader2, RefreshCw, ExternalLink, ArrowLeft } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import api from "@/lib/api";
 
 export default function XeroSettingsPage() {
@@ -17,6 +18,16 @@ export default function XeroSettingsPage() {
   const [loading, setLoading] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState("");
+  // Display preference (stored in localStorage so it survives reloads and
+  // is read by /orders to suppress the small "Legacy (#1234)" tag under
+  // each ID). The Orders page listens for the custom event we dispatch.
+  const [hideLegacyIds, setHideLegacyIdsState] = useState(() => localStorage.getItem("hide_legacy_ids") === "1");
+  const setHideLegacyIds = (v) => {
+    setHideLegacyIdsState(v);
+    if (v) localStorage.setItem("hide_legacy_ids", "1");
+    else localStorage.removeItem("hide_legacy_ids");
+    window.dispatchEvent(new Event("hide-legacy-ids-changed"));
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -188,6 +199,26 @@ XERO_WEBHOOK_SIGNING_KEY=...   # optional, for payment webhook`}
             </p>
           </div>
         )}
+      </div>
+
+      {/* UI preferences card — adjacent to Xero settings so admins find it
+          right after configuring the integration. */}
+      <div className="mt-6 bg-white border border-stone-200 rounded-2xl p-6 max-w-2xl" data-testid="orders-display-prefs-card">
+        <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-2">Orders display</div>
+        <h2 className="text-lg font-display font-black text-stone-950 mb-3">Hide legacy IDs</h2>
+        <div className="flex items-start justify-between gap-4">
+          <p className="text-sm text-stone-700 max-w-md">
+            When on, the small <code className="px-1 bg-stone-100 rounded text-[11px]">Legacy (#1234)</code> tag is hidden
+            under each migrated order on the main Orders list. Useful once you're confident the new continuous numbering
+            is the only one being referenced.
+          </p>
+          <Switch
+            checked={hideLegacyIds}
+            onCheckedChange={setHideLegacyIds}
+            data-testid="hide-legacy-toggle"
+            className="mt-1 data-[state=checked]:bg-stone-900 data-[state=unchecked]:bg-stone-300"
+          />
+        </div>
       </div>
     </div>
   );

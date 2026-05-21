@@ -18,6 +18,7 @@ import {
   ShoppingBag, Search, X, Plus, RefreshCw, Loader2, AlertCircle,
   CheckSquare, Square, CheckCircle2, CreditCard,
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import api from "@/lib/api";
 import CreateOrderModal from "@/components/orders/CreateOrderModal";
 import ProductionStatusDropdown from "@/components/orders/ProductionStatusDropdown";
@@ -78,6 +79,18 @@ export default function OrdersPage() {
   const [tab, setTab] = useState("active");
   const [search, setSearch] = useState("");
   const [showProducts, setShowProducts] = useState(true);
+  // Driven by the toggle on /admin/xero (saved in localStorage). When true
+  // we hide the small "Legacy (#1234)" tag under the order ID.
+  const [hideLegacyIds, setHideLegacyIds] = useState(() => localStorage.getItem("hide_legacy_ids") === "1");
+  useEffect(() => {
+    const onStorage = () => setHideLegacyIds(localStorage.getItem("hide_legacy_ids") === "1");
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("hide-legacy-ids-changed", onStorage);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("hide-legacy-ids-changed", onStorage);
+    };
+  }, []);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [data, setData] = useState({ items: [], total: 0 });
@@ -210,23 +223,14 @@ export default function OrdersPage() {
         })}
 
         <div className="ml-2 flex items-center gap-2 text-xs text-stone-700">
-          <span className="font-medium">Show Products</span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={showProducts}
-            onClick={() => setShowProducts((s) => !s)}
+          <label htmlFor="show-products-toggle" className="font-medium cursor-pointer select-none">Show Products</label>
+          <Switch
+            id="show-products-toggle"
+            checked={showProducts}
+            onCheckedChange={setShowProducts}
             data-testid="show-products-toggle"
-            className={`relative w-10 h-5 rounded-full transition-colors ${
-              showProducts ? "bg-[#dddd16]" : "bg-stone-300"
-            }`}
-          >
-            <span
-              className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
-                showProducts ? "translate-x-5" : "translate-x-0.5"
-              }`}
-            />
-          </button>
+            className="data-[state=checked]:bg-[#dddd16] data-[state=unchecked]:bg-stone-300"
+          />
         </div>
 
         <div className="ml-auto flex items-center gap-2">
@@ -326,17 +330,17 @@ export default function OrdersPage() {
             <table className="w-full text-sm">
               <thead className="bg-stone-50 border-b border-stone-200">
                 <tr className="text-stone-500 uppercase tracking-wider text-[10px]">
-                  <th className="px-3 py-3 text-left font-bold w-10"></th>
-                  <th className="px-3 py-3 text-left font-bold">ID</th>
-                  <th className="px-3 py-3 text-left font-bold">Created</th>
-                  <th className="px-3 py-3 text-left font-bold">Due Date</th>
-                  <th className="px-3 py-3 text-left font-bold">Customer</th>
-                  <th className="px-3 py-3 text-left font-bold">Products</th>
-                  <th className="px-3 py-3 text-left font-bold">Production</th>
-                  <th className="px-3 py-3 text-left font-bold">Invoiced</th>
-                  <th className="px-3 py-3 text-left font-bold">Payment</th>
-                  <th className="px-3 py-3 text-left font-bold">Channel</th>
-                  <th className="px-3 py-3 text-left font-bold w-16"></th>
+                  <th className="px-2 py-3 text-left font-bold w-8"></th>
+                  <th className="px-2 py-3 text-left font-bold">ID</th>
+                  <th className="px-2 py-3 text-left font-bold">Created</th>
+                  <th className="px-2 py-3 text-left font-bold">Due</th>
+                  <th className="px-2 py-3 text-left font-bold">Customer</th>
+                  <th className="px-2 py-3 text-left font-bold">Products</th>
+                  <th className="px-2 py-3 text-left font-bold">Production</th>
+                  <th className="px-2 py-3 text-left font-bold">Invoiced</th>
+                  <th className="px-2 py-3 text-left font-bold">Payment</th>
+                  <th className="px-2 py-3 text-left font-bold">Channel</th>
+                  <th className="px-2 py-3 text-left font-bold w-10"></th>
                 </tr>
               </thead>
               <tbody>
@@ -357,6 +361,7 @@ export default function OrdersPage() {
                     key={o.id}
                     order={o}
                     showProducts={showProducts}
+                    hideLegacyIds={hideLegacyIds}
                     selected={selectedIds.has(o.id)}
                     onSelect={() => toggleSelect(o.id)}
                     onOpen={() => navigate(`/orders/${o.id}`)}
@@ -387,7 +392,7 @@ export default function OrdersPage() {
   );
 }
 
-function OrderRow({ order, showProducts, selected = false, onSelect, onOpen }) {
+function OrderRow({ order, showProducts, hideLegacyIds, selected = false, onSelect, onOpen }) {
   const due = dueLabel(order.due_date);
   const isWoo = (order.channel || "").toLowerCase() === "woocommerce";
 
@@ -401,7 +406,7 @@ function OrderRow({ order, showProducts, selected = false, onSelect, onOpen }) {
       }}
       data-testid={`order-row-${order.id}`}
     >
-      <td className="px-3 py-3 align-top" data-row-checkbox>
+      <td className="px-2 py-2.5 align-top" data-row-checkbox>
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onSelect?.(); }}
@@ -412,11 +417,11 @@ function OrderRow({ order, showProducts, selected = false, onSelect, onOpen }) {
           {selected ? <CheckSquare className="w-4 h-4 text-stone-950" /> : <Square className="w-4 h-4" />}
         </button>
       </td>
-      <td className="px-3 py-3 align-top">
-        <span className="inline-block px-2.5 py-1 bg-white border border-stone-300 rounded-md text-xs font-mono font-semibold">
+      <td className="px-2 py-2.5 align-top">
+        <span className="inline-block px-2 py-0.5 bg-white border border-stone-300 rounded-md text-xs font-mono font-semibold">
           {order.display_order_id || order.woo_number || order.legacy_order_id || order.id}
         </span>
-        {order.legacy_import && (
+        {order.legacy_import && !hideLegacyIds && (
           <div
             className="text-[9px] uppercase tracking-wider text-stone-400 mt-1 font-bold"
             title={`Originally legacy admin #${order.legacy_order_id}`}
@@ -425,25 +430,25 @@ function OrderRow({ order, showProducts, selected = false, onSelect, onOpen }) {
           </div>
         )}
       </td>
-      <td className="px-3 py-3 align-top text-stone-700 whitespace-nowrap">
+      <td className="px-2 py-2.5 align-top text-stone-700 whitespace-nowrap text-[13px]">
         {fmtDate(order.date_created)}
       </td>
-      <td className="px-3 py-3 align-top whitespace-nowrap">
+      <td className="px-2 py-2.5 align-top whitespace-nowrap text-[13px]">
         <div>{fmtDate(order.due_date)}</div>
         {due && <div className={`text-[11px] ${due.color}`}>{due.txt}</div>}
       </td>
-      <td className="px-3 py-3 align-top text-stone-900 font-medium max-w-[200px]">
+      <td className="px-2 py-2.5 align-top text-stone-900 font-medium max-w-[200px] text-[13px]">
         <div>{order.customer_label}</div>
       </td>
-      <td className="px-3 py-3 align-top max-w-[280px]">
+      <td className="px-2 py-2.5 align-top max-w-[280px]">
         {order.line_items_unavailable ? (
           <span className="text-[11px] text-stone-400 italic" data-testid={`legacy-no-items-${order.id}`}>
             Legacy import — line items not migrated
           </span>
         ) : showProducts && (order.line_items || []).map((li, i) => (
-          <div key={i} className="flex items-start gap-2 mb-1 last:mb-0">
+          <div key={i} className="flex items-start gap-2 mb-0.5 last:mb-0">
             <span className="text-[11px] text-stone-500 mt-0.5 font-mono">×{li.quantity}</span>
-            <span className="text-stone-800 text-[13px] leading-tight">{li.name}</span>
+            <span className="text-stone-800 text-[12px] leading-tight">{li.name}</span>
           </div>
         ))}
         {!order.line_items_unavailable && !showProducts && (
@@ -452,39 +457,39 @@ function OrderRow({ order, showProducts, selected = false, onSelect, onOpen }) {
           </span>
         )}
       </td>
-      <td className="px-3 py-3 align-top">
+      <td className="px-2 py-2.5 align-top">
         <ProductionStatusDropdown
           orderId={order.id}
           value={order.production_status}
           onChange={(next) => { order.production_status = next; }}
         />
       </td>
-      <td className="px-3 py-3 align-top text-center">
+      <td className="px-2 py-2.5 align-top text-center">
         {order.invoiced ? (
           <span className="text-emerald-600" aria-label="Invoiced">✓</span>
         ) : (
           <span className="text-stone-400" aria-label="Not invoiced">✗</span>
         )}
       </td>
-      <td className="px-3 py-3 align-top">
-        <span className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${
+      <td className="px-2 py-2.5 align-top">
+        <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${
           PAYMENT_PILL[order.payment_status] || "bg-stone-200 text-stone-700"
         }`}>
           {order.payment_status}
         </span>
       </td>
-      <td className="px-3 py-3 align-top text-xs text-stone-700 whitespace-nowrap">
+      <td className="px-2 py-2.5 align-top text-xs text-stone-700 whitespace-nowrap">
         {isWoo
           ? <span className="font-mono">{order.channel_label}</span>
           : <span>Direct</span>
         }
       </td>
-      <td className="px-3 py-3 align-top">
+      <td className="px-2 py-2.5 align-top">
         <Link
           to={`/orders/${order.id}`}
           onClick={(e) => e.stopPropagation()}
           data-testid={`order-edit-${order.id}`}
-          className="px-3 py-1 border border-stone-300 bg-white text-[11px] font-bold uppercase tracking-wider rounded-md text-stone-700 hover:bg-stone-50 inline-block"
+          className="px-2 py-1 border border-stone-300 bg-white text-[11px] font-bold uppercase tracking-wider rounded-md text-stone-700 hover:bg-stone-50 inline-block"
         >
           Edit
         </Link>
