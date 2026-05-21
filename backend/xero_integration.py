@@ -400,7 +400,11 @@ def attach(api, db, require_role):
         "match customer in Xero" picker on the order detail page."""
         params = {}
         if search:
-            params["where"] = f'Name.ToLower().Contains("{search.lower()}") OR EmailAddress.ToLower().Contains("{search.lower()}")'
+            # Escape any double-quote / backslash so the OData filter we
+            # forward to Xero stays valid even if a user pastes a quoted
+            # search term.
+            safe = search.lower().replace("\\", "").replace('"', "")
+            params["where"] = f'Name.ToLower().Contains("{safe}") OR EmailAddress.ToLower().Contains("{safe}")'
         data = await _xero_get(db, "/Contacts", params=params)
         return {
             "contacts": [
