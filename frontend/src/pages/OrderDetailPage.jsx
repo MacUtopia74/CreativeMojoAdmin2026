@@ -43,6 +43,10 @@ export default function OrderDetailPage() {
   const [shippingTotal, setShippingTotal] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [poNumber, setPoNumber] = useState("");
+  // Xero contact (fetched when the order is matched) — used to pull the
+  // delivery address straight from Xero when the local Woo shipping
+  // record is empty (typical for legacy imports).
+  const [xeroContact, setXeroContact] = useState(null);
 
   const load = async () => {
     setLoading(true);
@@ -62,6 +66,48 @@ export default function OrderDetailPage() {
   };
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [orderId]);
+
+  // Fetch the Xero contact whenever the order is matched. We use it as a
+  // fallback shipping address source for legacy imports.
+  useEffect(() => {
+    if (!order?.xero_contact_id) { setXeroContact(null); return; }
+    let cancelled = false;
+    api.get(`/xero/contacts/${order.xero_contact_id}`)
+      .then(({ data }) => { if (!cancelled) setXeroContact(data); })
+      .catch(() => { if (!cancelled) setXeroContact(null); });
+    return () => { cancelled = true; };
+  }, [order?.xero_contact_id]);
+
+  // Resolve the address we should show as the delivery address:
+  //   1. Local Woo shipping object if it has a real address line
+  //   2. Otherwise — DELIVERY/STREET address from the linked Xero contact
+  //   3. Fall back to the local shipping company-only stub
+  const deliveryAddress = useMemo(() => {
+    const local = order?.shipping;
+    if (local && (local.address_1 || local.city || local.postcode)) {
+      return { ...local, _source: "woocommerce" };
+    }
+    const xeroAddrs = xeroContact?.addresses || [];
+    const xeroPick = xeroAddrs.find((a) => a.type === "DELIVERY" && (a.address_1 || a.city))
+      || xeroAddrs.find((a) => a.type === "STREET" && (a.address_1 || a.city))
+      || xeroAddrs.find((a) => a.address_1 || a.city);
+    if (xeroPick) {
+      return {
+        company: order?.customer_label,
+        first_name: xeroContact?.first_name,
+        last_name: xeroContact?.last_name,
+        address_1: xeroPick.address_1,
+        address_2: xeroPick.address_2,
+        city: xeroPick.city,
+        state: xeroPick.region,
+        postcode: xeroPick.postcode,
+        country: xeroPick.country,
+        phone: xeroContact?.phones?.[0]?.number,
+        _source: "xero",
+      };
+    }
+    return local || null;
+  }, [order?.shipping, order?.customer_label, xeroContact]);
 
   const orderTotal = useMemo(() => {
     const lineSum = lineItems.reduce(
@@ -170,9 +216,9 @@ export default function OrderDetailPage() {
   const isDraft = !!order.is_draft;
 
   return (
-    <div className="min-h-screen bg-stone-50" data-testid="order-detail-page">
+    <div className="min-h-screen bg-stone-100" data-testid="order-detail-page">
       {/* Header — compact */}
-      <div className="bg-white border-b border-stone-200 px-8 py-3 flex items-center justify-between gap-4 flex-wrap">
+      <div className="bg-white border-b border-stone-300 px-8 py-3 flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3 flex-wrap">
           <Link to="/orders" className="text-xs text-stone-500 hover:text-stone-900 inline-flex items-center gap-1">
             <ArrowLeft className="w-3 h-3" /> Orders
@@ -232,13 +278,11 @@ export default function OrderDetailPage() {
         </div>
       )}
 
-      {/* Top row: customer left, order info + addresses right */}
-      <div className="px-8 pt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div>
+      {/* Two-column body: left = Customer + Line Items + Danger Zone, right = Order Info + Delivery */}
+      <div className="px-8 py-6 grid grid-cols-1 lg:grid-cols-5 gap-6">
+        {/* LEFT column (3/5) */}
+        <div className="lg:col-span-3 space-y-6">
           <Card title="Customer">
-            {/* Large customer name — easy to scan at a glance, especially
-                useful when checking what's on the bench against what's
-                showing on the screen. */}
             <div className="text-2xl font-display font-black text-stone-950 leading-tight" data-testid="customer-name">
               {order.customer_label || "—"}
             </div>
@@ -261,9 +305,60 @@ export default function OrderDetailPage() {
               <UserCog className="w-3 h-3" /> Change customer
             </button>
           </Card>
+
+          <Card title="Line Items">
+            <AddProductRow onAdd={handleAddProduct} />
+            <div className="mt-4">
+              {lineItems.length > 0 && <LineItemsHeader />}
+              <div className="divide-y divide-stone-100">
+                {lineItems.length === 0 ? (
+                  <div className="py-6 text-center text-sm text-stone-500" data-testid="line-items-empty">
+                    No items yet — search for a product above and click <strong>Add to Order</strong>.
+                  </div>
+                ) : lineItems.map((li) => (
+                  <LineItemRow key={li._key} li={li} onUpdate={updateLine} onRemove={removeLine} />
+                ))}
+              </div>
+            </div>
+            <div className="mt-4 border-t border-stone-200 pt-4 flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-stone-600">Shipping</span>
+                <span className="text-stone-400">£</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={shippingTotal}
+                  onChange={(e) => setShippingTotal(e.target.value)}
+                  data-testid="order-shipping-input"
+                  className="w-24 px-2 py-1 border border-stone-300 rounded-md text-sm tabular-nums focus:outline-none focus:border-stone-900"
+                />
+              </div>
+              <div className="text-lg font-bold text-stone-950 tabular-nums" data-testid="order-total">
+                Total: {formatGBP(orderTotal)}
+              </div>
+            </div>
+          </Card>
+
+          {/* Danger zone */}
+          <div className="rounded-2xl border-2 border-rose-200 bg-rose-50/60 p-4 flex items-center justify-between gap-4 flex-wrap" data-testid="danger-zone">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-rose-700">Danger zone</div>
+              <p className="text-sm text-stone-700 mt-0.5">Permanently delete this order. This can't be undone.</p>
+            </div>
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={deleting}
+              data-testid="delete-order-button"
+              className="px-4 py-2 bg-rose-600 text-white text-xs font-bold uppercase tracking-wider rounded-lg hover:bg-rose-700 disabled:opacity-50 flex items-center gap-2"
+            >
+              {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />} Delete Order
+            </button>
+          </div>
         </div>
 
-        <div className="space-y-6">
+        {/* RIGHT column (2/5) */}
+        <div className="lg:col-span-2 space-y-6">
           <Card title="Order Info">
             <Row k="Channel" v={order.channel === "woocommerce" ? `Woo#${order.woo_number || order.id}` : "Direct"} />
             <Row k="Created" v={new Date(order.date_created).toLocaleString("en-GB")} />
@@ -291,7 +386,12 @@ export default function OrderDetailPage() {
           </Card>
 
           <Card title="Delivery Address">
-            <AddressBlock addr={order.shipping} />
+            <AddressBlock addr={deliveryAddress} />
+            {deliveryAddress?._source === "xero" && (
+              <div className="mt-2 text-[10px] uppercase tracking-wider font-bold text-emerald-700 inline-flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3" /> Pulled from Xero
+              </div>
+            )}
           </Card>
 
           {(order.billing?.address_1 || order.billing?.city) && (
@@ -299,62 +399,6 @@ export default function OrderDetailPage() {
               <AddressBlock addr={order.billing} />
             </Card>
           )}
-        </div>
-      </div>
-
-      {/* Bottom: line items full width */}
-      <div className="px-8 pt-6 pb-2">
-        <Card title="Line Items">
-          <AddProductRow onAdd={handleAddProduct} />
-          <div className="mt-4">
-            {lineItems.length > 0 && <LineItemsHeader />}
-            <div className="divide-y divide-stone-100">
-              {lineItems.length === 0 ? (
-                <div className="py-6 text-center text-sm text-stone-500" data-testid="line-items-empty">
-                  No items yet — search for a product above and click <strong>Add to Order</strong>.
-                </div>
-              ) : lineItems.map((li) => (
-                <LineItemRow key={li._key} li={li} onUpdate={updateLine} onRemove={removeLine} />
-              ))}
-            </div>
-          </div>
-          <div className="mt-4 border-t border-stone-200 pt-4 flex items-center justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-stone-600">Shipping</span>
-              <span className="text-stone-400">£</span>
-              <input
-                type="number"
-                step="0.01"
-                value={shippingTotal}
-                onChange={(e) => setShippingTotal(e.target.value)}
-                data-testid="order-shipping-input"
-                className="w-24 px-2 py-1 border border-stone-300 rounded-md text-sm tabular-nums focus:outline-none focus:border-stone-900"
-              />
-            </div>
-            <div className="text-lg font-bold text-stone-950 tabular-nums" data-testid="order-total">
-              Total: {formatGBP(orderTotal)}
-            </div>
-          </div>
-        </Card>
-      </div>
-
-      {/* Danger zone — destructive actions sit at the very bottom so they
-          can't be hit by accident while editing fields above. */}
-      <div className="px-8 pb-12 pt-2">
-        <div className="rounded-2xl border border-rose-200 bg-rose-50/50 p-4 flex items-center justify-between gap-4 flex-wrap" data-testid="danger-zone">
-          <div>
-            <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-rose-700">Danger zone</div>
-            <p className="text-sm text-stone-700 mt-0.5">Permanently delete this order. This can't be undone.</p>
-          </div>
-          <button
-            type="button"
-            onClick={handleDelete}
-            disabled={deleting}
-            data-testid="delete-order-button"
-            className="px-4 py-2 bg-rose-600 text-white text-xs font-bold uppercase tracking-wider rounded-lg hover:bg-rose-700 disabled:opacity-50 flex items-center gap-2"
-          >
-            {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />} Delete Order
-          </button>
         </div>
       </div>
 
@@ -376,7 +420,7 @@ export default function OrderDetailPage() {
 
 function Card({ title, children }) {
   return (
-    <div className="bg-white border border-stone-200 rounded-2xl p-5">
+    <div className="bg-white border-2 border-stone-300 rounded-2xl p-5 shadow-sm">
       <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-3">{title}</div>
       {children}
     </div>

@@ -421,6 +421,49 @@ def attach(api, db, require_role):
         await db.xero_tokens.delete_many({})
         return {"ok": True}
 
+    @api.get("/xero/contacts/{contact_id}")
+    async def xero_contact_detail(
+        contact_id: str,
+        _: dict = Depends(require_role("admin")),
+    ):
+        """Fetch a single Xero contact in full, including addresses.
+
+        Used by the Order Detail page to pull the customer's
+        ``Shipping`` address (``AddressType=DELIVERY``) when the local
+        Woo shipping object is empty — typically the case for legacy
+        imports where we only carry the company name."""
+        data = await _xero_get(db, f"/Contacts/{contact_id}")
+        contacts = data.get("Contacts") or []
+        if not contacts:
+            raise HTTPException(404, "Xero contact not found")
+        c = contacts[0]
+        addresses = []
+        for a in (c.get("Addresses") or []):
+            addresses.append({
+                "type": a.get("AddressType"),  # POBOX, STREET, DELIVERY
+                "address_1": a.get("AddressLine1"),
+                "address_2": a.get("AddressLine2"),
+                "city": a.get("City"),
+                "region": a.get("Region"),
+                "postcode": a.get("PostalCode"),
+                "country": a.get("Country"),
+            })
+        phones = []
+        for p in (c.get("Phones") or []):
+            num = " ".join(filter(None, [p.get("PhoneCountryCode"), p.get("PhoneAreaCode"), p.get("PhoneNumber")])).strip()
+            if num:
+                phones.append({"type": p.get("PhoneType"), "number": num})
+        return {
+            "contact_id": c.get("ContactID"),
+            "name": c.get("Name"),
+            "email": c.get("EmailAddress"),
+            "first_name": c.get("FirstName"),
+            "last_name": c.get("LastName"),
+            "status": c.get("ContactStatus"),
+            "addresses": addresses,
+            "phones": phones,
+        }
+
     @api.get("/xero/contacts")
     async def xero_contacts(
         search: Optional[str] = None,
