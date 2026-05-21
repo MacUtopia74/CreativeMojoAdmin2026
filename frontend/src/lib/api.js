@@ -26,6 +26,17 @@ api.interceptors.response.use(
       throw error;
     }
     if (config?._retried) throw error;
+    // Public landing pages (share links, login screens) should never trigger
+    // a refresh+redirect loop — just let the 401 propagate so the calling
+    // component can handle it however it likes.
+    const pathNow = typeof window !== "undefined" ? window.location.pathname : "";
+    if (
+      pathNow === "/login"
+      || pathNow.startsWith("/portal/login")
+      || pathNow.startsWith("/share/")
+    ) {
+      throw error;
+    }
     config._retried = true;
     try {
       refreshPromise = refreshPromise || api.post("/auth/refresh");

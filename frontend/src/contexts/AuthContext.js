@@ -3,6 +3,18 @@ import api, { formatError } from "@/lib/api";
 
 const AuthContext = createContext(null);
 
+// Paths where we MUST NOT probe /auth/me on mount — these are public pages
+// that prospective franchisees / share-link recipients land on without any
+// account. Probing /auth/me there returns 401 and (on slow networks) can
+// flash a login redirect before the interceptor's path-check fires.
+function isPublicPath(pathname) {
+  return (
+    pathname === "/login"
+    || pathname.startsWith("/portal/login")
+    || pathname.startsWith("/share/")
+  );
+}
+
 export function AuthProvider({ children }) {
   // null = checking, false = unauthenticated, object = user
   const [user, setUser] = useState(null);
@@ -19,6 +31,13 @@ export function AuthProvider({ children }) {
   }, []);
 
   useEffect(() => {
+    // Skip the /auth/me probe entirely on public landing pages — there's no
+    // user to fetch and the 401 round-trip just creates a redirect flicker
+    // for share-link recipients who have never had an account here.
+    if (typeof window !== "undefined" && isPublicPath(window.location.pathname)) {
+      setUser(false);
+      return;
+    }
     refresh();
   }, [refresh]);
 
