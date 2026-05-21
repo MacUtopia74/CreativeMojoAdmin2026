@@ -316,6 +316,17 @@ export default function OrdersPage() {
             >
               <CreditCard className="w-3.5 h-3.5" /> Mark Paid
             </button>
+            {tab === "draft" && (
+              <button
+                type="button"
+                onClick={() => runBulk("mark_active")}
+                disabled={bulkPending}
+                data-testid="orders-bulk-mark-active"
+                className="px-3 py-1.5 bg-[#dddd16] hover:bg-[#c4c413] text-stone-950 text-[11px] font-bold uppercase tracking-wider rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" /> Make Active
+              </button>
+            )}
             <button
               type="button"
               onClick={runBulkXero}
@@ -396,6 +407,15 @@ export default function OrdersPage() {
                     selected={selectedIds.has(o.id)}
                     onSelect={() => toggleSelect(o.id)}
                     onOpen={() => navigate(`/orders/${o.id}`)}
+                    onMakeActive={async (id) => {
+                      try {
+                        await api.post(`/orders/${id}/action`, { action: "mark_active" });
+                        await load();
+                        await loadCounts();
+                      } catch (e) {
+                        setError(e?.response?.data?.detail || "Could not make active.");
+                      }
+                    }}
                   />
                 ))}
               </tbody>
@@ -423,7 +443,7 @@ export default function OrdersPage() {
   );
 }
 
-function OrderRow({ order, showProducts, hideLegacyIds, selected = false, onSelect, onOpen }) {
+function OrderRow({ order, showProducts, hideLegacyIds, selected = false, onSelect, onOpen, onMakeActive }) {
   const due = dueLabel(order.due_date);
   const isWoo = (order.channel || "").toLowerCase() === "woocommerce";
 
@@ -516,14 +536,26 @@ function OrderRow({ order, showProducts, hideLegacyIds, selected = false, onSele
         }
       </td>
       <td className="px-2 py-2.5 align-top">
-        <Link
-          to={`/orders/${order.id}`}
-          onClick={(e) => e.stopPropagation()}
-          data-testid={`order-edit-${order.id}`}
-          className="px-2 py-1 border border-stone-300 bg-white text-[11px] font-bold uppercase tracking-wider rounded-md text-stone-700 hover:bg-stone-50 inline-block"
-        >
-          Edit
-        </Link>
+        <div className="flex flex-col gap-1">
+          <Link
+            to={`/orders/${order.id}`}
+            onClick={(e) => e.stopPropagation()}
+            data-testid={`order-edit-${order.id}`}
+            className="px-2 py-1 border border-stone-300 bg-white text-[11px] font-bold uppercase tracking-wider rounded-md text-stone-700 hover:bg-stone-50 text-center"
+          >
+            Edit
+          </Link>
+          {order.is_draft && onMakeActive && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onMakeActive(order.id); }}
+              data-testid={`order-make-active-${order.id}`}
+              className="px-2 py-1 bg-[#dddd16] text-stone-950 text-[11px] font-bold uppercase tracking-wider rounded-md hover:bg-[#c4c413]"
+            >
+              Make Active
+            </button>
+          )}
+        </div>
       </td>
     </tr>
   );
