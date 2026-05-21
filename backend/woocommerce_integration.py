@@ -448,6 +448,7 @@ def attach(api, db, require_role):
             "shipping_total", "due_date", "customer_label", "customer_email",
             "production_status", "payment_status", "status", "is_draft",
             "invoiced", "line_items", "admin_notes",
+            "po_number", "customer_reference",
         }
         updates: dict = {}
         for k, v in (body or {}).items():

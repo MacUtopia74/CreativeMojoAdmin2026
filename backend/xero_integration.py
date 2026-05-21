@@ -204,15 +204,32 @@ async def _xero_post(db, path: str, json_body: dict) -> Any:
 # Invoice builder — turns one of our woo_orders into a Xero Invoices payload
 # ---------------------------------------------------------------------------
 def _build_xero_invoice_payload(order: dict) -> dict:
-    """Project a local order onto Xero's Invoices schema. Uses ``200`` as
-    the default revenue account code — admins can edit afterwards in Xero
-    if a different code is needed for a particular product line."""
+    """Project a local order onto Xero's Invoices schema.
+
+    Account-code mapping (per franchise owner spec, May 2026):
+    * **Art-kit / product lines** → ``253`` (Deliverable Art Kit Sales (HQ))
+      with ``TaxType: OUTPUT2`` (20% VAT on Income, UK standard rate).
+    * **Shipping line** → ``204`` (Delivery Charges) with ``TaxType: NONE``
+      (no VAT on delivery).
+    * **PO number** — if the order has ``po_number`` we prepend a
+      description-only line at the top of the invoice (no AccountCode,
+      no UnitAmount) so it shows on the printed PDF for the customer
+      to reconcile, and we also write the PO into the invoice
+      ``Reference`` field as a fallback.
+    """
     contact = {"Name": order.get("customer_label") or "Unknown customer"}
     email = order.get("customer_email") or (order.get("billing") or {}).get("email")
     if email:
         contact["EmailAddress"] = email
 
     line_items = []
+
+    # Description-only PO row at the top — Xero accepts a line with only
+    # a Description (no AccountCode, no UnitAmount, no Quantity).
+    po_number = (order.get("po_number") or "").strip()
+    if po_number:
+        line_items.append({"Description": f"PO Number: {po_number}"})
+
     for li in order.get("line_items") or []:
         qty = float(li.get("quantity") or 1)
         try:
@@ -223,7 +240,8 @@ def _build_xero_invoice_payload(order: dict) -> dict:
             "Description": li.get("name") or li.get("sku") or "Item",
             "Quantity": qty,
             "UnitAmount": round(unit_amount, 2),
-            "AccountCode": "200",
+            "AccountCode": "253",
+            "TaxType": "OUTPUT2",
         })
 
     ship_total = float(order.get("shipping_total") or 0)
@@ -232,25 +250,37 @@ def _build_xero_invoice_payload(order: dict) -> dict:
             "Description": "Shipping",
             "Quantity": 1,
             "UnitAmount": round(ship_total, 2),
-            "AccountCode": "200",
+            "AccountCode": "204",
+            "TaxType": "NONE",
         })
 
-    if not line_items:
-        # Fallback — Xero requires at least one line item.
+    if not any("AccountCode" in li for li in line_items):
+        # Fallback — Xero requires at least one priced line item.
         line_items.append({
             "Description": f"Order {order.get('display_order_id') or order.get('id')}",
             "Quantity": 1,
             "UnitAmount": float(order.get("total") or 0),
-            "AccountCode": "200",
+            "AccountCode": "253",
+            "TaxType": "OUTPUT2",
         })
+
+    reference_bits = [f"Order #{order.get('display_order_id') or order.get('woo_number') or order.get('id')}"]
+    if po_number:
+        reference_bits.insert(0, f"PO {po_number}")
 
     invoice = {
         "Type": "ACCREC",  # Accounts Receivable — sales invoice
         "Contact": contact,
         "LineItems": line_items,
+        "LineAmountTypes": "Exclusive",
         "Status": "DRAFT",
-        "Reference": f"Order #{order.get('display_order_id') or order.get('woo_number') or order.get('id')}",
+        "Reference": " · ".join(reference_bits),
     }
+    if order.get("xero_contact_id"):
+        # When we've already matched the customer to a Xero ContactID, we
+        # use that as the single source of truth so we don't accidentally
+        # create a duplicate contact based on Name alone.
+        invoice["Contact"] = {"ContactID": order["xero_contact_id"]}
     if order.get("due_date"):
         try:
             invoice["DueDate"] = datetime.fromisoformat(order["due_date"].replace("Z", "+00:00")).date().isoformat()

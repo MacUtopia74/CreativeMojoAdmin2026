@@ -40,16 +40,52 @@ def test_invoice_payload_basic():
     inv = payload["Invoices"][0]
     assert inv["Type"] == "ACCREC"
     assert inv["Status"] == "DRAFT"
+    assert inv["LineAmountTypes"] == "Exclusive"
     assert inv["Contact"]["Name"] == "Acme Care Home"
     assert inv["Contact"]["EmailAddress"] == "manager@acme.co.uk"
     # Shipping should be added as an extra line item
-    descs = [li["Description"] for li in inv["LineItems"]]
+    descs = [li.get("Description") for li in inv["LineItems"]]
     assert "Group Art Kit - Large" in descs
     assert "Shipping" in descs
-    # Account code defaults to 200
-    assert all(li["AccountCode"] == "200" for li in inv["LineItems"])
+    # Product lines use account 253 with 20% VAT; shipping uses 204 NONE
+    prod_lines = [li for li in inv["LineItems"] if li.get("Description") == "Group Art Kit - Large"]
+    assert prod_lines and prod_lines[0]["AccountCode"] == "253"
+    assert prod_lines[0]["TaxType"] == "OUTPUT2"
+    ship_line = [li for li in inv["LineItems"] if li.get("Description") == "Shipping"][0]
+    assert ship_line["AccountCode"] == "204"
+    assert ship_line["TaxType"] == "NONE"
     # Reference uses the human display id
     assert "8067" in inv["Reference"]
+
+
+def test_invoice_payload_uses_xero_contact_id_when_known():
+    order = {
+        "id": "x",
+        "customer_label": "Acme",
+        "xero_contact_id": "8f3e-CONTACT-UUID",
+        "line_items": [{"name": "Kit", "quantity": 1, "subtotal": "10"}],
+    }
+    inv = xi._build_xero_invoice_payload(order)["Invoices"][0]
+    assert inv["Contact"] == {"ContactID": "8f3e-CONTACT-UUID"}
+
+
+def test_invoice_payload_po_number_creates_description_line():
+    order = {
+        "id": "x",
+        "display_order_id": 9001,
+        "customer_label": "Acme",
+        "po_number": "PO-2026-001",
+        "line_items": [{"name": "Kit", "quantity": 1, "subtotal": "10"}],
+    }
+    inv = xi._build_xero_invoice_payload(order)["Invoices"][0]
+    # First line should be PO description-only
+    first = inv["LineItems"][0]
+    assert first.get("Description") == "PO Number: PO-2026-001"
+    assert "AccountCode" not in first
+    assert "UnitAmount" not in first
+    # Reference includes PO
+    assert "PO PO-2026-001" in inv["Reference"]
+    assert "9001" in inv["Reference"]
 
 
 def test_invoice_payload_fallback_when_no_line_items():
@@ -62,8 +98,11 @@ def test_invoice_payload_fallback_when_no_line_items():
     }
     payload = xi._build_xero_invoice_payload(order)
     inv = payload["Invoices"][0]
-    assert len(inv["LineItems"]) == 1
-    assert inv["LineItems"][0]["UnitAmount"] == 25.0
+    # Fallback creates a single priced line
+    priced = [li for li in inv["LineItems"] if li.get("AccountCode")]
+    assert len(priced) == 1
+    assert priced[0]["UnitAmount"] == 25.0
+    assert priced[0]["AccountCode"] == "253"
 
 
 def test_invoice_payload_omits_contact_email_when_missing():

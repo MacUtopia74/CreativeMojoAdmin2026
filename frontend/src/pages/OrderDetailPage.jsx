@@ -41,6 +41,7 @@ export default function OrderDetailPage() {
   const [lineItems, setLineItems] = useState([]);
   const [shippingTotal, setShippingTotal] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [poNumber, setPoNumber] = useState("");
 
   const load = async () => {
     setLoading(true);
@@ -51,6 +52,7 @@ export default function OrderDetailPage() {
       setLineItems((data.line_items || []).map((li, i) => ({ ...li, _key: i })));
       setShippingTotal(data.shipping_total || "0.00");
       setDueDate(data.due_date || "");
+      setPoNumber(data.po_number || "");
     } catch (e) {
       setError(e?.response?.data?.detail || "Could not load order.");
     } finally {
@@ -100,6 +102,7 @@ export default function OrderDetailPage() {
         })),
         shipping_total: parseFloat(shippingTotal || 0),
         due_date: dueDate || null,
+        po_number: poNumber || null,
       });
       setOrder(data.order);
     } catch (e) {
@@ -154,17 +157,16 @@ export default function OrderDetailPage() {
 
   return (
     <div className="min-h-screen bg-stone-50" data-testid="order-detail-page">
-      {/* Header */}
-      <div className="bg-white border-b border-stone-200 px-8 py-6 flex items-center justify-between gap-4 flex-wrap">
-        <div>
+      {/* Header — compact */}
+      <div className="bg-white border-b border-stone-200 px-8 py-3 flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-3 flex-wrap">
           <Link to="/orders" className="text-xs text-stone-500 hover:text-stone-900 inline-flex items-center gap-1">
-            <ArrowLeft className="w-3 h-3" /> Back to orders
+            <ArrowLeft className="w-3 h-3" /> Orders
           </Link>
-          <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mt-2">
-            CRM · ORDER {isDraft ? "DRAFT" : ""}
-          </div>
-          <h1 className="text-3xl font-display font-black text-stone-950 mt-1 flex items-center gap-3 flex-wrap">
+          <div className="w-px h-5 bg-stone-200" />
+          <h1 className="text-xl font-display font-black text-stone-950 flex items-center gap-3 flex-wrap">
             <span>#{order.display_order_id || order.woo_number || order.legacy_order_id || order.id}</span>
+            {isDraft && <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200">DRAFT</span>}
             <ProductionStatusDropdown
               orderId={order.id}
               value={order.production_status}
@@ -257,11 +259,21 @@ export default function OrderDetailPage() {
         {/* Right: customer + meta */}
         <div className="space-y-6">
           <Card title="Customer">
-            <div className="text-sm text-stone-900 font-medium">{order.customer_label}</div>
+            {/* Large customer name — easy to scan at a glance, especially
+                useful when checking what's on the bench against what's
+                showing on the screen. */}
+            <div className="text-2xl font-display font-black text-stone-950 leading-tight" data-testid="customer-name">
+              {order.customer_label || "—"}
+            </div>
             {order.customer_email && (
-              <a className="text-xs text-stone-600 hover:underline mt-1 inline-block" href={`mailto:${order.customer_email}`}>
+              <a className="text-xs text-stone-600 hover:underline mt-1.5 inline-block" href={`mailto:${order.customer_email}`}>
                 {order.customer_email}
               </a>
+            )}
+            {order.xero_contact_id && (
+              <div className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+                <CheckCircle2 className="w-3 h-3" /> Matched in Xero
+              </div>
             )}
             <button
               type="button"
@@ -273,6 +285,16 @@ export default function OrderDetailPage() {
             </button>
           </Card>
 
+          <Card title="Delivery Address">
+            <AddressBlock addr={order.shipping} />
+          </Card>
+
+          {(order.billing?.address_1 || order.billing?.city) && (
+            <Card title="Billing Address">
+              <AddressBlock addr={order.billing} />
+            </Card>
+          )}
+
           <Card title="Order Info">
             <Row k="Channel" v={order.channel === "woocommerce" ? `Woo#${order.woo_number || order.id}` : "Direct"} />
             <Row k="Created" v={new Date(order.date_created).toLocaleString("en-GB")} />
@@ -283,6 +305,16 @@ export default function OrderDetailPage() {
                 onChange={(e) => setDueDate(e.target.value || "")}
                 data-testid="order-due-date-input"
                 className="px-2 py-1 border border-stone-300 rounded-md text-sm focus:outline-none focus:border-stone-900"
+              />
+            </Row>
+            <Row k="PO Number" inputable>
+              <input
+                type="text"
+                value={poNumber}
+                onChange={(e) => setPoNumber(e.target.value)}
+                data-testid="order-po-number-input"
+                placeholder="e.g. PO12345"
+                className="px-2 py-1 border border-stone-300 rounded-md text-sm focus:outline-none focus:border-stone-900 w-40 text-right"
               />
             </Row>
             <Row k="Payment" v={order.payment_status} />
@@ -321,6 +353,32 @@ function Row({ k, v, inputable, children }) {
     <div className="flex items-center justify-between py-1.5 text-sm">
       <span className="text-stone-500 text-xs uppercase tracking-wider">{k}</span>
       {inputable ? children : <span className="text-stone-900 text-right">{v}</span>}
+    </div>
+  );
+}
+
+// Renders a Woo billing/shipping address block. Skips empty fields so a
+// legacy order with only a `company` value doesn't render a wall of dashes.
+function AddressBlock({ addr }) {
+  if (!addr || (!addr.address_1 && !addr.city && !addr.postcode && !addr.company && !addr.first_name)) {
+    return (
+      <div className="text-xs text-stone-500 italic" data-testid="address-block-empty">
+        No address on file — edit the customer's Xero record or change the order's customer.
+      </div>
+    );
+  }
+  const name = [addr.first_name, addr.last_name].filter(Boolean).join(" ").trim();
+  const cityLine = [addr.city, addr.state].filter(Boolean).join(", ");
+  return (
+    <div className="text-sm text-stone-900 leading-snug" data-testid="address-block">
+      {name && <div className="font-semibold">{name}</div>}
+      {addr.company && <div>{addr.company}</div>}
+      {addr.address_1 && <div>{addr.address_1}</div>}
+      {addr.address_2 && <div>{addr.address_2}</div>}
+      {cityLine && <div>{cityLine}</div>}
+      {addr.postcode && <div className="font-mono text-stone-700">{addr.postcode}</div>}
+      {addr.country && addr.country !== "GB" && <div className="text-xs text-stone-500 uppercase tracking-wider mt-1">{addr.country}</div>}
+      {addr.phone && <div className="text-xs text-stone-600 mt-1.5">☎ {addr.phone}</div>}
     </div>
   );
 }
