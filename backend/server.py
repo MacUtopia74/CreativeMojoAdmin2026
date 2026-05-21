@@ -3019,13 +3019,16 @@ async def on_shutdown():
 from gocardless_integration import build_router as build_gocardless_router  # noqa: E402
 api.include_router(build_gocardless_router(db, require_role))
 
+# Phase 2 — Stage C: Xero accounting integration (OAuth + draft invoices + payment webhook)
+# Mount BEFORE woocommerce_integration so xero's more-specific /orders/* routes
+# (reconciliation, auto-match-xero, link-xero-contact) win over the Woo
+# catch-all /orders/{order_id}.
+import xero_integration  # noqa: E402
+xero_integration.attach(api, db, require_role)
+
 # Phase 2 — WooCommerce live sync (Stage A: read-only orders + product mirror)
 import woocommerce_integration  # noqa: E402
 woocommerce_integration.attach(api, db, require_role)
-
-# Phase 2 — Stage C: Xero accounting integration (OAuth + draft invoices + payment webhook)
-import xero_integration  # noqa: E402
-xero_integration.attach(api, db, require_role)
 
 # Phase 3 — FileCamp → R2 migration + admin file browser
 from filecamp_migration import build_router as build_migration_router  # noqa: E402

@@ -6,12 +6,14 @@
 // Minimal scope: just enough fields to seed the order. Full line-item +
 // product-autocomplete editing happens on the detail page after creation.
 import { useState } from "react";
-import { X, Loader2, Plus } from "lucide-react";
+import { X, Loader2, Plus, CheckCircle2 } from "lucide-react";
 import api from "@/lib/api";
+import XeroContactPicker from "@/components/orders/XeroContactPicker";
 
 export default function CreateOrderModal({ open, onClose, onCreated }) {
   const [customer, setCustomer] = useState("");
   const [email, setEmail] = useState("");
+  const [xeroContactId, setXeroContactId] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [shipping, setShipping] = useState("0.00");
   const [submitting, setSubmitting] = useState(false);
@@ -20,8 +22,8 @@ export default function CreateOrderModal({ open, onClose, onCreated }) {
   if (!open) return null;
 
   const reset = () => {
-    setCustomer(""); setEmail(""); setDueDate("");
-    setShipping("0.00"); setError("");
+    setCustomer(""); setEmail(""); setXeroContactId("");
+    setDueDate(""); setShipping("0.00"); setError("");
   };
   const handleClose = () => { reset(); onClose && onClose(); };
 
@@ -37,6 +39,16 @@ export default function CreateOrderModal({ open, onClose, onCreated }) {
         shipping_total: parseFloat(shipping || 0),
         line_items: [],
       });
+      // If we have a Xero contact selected, link the order to it.
+      if (xeroContactId) {
+        try {
+          await api.post(`/orders/${data.id}/link-xero-contact`, {
+            xero_contact_id: xeroContactId,
+            name: customer.trim(),
+            email: email.trim() || undefined,
+          });
+        } catch (_) { /* non-fatal */ }
+      }
       reset();
       onCreated && onCreated(data.id);
     } catch (e) {
@@ -69,15 +81,24 @@ export default function CreateOrderModal({ open, onClose, onCreated }) {
           )}
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">Customer name / company</label>
-            <input
-              type="text"
+            <XeroContactPicker
               value={customer}
-              onChange={(e) => setCustomer(e.target.value)}
+              emailValue={email}
+              onChange={(v) => { setCustomer(v); setXeroContactId(""); }}
+              onSelect={(c) => {
+                setCustomer(c.name || "");
+                if (c.email) setEmail(c.email);
+                setXeroContactId(c.contact_id);
+              }}
               placeholder="e.g. The Haven Care Home"
-              data-testid="create-order-customer"
+              testid="create-order-customer-picker"
               autoFocus
-              className="w-full px-3 py-2 border border-stone-300 rounded-lg text-sm focus:outline-none focus:border-stone-900"
             />
+            {xeroContactId && (
+              <div className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700">
+                <CheckCircle2 className="w-3 h-3" /> Linked to Xero contact
+              </div>
+            )}
           </div>
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">Email (optional)</label>

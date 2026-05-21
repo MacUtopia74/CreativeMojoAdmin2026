@@ -16,6 +16,7 @@ import {
   CheckCircle2, FileText, Receipt, CreditCard, UserCog, ChevronDown, AlertCircle,
 } from "lucide-react";
 import api from "@/lib/api";
+import XeroContactPicker from "@/components/orders/XeroContactPicker";
 
 const PRODUCTION_OPTIONS = [
   "Awaiting Assembly",
@@ -323,6 +324,12 @@ export default function OrderDetailPage() {
         order={order}
         onClose={() => setChangeCustomerOpen(false)}
         onSaved={(label, email) => handleAction("change_customer", { customer_label: label, customer_email: email })}
+        onLinkXero={async (body) => {
+          try {
+            await api.post(`/orders/${orderId}/link-xero-contact`, body);
+            await load();
+          } catch (_) { /* non-fatal */ }
+        }}
       />
     </div>
   );
@@ -523,13 +530,15 @@ function ActionsDropdown({ isDraft, open, setOpen, onAction, onChangeCustomer })
   );
 }
 
-function ChangeCustomerModal({ open, order, onClose, onSaved }) {
+function ChangeCustomerModal({ open, order, onClose, onSaved, onLinkXero }) {
   const [label, setLabel] = useState("");
   const [email, setEmail] = useState("");
+  const [xeroContactId, setXeroContactId] = useState("");
   useEffect(() => {
     if (open && order) {
       setLabel(order.customer_label || "");
       setEmail(order.customer_email || "");
+      setXeroContactId(order.xero_contact_id || "");
     }
   }, [open, order]);
   if (!open) return null;
@@ -541,14 +550,33 @@ function ChangeCustomerModal({ open, order, onClose, onSaved }) {
           <button type="button" onClick={onClose} className="text-stone-400 hover:text-stone-900" aria-label="Close"><X className="w-5 h-5" /></button>
         </div>
         <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">Customer name / company</label>
-        <input value={label} onChange={(e) => setLabel(e.target.value)} data-testid="change-customer-label"
-          className="w-full px-3 py-2 border border-stone-300 rounded-lg text-sm focus:outline-none focus:border-stone-900 mb-3" />
-        <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">Email</label>
+        <XeroContactPicker
+          value={label}
+          emailValue={email}
+          onChange={(v) => { setLabel(v); setXeroContactId(""); }}
+          onSelect={(c) => {
+            setLabel(c.name || "");
+            if (c.email) setEmail(c.email);
+            setXeroContactId(c.contact_id);
+          }}
+          testid="change-customer-picker"
+          placeholder="Search Xero customers…"
+        />
+        {xeroContactId && (
+          <div className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700">
+            <CheckCircle2 className="w-3 h-3" /> Linked to Xero
+          </div>
+        )}
+        <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1 mt-3">Email</label>
         <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} data-testid="change-customer-email"
           className="w-full px-3 py-2 border border-stone-300 rounded-lg text-sm focus:outline-none focus:border-stone-900" />
         <div className="mt-5 flex justify-end gap-2">
           <button type="button" onClick={onClose} className="px-3 py-2 text-sm border border-stone-300 rounded-lg hover:bg-stone-50">Cancel</button>
-          <button type="button" onClick={() => { onSaved(label.trim(), email.trim()); onClose(); }}
+          <button type="button" onClick={async () => {
+              await onSaved(label.trim(), email.trim());
+              if (xeroContactId) await onLinkXero?.({ xero_contact_id: xeroContactId, name: label.trim(), email: email.trim() });
+              onClose();
+            }}
             data-testid="change-customer-save"
             className="px-4 py-2 bg-stone-950 text-white text-xs font-bold uppercase tracking-wider rounded-lg hover:bg-stone-800">Save</button>
         </div>

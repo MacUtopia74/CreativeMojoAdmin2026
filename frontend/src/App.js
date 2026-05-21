@@ -27,6 +27,7 @@ import FindClassAdminPage from "@/pages/FindClassAdminPage";
 import AdminUsersPage from "@/pages/AdminUsersPage";
 import ChangePasswordPage from "@/pages/ChangePasswordPage";
 import XeroSettingsPage from "@/pages/XeroSettingsPage";
+import OrdersReconciliationPage from "@/pages/OrdersReconciliationPage";
 // Invoices module (merged from Pay-Paperwork)
 import InvoiceList from "@/pages/invoices/InvoiceList";
 import CreateInvoice from "@/pages/invoices/CreateInvoice";
@@ -86,6 +87,7 @@ export default function App() {
               <Route path="/banking" element={<BankingPage />} />
               <Route path="/mojo-orders" element={<MojoOrdersPage />} />
               <Route path="/orders" element={<OrdersPage />} />
+              <Route path="/orders/reconcile" element={<OrdersReconciliationPage />} />
               <Route path="/orders/:orderId" element={<OrderDetailPage />} />
               <Route path="/find-class" element={<FindClassAdminPage />} />
               <Route path="/admin/users" element={<AdminUsersPage />} />

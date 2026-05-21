@@ -396,27 +396,305 @@ def attach(api, db, require_role):
         search: Optional[str] = None,
         _: dict = Depends(require_role("admin")),
     ):
-        """Proxy a thin list of Xero contacts. Used by the future
-        "match customer in Xero" picker on the order detail page."""
+        """Used by the customer autocomplete + reconciliation picker. We
+        ALSO cache every contact we see in ``xero_contacts_cache`` so
+        further searches (and matching by email later) can hit Mongo
+        instead of Xero — much faster, and avoids burning rate-limit."""
         params = {}
-        if search:
+        if search and len(search) >= 2:
             # Escape any double-quote / backslash so the OData filter we
             # forward to Xero stays valid even if a user pastes a quoted
             # search term.
-            safe = search.lower().replace("\\", "").replace('"', "")
-            params["where"] = f'Name.ToLower().Contains("{safe}") OR EmailAddress.ToLower().Contains("{safe}")'
+            safe = search.replace("\\", "").replace('"', "")
+            safe_lower = safe.lower()
+            # Try cache first — return immediately if we have any matches.
+            q = {"$or": [
+                {"name_lc": {"$regex": safe_lower}},
+                {"email_lc": {"$regex": safe_lower}},
+            ]}
+            cached = await db.xero_contacts_cache.find(q, {"_id": 0}).limit(25).to_list(25)
+            if cached:
+                return {"contacts": [
+                    {"contact_id": c["contact_id"], "name": c["name"], "email": c.get("email"), "status": c.get("status")}
+                    for c in cached
+                ], "from_cache": True}
+            params["where"] = f'Name.ToLower().Contains("{safe_lower}") OR EmailAddress.ToLower().Contains("{safe_lower}")'
         data = await _xero_get(db, "/Contacts", params=params)
-        return {
-            "contacts": [
-                {
-                    "contact_id": c.get("ContactID"),
-                    "name": c.get("Name"),
-                    "email": c.get("EmailAddress"),
-                    "status": c.get("ContactStatus"),
-                }
-                for c in (data.get("Contacts") or [])[:200]
-            ]
+        contacts = [
+            {
+                "contact_id": c.get("ContactID"),
+                "name": c.get("Name"),
+                "email": c.get("EmailAddress"),
+                "status": c.get("ContactStatus"),
+            }
+            for c in (data.get("Contacts") or [])
+        ]
+        # Upsert to cache for next time.
+        if contacts:
+            ops = []
+            for c in contacts:
+                ops.append({
+                    "contact_id": c["contact_id"],
+                    "name": c["name"] or "",
+                    "name_lc": (c["name"] or "").lower(),
+                    "email": c.get("email"),
+                    "email_lc": (c.get("email") or "").lower(),
+                    "status": c.get("status"),
+                    "synced_at": _now().isoformat(),
+                })
+            for o in ops:
+                await db.xero_contacts_cache.update_one(
+                    {"contact_id": o["contact_id"]}, {"$set": o}, upsert=True
+                )
+        return {"contacts": contacts[:200]}
+
+    @api.post("/xero/contacts/sync")
+    async def sync_xero_contacts(_: dict = Depends(require_role("admin"))):
+        """Pull every Xero contact into our cache. Used during reconcile
+        so we can match orders → Xero contacts entirely offline."""
+        access_token, tenant_id = await get_valid_token(db)
+        page = 1
+        total = 0
+        async with httpx.AsyncClient(timeout=30) as client:
+            while True:
+                r = await client.get(
+                    f"{XERO_API_BASE}/Contacts",
+                    params={"page": page, "pageSize": 500, "includeArchived": "false"},
+                    headers={
+                        "Authorization": f"Bearer {access_token}",
+                        "Xero-Tenant-Id": tenant_id,
+                        "Accept": "application/json",
+                    },
+                )
+                if r.status_code != 200:
+                    raise HTTPException(r.status_code, f"Xero sync failed: {r.text[:300]}")
+                batch = (r.json().get("Contacts") or [])
+                if not batch:
+                    break
+                for c in batch:
+                    name = c.get("Name") or ""
+                    email = c.get("EmailAddress") or ""
+                    await db.xero_contacts_cache.update_one(
+                        {"contact_id": c.get("ContactID")},
+                        {"$set": {
+                            "contact_id": c.get("ContactID"),
+                            "name": name,
+                            "name_lc": name.lower(),
+                            "email": email,
+                            "email_lc": email.lower(),
+                            "status": c.get("ContactStatus"),
+                            "synced_at": _now().isoformat(),
+                        }},
+                        upsert=True,
+                    )
+                total += len(batch)
+                if len(batch) < 500:
+                    break
+                page += 1
+        return {"ok": True, "synced": total}
+
+    @api.post("/xero/contacts/create")
+    async def create_xero_contact(
+        body: dict,
+        _: dict = Depends(require_role("admin")),
+    ):
+        """Create a brand new Contact in Xero (and cache it locally).
+
+        Body: ``{name, email, first_name?, last_name?, phone?}``.
+        Returns the new contact id so the caller can immediately link
+        it onto an order."""
+        name = (body or {}).get("name", "").strip()
+        if not name:
+            raise HTTPException(400, "Name is required")
+        email = (body or {}).get("email", "").strip() or None
+        phone = (body or {}).get("phone", "").strip() or None
+        payload = {"Contacts": [{
+            "Name": name,
+            **({"EmailAddress": email} if email else {}),
+            **({"FirstName": body.get("first_name")} if body.get("first_name") else {}),
+            **({"LastName": body.get("last_name")} if body.get("last_name") else {}),
+            **({"Phones": [{"PhoneType": "DEFAULT", "PhoneNumber": phone}]} if phone else {}),
+        }]}
+        resp = await _xero_post(db, "/Contacts", payload)
+        contacts = resp.get("Contacts") or []
+        if not contacts:
+            raise HTTPException(502, f"Xero returned no contact: {resp}")
+        c = contacts[0]
+        out = {
+            "contact_id": c.get("ContactID"),
+            "name": c.get("Name"),
+            "email": c.get("EmailAddress"),
+            "status": c.get("ContactStatus"),
         }
+        # Cache immediately.
+        await db.xero_contacts_cache.update_one(
+            {"contact_id": out["contact_id"]},
+            {"$set": {
+                **out,
+                "name_lc": (out["name"] or "").lower(),
+                "email_lc": (out.get("email") or "").lower(),
+                "synced_at": _now().isoformat(),
+                "created_via_admin": True,
+            }},
+            upsert=True,
+        )
+        return out
+
+    @api.post("/orders/{order_id}/link-xero-contact")
+    async def link_order_to_xero_contact(
+        order_id: str,
+        body: dict,
+        _: dict = Depends(require_role("admin")),
+    ):
+        """Store a Xero ContactID on the order so future invoices route
+        to the right customer file and so the Reconcile page can hide it.
+
+        Body: ``{xero_contact_id, name?, email?}``. If name/email are
+        provided we also update the order's customer_label/email so the
+        list view picks up the canonical Xero values."""
+        order = await db.woo_orders.find_one({"id": order_id}, {"_id": 0})
+        if not order:
+            raise HTTPException(404, "Order not found")
+        xcid = (body or {}).get("xero_contact_id")
+        if not xcid:
+            raise HTTPException(400, "xero_contact_id is required")
+        updates = {
+            "xero_contact_id": xcid,
+            "xero_contact_name": (body or {}).get("name"),
+            "xero_contact_match_status": "matched",
+            "updated_at": _now().isoformat(),
+        }
+        if body.get("name"):
+            updates["customer_label"] = body["name"]
+        if body.get("email"):
+            updates["customer_email"] = body["email"]
+        await db.woo_orders.update_one({"id": order_id}, {"$set": updates})
+        return {"ok": True, "xero_contact_id": xcid}
+
+    @api.post("/orders/{order_id}/unlink-xero-contact")
+    async def unlink_order_from_xero(
+        order_id: str,
+        _: dict = Depends(require_role("admin")),
+    ):
+        await db.woo_orders.update_one(
+            {"id": order_id},
+            {"$set": {"xero_contact_match_status": "needs_review", "updated_at": _now().isoformat()},
+             "$unset": {"xero_contact_id": "", "xero_contact_name": ""}},
+        )
+        return {"ok": True}
+
+    @api.get("/orders/reconciliation")
+    async def orders_reconciliation(
+        search: Optional[str] = None,
+        skip: int = 0,
+        limit: int = 50,
+        _: dict = Depends(require_role("admin")),
+    ):
+        """List orders that aren't yet linked to a Xero contact. Returns
+        a suggested match per row (best email or name hit in the cache)
+        so the admin can usually one-click confirm."""
+        match = {"xero_contact_id": {"$in": [None, ""]}}
+        # Apply the same default exclude rule as the Active tab.
+        if search:
+            s = search.strip()
+            match["$or"] = [
+                {"customer_label": {"$regex": s, "$options": "i"}},
+                {"customer_email": {"$regex": s, "$options": "i"}},
+                {"display_order_id": s if not s.isdigit() else int(s)} if s.isdigit() else {"display_order_id": s},
+            ]
+        # Hide explicitly skipped ones unless searching.
+        if not search:
+            match["xero_contact_match_status"] = {"$ne": "skipped"}
+        total = await db.woo_orders.count_documents(match)
+        cursor = (
+            db.woo_orders.find(match, {"_id": 0, "raw": 0})
+            .sort("date_created", -1)
+            .skip(skip).limit(limit)
+        )
+        items = []
+        async for o in cursor:
+            email = (o.get("customer_email") or "").lower()
+            name = (o.get("customer_label") or "").lower()
+            suggestion = None
+            if email:
+                suggestion = await db.xero_contacts_cache.find_one({"email_lc": email}, {"_id": 0})
+            if not suggestion and name:
+                # Try exact name match first
+                suggestion = await db.xero_contacts_cache.find_one({"name_lc": name}, {"_id": 0})
+            items.append({
+                "id": o["id"],
+                "display_order_id": o.get("display_order_id"),
+                "woo_number": o.get("woo_number"),
+                "legacy_order_id": o.get("legacy_order_id"),
+                "channel": o.get("channel"),
+                "date_created": o.get("date_created"),
+                "customer_label": o.get("customer_label"),
+                "customer_email": o.get("customer_email"),
+                "total": o.get("total"),
+                "suggested_xero": ({
+                    "contact_id": suggestion["contact_id"],
+                    "name": suggestion.get("name"),
+                    "email": suggestion.get("email"),
+                    "match_by": "email" if suggestion.get("email_lc") == email else "name",
+                } if suggestion else None),
+            })
+        return {"items": items, "total": total, "skip": skip, "limit": limit}
+
+    @api.post("/orders/{order_id}/skip-xero-reconcile")
+    async def skip_xero_reconcile(
+        order_id: str,
+        _: dict = Depends(require_role("admin")),
+    ):
+        await db.woo_orders.update_one(
+            {"id": order_id},
+            {"$set": {"xero_contact_match_status": "skipped", "updated_at": _now().isoformat()}},
+        )
+        return {"ok": True}
+
+    @api.post("/orders/auto-match-xero")
+    async def bulk_auto_match_xero(_: dict = Depends(require_role("admin"))):
+        """Walk every unlinked order, try to find a Xero contact by
+        case-insensitive email or exact name match, and link it. Returns
+        a summary so the admin knows how many still need attention."""
+        # Build an in-memory map of email/name -> contact_id for speed
+        cache_emails: dict[str, dict] = {}
+        cache_names: dict[str, dict] = {}
+        async for c in db.xero_contacts_cache.find({}, {"_id": 0}):
+            if c.get("email_lc"):
+                cache_emails[c["email_lc"]] = c
+            if c.get("name_lc"):
+                cache_names[c["name_lc"]] = c
+        if not cache_emails and not cache_names:
+            raise HTTPException(400, "Xero contacts cache is empty — click 'Sync Xero contacts' first.")
+        matched_email = 0
+        matched_name = 0
+        async for o in db.woo_orders.find(
+            {"xero_contact_id": {"$in": [None, ""]}},
+            {"_id": 0, "id": 1, "customer_email": 1, "customer_label": 1},
+        ):
+            email = (o.get("customer_email") or "").lower().strip()
+            name = (o.get("customer_label") or "").lower().strip()
+            hit = cache_emails.get(email) if email else None
+            match_by = "email"
+            if not hit and name:
+                hit = cache_names.get(name)
+                match_by = "name"
+            if hit:
+                await db.woo_orders.update_one(
+                    {"id": o["id"]},
+                    {"$set": {
+                        "xero_contact_id": hit["contact_id"],
+                        "xero_contact_name": hit.get("name"),
+                        "xero_contact_match_status": f"auto_matched_by_{match_by}",
+                        "updated_at": _now().isoformat(),
+                    }},
+                )
+                if match_by == "email":
+                    matched_email += 1
+                else:
+                    matched_name += 1
+        remaining = await db.woo_orders.count_documents({"xero_contact_id": {"$in": [None, ""]}, "xero_contact_match_status": {"$ne": "skipped"}})
+        return {"ok": True, "matched_by_email": matched_email, "matched_by_name": matched_name, "remaining": remaining}
 
     @api.post("/xero/orders/{order_id}/create-invoice")
     async def create_invoice_from_order(

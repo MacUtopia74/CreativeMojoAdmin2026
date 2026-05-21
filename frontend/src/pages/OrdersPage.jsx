@@ -160,14 +160,23 @@ export default function OrdersPage() {
             {tab === "draft" && "Draft Orders"}
           </h1>
         </div>
-        <button
-          type="button"
-          onClick={() => setCreateOpen(true)}
-          data-testid="create-order-button"
-          className="px-4 py-2 border border-stone-300 bg-white text-stone-900 text-xs font-bold uppercase tracking-wider hover:bg-stone-50 rounded-lg transition-colors flex items-center gap-2"
-        >
-          <Plus className="w-3.5 h-3.5" /> Create Order
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/orders/reconcile"
+            data-testid="open-reconcile"
+            className="px-4 py-2 border border-stone-300 bg-white text-stone-900 text-xs font-bold uppercase tracking-wider hover:bg-stone-50 rounded-lg transition-colors flex items-center gap-2"
+          >
+            Match to Xero
+          </Link>
+          <button
+            type="button"
+            onClick={() => setCreateOpen(true)}
+            data-testid="create-order-button"
+            className="px-4 py-2 border border-stone-300 bg-white text-stone-900 text-xs font-bold uppercase tracking-wider hover:bg-stone-50 rounded-lg transition-colors flex items-center gap-2"
+          >
+            <Plus className="w-3.5 h-3.5" /> Create Order
+          </button>
+        </div>
       </div>
 
       {/* Filter row — tab pills + Show Products toggle + search */}
