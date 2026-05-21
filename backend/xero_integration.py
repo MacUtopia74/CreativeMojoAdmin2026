@@ -59,7 +59,7 @@ XERO_AUTH_URL = "https://login.xero.com/identity/connect/authorize"
 XERO_TOKEN_URL = "https://identity.xero.com/connect/token"
 XERO_CONNECTIONS_URL = "https://api.xero.com/connections"
 XERO_API_BASE = "https://api.xero.com/api.xro/2.0"
-DEFAULT_SCOPES = "offline_access accounting.transactions accounting.contacts accounting.settings"
+DEFAULT_SCOPES = "openid profile email offline_access accounting.transactions accounting.contacts"
 
 # Singleton key used in the xero_tokens collection — we only ever connect a
 # single Creative Mojo Ltd. tenant, so one document is enough.
