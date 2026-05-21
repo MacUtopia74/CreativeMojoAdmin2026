@@ -292,6 +292,8 @@ def attach(api, db, require_role):
                 {"customer_email": rx},
                 {"woo_number": rx},
                 {"id": rx},
+                {"legacy_order_id": rx},
+                {"display_order_id": int(search.strip()) if search.strip().isdigit() else -1},
                 {"line_items.name": rx},
                 {"line_items.sku": rx},
             ]
