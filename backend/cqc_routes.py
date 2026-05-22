@@ -331,15 +331,35 @@ def build_cqc_router(db, require_role):  # noqa: D401
         await db.cqc_definition.update_one(
             {"_id": DEFAULT_DEFINITION_ID}, {"$set": doc}, upsert=True,
         )
-        # Refresh every franchisee's territory_home_count
+        # Refresh every franchisee's territory_home_count — counts now
+        # include Scottish portions via scotland_care_services when sectors
+        # fall in Scottish postcode prefixes.
+        from scotland_routes import (
+            is_scottish_postcode as _is_scot,
+            ScotlandDefinition as _ScotDef,
+            definition_to_mongo_filter as _scot_f,
+            DEFAULT_DEFINITION_ID as _scot_id,
+        )
+        scot_doc = await db.scotland_definition.find_one({"_id": _scot_id}, {"_id": 0})
+        scot_def = _ScotDef(**scot_doc) if scot_doc else _ScotDef()
+        scot_filter = _scot_f(scot_def)
         franchisees_updated = 0
         cur = db.franchisees.find({"territory_sectors": {"$exists": True, "$ne": []}}, {"_id": 0, "id": 1, "territory_sectors": 1})
         async for f in cur:
-            cnt = await db.cqc_locations_live.count_documents({
-                **definition_to_mongo_filter(body),
-                "postcode_sector": {"$in": f["territory_sectors"]},
-            })
-            await db.franchisees.update_one({"id": f["id"]}, {"$set": {"territory_home_count": cnt}})
+            eng_sectors = [s for s in f["territory_sectors"] if not _is_scot(s)]
+            scot_sectors = [s for s in f["territory_sectors"] if _is_scot(s)]
+            eng_cnt = 0
+            if eng_sectors:
+                eng_cnt = await db.cqc_locations_live.count_documents({
+                    **definition_to_mongo_filter(body),
+                    "postcode_sector": {"$in": eng_sectors},
+                })
+            scot_cnt = 0
+            if scot_sectors:
+                scot_cnt = await db.scotland_care_services.count_documents({
+                    **scot_filter, "postcode_sector": {"$in": scot_sectors},
+                })
+            await db.franchisees.update_one({"id": f["id"]}, {"$set": {"territory_home_count": eng_cnt + scot_cnt}})
             franchisees_updated += 1
         # Also refresh every saved Territory Plan (prospect / Saved Plans
         # panel) so the home counts on prospects line up with the new
@@ -348,11 +368,16 @@ def build_cqc_router(db, require_role):  # noqa: D401
         plans_updated = 0
         cur = db.territory_plans.find({"sectors": {"$exists": True, "$ne": []}}, {"_id": 0, "id": 1, "sectors": 1})
         async for p in cur:
-            cnt = await db.cqc_locations_live.count_documents({
+            eng_sectors = [s for s in p["sectors"] if not _is_scot(s)]
+            scot_sectors = [s for s in p["sectors"] if _is_scot(s)]
+            eng_cnt = await db.cqc_locations_live.count_documents({
                 **definition_to_mongo_filter(body),
-                "postcode_sector": {"$in": p["sectors"]},
-            })
-            await db.territory_plans.update_one({"id": p["id"]}, {"$set": {"home_count": cnt}})
+                "postcode_sector": {"$in": eng_sectors},
+            }) if eng_sectors else 0
+            scot_cnt = await db.scotland_care_services.count_documents({
+                **scot_filter, "postcode_sector": {"$in": scot_sectors},
+            }) if scot_sectors else 0
+            await db.territory_plans.update_one({"id": p["id"]}, {"$set": {"home_count": eng_cnt + scot_cnt}})
             plans_updated += 1
         return {
             **body.model_dump(),

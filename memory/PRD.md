@@ -1,10 +1,15 @@
 # Creative Mojo — Unified Admin Platform PRD
 
-## Latest change — Per-user nav permissions (RBAC) (May 22 2026)
-- **Backend**: new `nav_permissions` field on `users` collection. `null` (default) = full access; explicit list of keys pins the admin to those sidebar pages. Validated against a server-side whitelist (`ADMIN_NAV_KEYS`). Endpoints affected: `POST /api/auth/users`, `PATCH /api/auth/users/{id}`, `GET /api/auth/me`, `GET /api/auth/users`. Self-lockout guard — an admin cannot remove their own access to the Admin Users page.
-- **Frontend Layout (`Layout.js`)**: every sidebar leaf now carries a `permKey`. When the logged-in user has a `nav_permissions` list, the sidebar tree is filtered (groups/subgroups + adjacent dividers collapse out) AND a `useEffect` page-guard redirects forbidden URLs to the user's first allowed page. Shared `ADMIN_NAV_KEYS` constant (key + label + matching path prefixes) is the single source of truth.
-- **Admin Users page**: every admin row has a new "Permissions" button + badge (`Full access` or `N pages`). Modal lets you tick the unrestricted box OR pick specific pages; **"Sandra preset"** one-click sets `franchisees / calendar / invoices`. Save PATCHes `/auth/users/{id}` with `nav_permissions`.
-- Verified end-to-end: Paul (admin) restricted Sandra to 3 pages; logged in as Sandra → sidebar showed only those + force-redirect on `/orders` and `/admin/users` to `/franchisees`; cleared restriction → full access returned.
+## Latest change — Scottish Care Inspectorate dataset wired in (May 22 2026)
+- **Backend**:
+  - New `scotland_routes.py` (CSV-driven, no API). Endpoints: `GET/PUT /api/scotland/definition`, `GET /api/scotland/definition/preview`, `GET /api/scotland/distinct?field=careService|subtype|clientGroup|councilArea`, `POST /api/scotland/import` (multipart CSV upload), `GET /api/scotland/import/status`. CSV import is atomic — load into `scotland_care_services_tmp`, drop old, rename. Indexed on `csNumber` (unique), `postcode_sector`, `careService`, `subtype`, `clientGroup`, `councilArea`, `serviceStatus`.
+  - `territory_routes.py` is now country-aware: `_count_homes_per_sector` and `_list_homes` automatically split a sector list into Scottish (→ `scotland_care_services` + `scotland_definition`) vs rest-of-UK (→ `cqc_locations_live` + `cqc_definition`). All five `/territory/*` endpoints (`sectors-near`, `sector-polygons`, `homes`, `homes-count`, plus the polygon back-compat alias) inherit the merge automatically.
+  - `PUT /cqc/definition` AND `PUT /scotland/definition` now both recompute franchisee `territory_home_count` by summing English + Scottish portions of each franchisee's sector list (so border franchisees stay correct).
+  - **Auto-detection by postcode prefix.** `is_scottish_postcode()` checks the standard 16 Scottish UK postcode prefixes (AB / DD / DG / EH / FK / G / HS / IV / KA / KW / KY / ML / PA / PH / TD / ZE). No "which database" toggle is required when adding a new franchisee — every sector self-identifies. Validated: Central Scotland (#0046) went from 0 → 140 homes once the rule was saved.
+- **Frontend**:
+  - New page `ScotlandDefinitionsPage.jsx` (route `/scotland-definitions`, sidebar entry under Admin). Upload-CSV banner + facet chip groups (Care Service / Subtype / Client Group) + min beds + min grade + active toggle + live preview pane (count + top councils + sample homes).
+  - Added `scotland-definitions` to the permission whitelist (backend `ADMIN_NAV_KEYS` + frontend `Layout.ADMIN_NAV_KEYS`).
+  - Initial CSV loaded: April 2026 Datastore (10,583 services). Initial rule: `Care Home Service` + Active. 1,368 services match.
 
 
 

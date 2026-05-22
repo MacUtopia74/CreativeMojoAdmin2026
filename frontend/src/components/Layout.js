@@ -72,6 +72,7 @@ const SIDEBAR = [
     children: [
       { kind: "item", to: "/find-class", label: "Find-a-Class", icon: MapPin, testid: "nav-find-class", permKey: "find-class" },
       { kind: "item", to: "/cqc-definitions", label: "CQC Definitions", icon: Stethoscope, testid: "nav-cqc-definitions", permKey: "cqc-definitions" },
+      { kind: "item", to: "/scotland-definitions", label: "Scotland Definitions", icon: Stethoscope, testid: "nav-scotland-definitions", permKey: "scotland-definitions" },
       {
         kind: "subgroup", key: "sandras", label: "Sandra's Invoices", icon: Receipt,
         children: [
@@ -106,6 +107,7 @@ export const ADMIN_NAV_KEYS = [
   { key: "calendar",         label: "Calendar",             paths: ["/calendar"] },
   { key: "find-class",       label: "Find-a-Class",         paths: ["/find-class"] },
   { key: "cqc-definitions",  label: "CQC Definitions",      paths: ["/cqc-definitions"] },
+  { key: "scotland-definitions", label: "Scotland Definitions", paths: ["/scotland-definitions"] },
   { key: "invoices",         label: "Sandra's Invoices",    paths: ["/invoices"] },
   { key: "banking",          label: "Banking",              paths: ["/banking"] },
   { key: "admin-users",      label: "Admin Users",          paths: ["/admin/users", "/admin/password-resets"] },

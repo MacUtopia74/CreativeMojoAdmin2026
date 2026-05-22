@@ -32,6 +32,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from cqc_routes import CqcDefinition, definition_to_mongo_filter, DEFAULT_DEFINITION_ID
+from scotland_routes import (
+    ScotlandDefinition,
+    definition_to_mongo_filter as scot_definition_to_mongo_filter,
+    DEFAULT_DEFINITION_ID as SCOT_DEFINITION_ID,
+    is_scottish_postcode,
+)
 
 logger = logging.getLogger("creative-mojo-admin.territory")
 
@@ -96,6 +102,86 @@ def build_territory_router(db, require_role):  # noqa: D401
         if await db.cqc_locations_live.count_documents({}, limit=1):
             return db.cqc_locations_live
         return db.cqc_locations
+
+    async def _scotland_filter() -> dict:
+        doc = await db.scotland_definition.find_one({"_id": SCOT_DEFINITION_ID}, {"_id": 0})
+        d = ScotlandDefinition(**doc) if doc else ScotlandDefinition()
+        return scot_definition_to_mongo_filter(d)
+
+    def _split_sectors_by_country(sectors: list[str]) -> tuple[list[str], list[str]]:
+        """Partition sector codes into Scottish and rest-of-UK lists so the
+        right data source can be queried for each."""
+        scot: list[str] = []
+        rest: list[str] = []
+        for s in sectors:
+            (scot if is_scottish_postcode(s) else rest).append(s)
+        return scot, rest
+
+    async def _count_homes_per_sector(sectors: list[str]) -> dict:
+        """Total homes per sector across BOTH CQC + Scotland sources."""
+        if not sectors:
+            return {}
+        scot, rest = _split_sectors_by_country(sectors)
+        merged: dict[str, int] = {}
+        if rest:
+            homes_coll = await _homes_collection()
+            base = await _homes_filter()
+            cur = homes_coll.aggregate([
+                {"$match": {**base, "postcode_sector": {"$in": rest}}},
+                {"$group": {"_id": "$postcode_sector", "n": {"$sum": 1}}},
+            ])
+            for r in await cur.to_list(5000):
+                merged[r["_id"]] = merged.get(r["_id"], 0) + r["n"]
+        if scot:
+            base = await _scotland_filter()
+            cur = db.scotland_care_services.aggregate([
+                {"$match": {**base, "postcode_sector": {"$in": scot}}},
+                {"$group": {"_id": "$postcode_sector", "n": {"$sum": 1}}},
+            ])
+            for r in await cur.to_list(5000):
+                merged[r["_id"]] = merged.get(r["_id"], 0) + r["n"]
+        return merged
+
+    async def _list_homes(sectors: list[str], limit: int) -> list[dict]:
+        """Return raw home documents for the sector list, normalising
+        Scottish records into the same shape the frontend expects from
+        CQC docs (id / name / postcode / careHome flag)."""
+        if not sectors:
+            return []
+        scot, rest = _split_sectors_by_country(sectors)
+        out: list[dict] = []
+        if rest:
+            homes_coll = await _homes_collection()
+            base = await _homes_filter()
+            cur = homes_coll.find(
+                {**base, "postcode_sector": {"$in": rest}}, {"_id": 0},
+            ).limit(limit)
+            out.extend(await cur.to_list(limit))
+        # Scottish docs surface as the same lightweight shape — frontend
+        # treats them as CQC-like but tagged with country.
+        if scot and len(out) < limit:
+            base = await _scotland_filter()
+            remaining = limit - len(out)
+            cur = db.scotland_care_services.find(
+                {**base, "postcode_sector": {"$in": scot}}, {"_id": 0},
+            ).limit(remaining)
+            for r in await cur.to_list(remaining):
+                out.append({
+                    "locationId": r.get("csNumber"),
+                    "name": r.get("name"),
+                    "postalCode": r.get("postalCode"),
+                    "postcode_sector": r.get("postcode_sector"),
+                    "town": r.get("town"),
+                    "careHome": "Y" if r.get("careHomeMainArea") else "N",
+                    "numberOfBeds": r.get("totalBeds"),
+                    "gacServiceTypes": [{"name": r.get("careService")}] if r.get("careService") else [],
+                    "specialisms": [{"name": r.get("clientGroup")}] if r.get("clientGroup") else [],
+                    "currentRatings": {"overall": {"rating": f"Grade {r.get('minGrade')}–{r.get('maxGrade')}"}} if r.get("minGrade") else {},
+                    "country": "Scotland",
+                    "councilArea": r.get("councilArea"),
+                    "healthBoard": r.get("healthBoard"),
+                })
+        return out
 
     # ------------------------------------------------------------- geocoding
     @router.get("/territory/postcode-lookup")
@@ -177,14 +263,9 @@ def build_territory_router(db, require_role):  # noqa: D401
             return {"sectors": [], "count": 0}
 
         sector_codes = [d["sector"] for d in docs]
-        # Home counts from live CQC + active definition
-        homes_coll = await _homes_collection()
-        base_filter = await _homes_filter()
-        counts = await homes_coll.aggregate([
-            {"$match": {**base_filter, "postcode_sector": {"$in": sector_codes}}},
-            {"$group": {"_id": "$postcode_sector", "n": {"$sum": 1}}},
-        ]).to_list(5000)
-        c_map = {c["_id"]: c["n"] for c in counts}
+        # Home counts from live CQC + active definition (auto-routing
+        # Scottish sectors to scotland_care_services).
+        c_map = await _count_homes_per_sector(sector_codes)
 
         # Distance from request centre to each sector's reference postcode
         # (approximate — used purely for sorting & display, not selection).
@@ -245,13 +326,7 @@ def build_territory_router(db, require_role):  # noqa: D401
             {"sector": {"$in": codes}},
             {"_id": 0, "sector": 1, "geometry": 1, "district": 1},
         ).to_list(5000)
-        homes_coll = await _homes_collection()
-        base_filter = await _homes_filter()
-        counts = await homes_coll.aggregate([
-            {"$match": {**base_filter, "postcode_sector": {"$in": codes}}},
-            {"$group": {"_id": "$postcode_sector", "n": {"$sum": 1}}},
-        ]).to_list(5000)
-        c_map = {c["_id"]: c["n"] for c in counts}
+        c_map = await _count_homes_per_sector(codes)
         out = [
             {
                 "sector": d["sector"],
@@ -288,13 +363,7 @@ def build_territory_router(db, require_role):  # noqa: D401
         sector_list = [s.strip().upper() for s in sectors.split(",") if s.strip()]
         if not sector_list:
             return {"homes": [], "count": 0}
-        homes_coll = await _homes_collection()
-        base_filter = await _homes_filter()
-        cur = homes_coll.find(
-            {**base_filter, "postcode_sector": {"$in": sector_list}},
-            {"_id": 0},
-        ).limit(limit)
-        homes = await cur.to_list(limit)
+        homes = await _list_homes(sector_list, limit)
         return {"homes": homes, "count": len(homes)}
 
     @router.get("/territory/homes-count")
@@ -305,13 +374,7 @@ def build_territory_router(db, require_role):  # noqa: D401
         sector_list = [s.strip().upper() for s in sectors.split(",") if s.strip()]
         if not sector_list:
             return {"count": 0, "per_sector": {}}
-        homes_coll = await _homes_collection()
-        base_filter = await _homes_filter()
-        per = await homes_coll.aggregate([
-            {"$match": {**base_filter, "postcode_sector": {"$in": sector_list}}},
-            {"$group": {"_id": "$postcode_sector", "n": {"$sum": 1}}},
-        ]).to_list(5000)
-        per_map = {p["_id"]: p["n"] for p in per}
+        per_map = await _count_homes_per_sector(sector_list)
         return {"count": sum(per_map.values()), "per_sector": per_map}
 
     # --------------------------------------------------------- plans (CRUD)
