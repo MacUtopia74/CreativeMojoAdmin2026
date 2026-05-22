@@ -59,7 +59,8 @@ export default function TerritoryBuilderPage() {
     catch { return true; }
   });
   useEffect(() => {
-    try { localStorage.setItem("cm.tb.legendOpen", legendOpen ? "1" : "0"); } catch {/* ignore */}
+    try { localStorage.setItem("cm.tb.legendOpen", legendOpen ? "1" : "0"); }
+    catch (e) { console.debug("[TerritoryBuilder] localStorage write blocked", e); }
   }, [legendOpen]);
 
   // All saved plans — listed in the bottom-right "Saved plans" panel when
@@ -74,7 +75,9 @@ export default function TerritoryBuilderPage() {
     try {
       const { data } = await api.get("/territory-plans");
       setAllPlans(data.plans || []);
-    } catch {/* ignore */}
+    } catch (e) {
+      console.error("[TerritoryBuilder] Failed to load saved plans", e);
+    }
     finally { setAllPlansLoading(false); }
   }, []);
 
@@ -90,11 +93,15 @@ export default function TerritoryBuilderPage() {
       try {
         const c = await api.get(`/contacts/${contactId}`);
         setContact(c.data);
-      } catch {/* ignore */}
+      } catch (e) {
+        console.error("[TerritoryBuilder] Failed to load contact", contactId, e);
+      }
       try {
         const p = await api.get("/territory-plans", { params: { contact_id: contactId } });
         setExistingPlans(p.data.plans || []);
-      } catch {/* ignore */}
+      } catch (e) {
+        console.error("[TerritoryBuilder] Failed to load existing plans for contact", contactId, e);
+      }
     })();
   }, [contactId]);
 
@@ -116,9 +123,13 @@ export default function TerritoryBuilderPage() {
               setCentre({ lat: r.data.latitude, lng: r.data.longitude });
               setCentreLabel(`${data.organisation || ""} · ${r.data.postcode}`);
             }
-          } catch {/* ignore */}
+          } catch (e) {
+            console.error("[TerritoryBuilder] Postcode lookup failed", e);
+          }
         }
-      } catch {/* ignore */}
+      } catch (e) {
+        console.error("[TerritoryBuilder] Failed to load franchisee territory", franchiseeId, e);
+      }
     })();
   }, [franchiseeId]);
 
@@ -139,7 +150,9 @@ export default function TerritoryBuilderPage() {
           setCentreLabel(found.centre_postcode || "");
           setPostcode(found.centre_postcode || "");
         }
-      } catch {/* ignore */}
+      } catch (e) {
+        console.error("[TerritoryBuilder] Failed to hydrate plan", planId, e);
+      }
     })();
   }, [planId]);
 
@@ -158,7 +171,9 @@ export default function TerritoryBuilderPage() {
           geojson: data.geojson || null,
           outlines: data.outlines || null,
         });
-      } catch {/* ignore — overlay is non-critical */}
+      } catch (e) {
+        console.warn("[TerritoryBuilder] Overlay (other franchisees) failed to load — non-critical", e);
+      }
     })();
   }, [franchiseeId]);
 
@@ -225,7 +240,9 @@ export default function TerritoryBuilderPage() {
       try {
         const { data } = await api.get("/territory/homes-count", { params: { sectors: selected.join(",") } });
         if (!cancelled) setHomeCount(data);
-      } catch {/* ignore */}
+      } catch (e) {
+        console.error("[TerritoryBuilder] homes-count failed", e);
+      }
     })();
     return () => { cancelled = true; };
   }, [selected]);
@@ -313,7 +330,9 @@ export default function TerritoryBuilderPage() {
       await navigator.clipboard.writeText(shareUrlFor(token));
       setShareCopied(true);
       setTimeout(() => setShareCopied(false), 1800);
-    } catch {/* ignore — clipboard might be blocked */}
+    } catch (e) {
+      console.warn("[TerritoryBuilder] Clipboard copy blocked", e);
+    }
   };
 
   const deletePlanById = async (id) => {

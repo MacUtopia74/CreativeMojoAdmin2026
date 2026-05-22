@@ -477,7 +477,7 @@ function InvoiceDetail() {
               </thead>
               <tbody>
                 {lineItems.map((item, i) => (
-                  <InvoiceLineItem key={i} item={item} index={i} />
+                  <InvoiceLineItem key={`${i}-${item.description || ""}-${item.amount ?? ""}`} item={item} index={i} />
                 ))}
               </tbody>
             </table>

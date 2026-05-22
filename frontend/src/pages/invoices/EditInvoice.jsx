@@ -109,7 +109,7 @@ function InvoicePreview({ formData, subtotal, discountAmount, taxAmount, total, 
             </thead>
             <tbody>
               {formData.line_items.map((item, i) => (
-                <tr key={i} className="border-b border-slate-100">
+                <tr key={item._uid || `${i}-${item.description || ""}`} className="border-b border-slate-100">
                   <td className="py-3 text-slate-900">{item.description || "—"}</td>
                   <td className="py-3 text-right font-mono text-slate-700">{item.quantity}</td>
                   <td className="py-3 text-right font-mono text-slate-700">£{Number(item.unit_price).toFixed(2)}</td>
@@ -164,9 +164,15 @@ function EditInvoice() {
   const [issueDateOpen, setIssueDateOpen] = useState(false);
   const [dueDateOpen, setDueDateOpen] = useState(false);
   
+  // Per-line stable IDs — used as React keys so reorders/removes keep
+  // each row's local state (description / qty / price input focus) intact.
+  // Server doesn't persist this, it's runtime-only.
+  const _newLineUid = () =>
+    (globalThis.crypto?.randomUUID?.() || `li-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+
   const [formData, setFormData] = useState({
     client_id: "", client_name: "", client_email: "", client_email2: "", client_phone: "", client_address: "", invoice_number: "",
-    issue_date: "", due_date: "", line_items: [{ description: "", quantity: 1, unit_price: 0, amount: 0 }],
+    issue_date: "", due_date: "", line_items: [{ _uid: _newLineUid(), description: "", quantity: 1, unit_price: 0, amount: 0 }],
     tax_rate: 0, discount_rate: 0, notes: "", payment_terms: "Net 14 Days", status: "draft",
   });
 
@@ -179,7 +185,10 @@ function EditInvoice() {
         client_id: inv.client_id, client_name: inv.client_name, client_email: inv.client_email || "",
         client_email2: inv.client_email2 || "", client_phone: inv.client_phone || "",
         client_address: inv.client_address || "", invoice_number: inv.invoice_number,
-        issue_date: inv.issue_date, due_date: inv.due_date, line_items: inv.line_items,
+        issue_date: inv.issue_date, due_date: inv.due_date,
+        // Hydrate _uid on server-loaded line items so React keys stay
+        // stable across re-renders and row reorders/removes.
+        line_items: (inv.line_items || []).map((li) => ({ ...li, _uid: li._uid || _newLineUid() })),
         tax_rate: inv.tax_rate || 0, discount_rate: inv.discount_rate || 0,
         notes: inv.notes || "", payment_terms: inv.payment_terms || "Net 30", status: inv.status,
       });
@@ -218,7 +227,7 @@ function EditInvoice() {
     });
   };
 
-  const addLineItem = () => setFormData(p => ({ ...p, line_items: [...p.line_items, { description: "", quantity: 1, unit_price: 0, amount: 0 }] }));
+  const addLineItem = () => setFormData(p => ({ ...p, line_items: [...p.line_items, { _uid: _newLineUid(), description: "", quantity: 1, unit_price: 0, amount: 0 }] }));
   const removeLineItem = (index) => { if (formData.line_items.length > 1) setFormData(p => ({ ...p, line_items: p.line_items.filter((_, i) => i !== index) })); };
 
   const subtotal = formData.line_items.reduce((s, i) => s + (Number(i.amount) || 0), 0);
@@ -232,7 +241,11 @@ function EditInvoice() {
     if (!formData.line_items.some(i => i.description && i.amount > 0)) { toast.error("Please add at least one line item"); return; }
     setLoading(true);
     try {
-      await api.put(`/invoices/${id}`, { ...formData, subtotal, tax_amount: taxAmount, discount_amount: discountAmount, total });
+      // Strip runtime-only `_uid` from line items — it's a React-key
+      // helper, not an invoice field, and we don't want it polluting the
+      // saved document or surfacing in Xero exports.
+      const cleanItems = formData.line_items.map(({ _uid, ...rest }) => rest);  // eslint-disable-line no-unused-vars
+      await api.put(`/invoices/${id}`, { ...formData, line_items: cleanItems, subtotal, tax_amount: taxAmount, discount_amount: discountAmount, total });
       toast.success("Invoice updated successfully");
       navigate(`/invoices/${id}`);
     } catch (err) { toast.error("Failed to update invoice"); }
@@ -335,7 +348,7 @@ function EditInvoice() {
                 <Button type="button" variant="outline" size="sm" onClick={addLineItem} data-testid="add-line-item-btn"><Plus className="w-4 h-4 mr-1" /> Add</Button>
               </div>
               {formData.line_items.map((item, idx) => (
-                <LineItemRow key={idx} item={item} index={idx} onUpdate={handleLineItemChange} onRemove={removeLineItem} canRemove={formData.line_items.length > 1} />
+                <LineItemRow key={item._uid || `idx-${idx}`} item={item} index={idx} onUpdate={handleLineItemChange} onRemove={removeLineItem} canRemove={formData.line_items.length > 1} />
               ))}
             </Card>
 

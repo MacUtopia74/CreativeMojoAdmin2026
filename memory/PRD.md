@@ -1,5 +1,21 @@
 # Creative Mojo — Unified Admin Platform PRD
 
+## Latest change — Pre-deploy Code Review fixes (May 22 2026)
+Applied all 🔴 Critical findings + 🟡 Important (option d) from the platform Code Review pass:
+- **Circular import resolved**: extracted `CqcDefinition` + filter helper to `cqc_definition.py`; `ScotlandDefinition` + filter helper to `scotland_definition.py`. `cqc_routes`, `scotland_routes`, and `territory_routes` now all import from these leaf modules, no more lazy cross-router imports. Endpoints `/api/cqc/definition` + `/api/scotland/definition` both verified 200.
+- **Hardcoded test secrets removed**: 23 test files in `/app/backend/tests/` now read `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `INTAKE_TOKEN` from `os.environ.get(..., <default>)` — defaults preserved so local pytest still works.
+- **9 ruff style errors cleaned** (`server.py` E701/E401, `scrape_wp_franchise_urls.py` F541, `test_iter15_convert.py` F541, `test_xero_stage_c.py` F841). `ruff` now `All checks passed!`.
+- **XSS / innerHTML hardening**:
+  - `TerritoryMap.jsx` marker rebuilt with `document.createElement` + `textContent` — no more `el.innerHTML = \`...\``.
+  - `PdfJsViewer.jsx` clears its container via DOM-API loop instead of `innerHTML = ""`.
+  - `EmailTemplatesPage.jsx` + `ReplyWithTemplateModal.jsx` were already using `DOMPurify.sanitize()` — verified.
+- **TerritoryBuilderPage.jsx empty catches**: all 10 silent `catch {/* ignore */}` blocks now log via `console.error` / `console.warn` / `console.debug` with contextual messages.
+- **Array-index keys → stable keys**: fixed in `InvoiceDetail.jsx`, `EditInvoice.jsx` (with a runtime-only `_uid` on dynamically-added line items, stripped before `PUT` so it doesn't pollute saved invoices), `ContactsPage.js` (CSV preview rows + drawer address lines), `BankingPage.jsx` (top sources list).
+- **No behaviour change** — only correctness/maintainability. Backend reloads cleanly, all affected endpoints respond 200, all five frontend lints pass.
+
+Deferred (post-launch, higher regression risk): banking_routes.py + parse_hsbc_personal + calendar_routes.attach() splits, ContactsPage / TerritoryBuilderPage component splits, 182 hook dependency warnings, localStorage → cookie migration for ContactsPage search history.
+
+
 ## Latest change — Email Templates + Reply-with-template (pre-deploy half) (May 22 2026)
 - **Backend**: new `email_templates_routes.py` module with CRUD + duplicate endpoints on `/api/email-templates`. Templates store `name`, `subject`, `body_html`, `default_from`, `sender_name`, `default_cc`, `default_bcc`, `attachments[]` (R2 key + name + body-placeholder slug), `category`. Audit fields tracked.
 - **Backend seed**: `seed_email_templates.py` (idempotent) creates two starter templates — **Franchise Enquiry Reply** (`paul@creativemojo.co.uk`, BCC `paul@`, attachment placeholder `franchise_pack`) and **Licence Enquiry Reply (Overseas)** (`licence_pack`). Both reproduce Paul's current Mail.app templates verbatim including the dark "Watch the Mojo promo video" CTA and full signature block. Seeded ✓.

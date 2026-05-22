@@ -368,7 +368,7 @@ export default function BankingPage() {
           {dashboard?.top_sources?.length ? (
             <div className="space-y-2">
               {dashboard.top_sources.map((s, i) => (
-                <div key={i} className="flex items-center justify-between text-sm py-1.5 border-b border-stone-100 last:border-0">
+                <div key={`src-${i}-${s.name || "_"}`} className="flex items-center justify-between text-sm py-1.5 border-b border-stone-100 last:border-0">
                   <div className="truncate pr-2 text-stone-700">{s.name || "—"}</div>
                   <div className="tabular-nums font-bold text-emerald-700 shrink-0">{moneyFmt(s.total)}</div>
                 </div>

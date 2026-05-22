@@ -590,7 +590,7 @@ function ImportCsvModal({ open, onClose, onImported, defaultTarget = "licence" }
                   </thead>
                   <tbody>
                     {parsedRows.slice(0, 5).map((r, i) => (
-                      <tr key={i} className="border-b border-stone-100 last:border-0">
+                      <tr key={`row-${i}-${Object.values(r).slice(0, 3).join("|")}`} className="border-b border-stone-100 last:border-0">
                         {Object.keys(mapped).map((f) => <td key={f} className="px-2 py-1 text-stone-700 whitespace-nowrap">{r[f] || "—"}</td>)}
                       </tr>
                     ))}
@@ -1055,7 +1055,7 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
                       <MapPin className="w-3.5 h-3.5 text-stone-400 mt-1 shrink-0" />
                       <div className="text-stone-900 leading-snug">
                         {lines.map((ln, i) => (
-                      <div key={i}>{ln}</div>
+                      <div key={`addr-${i}-${ln}`}>{ln}</div>
                     ))}
                   </div>
                 </div>
