@@ -1,13 +1,9 @@
 # Creative Mojo — Unified Admin Platform PRD
 
-## Latest change — Checklist v2: side-by-side ticks + Training Day(s) (May 22 2026)
-- Drawer **Checklist** panel restructured:
-  - **Top row** side-by-side: "Territory confirmed?" + "Contract Sent?".
-  - "Shadow Day Booked?" — date + "Shadowing:" free text **only shown when ticked**.
-  - **Divider** between Shadow Day and Training Day(s) so they read as distinct steps. No keyline between a tick and its own inputs.
-  - **NEW** "Training Day(s) booked?" — multi-date selector (training runs 2–3 days). Date picker + "Add date" appends to a chip list with × to remove. No free-text field. Only shown when ticked.
-- Backend `PATCH /api/contacts/{id}/checklist` extended with `training_days_booked` (bool) + `training_day_dates` (list of ISO date strings, de-duped + sorted).
-- Verified end-to-end: curl PATCH + UI screenshot showing both reveal states populated.
+## Latest change — Checklist divider + drawer "Change type" switcher (May 22 2026)
+- Added a second blue divider line **between the top "Territory confirmed? / Contract Sent?" row and "Shadow Day Booked?"** so the three checklist sub-sections (top ticks / Shadow Day / Training Day(s)) all read as distinct steps.
+- New **"Change type"** dropdown next to the source pill in the Contact drawer header — lets the admin reclassify any enquiry between Franchise / Licence / General without leaving the drawer (current type is shown disabled). Wired to existing `POST /api/contacts/{id}/move` which preserves pipeline membership + stage. Confirmation prompt before commit; drawer stays open on the same contact afterwards. Counts panel reloads automatically.
+- Validated by switching Alison King (#4019) from Franchise → Licence — pill, Convert button label, and Licence Contacts count all updated correctly.
 
 
 

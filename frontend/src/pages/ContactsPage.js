@@ -629,9 +629,13 @@ function MoveMenu({ onMove, label = "Move", testid, currentTab, count, contactSo
   );
 }
 
-function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, onDelete, onReply, onConvert, onLinkExisting, onAdminNotesUpdated, onMergeWith, onChecklistChanged, allContacts }) {
+function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, onDelete, onReply, onConvert, onLinkExisting, onAdminNotesUpdated, onMergeWith, onChecklistChanged, onChangeSource, allContacts }) {
   const [busy, setBusy] = useState(false);
   const [converting, setConverting] = useState(false);
+  // Inline "Change type" picker — lets the admin reclassify an enquiry
+  // between Franchise / Licence / General without leaving the drawer
+  // (covers the common case where the contact filled in the wrong web form).
+  const [sourceMenuOpen, setSourceMenuOpen] = useState(false);
   if (!contact) return null;
   const isInPipeline = !!contact.in_pipeline;
   const dateAdded = contact.date || contact.date_added;
@@ -689,6 +693,46 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
             <div className="flex items-center gap-2 flex-wrap mt-3">
               {isInPipeline && <StageBadge status={contact.pipeline_status} />}
               <SourcePill source={contact.source} />
+              {onChangeSource && (contact.source === "franchise_enquiry" || contact.source === "licence_enquiry" || contact.source === "general_enquiry") && (
+                <div className="relative" data-testid="drawer-change-source">
+                  <button
+                    type="button"
+                    onClick={() => setSourceMenuOpen((v) => !v)}
+                    data-testid="drawer-change-source-trigger"
+                    title="Reclassify this enquiry"
+                    className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border border-stone-300 bg-white text-stone-700 hover:bg-stone-50 rounded-md inline-flex items-center gap-1">
+                    <ArrowRightLeft className="w-3 h-3" /> Change type
+                    <ChevronDown className="w-3 h-3" />
+                  </button>
+                  {sourceMenuOpen && (
+                    <div onMouseLeave={() => setSourceMenuOpen(false)}
+                      className="absolute left-0 top-full mt-1 z-50 w-56 bg-white border border-stone-200 rounded-xl shadow-lg overflow-hidden text-sm text-stone-900">
+                      <div className="px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 bg-stone-50 border-b border-stone-200">Reclassify enquiry</div>
+                      {[
+                        { key: "franchise", label: "Franchise enquiry", source: "franchise_enquiry", Icon: Users, iconClass: "text-stone-500" },
+                        { key: "licence",   label: "Licence enquiry",   source: "licence_enquiry",   Icon: UserPlus, iconClass: "text-indigo-500" },
+                        { key: "general",   label: "General enquiry",   source: "general_enquiry",   Icon: Users, iconClass: "text-stone-500" },
+                      ].map(({ key, label, source, Icon, iconClass }) => {
+                        const current = contact.source === source;
+                        return (
+                          <button key={key} type="button"
+                            disabled={current}
+                            onClick={async () => {
+                              setSourceMenuOpen(false);
+                              await onChangeSource(contact, key);
+                            }}
+                            data-testid={`drawer-change-source-${key}`}
+                            className="w-full text-left px-3 py-2 hover:bg-stone-50 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2">
+                            <Icon className={`w-3.5 h-3.5 ${iconClass}`} />
+                            <span className="flex-1">{label}</span>
+                            {current && <span className="text-[9px] text-stone-400 uppercase tracking-wider">current</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
               {contact.referral_source && <ReferralBadge source={contact.referral_source} />}
             </div>
             {contact.referral_source && (
@@ -1003,6 +1047,11 @@ function InterestedChecklist({ contact, onChanged }) {
         <Tick k="territory" label="Territory confirmed?" checked={territoryDefined} onCheck={(v) => toggle("territory_defined", v, setTerritoryDefined)} />
         <Tick k="contract" label="Contract Sent?" checked={contractSent} onCheck={(v) => toggle("contract_sent", v, setContractSent)} />
       </div>
+
+      {/* Divider between the top two ticks and the Shadow Day group so the
+          three sub-sections (Top row / Shadow Day / Training Day(s)) all
+          read as distinct steps. */}
+      <div className="my-2 border-t border-blue-200/70" />
 
       {/* Shadow Day Booked — date + "Shadowing:" only when ticked */}
       <Tick k="shadow" label="Shadow Day Booked?" checked={shadowDayBooked} onCheck={(v) => toggle("shadow_day_booked", v, setShadowDayBooked)} />
@@ -1927,13 +1976,17 @@ export default function ContactsPage() {
             : sel);
         }}
         onChecklistChanged={(payload) => {
-          // Mirror checklist booleans back into the cached contact list so
-          // anything else listening to that data (counts, badges) stays in
-          // sync without a full re-fetch.
+          // Mirror checklist booleans + companion fields back into the cached
+          // contact list so anything else listening to that data (counts,
+          // badges) stays in sync without a full re-fetch.
           const patch = {
             territory_defined: payload.territory_defined,
             contract_sent: payload.contract_sent,
             shadow_day_booked: payload.shadow_day_booked,
+            shadow_day_date: payload.shadow_day_date,
+            shadowing_with: payload.shadowing_with,
+            training_days_booked: payload.training_days_booked,
+            training_day_dates: payload.training_day_dates,
             checklist_updated_at: payload.checklist_updated_at,
           };
           setData((d) => ({
@@ -1941,6 +1994,26 @@ export default function ContactsPage() {
             items: d.items.map((c) => c.id === payload.id ? { ...c, ...patch } : c),
           }));
           setSelected((sel) => sel && sel.id === payload.id ? { ...sel, ...patch } : sel);
+        }}
+        onChangeSource={async (c, target) => {
+          // Reclassify the contact (Franchise ↔ Licence ↔ General). Uses
+          // the same /contacts/{id}/move endpoint as the row-level MoveMenu
+          // so behaviour is consistent — but we want the drawer to STAY
+          // OPEN on the same contact afterwards so the admin can carry on
+          // working, rather than the drawer closing as it does in the
+          // list-view flow.
+          const labelMap = { franchise: "Franchise enquiry", licence: "Licence enquiry", general: "General enquiry" };
+          if (!window.confirm(`Reclassify ${[c.first_name, c.last_name].filter(Boolean).join(" ") || "this contact"} as a ${labelMap[target]}?`)) return;
+          try {
+            await api.post(`/contacts/${c.id}/move`, { target });
+            const newSource = target === "franchise" ? "franchise_enquiry" : target === "licence" ? "licence_enquiry" : "general_enquiry";
+            setData((d) => ({
+              ...d,
+              items: d.items.map((x) => x.id === c.id ? { ...x, source: newSource } : x),
+            }));
+            setSelected((sel) => sel && sel.id === c.id ? { ...sel, source: newSource } : sel);
+            loadCounts();
+          } catch { setError("Could not reclassify contact."); }
         }} />
       <LinkExistingFranchiseeModal
         open={!!linkingContact}
