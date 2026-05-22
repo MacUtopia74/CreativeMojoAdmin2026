@@ -663,7 +663,7 @@ export default function TerritoryBuilderPage() {
               {pastePreview && (
                 <div className="text-xs space-y-1">
                   <div className="text-emerald-700">
-                    <strong>{pastePreview.sectors.length}</strong> sectors recognised · <strong>{pastePreview.home_count}</strong> CQC homes
+                    <strong>{pastePreview.sectors.length}</strong> sectors recognised · <strong>{pastePreview.home_count}</strong> homes
                   </div>
                   {pastePreview.unrecognised.length > 0 && (
                     <div className="text-amber-700">

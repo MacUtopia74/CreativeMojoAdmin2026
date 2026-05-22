@@ -1,4 +1,4 @@
-// Collapsible list of CQC homes inside a franchisee's territory.
+// Collapsible list of regulated homes inside a franchisee's territory.
 //
 // Used directly under the territory map on the franchisee portal dashboard.
 // The map draws numbered markers (1, 2, 3…) that align with the list rows,
@@ -146,7 +146,7 @@ export default function TerritoryHomesList({ homes = [], onZoomHome, openIndex, 
             <ListIcon className="w-4 h-4" />
           </span>
           <span className="text-left min-w-0">
-            <span className="block text-[10px] uppercase tracking-[0.3em] font-bold text-[#dddd16]">CQC homes in your territory</span>
+            <span className="block text-[10px] uppercase tracking-[0.3em] font-bold text-[#dddd16]">Homes in your territory</span>
             <span className="block text-sm font-semibold truncate">
               Expand to show list of {homes.length} home{homes.length === 1 ? "" : "s"}
             </span>
@@ -163,7 +163,7 @@ export default function TerritoryHomesList({ homes = [], onZoomHome, openIndex, 
     <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid="territory-homes-list">
       <div className="px-4 py-3 border-b border-stone-200 flex items-center justify-between gap-3 flex-wrap bg-stone-50">
         <div className="min-w-0">
-          <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">CQC homes in your territory</div>
+          <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">Homes in your territory</div>
           <div className="text-sm text-stone-900 mt-0.5"><strong>{filtered.length}</strong>{filtered.length !== homes.length && <span className="text-stone-500"> of {homes.length}</span>} homes · click any row to expand</div>
         </div>
         <button onClick={() => setListExpanded(false)} data-testid="collapse-homes-list"
