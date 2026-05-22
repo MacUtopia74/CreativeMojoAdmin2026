@@ -10,8 +10,8 @@ import requests
 from pymongo import MongoClient
 
 BASE_URL = os.environ["REACT_APP_BACKEND_URL"].rstrip("/")
-ADMIN_EMAIL = "admin@creativemojo.co.uk"
-ADMIN_PASSWORD = "CreativeMojo2026!"
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@creativemojo.co.uk")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "CreativeMojo2026!")
 MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
 DB_NAME = os.environ.get("DB_NAME", "creative_mojo_admin")
 INTAKE_TOKEN = os.environ.get("INTAKE_TOKEN", "cm_intake_8f4a3c8b9e2d7f1a5c8b9e2d7f1a5c8b")

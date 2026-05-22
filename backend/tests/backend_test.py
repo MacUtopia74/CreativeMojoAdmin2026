@@ -14,8 +14,8 @@ import requests
 from pymongo import MongoClient
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://licensee-vault.preview.emergentagent.com").rstrip("/")
-ADMIN_EMAIL = "admin@creativemojo.co.uk"
-ADMIN_PASSWORD = "CreativeMojo2026!"
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@creativemojo.co.uk")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "CreativeMojo2026!")
 MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
 DB_NAME = os.environ.get("DB_NAME", "creative_mojo_admin")
 

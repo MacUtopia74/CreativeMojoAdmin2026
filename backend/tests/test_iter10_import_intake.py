@@ -10,10 +10,8 @@ import requests
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://licensee-vault.preview.emergentagent.com").rstrip("/")
 INTAKE_TOKEN = os.environ.get("INTAKE_TOKEN", "cm_intake_8f4a3c8b9e2d7f1a5c8b9e2d7f1a5c8b")
 
-ADMIN_EMAIL = "admin@creativemojo.co.uk"
-ADMIN_PASSWORD = "CreativeMojo2026!"
-
-
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@creativemojo.co.uk")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "CreativeMojo2026!")
 @pytest.fixture(scope="session")
 def admin_session():
     s = requests.Session()

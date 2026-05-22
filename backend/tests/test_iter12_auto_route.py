@@ -12,8 +12,8 @@ import requests
 from datetime import datetime, timedelta, timezone
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
-ADMIN_EMAIL = "admin@creativemojo.co.uk"
-ADMIN_PW = "CreativeMojo2026!"
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@creativemojo.co.uk")
+ADMIN_PW = os.environ.get("ADMIN_PASSWORD", "CreativeMojo2026!")
 
 
 @pytest.fixture(scope="module")

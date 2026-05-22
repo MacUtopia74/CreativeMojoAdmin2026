@@ -24,16 +24,28 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from geo_postcode import is_scottish_postcode  # noqa: F401  shared with scotland_routes
+from geo_postcode import is_scottish_postcode
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+
+# Rule + filter helpers live in dedicated leaf modules so cqc_routes and
+# scotland_routes never need to import each other (the previous lazy
+# cross-imports were flagged by code review as a circular-import smell).
+from cqc_definition import (
+    CqcDefinition,
+    DEFAULT_DEFINITION_ID,
+    definition_to_mongo_filter,
+)
+from scotland_definition import (
+    ScotlandDefinition,
+    DEFAULT_DEFINITION_ID as SCOTLAND_DEFAULT_DEFINITION_ID,
+    definition_to_mongo_filter as scotland_definition_to_mongo_filter,
+)
 
 logger = logging.getLogger("creative-mojo-admin.cqc")
 
 CQC_BASE = "https://api.service.cqc.org.uk/public/v1"
-DEFAULT_DEFINITION_ID = "system-default"
 _POSTCODE_RE = re.compile(r"^\s*([A-Z]{1,2}\d[A-Z\d]?)\s*(\d)([A-Z]{2})\s*$", re.I)
 
 
@@ -44,64 +56,6 @@ def _sector(postcode: Optional[str]) -> tuple[Optional[str], Optional[str]]:
     if not m:
         return None, None
     return f"{m.group(1)} {m.group(2)}", m.group(1)
-
-
-# --------------------------------------------------------------- definitions
-class CqcDefinition(BaseModel):
-    """The single rule that drives every home count in the system."""
-    include_service_types: list[str] = Field(default_factory=list)
-    exclude_service_types: list[str] = Field(default_factory=list)
-    include_specialisms: list[str] = Field(default_factory=list)
-    exclude_specialisms: list[str] = Field(default_factory=list)
-    include_regulated_activities: list[str] = Field(default_factory=list)
-    require_care_home: Optional[str] = None    # "Y" / "N" / None (either)
-    registration_statuses: list[str] = Field(default_factory=lambda: ["Registered"])
-    min_beds: Optional[int] = None
-    require_rating: list[str] = Field(default_factory=list)  # ["Good","Outstanding"]
-
-
-def definition_to_mongo_filter(d: CqcDefinition) -> dict:
-    """Translates the rule into a MongoDB filter on `cqc_locations_live`.
-
-    If the admin hasn't set ANY positive inclusion criterion (no service
-    types, specialisms, regulated activities, care-home flag, beds minimum,
-    or rating requirement), we return an impossible filter so the count is
-    0. Otherwise an unconfigured page would silently match every Registered
-    CQC location (~120k incl. dentists, GPs, ambulances) — confusing and
-    dangerous for the territory home counters.
-    """
-    has_inclusion = bool(
-        d.include_service_types
-        or d.include_specialisms
-        or d.include_regulated_activities
-        or d.require_care_home
-        or d.min_beds
-        or d.require_rating
-    )
-    if not has_inclusion:
-        return {"_no_rule_defined": True}  # matches nothing
-    f: dict = {}
-    if d.registration_statuses:
-        f["registrationStatus"] = {"$in": d.registration_statuses}
-    if d.require_care_home in ("Y", "N"):
-        f["careHome"] = d.require_care_home
-    if d.include_service_types:
-        f["gacServiceTypes.name"] = {"$in": d.include_service_types}
-    if d.exclude_service_types:
-        f.setdefault("gacServiceTypes.name", {})
-        f["gacServiceTypes.name"]["$nin"] = d.exclude_service_types
-    if d.include_specialisms:
-        f["specialisms.name"] = {"$in": d.include_specialisms}
-    if d.exclude_specialisms:
-        f.setdefault("specialisms.name", {})
-        f["specialisms.name"]["$nin"] = d.exclude_specialisms
-    if d.include_regulated_activities:
-        f["regulatedActivities.name"] = {"$in": d.include_regulated_activities}
-    if d.min_beds:
-        f["numberOfBeds"] = {"$gte": d.min_beds}
-    if d.require_rating:
-        f["currentRatings.overall.rating"] = {"$in": d.require_rating}
-    return f
 
 
 # ------------------------------------------------------------- sync internals
@@ -335,19 +289,13 @@ def build_cqc_router(db, require_role):  # noqa: D401
         )
         # Refresh every franchisee's territory_home_count — counts now
         # include Scottish portions via scotland_care_services when sectors
-        # fall in Scottish postcode prefixes. ``is_scottish_postcode`` is
-        # imported at the top from ``geo_postcode`` (shared module); only
-        # ``ScotlandDefinition`` + its filter helper are pulled lazily
-        # because they're scotland-router-specific.
-        from scotland_routes import (
-            ScotlandDefinition as _ScotDef,
-            definition_to_mongo_filter as _scot_f,
-            DEFAULT_DEFINITION_ID as _scot_id,
-        )
+        # fall in Scottish postcode prefixes. Scottish + CQC definitions
+        # are now both imported at module top from their dedicated leaf
+        # modules (no more cross-router lazy import).
         _is_scot = is_scottish_postcode
-        scot_doc = await db.scotland_definition.find_one({"_id": _scot_id}, {"_id": 0})
-        scot_def = _ScotDef(**scot_doc) if scot_doc else _ScotDef()
-        scot_filter = _scot_f(scot_def)
+        scot_doc = await db.scotland_definition.find_one({"_id": SCOTLAND_DEFAULT_DEFINITION_ID}, {"_id": 0})
+        scot_def = ScotlandDefinition(**scot_doc) if scot_doc else ScotlandDefinition()
+        scot_filter = scotland_definition_to_mongo_filter(scot_def)
         franchisees_updated = 0
         cur = db.franchisees.find({"territory_sectors": {"$exists": True, "$ne": []}}, {"_id": 0, "id": 1, "territory_sectors": 1})
         async for f in cur:

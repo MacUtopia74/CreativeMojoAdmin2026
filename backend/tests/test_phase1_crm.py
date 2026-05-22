@@ -14,9 +14,8 @@ import pytest
 import requests
 
 BASE_URL = os.environ["REACT_APP_BACKEND_URL"].rstrip("/")
-ADMIN_EMAIL = "admin@creativemojo.co.uk"
-ADMIN_PASSWORD = "CreativeMojo2026!"
-
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@creativemojo.co.uk")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "CreativeMojo2026!")
 EXPECTED = {
     "franchisees": 88,
     "contracts": 134,

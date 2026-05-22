@@ -13,9 +13,8 @@ import pytest
 import requests
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://licensee-vault.preview.emergentagent.com").rstrip("/")
-ADMIN_EMAIL = "admin@creativemojo.co.uk"
-ADMIN_PASSWORD = "CreativeMojo2026!"
-
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@creativemojo.co.uk")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "CreativeMojo2026!")
 PRODUCTION_STATUSES = [
     "Awaiting Assembly",
     "In Production",
@@ -101,12 +100,10 @@ class TestXeroUnconfigured:
 # --- Production-status PATCH tests -------------------------------------------
 class TestProductionStatusPatch:
     def test_patch_accepts_awaiting_labels(self, admin_session, sample_order_id):
-        # Capture original to restore later
-        orig = admin_session.get(f"{BASE_URL}/api/orders/{sample_order_id}", timeout=15)
-        original_status = None
-        if orig.status_code == 200:
-            o = orig.json()
-            original_status = (o.get("order") or o).get("production_status")
+        # Sanity GET — confirms the order exists. The `finally` block
+        # below always resets the order to "Ready To Ship" per the task
+        # contract, so we don't need to capture the original status.
+        admin_session.get(f"{BASE_URL}/api/orders/{sample_order_id}", timeout=15)
 
         try:
             r = admin_session.patch(

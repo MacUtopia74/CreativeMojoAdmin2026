@@ -17,8 +17,8 @@ import pytest
 
 BASE_URL = (os.environ.get("REACT_APP_BACKEND_URL")
             or "https://licensee-vault.preview.emergentagent.com").rstrip("/")
-ADMIN_EMAIL = "admin@creativemojo.co.uk"
-ADMIN_PASS = "CreativeMojo2026!"
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@creativemojo.co.uk")
+ADMIN_PASS = os.environ.get("ADMIN_PASSWORD", "CreativeMojo2026!")
 
 STAMP = int(time.time())
 TEST_PREFIX = f"admin/test-iter18-{STAMP}/"        # admin scope playground

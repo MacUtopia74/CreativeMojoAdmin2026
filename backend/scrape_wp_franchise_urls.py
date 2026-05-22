@@ -186,7 +186,7 @@ async def main():
             print(f"  ✓ {chosen_email:35s}  →  {name}  ({slug})")
             matched += 1
 
-        print(f"\n=========================")
+        print("\n=========================")
         print(f"Matched & updated: {matched}/{len(posts)}")
         print(f"Unmatched:        {len(unmatched)}")
         for u in unmatched:

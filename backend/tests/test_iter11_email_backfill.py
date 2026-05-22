@@ -12,13 +12,16 @@ BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 SALLY_ID = "937bbeb7-6571-474e-a3c2-0237235cdba3"
 
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@creativemojo.co.uk")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "CreativeMojo2026!")
+
 
 @pytest.fixture(scope="module")
 def client():
     s = requests.Session()
     r = s.post(
         f"{BASE_URL}/api/auth/login",
-        json={"email": "admin@creativemojo.co.uk", "password": "CreativeMojo2026!"},
+        json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
         timeout=15,
     )
     assert r.status_code == 200, f"login failed: {r.status_code} {r.text}"

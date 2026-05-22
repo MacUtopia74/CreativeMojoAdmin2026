@@ -41,7 +41,12 @@ export default function PdfJsViewer({ url }) {
     const ctx = canvas.getContext("2d");
     await p.render({ canvasContext: ctx, viewport }).promise;
     if (containerRef.current) {
-      containerRef.current.innerHTML = "";
+      // Clear via DOM API (no innerHTML) so we satisfy the strict "no raw
+      // HTML assignment" rule the code review enforces. Functionally
+      // identical to ``innerHTML = ""``.
+      while (containerRef.current.firstChild) {
+        containerRef.current.removeChild(containerRef.current.firstChild);
+      }
       containerRef.current.appendChild(canvas);
     }
   }, [pdf, page, zoom]);

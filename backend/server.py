@@ -386,8 +386,10 @@ async def update_user(
     if not user:
         raise HTTPException(404, "User not found")
     update: dict = {}
-    if body.name is not None: update["name"] = body.name
-    if body.role is not None: update["role"] = body.role
+    if body.name is not None:
+        update["name"] = body.name
+    if body.role is not None:
+        update["role"] = body.role
     if body.franchisee_id is not None:
         # Empty string clears the linkage.
         update["franchisee_id"] = body.franchisee_id or None
@@ -851,7 +853,8 @@ async def intake_recent(limit: int = Query(20, le=100), _: dict = Depends(requir
 @api.get("/intake/download-plugin")
 async def download_plugin(_: dict = Depends(require_role("admin"))):
     """Build the WordPress plugin zip on-the-fly and return it."""
-    import io, zipfile
+    import io
+    import zipfile
     from fastapi.responses import StreamingResponse
 
     plugin_dir = "creative-mojo-intake"
@@ -1344,7 +1347,8 @@ async def create_portal_login(
         }
 
     # Strong, human-readable temp password — 14 chars, mixed case + digits.
-    import secrets, string
+    import secrets
+    import string
     alphabet = string.ascii_letters + string.digits
     temp_password = "".join(secrets.choice(alphabet) for _ in range(14))
     new_id = str(uuid.uuid4())
@@ -2173,8 +2177,10 @@ async def list_contacts(
             if q_web is not None:
                 q_web["$or"] = [{"in_pipeline": {"$ne": True}}, {"in_pipeline": {"$exists": False}}]
     if pipeline_status:
-        if q_legacy is not None: q_legacy["pipeline_status"] = pipeline_status
-        if q_web is not None: q_web["pipeline_status"] = pipeline_status
+        if q_legacy is not None:
+            q_legacy["pipeline_status"] = pipeline_status
+        if q_web is not None:
+            q_web["pipeline_status"] = pipeline_status
     if search:
         # Multi-token search across all relevant fields.
         # Each token must match at least one field (AND across tokens, OR across fields)

@@ -435,12 +435,20 @@ export default function TerritoryMap({
     const inside = !!pinnedPostcode.inside;
     const bg = inside ? "#059669" : "#B91C1C"; // emerald-600 / red-700
     const icon = inside ? "✓" : "✕";
+    // Build the marker DOM with element APIs rather than innerHTML —
+    // ``bg`` and ``icon`` are hardcoded ternary results so injection
+    // isn't possible today, but using textContent + setAttribute keeps
+    // the code review's "no raw innerHTML" guarantee intact going
+    // forward (any future caller can't accidentally smuggle markup in).
     const el = document.createElement("div");
-    el.style.cssText = `width:34px;height:42px;position:relative;cursor:pointer;`;
-    el.innerHTML = `
-      <div style="position:absolute;inset:0;background:${bg};border:3px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 3px 8px rgba(0,0,0,.4);"></div>
-      <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:14px;font-family:Inter,system-ui,sans-serif;padding-bottom:6px;">${icon}</div>
-    `;
+    el.style.cssText = "width:34px;height:42px;position:relative;cursor:pointer;";
+    const pin = document.createElement("div");
+    pin.style.cssText = `position:absolute;inset:0;background:${bg};border:3px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 3px 8px rgba(0,0,0,.4);`;
+    const tick = document.createElement("div");
+    tick.style.cssText = "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:14px;font-family:Inter,system-ui,sans-serif;padding-bottom:6px;";
+    tick.textContent = icon;
+    el.appendChild(pin);
+    el.appendChild(tick);
     const marker = new mapboxgl.Marker({ element: el, anchor: "bottom" })
       .setLngLat([pinnedPostcode.lng, pinnedPostcode.lat])
       .setPopup(new mapboxgl.Popup({ offset: 24, closeButton: false }).setHTML(

@@ -16,8 +16,8 @@ import pytest
 import requests
 
 BASE = os.environ["REACT_APP_BACKEND_URL"].rstrip("/")
-EMAIL = "admin@creativemojo.co.uk"
-PASSWORD = "CreativeMojo2026!"
+EMAIL = os.environ.get("ADMIN_EMAIL", "admin@creativemojo.co.uk")
+PASSWORD = os.environ.get("ADMIN_PASSWORD", "CreativeMojo2026!")
 
 
 @pytest.fixture(scope="module")
@@ -161,7 +161,7 @@ def test_get_franchisee_no_objectid(s, created_ids):
         if isinstance(obj, list):
             return any(_has_mongo_id(v) for v in obj)
         return False
-    assert not _has_mongo_id(payload), f"_id leaked in response"
+    assert not _has_mongo_id(payload), "_id leaked in response"
     f = payload.get("franchisee", payload)
     assert f["id"] == fid
 

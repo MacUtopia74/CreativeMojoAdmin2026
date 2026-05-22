@@ -12,10 +12,8 @@ import os
 import requests
 
 BASE_URL = os.environ["REACT_APP_BACKEND_URL"].rstrip("/")
-ADMIN_EMAIL = "admin@creativemojo.co.uk"
-ADMIN_PASSWORD = "CreativeMojo2026!"
-
-
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@creativemojo.co.uk")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "CreativeMojo2026!")
 def _login():
     s = requests.Session()
     r = s.post(f"{BASE_URL}/api/auth/login",

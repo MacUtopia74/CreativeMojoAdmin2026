@@ -5,7 +5,10 @@ import requests
 from datetime import datetime
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
-ADMIN = {"email": "admin@creativemojo.co.uk", "password": "CreativeMojo2026!"}
+ADMIN = {
+    "email": os.environ.get("ADMIN_EMAIL", "admin@creativemojo.co.uk"),
+    "password": os.environ.get("ADMIN_PASSWORD", "CreativeMojo2026!"),
+}
 
 
 @pytest.fixture(scope="module")
