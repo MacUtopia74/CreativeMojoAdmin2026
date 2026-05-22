@@ -2350,8 +2350,17 @@ class ContactCreateRequest(BaseModel):
     last_name: Optional[str] = None
     email: Optional[str] = None
     telephone: Optional[str] = None
-    postcode: Optional[str] = None
+    # Full address — added May 22 2026 to match the breadth of fields
+    # that legacy / Airtable / Gravity-form imports carry. ``city`` (was
+    # the only address field on the manual-add form) maps onto town/city
+    # for back-compat. ``country`` defaults to "United Kingdom" client-side
+    # but is free-text so non-UK addresses work.
+    address_line_1: Optional[str] = None
+    address_line_2: Optional[str] = None
     city: Optional[str] = None
+    county: Optional[str] = None
+    postcode: Optional[str] = None
+    country: Optional[str] = None
     establishment_name: Optional[str] = None
     referral_source: Optional[str] = None
     notes: Optional[str] = None
@@ -2391,8 +2400,17 @@ async def create_contact(body: ContactCreateRequest, user: dict = Depends(requir
         "last_name": (body.last_name or "").strip() or None,
         "email": (body.email or "").strip().lower() or None,
         "telephone": (body.telephone or "").strip() or None,
-        "postcode": (body.postcode or "").strip().upper() or None,
+        # Full address. ``address_line_1`` is also mirrored into the legacy
+        # ``address_street`` field so older list views / exports that
+        # already reference that key keep working.
+        "address_line_1": (body.address_line_1 or "").strip() or None,
+        "address_line_2": (body.address_line_2 or "").strip() or None,
+        "address_street": (body.address_line_1 or "").strip() or None,
         "city": (body.city or "").strip() or None,
+        "town_city": (body.city or "").strip() or None,
+        "county": (body.county or "").strip() or None,
+        "postcode": (body.postcode or "").strip().upper() or None,
+        "country": (body.country or "").strip() or None,
         "establishment_name": (body.establishment_name or "").strip() or None,
         "referral_source": body.referral_source or None,
         "message": (body.message or body.notes or "").strip() or None,

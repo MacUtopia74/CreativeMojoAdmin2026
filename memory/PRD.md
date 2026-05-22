@@ -1,6 +1,12 @@
 # Creative Mojo — Unified Admin Platform PRD
 
-## Latest change — In-House Launch Prep Checklist modal (May 22 2026)
+## Latest change — Full address fields on contacts (May 22 2026)
+- **Manual Add Contact modal** now has a dedicated **Address** sub-section with all six fields: **1st line of address**, **2nd line of address**, Town / City, **County / State**, Postcode, **Country** (defaults to "United Kingdom", editable). Previously only Postcode + City were collected manually.
+- **Backend `POST /api/contacts`** accepts the four new fields (`address_line_1`, `address_line_2`, `county`, `country`) and persists them. `address_line_1` is also mirrored into the legacy `address_street` key so older list views / exports stay populated. `city` is mirrored into `town_city`. Postcode auto-uppercased.
+- **Contact drawer** address block now renders as a **multi-line** block (one field per line, with a fixed pin icon at top-left) instead of comma-joined. Falls back through `address_line_1 || address_street`, `city || town_city`, so legacy Airtable / Gravity-form imports render with the same layout — the user noticed this data is already in the database for most contacts.
+- Verified end-to-end via curl create + drawer screenshot.
+
+## Previous change — In-House Launch Prep Checklist modal (May 22 2026)
 - New **"LAUNCH CHECKLIST"** dark button in the Contact drawer, shown only when `pipeline_status === "qualified"` (Interested) and the contact isn't already converted. Opens a right-hand slide-out modal mirroring Sandra's printed sheet:
   - Sections: **CONTRACT** (1 Contract prep / 2 Territory prep) · **FRANCHISE KIT** (3 Printed materials with two ticks per row — A/W Done + Printed, 4 Materials for kit, "Does the kit require couriering?") · **DIGITAL** (5 Email account + email free-text, 6 Social media + Facebook URL free-text, 7 Website listing, 8 FileCamp, 9 Launch + "If NO what date" date picker) · **DBS** (10 Info supplied) · **RENEWALS & DIRECT DEBITS** (DD mandate setup).
   - Name field is **auto-filled** from `first_name + last_name`; everything else is single-tick (no "No" column) or free text.

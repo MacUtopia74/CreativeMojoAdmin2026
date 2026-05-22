@@ -225,7 +225,9 @@ function AddContactModal({ open, onClose, onCreated, defaultTarget = "franchise"
   const [form, setForm] = useState({
     target: defaultTarget,
     first_name: "", last_name: "", email: "", telephone: "",
-    postcode: "", city: "", establishment_name: "",
+    address_line_1: "", address_line_2: "",
+    city: "", county: "", postcode: "", country: "United Kingdom",
+    establishment_name: "",
     referral_source: "", notes: "",
     pipeline_status: "new",
   });
@@ -320,9 +322,26 @@ function AddContactModal({ open, onClose, onCreated, defaultTarget = "franchise"
             <Field label="Last name" value={form.last_name} onChange={set("last_name")} testid="add-last-name" />
             <Field label="Email" type="email" value={form.email} onChange={set("email")} testid="add-email" />
             <Field label="Telephone" value={form.telephone} onChange={set("telephone")} testid="add-telephone" />
-            <Field label="Postcode" value={form.postcode} onChange={set("postcode")} testid="add-postcode" />
-            <Field label="City / Town" value={form.city} onChange={set("city")} testid="add-city" />
             <Field label="Establishment" value={form.establishment_name} onChange={set("establishment_name")} testid="add-establishment" wide />
+          </div>
+
+          {/* Address — full UK-shape block so manually-added contacts
+              carry the same address detail as Airtable / Gravity Forms
+              imports. The "Country" field defaults to United Kingdom but
+              is editable for the occasional overseas enquiry. */}
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-2">Address</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <Field label="1st line of address" value={form.address_line_1} onChange={set("address_line_1")} testid="add-address-1" wide />
+              <Field label="2nd line of address" value={form.address_line_2} onChange={set("address_line_2")} testid="add-address-2" wide />
+              <Field label="Town / City" value={form.city} onChange={set("city")} testid="add-city" />
+              <Field label="County / State" value={form.county} onChange={set("county")} testid="add-county" />
+              <Field label="Postcode" value={form.postcode} onChange={set("postcode")} testid="add-postcode" />
+              <Field label="Country" value={form.country} onChange={set("country")} testid="add-country" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="md:col-span-2">
               <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1.5">Where did they hear about us?</label>
               <select value={form.referral_source} onChange={set("referral_source")} data-testid="add-referral"
@@ -855,10 +874,26 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
               <div className="flex items-start gap-2"><Phone className="w-3.5 h-3.5 text-stone-400 mt-1" />
                 <span className="text-stone-900">{contact.telephone || contact.mobile_phone}</span></div>
             )}
-            {(contact.address_street || contact.city || contact.postcode) && (
-              <div className="flex items-start gap-2"><MapPin className="w-3.5 h-3.5 text-stone-400 mt-1" />
-                <span className="text-stone-900">{[contact.address_street, contact.city, contact.county, contact.postcode].filter(Boolean).join(", ")}</span></div>
-            )}
+            {(() => {
+              // Address rendered as a multi-line block — pulls from the
+              // various legacy field aliases so Airtable / Gravity Forms
+              // / manual entries all render consistently.
+              const line1 = contact.address_line_1 || contact.address_street;
+              const line2 = contact.address_line_2;
+              const town  = contact.city || contact.town_city;
+              const lines = [line1, line2, town, contact.county, contact.postcode, contact.country].filter(Boolean);
+              if (lines.length === 0) return null;
+              return (
+                <div className="flex items-start gap-2" data-testid="drawer-address">
+                  <MapPin className="w-3.5 h-3.5 text-stone-400 mt-1 shrink-0" />
+                  <div className="text-stone-900 leading-snug">
+                    {lines.map((ln, i) => (
+                      <div key={i}>{ln}</div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
             {dateAdded && (
               <div className="flex items-start gap-2"><Calendar className="w-3.5 h-3.5 text-stone-400 mt-1" />
                 <span className="text-stone-900">{formatDate(dateAdded)} <span className="text-stone-500">· {sinceCreated} days ago</span></span></div>
