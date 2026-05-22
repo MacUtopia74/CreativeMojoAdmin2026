@@ -2504,7 +2504,7 @@ async def update_contact_checklist(
     keep the values forever — useful for reports later. Booleans only;
     anything else is coerced via ``bool()``.
     """
-    fields = {k: bool(body.get(k)) for k in ("territory_defined", "contract_sent", "shadow_day_booked")}
+    fields = {k: bool(body.get(k)) for k in ("territory_defined", "contract_sent", "shadow_day_booked", "training_days_booked")}
     # Optional companion fields for the "Shadow Day Booked" row — a date
     # (ISO YYYY-MM-DD or empty) and a free-text "with whom" string. Stored
     # alongside the booleans so the drawer can re-render them on reload.
@@ -2512,6 +2512,18 @@ async def update_contact_checklist(
     fields["shadow_day_date"] = raw_date or None
     raw_with = (body.get("shadowing_with") or "").strip()
     fields["shadowing_with"] = raw_with or None
+    # Training-day(s) booked supports multiple dates (training runs over 2–3
+    # days). Stored as a list of ISO YYYY-MM-DD strings, de-duped and sorted.
+    raw_training = body.get("training_day_dates") or []
+    if isinstance(raw_training, str):
+        raw_training = [raw_training]
+    cleaned = []
+    for d in raw_training:
+        s = (str(d) or "").strip()
+        if s and s not in cleaned:
+            cleaned.append(s)
+    cleaned.sort()
+    fields["training_day_dates"] = cleaned
     now = datetime.now(timezone.utc).isoformat()
     update = {**fields, "checklist_updated_at": now, "checklist_updated_by": user.get("email"), "updated_at": now}
     r = await db.web_form_contacts.update_one({"id": contact_id}, {"$set": update})

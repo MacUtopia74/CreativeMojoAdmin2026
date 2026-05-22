@@ -895,21 +895,24 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
 }
 
 function InterestedChecklist({ contact, onChanged }) {
-  // The Interested stage has three concrete actions Sandra needs to track
-  // (Territory confirmed → Contract Sent → Shadow Day Booked). Each tick is
-  // persisted to the contact via PATCH so the state survives a refresh.
-  // The Shadow Day row is paired with a date input + free-text "Shadowing:"
-  // field so we can record exactly when, and with which existing franchisee,
-  // a shadow class has been booked.
-  // The whole block hides as soon as the contact leaves the Interested
-  // stage — see ContactDrawer's render guard.
+  // The Interested stage tracks four concrete actions:
+  //  • Territory confirmed?  • Contract Sent?
+  //  • Shadow Day Booked?   (with date + "Shadowing:" free text)
+  //  • Training Day(s) booked? (with one-or-more dates — training runs 2–3 days)
+  // Top two ticks sit side-by-side. Bottom two reveal their date/text inputs
+  // only when checked, and are separated by a divider so they read as
+  // distinct steps. Saves on blur (date/text) or instantly on tick.
   const [territoryDefined, setTerritoryDefined] = useState(!!contact.territory_defined);
   const [contractSent, setContractSent] = useState(!!contact.contract_sent);
   const [shadowDayBooked, setShadowDayBooked] = useState(!!contact.shadow_day_booked);
   const [shadowDate, setShadowDate] = useState(contact.shadow_day_date || "");
   const [shadowingWith, setShadowingWith] = useState(contact.shadowing_with || "");
+  const [trainingBooked, setTrainingBooked] = useState(!!contact.training_days_booked);
+  const [trainingDates, setTrainingDates] = useState(Array.isArray(contact.training_day_dates) ? [...contact.training_day_dates] : []);
+  const [newTrainingDate, setNewTrainingDate] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
   // When the drawer switches to a different contact, sync local state.
   useEffect(() => {
     setTerritoryDefined(!!contact.territory_defined);
@@ -917,11 +920,13 @@ function InterestedChecklist({ contact, onChanged }) {
     setShadowDayBooked(!!contact.shadow_day_booked);
     setShadowDate(contact.shadow_day_date || "");
     setShadowingWith(contact.shadowing_with || "");
-  }, [contact.id, contact.territory_defined, contact.contract_sent, contact.shadow_day_booked, contact.shadow_day_date, contact.shadowing_with]);
+    setTrainingBooked(!!contact.training_days_booked);
+    setTrainingDates(Array.isArray(contact.training_day_dates) ? [...contact.training_day_dates] : []);
+    setNewTrainingDate("");
+  }, [contact.id, contact.territory_defined, contact.contract_sent, contact.shadow_day_booked, contact.shadow_day_date, contact.shadowing_with, contact.training_days_booked, contact.training_day_dates]);
 
-  // Single saver — used for both checkbox toggles and the shadow-day
-  // companion fields. Sends the full state so the server overwrites
-  // atomically and we don't end up with half-updated rows.
+  // Single saver — accepts overrides so callers don't have to wait for
+  // setState before firing the PATCH.
   const persist = async (overrides = {}) => {
     setSaving(true); setError("");
     const payload = {
@@ -930,6 +935,8 @@ function InterestedChecklist({ contact, onChanged }) {
       shadow_day_booked: shadowDayBooked,
       shadow_day_date: shadowDate,
       shadowing_with: shadowingWith,
+      training_days_booked: trainingBooked,
+      training_day_dates: trainingDates,
       ...overrides,
     };
     try {
@@ -943,13 +950,36 @@ function InterestedChecklist({ contact, onChanged }) {
 
   const toggle = async (field, next, setter) => {
     const prev = next ? false : true;
-    setter(next);  // optimistic
+    setter(next);
     try { await persist({ [field]: next }); }
-    catch { setter(prev); }  // rollback
+    catch { setter(prev); }
   };
 
-  const Item = ({ k, label, checked, onCheck }) => (
-    <label className="flex items-center gap-3 py-2.5 cursor-pointer hover:bg-blue-50/50 px-3 rounded-md transition-colors" data-testid={`interested-checklist-${k}`}>
+  const addTrainingDate = async () => {
+    const d = (newTrainingDate || "").trim();
+    if (!d) return;
+    if (trainingDates.includes(d)) { setNewTrainingDate(""); return; }
+    const next = [...trainingDates, d].sort();
+    setTrainingDates(next);
+    setNewTrainingDate("");
+    try { await persist({ training_day_dates: next }); }
+    catch { setTrainingDates(trainingDates); }
+  };
+
+  const removeTrainingDate = async (d) => {
+    const next = trainingDates.filter((x) => x !== d);
+    setTrainingDates(next);
+    try { await persist({ training_day_dates: next }); }
+    catch { setTrainingDates(trainingDates); }
+  };
+
+  const fmtTrain = (s) => {
+    const m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? `${m[3]}/${m[2]}/${m[1]}` : s;
+  };
+
+  const Tick = ({ k, label, checked, onCheck }) => (
+    <label className="flex items-center gap-2 cursor-pointer hover:bg-blue-50/50 px-2 py-1.5 rounded-md transition-colors" data-testid={`interested-checklist-${k}`}>
       <input
         type="checkbox"
         checked={checked}
@@ -957,49 +987,99 @@ function InterestedChecklist({ contact, onChanged }) {
         disabled={saving}
         className="w-4 h-4 rounded border-stone-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
       />
-      <span className={`text-sm flex-1 ${checked ? "text-stone-500 line-through" : "text-stone-900 font-medium"}`}>{label}</span>
+      <span className={`text-sm ${checked ? "text-stone-500 line-through" : "text-stone-900 font-medium"}`}>{label}</span>
     </label>
   );
 
   return (
-    <div className="border-2 border-blue-200 bg-blue-50/40 rounded-xl p-4" data-testid="interested-checklist">
-      <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-blue-700 mb-2 flex items-center justify-between">
+    <div className="border-2 border-blue-200 bg-blue-50/40 rounded-xl p-3" data-testid="interested-checklist">
+      <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-blue-700 mb-2 flex items-center justify-between px-1">
         <span>Checklist</span>
         {saving && <span className="text-[10px] font-normal normal-case text-stone-500">Saving…</span>}
       </div>
-      <div className="space-y-0.5 -mx-1">
-        <Item k="territory" label="Territory confirmed?" checked={territoryDefined} onCheck={(v) => toggle("territory_defined", v, setTerritoryDefined)} />
-        <Item k="contract" label="Contract Sent?" checked={contractSent} onCheck={(v) => toggle("contract_sent", v, setContractSent)} />
-        <Item k="shadow" label="Shadow Day Booked?" checked={shadowDayBooked} onCheck={(v) => toggle("shadow_day_booked", v, setShadowDayBooked)} />
+
+      {/* Top row — Territory confirmed + Contract Sent side by side */}
+      <div className="grid grid-cols-2 gap-1">
+        <Tick k="territory" label="Territory confirmed?" checked={territoryDefined} onCheck={(v) => toggle("territory_defined", v, setTerritoryDefined)} />
+        <Tick k="contract" label="Contract Sent?" checked={contractSent} onCheck={(v) => toggle("contract_sent", v, setContractSent)} />
       </div>
-      {/* Shadow day companion fields — a date + free text so we know exactly
-          when and with whom. Saves on blur to avoid hammering the API on
-          every keystroke. */}
-      <div className="mt-3 pt-3 border-t border-blue-200/70 grid grid-cols-1 sm:grid-cols-[auto,1fr] gap-2 items-center">
-        <input
-          type="date"
-          value={shadowDate}
-          onChange={(e) => setShadowDate(e.target.value)}
-          onBlur={() => { if ((shadowDate || "") !== (contact.shadow_day_date || "")) persist().catch(() => {}); }}
-          disabled={saving}
-          data-testid="interested-shadow-date"
-          className="px-3 py-2 bg-white border border-blue-200 rounded-lg text-sm focus:outline-none focus:border-blue-500"
-        />
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-bold uppercase tracking-wider text-blue-800 shrink-0">Shadowing:</span>
+
+      {/* Shadow Day Booked — date + "Shadowing:" only when ticked */}
+      <Tick k="shadow" label="Shadow Day Booked?" checked={shadowDayBooked} onCheck={(v) => toggle("shadow_day_booked", v, setShadowDayBooked)} />
+      {shadowDayBooked && (
+        <div className="px-2 pt-1 pb-2 grid grid-cols-1 sm:grid-cols-[auto,1fr] gap-2 items-center">
           <input
-            type="text"
-            value={shadowingWith}
-            onChange={(e) => setShadowingWith(e.target.value)}
-            onBlur={() => { if ((shadowingWith || "") !== (contact.shadowing_with || "")) persist().catch(() => {}); }}
+            type="date"
+            value={shadowDate}
+            onChange={(e) => setShadowDate(e.target.value)}
+            onBlur={() => { if ((shadowDate || "") !== (contact.shadow_day_date || "")) persist().catch(() => {}); }}
             disabled={saving}
-            placeholder="e.g. with Jane Smith @ Manchester class"
-            data-testid="interested-shadowing-with"
-            className="flex-1 px-3 py-2 bg-white border border-blue-200 rounded-lg text-sm focus:outline-none focus:border-blue-500"
+            data-testid="interested-shadow-date"
+            className="px-3 py-1.5 bg-white border border-blue-200 rounded-lg text-sm focus:outline-none focus:border-blue-500"
           />
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-blue-800 shrink-0">Shadowing:</span>
+            <input
+              type="text"
+              value={shadowingWith}
+              onChange={(e) => setShadowingWith(e.target.value)}
+              onBlur={() => { if ((shadowingWith || "") !== (contact.shadowing_with || "")) persist().catch(() => {}); }}
+              disabled={saving}
+              placeholder="e.g. with Jane Smith @ Manchester class"
+              data-testid="interested-shadowing-with"
+              className="flex-1 px-3 py-1.5 bg-white border border-blue-200 rounded-lg text-sm focus:outline-none focus:border-blue-500"
+            />
+          </div>
         </div>
-      </div>
-      {error && <div className="text-xs text-red-700 mt-2">{error}</div>}
+      )}
+
+      {/* Divider between Shadow Day and Training Day(s) so they read as
+          two clearly separate steps. */}
+      <div className="my-2 border-t border-blue-200/70" />
+
+      {/* Training Day(s) Booked — multi-date selector, only when ticked */}
+      <Tick k="training" label="Training Day(s) booked?" checked={trainingBooked} onCheck={(v) => toggle("training_days_booked", v, setTrainingBooked)} />
+      {trainingBooked && (
+        <div className="px-2 pt-1 pb-2 space-y-2">
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={newTrainingDate}
+              onChange={(e) => setNewTrainingDate(e.target.value)}
+              disabled={saving}
+              data-testid="interested-training-date-input"
+              className="px-3 py-1.5 bg-white border border-blue-200 rounded-lg text-sm focus:outline-none focus:border-blue-500"
+            />
+            <button
+              type="button"
+              onClick={addTrainingDate}
+              disabled={saving || !newTrainingDate}
+              data-testid="interested-training-date-add"
+              className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-40 flex items-center gap-1">
+              <Plus className="w-3 h-3" /> Add date
+            </button>
+          </div>
+          {trainingDates.length > 0 && (
+            <div className="flex flex-wrap gap-1.5" data-testid="interested-training-date-list">
+              {trainingDates.map((d) => (
+                <span key={d} className="inline-flex items-center gap-1 pl-2.5 pr-1 py-1 text-xs font-semibold bg-white border border-blue-300 text-blue-900 rounded-full">
+                  {fmtTrain(d)}
+                  <button
+                    type="button"
+                    onClick={() => removeTrainingDate(d)}
+                    disabled={saving}
+                    data-testid={`interested-training-date-remove-${d}`}
+                    className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-blue-100 text-blue-700">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {error && <div className="text-xs text-red-700 mt-2 px-1">{error}</div>}
     </div>
   );
 }

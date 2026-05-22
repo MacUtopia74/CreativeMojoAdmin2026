@@ -1,12 +1,14 @@
 # Creative Mojo — Unified Admin Platform PRD
 
-## Latest change — Interested-stage Checklist with Shadow Day details (May 22 2026)
-- Contacts drawer "Checklist" panel (rendered only when `pipeline_status === "qualified"`/Interested):
-  - Renamed first row from "Territory Defined?" → "Territory confirmed?".
-  - Other rows unchanged: "Contract Sent?", "Shadow Day Booked?".
-  - Added a paired **date input** + **"Shadowing:" free-text field** beneath the three ticks, so the admin can record exactly when and with whom a shadow class is booked.
-- Backend `PATCH /api/contacts/{id}/checklist` now also accepts and persists `shadow_day_date` (ISO `YYYY-MM-DD` or null) and `shadowing_with` (free text or null) alongside the existing three booleans.
-- Verified end-to-end via curl PATCH + screenshot of the rendered drawer for an Interested contact.
+## Latest change — Checklist v2: side-by-side ticks + Training Day(s) (May 22 2026)
+- Drawer **Checklist** panel restructured:
+  - **Top row** side-by-side: "Territory confirmed?" + "Contract Sent?".
+  - "Shadow Day Booked?" — date + "Shadowing:" free text **only shown when ticked**.
+  - **Divider** between Shadow Day and Training Day(s) so they read as distinct steps. No keyline between a tick and its own inputs.
+  - **NEW** "Training Day(s) booked?" — multi-date selector (training runs 2–3 days). Date picker + "Add date" appends to a chip list with × to remove. No free-text field. Only shown when ticked.
+- Backend `PATCH /api/contacts/{id}/checklist` extended with `training_days_booked` (bool) + `training_day_dates` (list of ISO date strings, de-duped + sorted).
+- Verified end-to-end: curl PATCH + UI screenshot showing both reveal states populated.
+
 
 
 ## Original Problem Statement (from user)
