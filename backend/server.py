@@ -2623,6 +2623,64 @@ async def update_contact_checklist(
     return {"ok": True, **fields, "checklist_updated_at": now}
 
 
+@api.patch("/contacts/{contact_id}/details")
+async def update_contact_details(
+    contact_id: str,
+    body: dict,
+    user: dict = Depends(require_role("admin")),
+):
+    """Inline edit of a contact's identity + address fields.
+
+    Sales staff regularly need to fix typos that come through Gravity
+    Forms / Airtable imports (mis-typed postcodes, misspelt names, etc),
+    so the drawer offers an inline edit. The whitelist below mirrors the
+    create endpoint; ``address_line_1`` and ``city`` are written into
+    BOTH the modern and the legacy aliases so older list views and
+    exports stay in sync.
+    """
+    EDITABLE = {
+        "first_name", "last_name", "email", "telephone", "mobile_phone",
+        "address_line_1", "address_line_2", "city", "county", "postcode", "country",
+    }
+    update: dict = {}
+    for key, raw in (body or {}).items():
+        if key not in EDITABLE:
+            continue
+        if raw is None:
+            update[key] = None
+            continue
+        if not isinstance(raw, str):
+            raise HTTPException(status_code=400, detail=f"{key} must be a string or null")
+        v = raw.strip()
+        if key == "email":
+            update[key] = v.lower() or None
+        elif key == "postcode":
+            update[key] = v.upper() or None
+        else:
+            update[key] = v or None
+    if not update:
+        raise HTTPException(status_code=400, detail="No editable fields provided")
+
+    # Legacy field mirrors — keep them aligned with the modern keys so
+    # the various list views, exports and dashboards stay consistent.
+    if "address_line_1" in update:
+        update["address_street"] = update["address_line_1"]
+    if "city" in update:
+        update["town_city"] = update["city"]
+
+    now = datetime.now(timezone.utc).isoformat()
+    update["updated_at"] = now
+    update["details_updated_at"] = now
+    update["details_updated_by"] = user.get("email")
+
+    r = await db.web_form_contacts.update_one({"id": contact_id}, {"$set": update})
+    if r.matched_count == 0:
+        r = await db.contacts.update_one({"id": contact_id}, {"$set": update})
+    if r.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    return {"ok": True, **update}
+
+
 @api.patch("/contacts/{contact_id}/launch-checklist")
 async def update_contact_launch_checklist(
     contact_id: str,

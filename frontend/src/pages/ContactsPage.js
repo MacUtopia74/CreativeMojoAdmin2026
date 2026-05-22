@@ -4,7 +4,7 @@ import api from "@/lib/api";
 import LinkExistingFranchiseeModal from "@/components/contacts/LinkExistingFranchiseeModal";
 import MergeContactsModal from "@/components/contacts/MergeContactsModal";
 import DuplicatesModal from "@/components/contacts/DuplicatesModal";
-import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, ChevronsLeft, ChevronsRight, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus, Plus, Sparkles, Upload, FileText, CheckCircle2, Send, Award, Target, Link2, GitMerge, Home, Package, Flame, Clock, ClipboardList } from "lucide-react";
+import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, ChevronsLeft, ChevronsRight, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus, Plus, Sparkles, Upload, FileText, CheckCircle2, Send, Award, Target, Link2, GitMerge, Home, Package, Flame, Clock, ClipboardList, Pencil } from "lucide-react";
 
 const STAGES = [
   { key: "new", label: "New", color: "bg-stone-100 text-stone-700 border-stone-300", barColor: "bg-stone-400" },
@@ -738,11 +738,71 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
   const [busy, setBusy] = useState(false);
   const [converting, setConverting] = useState(false);
   const [launchOpen, setLaunchOpen] = useState(false);  // launch-checklist modal
+  // Inline edit of identity + address — staff routinely fix typos from
+  // Gravity-Forms / Airtable imports. We hold a single ``editing``
+  // boolean + a working ``draft`` copy that's only persisted on Save.
+  const [editingDetails, setEditingDetails] = useState(false);
+  const [detailsDraft, setDetailsDraft] = useState({});
+  const [detailsSaving, setDetailsSaving] = useState(false);
+  const [detailsErr, setDetailsErr] = useState("");
   // Inline "Change type" picker — lets the admin reclassify an enquiry
   // between Franchise / Licence / General without leaving the drawer
   // (covers the common case where the contact filled in the wrong web form).
   const [sourceMenuOpen, setSourceMenuOpen] = useState(false);
+  // Reset edit mode whenever the drawer switches contacts so half-edits
+  // don't leak from one contact to another. Sits BEFORE the early-return
+  // below to comply with React's Hook rules.
+  useEffect(() => {
+    setEditingDetails(false);
+    setDetailsErr("");
+  }, [contact?.id]);
   if (!contact) return null;
+  const beginEditDetails = () => {
+    setDetailsDraft({
+      first_name: contact.first_name || "",
+      last_name: contact.last_name || "",
+      email: contact.email || contact.email_raw || "",
+      telephone: contact.telephone || "",
+      mobile_phone: contact.mobile_phone || "",
+      address_line_1: contact.address_line_1 || contact.address_street || "",
+      address_line_2: contact.address_line_2 || "",
+      city: contact.city || contact.town_city || "",
+      county: contact.county || "",
+      postcode: contact.postcode || "",
+      country: contact.country || "United Kingdom",
+    });
+    setDetailsErr("");
+    setEditingDetails(true);
+  };
+  const saveDetails = async () => {
+    setDetailsSaving(true); setDetailsErr("");
+    try {
+      const { data } = await api.patch(`/contacts/${contact.id}/details`, detailsDraft);
+      // Forward the saved fields up — the parent's onChecklistChanged
+      // patch already filters undefineds, so we reuse it as a generic
+      // "fields-merge" channel without adding another prop.
+      onChecklistChanged?.({
+        id: contact.id,
+        first_name: data.first_name,
+        last_name: data.last_name,
+        email: data.email,
+        telephone: data.telephone,
+        mobile_phone: data.mobile_phone,
+        address_line_1: data.address_line_1,
+        address_line_2: data.address_line_2,
+        address_street: data.address_street,
+        city: data.city,
+        town_city: data.town_city,
+        county: data.county,
+        postcode: data.postcode,
+        country: data.country,
+      });
+      setEditingDetails(false);
+    } catch (e) {
+      setDetailsErr(e?.response?.data?.detail || "Could not save changes.");
+    } finally { setDetailsSaving(false); }
+  };
+  const setDraft = (k) => (e) => setDetailsDraft((d) => ({ ...d, [k]: e.target.value }));
   const isInPipeline = !!contact.in_pipeline;
   const dateAdded = contact.date || contact.date_added;
   const sinceCreated = daysSince(dateAdded);
@@ -792,8 +852,29 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
         <div className="p-6 space-y-6">
           <div>
             <h2 className="font-display text-3xl text-stone-950 flex items-center gap-2">
-              <span>{[contact.first_name, contact.last_name].filter(Boolean).join(" ") || "(no name)"}</span>
-              <ManualBadge addedBy={contact.manually_added_by} />
+              {editingDetails ? (
+                <span className="flex gap-2 w-full">
+                  <input
+                    value={detailsDraft.first_name || ""}
+                    onChange={setDraft("first_name")}
+                    placeholder="First name"
+                    data-testid="drawer-edit-first-name"
+                    className="flex-1 min-w-0 px-3 py-1.5 text-base font-sans font-semibold bg-white border border-stone-300 rounded-lg focus:outline-none focus:border-stone-900"
+                  />
+                  <input
+                    value={detailsDraft.last_name || ""}
+                    onChange={setDraft("last_name")}
+                    placeholder="Last name"
+                    data-testid="drawer-edit-last-name"
+                    className="flex-1 min-w-0 px-3 py-1.5 text-base font-sans font-semibold bg-white border border-stone-300 rounded-lg focus:outline-none focus:border-stone-900"
+                  />
+                </span>
+              ) : (
+                <>
+                  <span>{[contact.first_name, contact.last_name].filter(Boolean).join(" ") || "(no name)"}</span>
+                  <ManualBadge addedBy={contact.manually_added_by} />
+                </>
+              )}
             </h2>
             {contact.establishment_name && <div className="text-base text-stone-600 mt-1">{contact.establishment_name}</div>}
             <div className="flex items-center gap-2 flex-wrap mt-3">
@@ -864,39 +945,113 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
             )}
           </div>
 
-          {/* 3. Contact info / address */}
-          <div className="bg-stone-50 border border-stone-200 p-4 space-y-3 text-sm rounded-xl">
-            {(contact.email || contact.email_raw) && (
-              <div className="flex items-start gap-2"><Mail className="w-3.5 h-3.5 text-stone-400 mt-1" />
-                <a href={`mailto:${contact.email || contact.email_raw}`} className="text-stone-900 hover:underline">{contact.email || contact.email_raw}</a></div>
+          {/* 3. Contact info / address — view + inline edit. The pencil
+              icon in the corner toggles edit mode for the whole panel
+              and the name above. Saved fields are mirrored into the
+              parent's cached list via onChecklistChanged. */}
+          <div className="bg-stone-50 border border-stone-200 p-4 space-y-3 text-sm rounded-xl relative" data-testid="drawer-contact-info">
+            {!editingDetails && (
+              <button
+                type="button"
+                onClick={beginEditDetails}
+                data-testid="drawer-edit-details"
+                title="Edit contact details"
+                className="absolute top-2 right-2 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-stone-500 hover:text-stone-900 hover:bg-stone-200 rounded-md inline-flex items-center gap-1">
+                <Pencil className="w-3 h-3" /> Edit
+              </button>
             )}
-            {(contact.telephone || contact.mobile_phone) && (
-              <div className="flex items-start gap-2"><Phone className="w-3.5 h-3.5 text-stone-400 mt-1" />
-                <span className="text-stone-900">{contact.telephone || contact.mobile_phone}</span></div>
-            )}
-            {(() => {
-              // Address rendered as a multi-line block — pulls from the
-              // various legacy field aliases so Airtable / Gravity Forms
-              // / manual entries all render consistently.
-              const line1 = contact.address_line_1 || contact.address_street;
-              const line2 = contact.address_line_2;
-              const town  = contact.city || contact.town_city;
-              const lines = [line1, line2, town, contact.county, contact.postcode, contact.country].filter(Boolean);
-              if (lines.length === 0) return null;
-              return (
-                <div className="flex items-start gap-2" data-testid="drawer-address">
-                  <MapPin className="w-3.5 h-3.5 text-stone-400 mt-1 shrink-0" />
-                  <div className="text-stone-900 leading-snug">
-                    {lines.map((ln, i) => (
+            {editingDetails ? (
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-[0.15em] font-bold text-stone-500 mb-1">Email</label>
+                    <input type="email" value={detailsDraft.email || ""} onChange={setDraft("email")} data-testid="drawer-edit-email"
+                      className="w-full px-3 py-1.5 bg-white border border-stone-300 rounded-md text-sm focus:outline-none focus:border-stone-900" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-[0.15em] font-bold text-stone-500 mb-1">Telephone</label>
+                    <input value={detailsDraft.telephone || ""} onChange={setDraft("telephone")} data-testid="drawer-edit-telephone"
+                      className="w-full px-3 py-1.5 bg-white border border-stone-300 rounded-md text-sm focus:outline-none focus:border-stone-900" />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-[10px] uppercase tracking-[0.15em] font-bold text-stone-500 mb-1">1st line of address</label>
+                    <input value={detailsDraft.address_line_1 || ""} onChange={setDraft("address_line_1")} data-testid="drawer-edit-address-1"
+                      className="w-full px-3 py-1.5 bg-white border border-stone-300 rounded-md text-sm focus:outline-none focus:border-stone-900" />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-[10px] uppercase tracking-[0.15em] font-bold text-stone-500 mb-1">2nd line of address</label>
+                    <input value={detailsDraft.address_line_2 || ""} onChange={setDraft("address_line_2")} data-testid="drawer-edit-address-2"
+                      className="w-full px-3 py-1.5 bg-white border border-stone-300 rounded-md text-sm focus:outline-none focus:border-stone-900" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-[0.15em] font-bold text-stone-500 mb-1">Town / City</label>
+                    <input value={detailsDraft.city || ""} onChange={setDraft("city")} data-testid="drawer-edit-city"
+                      className="w-full px-3 py-1.5 bg-white border border-stone-300 rounded-md text-sm focus:outline-none focus:border-stone-900" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-[0.15em] font-bold text-stone-500 mb-1">County / State</label>
+                    <input value={detailsDraft.county || ""} onChange={setDraft("county")} data-testid="drawer-edit-county"
+                      className="w-full px-3 py-1.5 bg-white border border-stone-300 rounded-md text-sm focus:outline-none focus:border-stone-900" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-[0.15em] font-bold text-stone-500 mb-1">Postcode</label>
+                    <input value={detailsDraft.postcode || ""} onChange={setDraft("postcode")} data-testid="drawer-edit-postcode"
+                      className="w-full px-3 py-1.5 bg-white border border-stone-300 rounded-md text-sm focus:outline-none focus:border-stone-900" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-[0.15em] font-bold text-stone-500 mb-1">Country</label>
+                    <input value={detailsDraft.country || ""} onChange={setDraft("country")} data-testid="drawer-edit-country"
+                      className="w-full px-3 py-1.5 bg-white border border-stone-300 rounded-md text-sm focus:outline-none focus:border-stone-900" />
+                  </div>
+                </div>
+                {detailsErr && <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5">{detailsErr}</div>}
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <button type="button" onClick={() => setEditingDetails(false)} disabled={detailsSaving} data-testid="drawer-edit-cancel"
+                    className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider border border-stone-300 bg-white hover:bg-stone-50 rounded-md disabled:opacity-50">
+                    Cancel
+                  </button>
+                  <button type="button" onClick={saveDetails} disabled={detailsSaving} data-testid="drawer-edit-save"
+                    className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-[#dddd16] hover:bg-[#aaaa11] text-stone-950 rounded-md disabled:opacity-50 inline-flex items-center gap-1">
+                    {detailsSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+                    Save
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                {(contact.email || contact.email_raw) && (
+                  <div className="flex items-start gap-2"><Mail className="w-3.5 h-3.5 text-stone-400 mt-1" />
+                    <a href={`mailto:${contact.email || contact.email_raw}`} className="text-stone-900 hover:underline">{contact.email || contact.email_raw}</a></div>
+                )}
+                {(contact.telephone || contact.mobile_phone) && (
+                  <div className="flex items-start gap-2"><Phone className="w-3.5 h-3.5 text-stone-400 mt-1" />
+                    <span className="text-stone-900">{contact.telephone || contact.mobile_phone}</span></div>
+                )}
+                {(() => {
+                  // Address rendered as a multi-line block — pulls from the
+                  // various legacy field aliases so Airtable / Gravity Forms
+                  // / manual entries all render consistently.
+                  const line1 = contact.address_line_1 || contact.address_street;
+                  const line2 = contact.address_line_2;
+                  const town  = contact.city || contact.town_city;
+                  const lines = [line1, line2, town, contact.county, contact.postcode, contact.country].filter(Boolean);
+                  if (lines.length === 0) return null;
+                  return (
+                    <div className="flex items-start gap-2" data-testid="drawer-address">
+                      <MapPin className="w-3.5 h-3.5 text-stone-400 mt-1 shrink-0" />
+                      <div className="text-stone-900 leading-snug">
+                        {lines.map((ln, i) => (
                       <div key={i}>{ln}</div>
                     ))}
                   </div>
                 </div>
               );
             })()}
-            {dateAdded && (
-              <div className="flex items-start gap-2"><Calendar className="w-3.5 h-3.5 text-stone-400 mt-1" />
-                <span className="text-stone-900">{formatDate(dateAdded)} <span className="text-stone-500">· {sinceCreated} days ago</span></span></div>
+                {dateAdded && (
+                  <div className="flex items-start gap-2"><Calendar className="w-3.5 h-3.5 text-stone-400 mt-1" />
+                    <span className="text-stone-900">{formatDate(dateAdded)} <span className="text-stone-500">· {sinceCreated} days ago</span></span></div>
+                )}
+              </>
             )}
           </div>
 

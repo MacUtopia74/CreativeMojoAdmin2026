@@ -1,6 +1,13 @@
 # Creative Mojo — Unified Admin Platform PRD
 
-## Latest change — Full address fields on contacts (May 22 2026)
+## Latest change — Inline-edit contact details (May 22 2026)
+- New **Edit** pencil button in the top-right of the Contact drawer's contact-info card. Click → name + email + telephone + full address (1st line / 2nd line / Town-City / County-State / Postcode / Country) all become editable inputs. Save / Cancel buttons live inside the card.
+- **Backend `PATCH /api/contacts/{id}/details`** updates a strict whitelist of fields (`first_name`, `last_name`, `email`, `telephone`, `mobile_phone`, `address_line_1`, `address_line_2`, `city`, `county`, `postcode`, `country`). Email auto-lowercased; postcode auto-uppercased. Legacy field mirrors (`address_line_1 ↔ address_street`, `city ↔ town_city`) kept in sync. Audit fields `details_updated_at` + `details_updated_by` stamped on every patch.
+- Saved values are mirrored back into the parent's cached contact list via the existing `onChecklistChanged` channel (now used as a generic "fields-merge" pipe with undefined-stripping), so the kanban / pipeline view updates without a refetch.
+- React Hook-order fix: `useEffect` that resets edit mode on contact switch sits above the drawer's early-return.
+- Bonus during testing: fixed Samantha Whiteman's "East Sussec" → "East Sussex" county typo end-to-end.
+
+## Previous change — Full address fields on contacts (May 22 2026)
 - **Manual Add Contact modal** now has a dedicated **Address** sub-section with all six fields: **1st line of address**, **2nd line of address**, Town / City, **County / State**, Postcode, **Country** (defaults to "United Kingdom", editable). Previously only Postcode + City were collected manually.
 - **Backend `POST /api/contacts`** accepts the four new fields (`address_line_1`, `address_line_2`, `county`, `country`) and persists them. `address_line_1` is also mirrored into the legacy `address_street` key so older list views / exports stay populated. `city` is mirrored into `town_city`. Postcode auto-uppercased.
 - **Contact drawer** address block now renders as a **multi-line** block (one field per line, with a fixed pin icon at top-left) instead of comma-joined. Falls back through `address_line_1 || address_street`, `city || town_city`, so legacy Airtable / Gravity-form imports render with the same layout — the user noticed this data is already in the database for most contacts.
