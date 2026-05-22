@@ -2491,6 +2491,30 @@ class AdminNotesUpdate(BaseModel):
     admin_notes: Optional[str] = None
 
 
+@api.patch("/contacts/{contact_id}/checklist")
+async def update_contact_checklist(
+    contact_id: str,
+    body: dict,
+    user: dict = Depends(require_role("admin")),
+):
+    """Persist the three-item Interested-stage checklist on a contact.
+
+    The UI (ContactsPage drawer) renders these boxes only while the
+    contact is in the ``qualified`` ("Interested") pipeline stage but we
+    keep the values forever — useful for reports later. Booleans only;
+    anything else is coerced via ``bool()``.
+    """
+    fields = {k: bool(body.get(k)) for k in ("territory_defined", "contract_sent", "shadow_day_booked")}
+    now = datetime.now(timezone.utc).isoformat()
+    update = {**fields, "checklist_updated_at": now, "checklist_updated_by": user.get("email"), "updated_at": now}
+    r = await db.web_form_contacts.update_one({"id": contact_id}, {"$set": update})
+    if r.matched_count == 0:
+        r = await db.contacts.update_one({"id": contact_id}, {"$set": update})
+    if r.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    return {"ok": True, **fields, "checklist_updated_at": now}
+
+
 @api.patch("/contacts/{contact_id}/admin-notes")
 async def update_contact_admin_notes(
     contact_id: str,

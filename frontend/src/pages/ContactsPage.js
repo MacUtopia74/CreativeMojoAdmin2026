@@ -10,27 +10,27 @@ const STAGES = [
   { key: "new", label: "New", color: "bg-stone-100 text-stone-700 border-stone-300", barColor: "bg-stone-400" },
   { key: "contacted", label: "Contacted", color: "bg-blue-50 text-blue-700 border-blue-200", barColor: "bg-blue-400" },
   { key: "qualified", label: "Interested", color: "bg-amber-50 text-amber-800 border-amber-200", barColor: "bg-amber-400" },
-  { key: "demo_booked", label: "Shadow Day Booked", color: "bg-purple-50 text-purple-700 border-purple-200", barColor: "bg-purple-400" },
-  { key: "converted", label: "Territory Map", color: "bg-emerald-50 text-emerald-700 border-emerald-200", barColor: "bg-emerald-500" },
   { key: "dormant", label: "Dormant", color: "bg-orange-50 text-orange-800 border-orange-200", barColor: "bg-orange-400" },
   { key: "lost", label: "Lost", color: "bg-red-50 text-red-700 border-red-200", barColor: "bg-red-400" },
 ];
 
-// Licence prospects never go through "Shadow Day Booked" (franchise trial day)
-// or "Territory Map" (territory planning is franchise-only). Hide those stage
-// options from licence-source contacts. Conversion to a licensee is handled
-// via the explicit "Convert to Licensee" action elsewhere in the drawer.
-const FRANCHISE_ONLY_STAGES = new Set(["demo_booked", "converted"]);
+// "Shadow Day Booked" and "Territory Map" are no longer top-level pipeline
+// stages — the equivalent steps live on the per-contact Interested-stage
+// checklist (territory_defined, contract_sent, shadow_day_booked) so the
+// admin can track them as small ticks rather than full stage transitions.
+// FRANCHISE_ONLY_STAGES is kept as an empty Set for backwards-compat in
+// any helper that still references it.
+const FRANCHISE_ONLY_STAGES = new Set();
+
+// Legacy stages we still need to *recognise* (e.g. a contact moved to
+// "demo_booked" before this restructure) so we don't break their badge
+// rendering. Anyone landing in these now is auto-shown the "Interested"
+// stage label in the drawer.
+const LEGACY_STAGE_FALLBACK = { demo_booked: "qualified", converted: "qualified" };
 
 function stagesForContact(contact) {
   if (!contact) return STAGES;
-  if (contact.source !== "licence_enquiry") return STAGES;
-  // Always keep the contact's CURRENT stage visible so it can be moved out of
-  // a legacy/incorrect stage (e.g. someone manually parked a licence lead in
-  // Territory Map before this filter existed).
-  return STAGES.filter(
-    (s) => !FRANCHISE_ONLY_STAGES.has(s.key) || contact.pipeline_status === s.key
-  );
+  return STAGES;
 }
 
 const STAGE_MAP = Object.fromEntries(STAGES.map((s) => [s.key, s]));
@@ -128,8 +128,11 @@ function ManualBadge({ addedBy }) {
 }
 
 function StageBadge({ status }) {
-  const s = STAGE_MAP[status];
-  if (!s) return <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-stone-100 text-stone-500 border border-stone-200 rounded-full">{status || "—"}</span>;
+  // Normalise any retired stages (demo_booked / converted) so historic
+  // contacts still render a familiar badge after the May 2026 simplification.
+  const norm = LEGACY_STAGE_FALLBACK[status] || status;
+  const s = STAGE_MAP[norm];
+  if (!s) return <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-stone-100 text-stone-500 border border-stone-200 rounded-full">{norm || "—"}</span>;
   return <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-full ${s.color}`}>{s.label}</span>;
 }
 function AddContactModal({ open, onClose, onCreated, defaultTarget = "franchise" }) {
@@ -626,7 +629,7 @@ function MoveMenu({ onMove, label = "Move", testid, currentTab, count, contactSo
   );
 }
 
-function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, onDelete, onReply, onConvert, onLinkExisting, onAdminNotesUpdated, onMergeWith, allContacts }) {
+function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, onDelete, onReply, onConvert, onLinkExisting, onAdminNotesUpdated, onMergeWith, onChecklistChanged, allContacts }) {
   const [busy, setBusy] = useState(false);
   const [converting, setConverting] = useState(false);
   if (!contact) return null;
@@ -710,63 +713,35 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
             )}
           </div>
 
-          {/* Convert to Franchisee/Licencee — 1-click promotion to operational record */}
-          <div className={`p-4 border rounded-xl ${alreadyConverted ? "bg-emerald-50 border-emerald-200" : "bg-gradient-to-br from-[#dddd16]/10 to-stone-50 border-stone-300"}`} data-testid="drawer-convert-section">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-sm font-semibold text-stone-950 flex items-center gap-1.5">
-                  <Award className={`w-4 h-4 ${alreadyConverted ? "text-emerald-700" : "text-stone-700"}`} />
-                  {alreadyConverted ? "Already converted" : convertLabel}
-                </div>
-                <div className="text-xs text-stone-600 mt-1">
-                  {alreadyConverted
-                    ? <>This contact has been converted to a {contact.converted_to_record_type === "licencee" ? "Licencee" : "Franchisee"} record.</>
-                    : <>Create a {isLicenceEnq ? "Licencee" : "Franchisee"} record from this enquiry. Their details &amp; original message will copy over.</>}
-                </div>
-              </div>
-              {alreadyConverted ? (
-                <button
-                  onClick={() => onConvert(contact, true)}
-                  data-testid="drawer-view-franchisee"
-                  className="shrink-0 px-3 py-2 text-xs font-bold uppercase tracking-wider bg-white text-emerald-800 border border-emerald-300 hover:bg-emerald-100 rounded-lg flex items-center gap-1.5">
-                  <ArrowRightLeft className="w-3.5 h-3.5" /> View record
-                </button>
-              ) : (
-                <button
-                  onClick={async () => {
-                    if (!window.confirm(`${convertLabel} for ${[contact.first_name, contact.last_name].filter(Boolean).join(" ") || "this contact"}?`)) return;
-                    setConverting(true);
-                    try { await onConvert(contact, false); }
-                    finally { setConverting(false); }
-                  }}
-                  disabled={converting}
-                  data-testid="drawer-convert"
-                  className="shrink-0 px-4 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-lg flex items-center gap-1.5 disabled:opacity-50">
-                  <Award className="w-3.5 h-3.5" /> {converting ? "Converting…" : convertLabel}
-                </button>
-              )}
-            </div>
-            {/* Secondary action — link to an EXISTING franchisee record (no new
-                record created). Shown only when the contact isn't already
-                linked/converted. */}
-            {!alreadyConverted && onLinkExisting && (
-              <div className="mt-3 pt-3 border-t border-stone-200/70 flex items-center justify-between gap-3">
-                <div className="text-xs text-stone-600">
-                  Already in the franchisees list? Skip creating a new record and link to the existing one.
-                </div>
-                <button
-                  onClick={() => onLinkExisting(contact)}
-                  data-testid="drawer-link-existing"
-                  className="shrink-0 px-3 py-2 text-xs font-bold uppercase tracking-wider bg-white text-stone-800 border border-stone-300 hover:bg-stone-50 rounded-lg flex items-center gap-1.5">
-                  <Link2 className="w-3.5 h-3.5" /> Link to existing
-                </button>
-              </div>
+          {/* 3. Contact info / address */}
+          <div className="bg-stone-50 border border-stone-200 p-4 space-y-3 text-sm rounded-xl">
+            {(contact.email || contact.email_raw) && (
+              <div className="flex items-start gap-2"><Mail className="w-3.5 h-3.5 text-stone-400 mt-1" />
+                <a href={`mailto:${contact.email || contact.email_raw}`} className="text-stone-900 hover:underline">{contact.email || contact.email_raw}</a></div>
+            )}
+            {(contact.telephone || contact.mobile_phone) && (
+              <div className="flex items-start gap-2"><Phone className="w-3.5 h-3.5 text-stone-400 mt-1" />
+                <span className="text-stone-900">{contact.telephone || contact.mobile_phone}</span></div>
+            )}
+            {(contact.address_street || contact.city || contact.postcode) && (
+              <div className="flex items-start gap-2"><MapPin className="w-3.5 h-3.5 text-stone-400 mt-1" />
+                <span className="text-stone-900">{[contact.address_street, contact.city, contact.county, contact.postcode].filter(Boolean).join(", ")}</span></div>
+            )}
+            {dateAdded && (
+              <div className="flex items-start gap-2"><Calendar className="w-3.5 h-3.5 text-stone-400 mt-1" />
+                <span className="text-stone-900">{formatDate(dateAdded)} <span className="text-stone-500">· {sinceCreated} days ago</span></span></div>
             )}
           </div>
 
-          {/* Phase 4 — Plan territory for prospective franchisees only. Licence
-              contacts don't get a Territory Map, so this CTA is hidden for them. */}
-          {!alreadyConverted && !isLicenceEnq && (isFranchiseEnq || isInPipeline) && (
+          {/* 4–6. Interested-only block: Checklist → Plan Territory → Convert.
+              These three panels are intentionally hidden in New / Contacted /
+              Dormant / Lost because they make no sense until someone is
+              actively being qualified. */}
+          {isInPipeline && contact.pipeline_status === "qualified" && !alreadyConverted && (
+            <InterestedChecklist contact={contact} onChanged={onChecklistChanged} />
+          )}
+
+          {isInPipeline && contact.pipeline_status === "qualified" && !alreadyConverted && !isLicenceEnq && (
             <a href={`/territory-builder?contact_id=${contact.id}`}
               data-testid="drawer-plan-territory"
               className="block p-4 border border-stone-300 rounded-xl hover:border-stone-500 hover:shadow-md transition-all bg-gradient-to-br from-[#EEEE86]/30 to-white">
@@ -786,6 +761,59 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
             </a>
           )}
 
+          {isInPipeline && contact.pipeline_status === "qualified" && (
+            <div className={`p-4 border rounded-xl ${alreadyConverted ? "bg-emerald-50 border-emerald-200" : "bg-gradient-to-br from-[#dddd16]/10 to-stone-50 border-stone-300"}`} data-testid="drawer-convert-section">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-stone-950 flex items-center gap-1.5">
+                    <Award className={`w-4 h-4 ${alreadyConverted ? "text-emerald-700" : "text-stone-700"}`} />
+                    {alreadyConverted ? "Already converted" : convertLabel}
+                  </div>
+                  <div className="text-xs text-stone-600 mt-1">
+                    {alreadyConverted
+                      ? <>This contact has been converted to a {contact.converted_to_record_type === "licencee" ? "Licencee" : "Franchisee"} record.</>
+                      : <>Create a {isLicenceEnq ? "Licencee" : "Franchisee"} record from this enquiry. Their details &amp; original message will copy over.</>}
+                  </div>
+                </div>
+                {alreadyConverted ? (
+                  <button
+                    onClick={() => onConvert(contact, true)}
+                    data-testid="drawer-view-franchisee"
+                    className="shrink-0 px-3 py-2 text-xs font-bold uppercase tracking-wider bg-white text-emerald-800 border border-emerald-300 hover:bg-emerald-100 rounded-lg flex items-center gap-1.5">
+                    <ArrowRightLeft className="w-3.5 h-3.5" /> View record
+                  </button>
+                ) : (
+                  <button
+                    onClick={async () => {
+                      if (!window.confirm(`${convertLabel} for ${[contact.first_name, contact.last_name].filter(Boolean).join(" ") || "this contact"}?`)) return;
+                      setConverting(true);
+                      try { await onConvert(contact, false); }
+                      finally { setConverting(false); }
+                    }}
+                    disabled={converting}
+                    data-testid="drawer-convert"
+                    className="shrink-0 px-4 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-lg flex items-center gap-1.5 disabled:opacity-50">
+                    <Award className="w-3.5 h-3.5" /> {converting ? "Converting…" : convertLabel}
+                  </button>
+                )}
+              </div>
+              {!alreadyConverted && onLinkExisting && (
+                <div className="mt-3 pt-3 border-t border-stone-200/70 flex items-center justify-between gap-3">
+                  <div className="text-xs text-stone-600">
+                    Already in the franchisees list? Skip creating a new record and link to the existing one.
+                  </div>
+                  <button
+                    onClick={() => onLinkExisting(contact)}
+                    data-testid="drawer-link-existing"
+                    className="shrink-0 px-3 py-2 text-xs font-bold uppercase tracking-wider bg-white text-stone-800 border border-stone-300 hover:bg-stone-50 rounded-lg flex items-center gap-1.5">
+                    <Link2 className="w-3.5 h-3.5" /> Link to existing
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 7. Move to stage (pipeline) OR Promote (non-pipeline) */}
           {isInPipeline ? (
             <div>
               <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-2">Move to stage</div>
@@ -819,25 +847,7 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
             </div>
           )}
 
-          <div className="bg-stone-50 border border-stone-200 p-4 space-y-3 text-sm rounded-xl">
-            {(contact.email || contact.email_raw) && (
-              <div className="flex items-start gap-2"><Mail className="w-3.5 h-3.5 text-stone-400 mt-1" />
-                <a href={`mailto:${contact.email || contact.email_raw}`} className="text-stone-900 hover:underline">{contact.email || contact.email_raw}</a></div>
-            )}
-            {(contact.telephone || contact.mobile_phone) && (
-              <div className="flex items-start gap-2"><Phone className="w-3.5 h-3.5 text-stone-400 mt-1" />
-                <span className="text-stone-900">{contact.telephone || contact.mobile_phone}</span></div>
-            )}
-            {(contact.address_street || contact.city || contact.postcode) && (
-              <div className="flex items-start gap-2"><MapPin className="w-3.5 h-3.5 text-stone-400 mt-1" />
-                <span className="text-stone-900">{[contact.address_street, contact.city, contact.county, contact.postcode].filter(Boolean).join(", ")}</span></div>
-            )}
-            {dateAdded && (
-              <div className="flex items-start gap-2"><Calendar className="w-3.5 h-3.5 text-stone-400 mt-1" />
-                <span className="text-stone-900">{formatDate(dateAdded)} <span className="text-stone-500">· {sinceCreated} days ago</span></span></div>
-            )}
-          </div>
-
+          {/* 8. Sales Notes — only in pipeline */}
           {isInPipeline && (
             <div>
               <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-2">Sales Notes</div>
@@ -857,9 +867,10 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
             </div>
           )}
 
+          {/* 9. Notes (Original Enquiry) */}
           {(contact.why_contacting || contact.message) && (
             <div>
-              <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-2">Original Enquiry</div>
+              <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-2">Notes</div>
               <div className="bg-stone-50 border border-stone-200 p-4 text-sm text-stone-800 leading-relaxed whitespace-pre-wrap rounded-xl">
                 {contact.why_contacting && <div className="font-semibold mb-1">{contact.why_contacting}</div>}
                 {contact.message}
@@ -867,9 +878,10 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
             </div>
           )}
 
-          {/* Editable running admin notes — saved on blur, persists across sessions. */}
+          {/* Running admin notes */}
           <AdminNotesEditor contact={contact} onUpdated={onAdminNotesUpdated} />
 
+          {/* 10. Internal Notes */}
           {contact.notes && (
             <div>
               <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-2">Internal Notes</div>
@@ -878,6 +890,71 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
           )}
         </div>
       </aside>
+    </div>
+  );
+}
+
+function InterestedChecklist({ contact, onChanged }) {
+  // The Interested stage has three concrete actions Sandra needs to track
+  // (Territory Defined → Contract Sent → Shadow Day Booked). Each tick is
+  // persisted to the contact via PATCH so the state survives a refresh.
+  // The whole block hides as soon as the contact leaves the Interested
+  // stage — see ContactDrawer's render guard.
+  const [territoryDefined, setTerritoryDefined] = useState(!!contact.territory_defined);
+  const [contractSent, setContractSent] = useState(!!contact.contract_sent);
+  const [shadowDayBooked, setShadowDayBooked] = useState(!!contact.shadow_day_booked);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  // When the drawer switches to a different contact, sync local state.
+  useEffect(() => {
+    setTerritoryDefined(!!contact.territory_defined);
+    setContractSent(!!contact.contract_sent);
+    setShadowDayBooked(!!contact.shadow_day_booked);
+  }, [contact.id, contact.territory_defined, contact.contract_sent, contact.shadow_day_booked]);
+
+  const toggle = async (field, next, setter) => {
+    const prev = next ? false : true;
+    setter(next);  // optimistic
+    setSaving(true); setError("");
+    try {
+      const payload = {
+        territory_defined: field === "territory_defined" ? next : territoryDefined,
+        contract_sent: field === "contract_sent" ? next : contractSent,
+        shadow_day_booked: field === "shadow_day_booked" ? next : shadowDayBooked,
+      };
+      const { data } = await api.patch(`/contacts/${contact.id}/checklist`, payload);
+      onChanged?.({ id: contact.id, ...data });
+    } catch (e) {
+      setter(prev);  // rollback
+      setError(e?.response?.data?.detail || "Could not save.");
+    } finally { setSaving(false); }
+  };
+
+  const Item = ({ k, label, checked, onCheck }) => (
+    <label className="flex items-center gap-3 py-2.5 cursor-pointer hover:bg-blue-50/50 px-3 rounded-md transition-colors" data-testid={`interested-checklist-${k}`}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onCheck(e.target.checked)}
+        disabled={saving}
+        className="w-4 h-4 rounded border-stone-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+      />
+      <span className={`text-sm flex-1 ${checked ? "text-stone-500 line-through" : "text-stone-900 font-medium"}`}>{label}</span>
+    </label>
+  );
+
+  return (
+    <div className="border-2 border-blue-200 bg-blue-50/40 rounded-xl p-4" data-testid="interested-checklist">
+      <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-blue-700 mb-2 flex items-center justify-between">
+        <span>Checklist</span>
+        {saving && <span className="text-[10px] font-normal normal-case text-stone-500">Saving…</span>}
+      </div>
+      <div className="space-y-0.5 -mx-1">
+        <Item k="territory" label="Territory Defined?" checked={territoryDefined} onCheck={(v) => toggle("territory_defined", v, setTerritoryDefined)} />
+        <Item k="contract" label="Contract Sent?" checked={contractSent} onCheck={(v) => toggle("contract_sent", v, setContractSent)} />
+        <Item k="shadow" label="Shadow Day Booked?" checked={shadowDayBooked} onCheck={(v) => toggle("shadow_day_booked", v, setShadowDayBooked)} />
+      </div>
+      {error && <div className="text-xs text-red-700 mt-2">{error}</div>}
     </div>
   );
 }
@@ -1723,6 +1800,22 @@ export default function ContactsPage() {
           setSelected((sel) => sel && sel.id === id
             ? { ...sel, admin_notes: notes, admin_notes_updated_at: updatedAt }
             : sel);
+        }}
+        onChecklistChanged={(payload) => {
+          // Mirror checklist booleans back into the cached contact list so
+          // anything else listening to that data (counts, badges) stays in
+          // sync without a full re-fetch.
+          const patch = {
+            territory_defined: payload.territory_defined,
+            contract_sent: payload.contract_sent,
+            shadow_day_booked: payload.shadow_day_booked,
+            checklist_updated_at: payload.checklist_updated_at,
+          };
+          setData((d) => ({
+            ...d,
+            items: d.items.map((c) => c.id === payload.id ? { ...c, ...patch } : c),
+          }));
+          setSelected((sel) => sel && sel.id === payload.id ? { ...sel, ...patch } : sel);
         }} />
       <LinkExistingFranchiseeModal
         open={!!linkingContact}
