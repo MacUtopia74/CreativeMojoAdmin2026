@@ -4,7 +4,7 @@ import api from "@/lib/api";
 import LinkExistingFranchiseeModal from "@/components/contacts/LinkExistingFranchiseeModal";
 import MergeContactsModal from "@/components/contacts/MergeContactsModal";
 import DuplicatesModal from "@/components/contacts/DuplicatesModal";
-import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, ChevronsLeft, ChevronsRight, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus, Plus, Sparkles, Upload, FileText, CheckCircle2, Send, Award, Target, Link2, GitMerge, Home, Package } from "lucide-react";
+import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, ChevronsLeft, ChevronsRight, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus, Plus, Sparkles, Upload, FileText, CheckCircle2, Send, Award, Target, Link2, GitMerge, Home, Package, Flame, Clock } from "lucide-react";
 
 const STAGES = [
   { key: "new", label: "New", color: "bg-stone-100 text-stone-700 border-stone-300", barColor: "bg-stone-400" },
@@ -34,6 +34,92 @@ function stagesForContact(contact) {
 }
 
 const STAGE_MAP = Object.fromEntries(STAGES.map((s) => [s.key, s]));
+
+// Pipeline lead-temperature tag. Re-introduced May 22 2026 at the
+// pipeline level: a quick read of how "warm" a lead is, displayed as a
+// coloured Flame icon on the kanban card AND in the drawer header (the
+// drawer copy is read-only — change it from the card to save space).
+const TEMPERATURES = [
+  { key: "hot",      label: "Hot",      colour: "text-orange-500", fill: "#F97316", ring: "ring-orange-300" },
+  { key: "keen",     label: "Keen",     colour: "text-purple-500", fill: "#A855F7", ring: "ring-purple-300" },
+  { key: "lukewarm", label: "Lukewarm", colour: "text-blue-500",   fill: "#3B82F6", ring: "ring-blue-300" },
+];
+const TEMP_MAP = Object.fromEntries(TEMPERATURES.map((t) => [t.key, t]));
+
+// Small reusable picker — three coloured flames. Active flame is filled,
+// the others outlined. Click on the active flame clears it. Used on
+// every kanban card so Sandra can grade leads with one click.
+function TemperaturePicker({ value, onChange, size = "sm", testidPrefix = "temp" }) {
+  const dim = size === "xs" ? "w-3.5 h-3.5" : size === "lg" ? "w-5 h-5" : "w-4 h-4";
+  return (
+    <div className="inline-flex items-center gap-0.5" data-testid={`${testidPrefix}-picker`}>
+      {TEMPERATURES.map((t) => {
+        const active = value === t.key;
+        return (
+          <button
+            key={t.key}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onChange(active ? null : t.key);
+            }}
+            title={`${t.label}${active ? " · click to clear" : ""}`}
+            aria-label={t.label}
+            data-testid={`${testidPrefix}-${t.key}${active ? "-active" : ""}`}
+            className={`p-0.5 rounded-md transition-all ${active ? `bg-white ring-1 ${t.ring}` : "opacity-30 hover:opacity-100"}`}>
+            <Flame
+              className={`${dim} ${t.colour}`}
+              fill={active ? t.fill : "none"}
+              strokeWidth={active ? 1.5 : 2}
+            />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// Read-only flame for places like the drawer header where we want to
+// show the current grade without offering the picker. Returns null when
+// no temperature is set.
+function TemperatureFlame({ value, size = "md" }) {
+  if (!value || !TEMP_MAP[value]) return null;
+  const t = TEMP_MAP[value];
+  const dim = size === "sm" ? "w-3.5 h-3.5" : size === "lg" ? "w-5 h-5" : "w-4 h-4";
+  return (
+    <span title={t.label} data-testid={`temperature-flame-${t.key}`} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-white border border-stone-200">
+      <Flame className={`${dim} ${t.colour}`} fill={t.fill} strokeWidth={1.5} />
+      <span className={`text-[10px] font-bold uppercase tracking-wider ${t.colour}`}>{t.label}</span>
+    </span>
+  );
+}
+
+// LocalStorage-backed "Recent Searches" cache (last 10 distinct queries,
+// most-recent first). Keyed per-user-agent — quick, no backend needed.
+const RECENT_SEARCH_KEY = "contactsRecentSearches";
+const RECENT_SEARCH_LIMIT = 10;
+function loadRecentSearches() {
+  try {
+    const raw = localStorage.getItem(RECENT_SEARCH_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr.filter((s) => typeof s === "string" && s.trim()) : [];
+  } catch { return []; }
+}
+function saveRecentSearch(q) {
+  const v = (q || "").trim();
+  if (!v) return;
+  try {
+    const cur = loadRecentSearches();
+    // De-dupe case-insensitively but preserve the user's original casing.
+    const lower = v.toLowerCase();
+    const filtered = cur.filter((s) => s.toLowerCase() !== lower);
+    const next = [v, ...filtered].slice(0, RECENT_SEARCH_LIMIT);
+    localStorage.setItem(RECENT_SEARCH_KEY, JSON.stringify(next));
+  } catch { /* localStorage full / disabled — silently ignore */ }
+}
+function clearRecentSearches() {
+  try { localStorage.removeItem(RECENT_SEARCH_KEY); } catch { /* noop */ }
+}
 
 const TABS = [
   { key: "pipeline", label: "Sales Pipeline", hint: "Leads being actively worked", icon: Briefcase },
@@ -692,6 +778,7 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
             {contact.establishment_name && <div className="text-base text-stone-600 mt-1">{contact.establishment_name}</div>}
             <div className="flex items-center gap-2 flex-wrap mt-3">
               {isInPipeline && <StageBadge status={contact.pipeline_status} />}
+              {isInPipeline && <TemperatureFlame value={contact.temperature} />}
               <SourcePill source={contact.source} />
               {onChangeSource && (contact.source === "franchise_enquiry" || contact.source === "licence_enquiry" || contact.source === "general_enquiry") && (
                 <div className="relative" data-testid="drawer-change-source">
@@ -1236,6 +1323,8 @@ export default function ContactsPage() {
   const [view, setView] = useState("pipeline");
   const [stageFilter, setStageFilter] = useState("");
   const [search, setSearch] = useState("");
+  const [recentSearches, setRecentSearches] = useState(() => loadRecentSearches());
+  const [searchFocused, setSearchFocused] = useState(false);
   const [data, setData] = useState({ items: [], total: 0 });
   const [counts, setCounts] = useState({});
   // Display cap for the LIST view — chunked 500 at a time so we don't shove
@@ -1335,7 +1424,16 @@ export default function ContactsPage() {
   };
 
   useEffect(() => {
-    const t = setTimeout(load, search ? 250 : 0);
+    const t = setTimeout(() => {
+      load();
+      // Push the applied search into the Recent Searches cache. Only
+      // strings ≥ 2 chars get recorded — single-letter typing is noise.
+      const q = (search || "").trim();
+      if (q.length >= 2) {
+        saveRecentSearch(q);
+        setRecentSearches(loadRecentSearches());
+      }
+    }, search ? 350 : 0);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, stageFilter, search]);
@@ -1400,6 +1498,23 @@ export default function ContactsPage() {
       setData((d) => ({ ...d, items: d.items.map((c) => (c.id === contactId ? { ...c, pipeline_status: newStage } : c)) }));
       setSelected((sel) => sel && sel.id === contactId ? { ...sel, pipeline_status: newStage } : sel);
     } catch (e) { /* noop */ }
+  };
+
+  // Optimistically set the pipeline lead-temperature on a contact and
+  // PATCH the server. Used from the kanban card; the drawer shows the
+  // result read-only.
+  const setTemperature = async (contactId, nextTemperature) => {
+    const prev = data.items.find((c) => c.id === contactId)?.temperature ?? null;
+    setData((d) => ({ ...d, items: d.items.map((c) => c.id === contactId ? { ...c, temperature: nextTemperature } : c) }));
+    setSelected((sel) => sel && sel.id === contactId ? { ...sel, temperature: nextTemperature } : sel);
+    try {
+      await api.patch(`/contacts/${contactId}/temperature`, { temperature: nextTemperature });
+    } catch (e) {
+      // Rollback
+      setData((d) => ({ ...d, items: d.items.map((c) => c.id === contactId ? { ...c, temperature: prev } : c) }));
+      setSelected((sel) => sel && sel.id === contactId ? { ...sel, temperature: prev } : sel);
+      setError("Could not update lead temperature.");
+    }
   };
 
   const replyByEmail = (contact) => {
@@ -1559,6 +1674,9 @@ export default function ContactsPage() {
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
             <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="contact-search"
               placeholder="Search…"
+              autoComplete="off"
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => { setTimeout(() => setSearchFocused(false), 150); }}
               className={`pl-9 ${search ? "pr-9" : "pr-3"} py-2 w-56 bg-stone-50 border border-stone-300 text-sm focus:outline-none focus:border-stone-900 rounded-lg`} />
             {search && (
               <button
@@ -1571,6 +1689,44 @@ export default function ContactsPage() {
               >
                 <X className="w-3.5 h-3.5" />
               </button>
+            )}
+            {/* Recent Searches dropdown — shows when the input is focused
+                and there's at least one historical query AND the user
+                hasn't started typing a new one (so it never gets in the
+                way of an active search). Last 10 queries, most-recent
+                first; click to re-run, or "Clear" to wipe the list. */}
+            {searchFocused && !search && recentSearches.length > 0 && (
+              <div
+                onMouseDown={(e) => e.preventDefault()}
+                className="absolute right-0 top-full mt-1 z-30 w-72 bg-white border border-stone-200 rounded-xl shadow-lg overflow-hidden"
+                data-testid="recent-searches-dropdown">
+                <div className="px-3 py-2 flex items-center justify-between bg-stone-50 border-b border-stone-200">
+                  <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 flex items-center gap-1.5">
+                    <Clock className="w-3 h-3" /> Recent searches
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { clearRecentSearches(); setRecentSearches([]); }}
+                    data-testid="recent-searches-clear"
+                    className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 hover:text-stone-900">
+                    Clear
+                  </button>
+                </div>
+                <ul className="max-h-72 overflow-y-auto">
+                  {recentSearches.map((q) => (
+                    <li key={q}>
+                      <button
+                        type="button"
+                        onClick={() => { setSearch(q); setSearchFocused(false); }}
+                        data-testid={`recent-search-${q.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")}`}
+                        className="w-full text-left px-3 py-2 text-sm text-stone-800 hover:bg-stone-50 flex items-center gap-2">
+                        <Search className="w-3 h-3 text-stone-400" />
+                        <span className="truncate">{q}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
           </div>
           <button onClick={() => setDuplicatesOpen(true)} data-testid="find-duplicates-button"
@@ -1798,6 +1954,14 @@ export default function ContactsPage() {
                               <span className="truncate">{[c.first_name, c.last_name].filter(Boolean).join(" ") || "Unnamed"}</span>
                               <ManualBadge addedBy={c.manually_added_by} />
                             </div>
+                            {/* Lead-temperature picker. Pipeline-only: any
+                                contact in the kanban is by definition in
+                                the pipeline, so always render here. */}
+                            <TemperaturePicker
+                              value={c.temperature}
+                              onChange={(next) => setTemperature(c.id, next)}
+                              testidPrefix={`card-temp-${c.id}`}
+                            />
                           </div>
                           {c.establishment_name && <div className="text-stone-600 truncate mt-0.5 pl-5">{c.establishment_name}</div>}
                           <div className="flex items-center justify-between mt-1.5 text-[10px] pl-5 gap-2">

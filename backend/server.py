@@ -2534,6 +2534,41 @@ async def update_contact_checklist(
     return {"ok": True, **fields, "checklist_updated_at": now}
 
 
+# Allowed values for the pipeline-level "lead temperature" tag. ``None``
+# (or empty string in the body) clears the tag.
+LEAD_TEMPERATURES = {"hot", "keen", "lukewarm"}
+
+
+@api.patch("/contacts/{contact_id}/temperature")
+async def update_contact_temperature(
+    contact_id: str,
+    body: dict,
+    user: dict = Depends(require_role("admin")),
+):
+    """Persist the pipeline lead-temperature tag (hot / keen / lukewarm) on
+    a contact. Pass ``temperature: null`` (or "") to clear. Stored on the
+    contact regardless of pipeline membership — the UI hides the control
+    outside the pipeline view but we keep the value if they bounce in and
+    out of the pipeline."""
+    raw = body.get("temperature")
+    if raw in (None, ""):
+        temperature = None
+    else:
+        t = str(raw).strip().lower()
+        if t not in LEAD_TEMPERATURES:
+            raise HTTPException(status_code=400, detail=f"temperature must be one of {sorted(LEAD_TEMPERATURES)} or null")
+        temperature = t
+    now = datetime.now(timezone.utc).isoformat()
+    update = {"temperature": temperature, "temperature_updated_at": now, "temperature_updated_by": user.get("email"), "updated_at": now}
+    r = await db.web_form_contacts.update_one({"id": contact_id}, {"$set": update})
+    if r.matched_count == 0:
+        r = await db.contacts.update_one({"id": contact_id}, {"$set": update})
+    if r.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    return {"ok": True, "temperature": temperature, "temperature_updated_at": now}
+
+
+
 @api.patch("/contacts/{contact_id}/admin-notes")
 async def update_contact_admin_notes(
     contact_id: str,

@@ -1,9 +1,16 @@
 # Creative Mojo — Unified Admin Platform PRD
 
-## Latest change — Checklist divider + drawer "Change type" switcher (May 22 2026)
-- Added a second blue divider line **between the top "Territory confirmed? / Contract Sent?" row and "Shadow Day Booked?"** so the three checklist sub-sections (top ticks / Shadow Day / Training Day(s)) all read as distinct steps.
-- New **"Change type"** dropdown next to the source pill in the Contact drawer header — lets the admin reclassify any enquiry between Franchise / Licence / General without leaving the drawer (current type is shown disabled). Wired to existing `POST /api/contacts/{id}/move` which preserves pipeline membership + stage. Confirmation prompt before commit; drawer stays open on the same contact afterwards. Counts panel reloads automatically.
-- Validated by switching Alison King (#4019) from Franchise → Licence — pill, Convert button label, and Licence Contacts count all updated correctly.
+## Latest change — Lead Temperature tag + Recent Searches (May 22 2026)
+**Lead Temperature (re-introduced at pipeline level):**
+- Three tags: **Hot** (orange), **Keen** (purple), **Lukewarm** (blue), rendered as coloured Flame icons (lucide `Flame`).
+- **Kanban card** carries an inline 3-flame picker (one click sets, click on the active flame clears). Active flame is filled + ringed, the others dimmed.
+- **Drawer header** shows the current temperature as a read-only chip next to the stage badge (no picker — change it from the card).
+- Backend: new field `temperature` on contacts + `PATCH /api/contacts/{id}/temperature` accepting `"hot"|"keen"|"lukewarm"|null` (anything else → 400). Validated.
+
+**Recent Searches dropdown:**
+- Last 10 distinct name searches (case-insensitive de-dupe, most-recent first), persisted in `localStorage` under `contactsRecentSearches`.
+- Appears under the top-bar search input when focused & empty; click a pill to re-run that query. "Clear" link wipes the cache.
+- Only queries ≥ 2 chars get recorded (single-letter typing is noise).
 
 
 
