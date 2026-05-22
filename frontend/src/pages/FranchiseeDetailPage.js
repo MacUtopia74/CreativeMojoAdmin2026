@@ -2,13 +2,14 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
 import api from "@/lib/api";
 import { formatDate, daysFromToday } from "@/lib/date";
-import { ArrowLeft, MapPin, AlertCircle, User, FileText, Map, MessageSquare, Pencil, Check, X as XIcon, Clock, ShieldCheck, ShieldAlert, Globe, Facebook, CreditCard, RefreshCw, AlertTriangle, Power, PowerOff, BellRing, FolderOpen, LockKeyhole, Calendar, Camera, Loader2 } from "lucide-react";
+import { ArrowLeft, MapPin, AlertCircle, User, FileText, Map, MessageSquare, Pencil, Check, X as XIcon, Clock, ShieldCheck, ShieldAlert, Globe, Facebook, CreditCard, RefreshCw, AlertTriangle, Power, PowerOff, BellRing, FolderOpen, LockKeyhole, Calendar, Camera, Loader2, ClipboardList } from "lucide-react";
 import FranchiseeFilesPanel from "@/components/files/FranchiseeFilesPanel";
 import FranchiseePortalControls from "@/components/franchisee/FranchiseePortalControls";
 import FranchiseeTerritoryWidget from "@/components/territory/FranchiseeTerritoryWidget";
 import RecentFilesStrip from "@/components/files/RecentFilesStrip";
 import FilePreviewModal from "@/components/files/FilePreviewModal";
 import AddContractModal from "@/components/franchisee/AddContractModal";
+import LaunchChecklistModal from "@/components/LaunchChecklistModal";
 
 // Live GoCardless mandate status pill (read from cached franchisee fields)
 const MANDATE_STYLES = {
@@ -268,6 +269,9 @@ export default function FranchiseeDetailPage() {
   const [photoBusy, setPhotoBusy] = useState(false);
   const fileInputRef = useRef(null);
   const [contractModal, setContractModal] = useState(null); // null | "new" | {previous}
+  // In-house Launch Prep checklist modal — only available post-conversion,
+  // so it lives on the Franchisee page (not on the Contact drawer).
+  const [launchOpen, setLaunchOpen] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -439,10 +443,24 @@ export default function FranchiseeDetailPage() {
             })()
           )}
           {!editing ? (
-            <button onClick={startEdit} data-testid="edit-franchisee"
-              className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider border border-stone-300 bg-white text-stone-900 hover:bg-stone-50 rounded-lg flex items-center gap-1.5">
-              <Pencil className="w-3.5 h-3.5" /> Edit
-            </button>
+            <>
+              <button
+                onClick={() => setLaunchOpen(true)}
+                data-testid="franchisee-launch-checklist-open"
+                title="In-house launch prep checklist"
+                className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider border-2 border-stone-950 bg-stone-950 hover:bg-stone-800 text-[#dddd16] rounded-lg flex items-center gap-1.5">
+                <ClipboardList className="w-3.5 h-3.5" /> Launch Checklist
+                {f.launch_checklist_updated_at && (
+                  <span className="text-[10px] font-normal normal-case tracking-normal text-stone-300 ml-1">
+                    · {new Date(f.launch_checklist_updated_at).toLocaleDateString("en-GB")}
+                  </span>
+                )}
+              </button>
+              <button onClick={startEdit} data-testid="edit-franchisee"
+                className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider border border-stone-300 bg-white text-stone-900 hover:bg-stone-50 rounded-lg flex items-center gap-1.5">
+                <Pencil className="w-3.5 h-3.5" /> Edit
+              </button>
+            </>
           ) : (
             <>
               <button onClick={cancelEdit} data-testid="cancel-edit"
@@ -714,6 +732,21 @@ export default function FranchiseeDetailPage() {
         )}
       </div>
       {previewFile && <FilePreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />}
+      <LaunchChecklistModal
+        open={launchOpen}
+        subject={f}
+        endpoint={`/franchisees/${f.id}/launch-checklist`}
+        onClose={() => setLaunchOpen(false)}
+        onSaved={(payload) => {
+          // Mirror the latest launch_checklist + audit field back into
+          // cached state so the "last updated" label on the button
+          // refreshes instantly without re-fetching.
+          setData((d) => ({
+            ...d,
+            franchisee: { ...d.franchisee, ...payload },
+          }));
+        }}
+      />
       {contractModal && (
         <AddContractModal
           franchisee={data.franchisee}

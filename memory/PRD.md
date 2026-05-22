@@ -1,6 +1,13 @@
 # Creative Mojo — Unified Admin Platform PRD
 
-## Latest change — Inline-edit contact details (May 22 2026)
+## Latest change — LAUNCH CHECKLIST moved to Franchisee detail page (May 22 2026)
+- The **LAUNCH CHECKLIST** button is now only visible after a contact has been converted to a Franchisee — it lives in the Franchisee detail page top-bar (next to Edit). The button surfaces the "last updated DD/MM/YYYY" stamp once any save has occurred.
+- Removed from the Contact drawer (Interested state) — that panel reverts to just the small Checklist (Territory confirmed / Contract sent / Shadow Day / Training Days).
+- Extracted the modal to `frontend/src/components/LaunchChecklistModal.jsx` — generic over its subject record + endpoint URL so it can be reused anywhere.
+- **Backend**: new `PATCH /api/franchisees/{id}/launch-checklist` endpoint mirrors the contact-side one (same coercion, same audit fields `launch_checklist_updated_at` + `launch_checklist_updated_by`). The pre-conversion endpoint on contacts is kept in case any in-flight prep data was already saved against an Interested contact.
+- Validated end-to-end: contact drawer test confirms the button is gone (count = 0); franchisee top-bar shows the new button on Sandra Caldeira-Dunkerley's record; backend PATCH round-trip works + rejects non-dict payloads.
+
+## Previous change — Inline-edit contact details (May 22 2026)
 - New **Edit** pencil button in the top-right of the Contact drawer's contact-info card. Click → name + email + telephone + full address (1st line / 2nd line / Town-City / County-State / Postcode / Country) all become editable inputs. Save / Cancel buttons live inside the card.
 - **Backend `PATCH /api/contacts/{id}/details`** updates a strict whitelist of fields (`first_name`, `last_name`, `email`, `telephone`, `mobile_phone`, `address_line_1`, `address_line_2`, `city`, `county`, `postcode`, `country`). Email auto-lowercased; postcode auto-uppercased. Legacy field mirrors (`address_line_1 ↔ address_street`, `city ↔ town_city`) kept in sync. Audit fields `details_updated_at` + `details_updated_by` stamped on every patch.
 - Saved values are mirrored back into the parent's cached contact list via the existing `onChecklistChanged` channel (now used as a generic "fields-merge" pipe with undefined-stripping), so the kanban / pipeline view updates without a refetch.

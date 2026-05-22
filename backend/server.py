@@ -1524,6 +1524,44 @@ async def update_franchisee_lifecycle(
     return {"ok": True, "franchisee": fresh}
 
 
+@api.patch("/franchisees/{franchisee_id}/launch-checklist")
+async def update_franchisee_launch_checklist(
+    franchisee_id: str,
+    body: dict,
+    user: dict = Depends(require_role("admin")),
+):
+    """In-House Franchisee Launch Prep Checklist. Stored as a free-form
+    dict on the franchisee document; coerced to primitives (and one level
+    of nested dict for the print-row two-state items)."""
+    incoming = body.get("launch_checklist") if isinstance(body, dict) else None
+    if not isinstance(incoming, dict):
+        raise HTTPException(status_code=400, detail="launch_checklist must be an object")
+
+    def _coerce(v):
+        if isinstance(v, bool) or v is None:
+            return v
+        if isinstance(v, (int, float)):
+            return v
+        if isinstance(v, str):
+            return v.strip()
+        if isinstance(v, dict):
+            return {str(k): _coerce(val) for k, val in v.items() if isinstance(k, str)}
+        return None
+
+    cleaned = {str(k): _coerce(v) for k, v in incoming.items() if isinstance(k, str)}
+    now = datetime.now(timezone.utc).isoformat()
+    update = {
+        "launch_checklist": cleaned,
+        "launch_checklist_updated_at": now,
+        "launch_checklist_updated_by": user.get("email"),
+        "updated_at": now,
+    }
+    r = await db.franchisees.update_one({"id": franchisee_id}, {"$set": update})
+    if r.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Franchisee not found")
+    return {"ok": True, "launch_checklist": cleaned, "launch_checklist_updated_at": now}
+
+
 @api.post("/franchisees/{franchisee_id}/clear-mandate-reminder")
 async def clear_mandate_reminder(
     franchisee_id: str,
