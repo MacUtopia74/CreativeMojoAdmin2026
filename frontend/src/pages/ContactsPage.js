@@ -896,13 +896,18 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
 
 function InterestedChecklist({ contact, onChanged }) {
   // The Interested stage has three concrete actions Sandra needs to track
-  // (Territory Defined → Contract Sent → Shadow Day Booked). Each tick is
+  // (Territory confirmed → Contract Sent → Shadow Day Booked). Each tick is
   // persisted to the contact via PATCH so the state survives a refresh.
+  // The Shadow Day row is paired with a date input + free-text "Shadowing:"
+  // field so we can record exactly when, and with which existing franchisee,
+  // a shadow class has been booked.
   // The whole block hides as soon as the contact leaves the Interested
   // stage — see ContactDrawer's render guard.
   const [territoryDefined, setTerritoryDefined] = useState(!!contact.territory_defined);
   const [contractSent, setContractSent] = useState(!!contact.contract_sent);
   const [shadowDayBooked, setShadowDayBooked] = useState(!!contact.shadow_day_booked);
+  const [shadowDate, setShadowDate] = useState(contact.shadow_day_date || "");
+  const [shadowingWith, setShadowingWith] = useState(contact.shadowing_with || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   // When the drawer switches to a different contact, sync local state.
@@ -910,24 +915,37 @@ function InterestedChecklist({ contact, onChanged }) {
     setTerritoryDefined(!!contact.territory_defined);
     setContractSent(!!contact.contract_sent);
     setShadowDayBooked(!!contact.shadow_day_booked);
-  }, [contact.id, contact.territory_defined, contact.contract_sent, contact.shadow_day_booked]);
+    setShadowDate(contact.shadow_day_date || "");
+    setShadowingWith(contact.shadowing_with || "");
+  }, [contact.id, contact.territory_defined, contact.contract_sent, contact.shadow_day_booked, contact.shadow_day_date, contact.shadowing_with]);
+
+  // Single saver — used for both checkbox toggles and the shadow-day
+  // companion fields. Sends the full state so the server overwrites
+  // atomically and we don't end up with half-updated rows.
+  const persist = async (overrides = {}) => {
+    setSaving(true); setError("");
+    const payload = {
+      territory_defined: territoryDefined,
+      contract_sent: contractSent,
+      shadow_day_booked: shadowDayBooked,
+      shadow_day_date: shadowDate,
+      shadowing_with: shadowingWith,
+      ...overrides,
+    };
+    try {
+      const { data } = await api.patch(`/contacts/${contact.id}/checklist`, payload);
+      onChanged?.({ id: contact.id, ...data });
+    } catch (e) {
+      setError(e?.response?.data?.detail || "Could not save.");
+      throw e;
+    } finally { setSaving(false); }
+  };
 
   const toggle = async (field, next, setter) => {
     const prev = next ? false : true;
     setter(next);  // optimistic
-    setSaving(true); setError("");
-    try {
-      const payload = {
-        territory_defined: field === "territory_defined" ? next : territoryDefined,
-        contract_sent: field === "contract_sent" ? next : contractSent,
-        shadow_day_booked: field === "shadow_day_booked" ? next : shadowDayBooked,
-      };
-      const { data } = await api.patch(`/contacts/${contact.id}/checklist`, payload);
-      onChanged?.({ id: contact.id, ...data });
-    } catch (e) {
-      setter(prev);  // rollback
-      setError(e?.response?.data?.detail || "Could not save.");
-    } finally { setSaving(false); }
+    try { await persist({ [field]: next }); }
+    catch { setter(prev); }  // rollback
   };
 
   const Item = ({ k, label, checked, onCheck }) => (
@@ -950,9 +968,36 @@ function InterestedChecklist({ contact, onChanged }) {
         {saving && <span className="text-[10px] font-normal normal-case text-stone-500">Saving…</span>}
       </div>
       <div className="space-y-0.5 -mx-1">
-        <Item k="territory" label="Territory Defined?" checked={territoryDefined} onCheck={(v) => toggle("territory_defined", v, setTerritoryDefined)} />
+        <Item k="territory" label="Territory confirmed?" checked={territoryDefined} onCheck={(v) => toggle("territory_defined", v, setTerritoryDefined)} />
         <Item k="contract" label="Contract Sent?" checked={contractSent} onCheck={(v) => toggle("contract_sent", v, setContractSent)} />
         <Item k="shadow" label="Shadow Day Booked?" checked={shadowDayBooked} onCheck={(v) => toggle("shadow_day_booked", v, setShadowDayBooked)} />
+      </div>
+      {/* Shadow day companion fields — a date + free text so we know exactly
+          when and with whom. Saves on blur to avoid hammering the API on
+          every keystroke. */}
+      <div className="mt-3 pt-3 border-t border-blue-200/70 grid grid-cols-1 sm:grid-cols-[auto,1fr] gap-2 items-center">
+        <input
+          type="date"
+          value={shadowDate}
+          onChange={(e) => setShadowDate(e.target.value)}
+          onBlur={() => { if ((shadowDate || "") !== (contact.shadow_day_date || "")) persist().catch(() => {}); }}
+          disabled={saving}
+          data-testid="interested-shadow-date"
+          className="px-3 py-2 bg-white border border-blue-200 rounded-lg text-sm focus:outline-none focus:border-blue-500"
+        />
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold uppercase tracking-wider text-blue-800 shrink-0">Shadowing:</span>
+          <input
+            type="text"
+            value={shadowingWith}
+            onChange={(e) => setShadowingWith(e.target.value)}
+            onBlur={() => { if ((shadowingWith || "") !== (contact.shadowing_with || "")) persist().catch(() => {}); }}
+            disabled={saving}
+            placeholder="e.g. with Jane Smith @ Manchester class"
+            data-testid="interested-shadowing-with"
+            className="flex-1 px-3 py-2 bg-white border border-blue-200 rounded-lg text-sm focus:outline-none focus:border-blue-500"
+          />
+        </div>
       </div>
       {error && <div className="text-xs text-red-700 mt-2">{error}</div>}
     </div>

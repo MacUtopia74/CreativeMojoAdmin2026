@@ -1,5 +1,14 @@
 # Creative Mojo — Unified Admin Platform PRD
 
+## Latest change — Interested-stage Checklist with Shadow Day details (May 22 2026)
+- Contacts drawer "Checklist" panel (rendered only when `pipeline_status === "qualified"`/Interested):
+  - Renamed first row from "Territory Defined?" → "Territory confirmed?".
+  - Other rows unchanged: "Contract Sent?", "Shadow Day Booked?".
+  - Added a paired **date input** + **"Shadowing:" free-text field** beneath the three ticks, so the admin can record exactly when and with whom a shadow class is booked.
+- Backend `PATCH /api/contacts/{id}/checklist` now also accepts and persists `shadow_day_date` (ISO `YYYY-MM-DD` or null) and `shadowing_with` (free text or null) alongside the existing three booleans.
+- Verified end-to-end via curl PATCH + screenshot of the rendered drawer for an Interested contact.
+
+
 ## Original Problem Statement (from user)
 A UK franchise business (Creative Mojo — creative arts activities in care homes) wants to replace its fragmented stack (Airtable + FileCamp + a legacy bespoke admin built by an absent friend) with a single, owned, head-office-controlled platform.
 

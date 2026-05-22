@@ -2505,6 +2505,13 @@ async def update_contact_checklist(
     anything else is coerced via ``bool()``.
     """
     fields = {k: bool(body.get(k)) for k in ("territory_defined", "contract_sent", "shadow_day_booked")}
+    # Optional companion fields for the "Shadow Day Booked" row — a date
+    # (ISO YYYY-MM-DD or empty) and a free-text "with whom" string. Stored
+    # alongside the booleans so the drawer can re-render them on reload.
+    raw_date = (body.get("shadow_day_date") or "").strip()
+    fields["shadow_day_date"] = raw_date or None
+    raw_with = (body.get("shadowing_with") or "").strip()
+    fields["shadowing_with"] = raw_with or None
     now = datetime.now(timezone.utc).isoformat()
     update = {**fields, "checklist_updated_at": now, "checklist_updated_by": user.get("email"), "updated_at": now}
     r = await db.web_form_contacts.update_one({"id": contact_id}, {"$set": update})
