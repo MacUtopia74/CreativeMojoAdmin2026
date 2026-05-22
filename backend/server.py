@@ -2605,6 +2605,52 @@ async def update_contact_checklist(
     return {"ok": True, **fields, "checklist_updated_at": now}
 
 
+@api.patch("/contacts/{contact_id}/launch-checklist")
+async def update_contact_launch_checklist(
+    contact_id: str,
+    body: dict,
+    user: dict = Depends(require_role("admin")),
+):
+    """Persist the larger "In-house Franchisee Launch Prep Checklist".
+
+    The frontend serialises the whole form (ticks + free text fields) into
+    a single dict and PATCHes the merged result on every change. We don't
+    impose a schema server-side — the form layout is paper-style and
+    static in v1, so the contract is dict-in/dict-out. Anything outside
+    plain primitives is dropped to keep the document sane.
+    """
+    incoming = body.get("launch_checklist") if isinstance(body, dict) else None
+    if not isinstance(incoming, dict):
+        raise HTTPException(status_code=400, detail="launch_checklist must be an object")
+
+    def _coerce(v):
+        if isinstance(v, bool) or v is None:
+            return v
+        if isinstance(v, (int, float)):
+            return v
+        if isinstance(v, str):
+            return v.strip()
+        # Allow one level of nesting for sub-rows like "printed" -> {"aw": bool, "printed": bool}.
+        if isinstance(v, dict):
+            return {str(k): _coerce(val) for k, val in v.items() if isinstance(k, str)}
+        return None
+
+    cleaned = {str(k): _coerce(v) for k, v in incoming.items() if isinstance(k, str)}
+    now = datetime.now(timezone.utc).isoformat()
+    update = {
+        "launch_checklist": cleaned,
+        "launch_checklist_updated_at": now,
+        "launch_checklist_updated_by": user.get("email"),
+        "updated_at": now,
+    }
+    r = await db.web_form_contacts.update_one({"id": contact_id}, {"$set": update})
+    if r.matched_count == 0:
+        r = await db.contacts.update_one({"id": contact_id}, {"$set": update})
+    if r.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    return {"ok": True, "launch_checklist": cleaned, "launch_checklist_updated_at": now}
+
+
 # Allowed values for the pipeline-level "lead temperature" tag. ``None``
 # (or empty string in the body) clears the tag.
 LEAD_TEMPERATURES = {"hot", "keen", "lukewarm"}

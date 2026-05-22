@@ -1,6 +1,14 @@
 # Creative Mojo — Unified Admin Platform PRD
 
-## Latest change — Scottish Care Inspectorate dataset wired in (May 22 2026)
+## Latest change — In-House Launch Prep Checklist modal (May 22 2026)
+- New **"LAUNCH CHECKLIST"** dark button in the Contact drawer, shown only when `pipeline_status === "qualified"` (Interested) and the contact isn't already converted. Opens a right-hand slide-out modal mirroring Sandra's printed sheet:
+  - Sections: **CONTRACT** (1 Contract prep / 2 Territory prep) · **FRANCHISE KIT** (3 Printed materials with two ticks per row — A/W Done + Printed, 4 Materials for kit, "Does the kit require couriering?") · **DIGITAL** (5 Email account + email free-text, 6 Social media + Facebook URL free-text, 7 Website listing, 8 FileCamp, 9 Launch + "If NO what date" date picker) · **DBS** (10 Info supplied) · **RENEWALS & DIRECT DEBITS** (DD mandate setup).
+  - Name field is **auto-filled** from `first_name + last_name`; everything else is single-tick (no "No" column) or free text.
+  - Strikethrough items from Sandra's printed sheet (2pp A5 One-2-One leaflets, business start-up leaflet, picture prints, Russian dolls, FileCamp setup-user line, renewal-date / 18-month / deferred-fees / anniversary reminders, all SHAPES rows) are excluded.
+- **Backend**: `PATCH /api/contacts/{id}/launch-checklist` accepts a free-form `launch_checklist` object (coerced to primitives + one-level nested dicts for the print rows), stores it alongside `launch_checklist_updated_at` + `launch_checklist_updated_by`. Rejects non-dict payloads with 400.
+- The drawer button shows "last updated DD/MM/YYYY" once any save has occurred. State persists per-contact so Sandra can save & resume.
+
+## Previous change — Scottish Care Inspectorate dataset wired in (May 22 2026)
 - **Backend**:
   - New `scotland_routes.py` (CSV-driven, no API). Endpoints: `GET/PUT /api/scotland/definition`, `GET /api/scotland/definition/preview`, `GET /api/scotland/distinct?field=careService|subtype|clientGroup|councilArea`, `POST /api/scotland/import` (multipart CSV upload), `GET /api/scotland/import/status`. CSV import is atomic — load into `scotland_care_services_tmp`, drop old, rename. Indexed on `csNumber` (unique), `postcode_sector`, `careService`, `subtype`, `clientGroup`, `councilArea`, `serviceStatus`.
   - `territory_routes.py` is now country-aware: `_count_homes_per_sector` and `_list_homes` automatically split a sector list into Scottish (→ `scotland_care_services` + `scotland_definition`) vs rest-of-UK (→ `cqc_locations_live` + `cqc_definition`). All five `/territory/*` endpoints (`sectors-near`, `sector-polygons`, `homes`, `homes-count`, plus the polygon back-compat alias) inherit the merge automatically.
