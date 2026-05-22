@@ -1,16 +1,10 @@
 # Creative Mojo — Unified Admin Platform PRD
 
-## Latest change — Lead Temperature tag + Recent Searches (May 22 2026)
-**Lead Temperature (re-introduced at pipeline level):**
-- Three tags: **Hot** (orange), **Keen** (purple), **Lukewarm** (blue), rendered as coloured Flame icons (lucide `Flame`).
-- **Kanban card** carries an inline 3-flame picker (one click sets, click on the active flame clears). Active flame is filled + ringed, the others dimmed.
-- **Drawer header** shows the current temperature as a read-only chip next to the stage badge (no picker — change it from the card).
-- Backend: new field `temperature` on contacts + `PATCH /api/contacts/{id}/temperature` accepting `"hot"|"keen"|"lukewarm"|null` (anything else → 400). Validated.
-
-**Recent Searches dropdown:**
-- Last 10 distinct name searches (case-insensitive de-dupe, most-recent first), persisted in `localStorage` under `contactsRecentSearches`.
-- Appears under the top-bar search input when focused & empty; click a pill to re-run that query. "Clear" link wipes the cache.
-- Only queries ≥ 2 chars get recorded (single-letter typing is noise).
+## Latest change — Per-user nav permissions (RBAC) (May 22 2026)
+- **Backend**: new `nav_permissions` field on `users` collection. `null` (default) = full access; explicit list of keys pins the admin to those sidebar pages. Validated against a server-side whitelist (`ADMIN_NAV_KEYS`). Endpoints affected: `POST /api/auth/users`, `PATCH /api/auth/users/{id}`, `GET /api/auth/me`, `GET /api/auth/users`. Self-lockout guard — an admin cannot remove their own access to the Admin Users page.
+- **Frontend Layout (`Layout.js`)**: every sidebar leaf now carries a `permKey`. When the logged-in user has a `nav_permissions` list, the sidebar tree is filtered (groups/subgroups + adjacent dividers collapse out) AND a `useEffect` page-guard redirects forbidden URLs to the user's first allowed page. Shared `ADMIN_NAV_KEYS` constant (key + label + matching path prefixes) is the single source of truth.
+- **Admin Users page**: every admin row has a new "Permissions" button + badge (`Full access` or `N pages`). Modal lets you tick the unrestricted box OR pick specific pages; **"Sandra preset"** one-click sets `franchisees / calendar / invoices`. Save PATCHes `/auth/users/{id}` with `nav_permissions`.
+- Verified end-to-end: Paul (admin) restricted Sandra to 3 pages; logged in as Sandra → sidebar showed only those + force-redirect on `/orders` and `/admin/users` to `/franchisees`; cleared restriction → full access returned.
 
 
 

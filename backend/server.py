@@ -50,6 +50,45 @@ logger = logging.getLogger("creative-mojo-admin")
 # ----------------------------------------------------------------------------
 Role = Literal["admin", "franchisee", "licensee"]
 
+# Whitelist of nav-permission keys that can be granted to a restricted
+# admin user. Keys match the testid suffix on each sidebar leaf
+# (Layout.js) and the perm checkboxes on the Admin Users page. Adding a
+# new admin page? Append its key here AND register it in the frontend
+# ``ADMIN_NAV_KEYS`` constant so the two stay in lock-step.
+ADMIN_NAV_KEYS = {
+    "dashboard", "orders",
+    "franchisees", "renewals", "territory-builder", "files",
+    "contacts", "calendar",
+    "find-class", "cqc-definitions",
+    "invoices", "banking",
+    "admin-users", "admin-xero", "form-intake",
+}
+
+
+def normalise_nav_permissions(raw):
+    """Coerce a user-provided nav_permissions value into a sorted list of
+    valid keys, or ``None`` for "no restriction"."""
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        # Tolerate single-string accidental passes.
+        raw = [raw]
+    if not isinstance(raw, list):
+        raise HTTPException(status_code=400, detail="nav_permissions must be a list of strings or null")
+    cleaned = []
+    for item in raw:
+        s = str(item or "").strip()
+        if not s:
+            continue
+        if s not in ADMIN_NAV_KEYS:
+            raise HTTPException(status_code=400, detail=f"Unknown nav_permission key: {s}")
+        if s not in cleaned:
+            cleaned.append(s)
+    cleaned.sort()
+    # Empty list explicitly means "no pages" — keep as []. Callers who
+    # want "full access" should pass null/None instead.
+    return cleaned
+
 
 class UserPublic(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -71,6 +110,10 @@ class CreateUserRequest(BaseModel):
     name: str
     role: Role = "admin"
     franchisee_id: Optional[str] = None  # only meaningful when role == "franchisee"
+    # None  → unrestricted (default, full access)
+    # []    → no admin pages accessible (rare)
+    # [...] → only the listed page keys are reachable
+    nav_permissions: Optional[List[str]] = None
 
 
 class UpdateUserRequest(BaseModel):
@@ -78,6 +121,10 @@ class UpdateUserRequest(BaseModel):
     role: Optional[Role] = None
     franchisee_id: Optional[str] = None
     active: Optional[bool] = None
+    # Tri-state field: passing ``null`` clears any restriction (full
+    # access); passing a list pins the user to those pages. Omit the key
+    # entirely to leave the existing value untouched.
+    nav_permissions: Optional[List[str]] = None
 
 
 # ----------------------------------------------------------------------------
@@ -142,6 +189,12 @@ def user_to_public(doc: dict) -> dict:
         out["franchisee_id"] = doc["franchisee_id"]
     if doc.get("force_password_change"):
         out["force_password_change"] = True
+    # nav_permissions is only meaningful for admin role. ``None`` (the
+    # default) means full access; an explicit list pins the user to a
+    # subset of the sidebar. We always include the key when set so the
+    # frontend can choose what to render.
+    if doc.get("role") == "admin" and "nav_permissions" in doc:
+        out["nav_permissions"] = doc.get("nav_permissions")
     return out
 
 
@@ -288,11 +341,15 @@ async def create_user(body: CreateUserRequest, _: dict = Depends(require_role("a
     }
     if body.role == "franchisee" and body.franchisee_id:
         user["franchisee_id"] = body.franchisee_id
+    if body.role == "admin" and body.nav_permissions is not None:
+        # Validate + de-dupe + sort; store as a list (or empty list).
+        user["nav_permissions"] = normalise_nav_permissions(body.nav_permissions)
     await db.users.insert_one(user)
     return {
         "id": user["id"], "email": user["email"], "name": user["name"],
         "role": user["role"], "franchisee_id": user.get("franchisee_id"),
         "created_at": user["created_at"], "active": True,
+        "nav_permissions": user.get("nav_permissions"),
     }
 
 
@@ -340,6 +397,20 @@ async def update_user(
         if not body.active and user_id == admin["id"]:
             raise HTTPException(400, "You can't deactivate your own account")
         update["active"] = body.active
+    # nav_permissions is tri-state: omitted → no change, null → clear
+    # restriction (full access), list → pin to those keys. Use
+    # ``model_fields_set`` so we can tell "null" apart from "absent".
+    if "nav_permissions" in body.model_fields_set:
+        target_role = update.get("role") or user.get("role")
+        if target_role != "admin" and body.nav_permissions is not None:
+            raise HTTPException(400, "nav_permissions only applies to admin role")
+        update["nav_permissions"] = normalise_nav_permissions(body.nav_permissions) if body.nav_permissions is not None else None
+        # Self-lockout guard — an admin must keep at least one allowed
+        # page on their own account so they can still reach the Admin
+        # Users page to unlock themselves.
+        if user_id == admin["id"] and isinstance(update["nav_permissions"], list):
+            if "admin-users" not in update["nav_permissions"]:
+                raise HTTPException(400, "You can't remove your own access to the Admin Users page")
     if not update:
         raise HTTPException(400, "No changes provided")
     await db.users.update_one({"id": user_id}, {"$set": update})

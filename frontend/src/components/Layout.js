@@ -25,7 +25,7 @@ import {
   Building2,
   Cog,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 // Sidebar structure — designed in May 2026 around how the franchise owner
 // actually moves through the admin day-to-day. The two collapsible groups
@@ -33,61 +33,113 @@ import { useEffect, useState } from "react";
 // every page within two clicks.
 //
 // `kind` values:
-//   - "item"      → leaf link
+//   - "item"      → leaf link (has a `permKey` matching ADMIN_NAV_KEYS)
 //   - "group"     → expandable section with .children
 //   - "subgroup"  → heading inside a group (renders as a non-clickable
 //                   sub-section label with its own .children indented)
 //   - "divider"   → thin grey rule between top-level items
 //
 // The structure here is the single source of truth; the rendering loop
-// below just walks it.
+// below just walks it. Every leaf carries a `permKey` (= the testid
+// suffix without the "nav-" prefix) so granular per-user nav permissions
+// can hide/show items individually.
 const SIDEBAR = [
-  { kind: "item", to: "/", label: "Dashboard", icon: LayoutDashboard, testid: "nav-dashboard" },
+  { kind: "item", to: "/", label: "Dashboard", icon: LayoutDashboard, testid: "nav-dashboard", permKey: "dashboard" },
   { kind: "divider" },
 
-  { kind: "item", to: "/orders", label: "Orders", icon: ShoppingBag, testid: "nav-orders" },
+  { kind: "item", to: "/orders", label: "Orders", icon: ShoppingBag, testid: "nav-orders", permKey: "orders" },
   { kind: "divider" },
 
   {
     kind: "group", key: "franchises", label: "Franchises", icon: Building2, testid: "nav-franchises-group",
     children: [
-      { kind: "item", to: "/franchisees", label: "Franchises / Licences", icon: Users, testid: "nav-franchisees", alertBadge: "missing_mandate" },
-      { kind: "item", to: "/renewals", label: "Renewals", icon: BellRing, testid: "nav-renewals" },
-      { kind: "item", to: "/territory-builder", label: "Territory Builder", icon: Target, testid: "nav-territory-builder" },
-      { kind: "item", to: "/files", label: "Files", icon: FolderOpen, testid: "nav-files" },
+      { kind: "item", to: "/franchisees", label: "Franchises / Licences", icon: Users, testid: "nav-franchisees", permKey: "franchisees", alertBadge: "missing_mandate" },
+      { kind: "item", to: "/renewals", label: "Renewals", icon: BellRing, testid: "nav-renewals", permKey: "renewals" },
+      { kind: "item", to: "/territory-builder", label: "Territory Builder", icon: Target, testid: "nav-territory-builder", permKey: "territory-builder" },
+      { kind: "item", to: "/files", label: "Files", icon: FolderOpen, testid: "nav-files", permKey: "files" },
     ],
   },
   { kind: "divider" },
 
-  { kind: "item", to: "/contacts", label: "Sales & Contacts", icon: Contact, testid: "nav-contacts" },
+  { kind: "item", to: "/contacts", label: "Sales & Contacts", icon: Contact, testid: "nav-contacts", permKey: "contacts" },
   { kind: "divider" },
 
-  { kind: "item", to: "/calendar", label: "Calendar", icon: CalendarDays, testid: "nav-calendar" },
+  { kind: "item", to: "/calendar", label: "Calendar", icon: CalendarDays, testid: "nav-calendar", permKey: "calendar" },
   { kind: "divider" },
 
   {
     kind: "group", key: "admin", label: "Admin", icon: Wrench, testid: "nav-admin-group",
     children: [
-      { kind: "item", to: "/find-class", label: "Find-a-Class", icon: MapPin, testid: "nav-find-class" },
-      { kind: "item", to: "/cqc-definitions", label: "CQC Definitions", icon: Stethoscope, testid: "nav-cqc-definitions" },
+      { kind: "item", to: "/find-class", label: "Find-a-Class", icon: MapPin, testid: "nav-find-class", permKey: "find-class" },
+      { kind: "item", to: "/cqc-definitions", label: "CQC Definitions", icon: Stethoscope, testid: "nav-cqc-definitions", permKey: "cqc-definitions" },
       {
         kind: "subgroup", key: "sandras", label: "Sandra's Invoices", icon: Receipt,
         children: [
-          { kind: "item", to: "/invoices", label: "Sandra's Invoices", icon: Receipt, testid: "nav-invoices" },
-          { kind: "item", to: "/banking", label: "Banking", icon: Banknote, testid: "nav-banking" },
+          { kind: "item", to: "/invoices", label: "Sandra's Invoices", icon: Receipt, testid: "nav-invoices", permKey: "invoices" },
+          { kind: "item", to: "/banking", label: "Banking", icon: Banknote, testid: "nav-banking", permKey: "banking" },
         ],
       },
       {
         kind: "subgroup", key: "settings", label: "Settings", icon: Cog,
         children: [
-          { kind: "item", to: "/admin/users", label: "Admin Users", icon: KeyRound, testid: "nav-admin-users" },
-          { kind: "item", to: "/admin/xero", label: "Xero", icon: Calculator, testid: "nav-admin-xero" },
-          { kind: "item", to: "/form-intake", label: "Form Intake", icon: Inbox, testid: "nav-form-intake" },
+          { kind: "item", to: "/admin/users", label: "Admin Users", icon: KeyRound, testid: "nav-admin-users", permKey: "admin-users" },
+          { kind: "item", to: "/admin/xero", label: "Xero", icon: Calculator, testid: "nav-admin-xero", permKey: "admin-xero" },
+          { kind: "item", to: "/form-intake", label: "Form Intake", icon: Inbox, testid: "nav-form-intake", permKey: "form-intake" },
         ],
       },
     ],
   },
 ];
+
+// Single source-of-truth for permission key → human label and the route
+// prefix it gates. Used by the Admin Users permissions modal and the
+// Layout's page-guard effect. Order here drives display order in the
+// permissions UI.
+export const ADMIN_NAV_KEYS = [
+  { key: "dashboard",        label: "Dashboard",            paths: ["/"] },
+  { key: "orders",           label: "Orders",               paths: ["/orders"] },
+  { key: "franchisees",      label: "Franchises / Licences", paths: ["/franchisees"] },
+  { key: "renewals",         label: "Renewals",             paths: ["/renewals"] },
+  { key: "territory-builder", label: "Territory Builder",   paths: ["/territory-builder"] },
+  { key: "files",            label: "Files",                paths: ["/files"] },
+  { key: "contacts",         label: "Sales & Contacts",     paths: ["/contacts"] },
+  { key: "calendar",         label: "Calendar",             paths: ["/calendar"] },
+  { key: "find-class",       label: "Find-a-Class",         paths: ["/find-class"] },
+  { key: "cqc-definitions",  label: "CQC Definitions",      paths: ["/cqc-definitions"] },
+  { key: "invoices",         label: "Sandra's Invoices",    paths: ["/invoices"] },
+  { key: "banking",          label: "Banking",              paths: ["/banking"] },
+  { key: "admin-users",      label: "Admin Users",          paths: ["/admin/users", "/admin/password-resets"] },
+  { key: "admin-xero",       label: "Xero (settings)",      paths: ["/admin/xero"] },
+  { key: "form-intake",      label: "Form Intake",          paths: ["/form-intake"] },
+];
+
+// Helper — does `nav_permissions` permit visiting a given path?
+// `permissions === null/undefined` = full access (back-compat).
+function pathAllowed(pathname, permissions) {
+  if (permissions == null) return true;             // unrestricted
+  if (!Array.isArray(permissions)) return true;     // defensive
+  const allowedSet = new Set(permissions);
+  for (const n of ADMIN_NAV_KEYS) {
+    if (!allowedSet.has(n.key)) continue;
+    for (const p of n.paths) {
+      if (pathname === p) return true;
+      if (p !== "/" && pathname.startsWith(p + "/")) return true;
+    }
+  }
+  return false;
+}
+
+// Resolve the first allowed route — used as a "landing pad" when the
+// user lands on (or refreshes onto) a forbidden URL.
+function firstAllowedPath(permissions) {
+  if (permissions == null) return "/";
+  if (!Array.isArray(permissions) || permissions.length === 0) return "/change-password";
+  const allowedSet = new Set(permissions);
+  for (const n of ADMIN_NAV_KEYS) {
+    if (allowedSet.has(n.key)) return n.paths[0];
+  }
+  return "/change-password";
+}
 
 // ---------------------------------------------------------------------------
 // Leaf nav link — used at every level of the tree
@@ -161,6 +213,56 @@ export default function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // Per-user nav restriction. Admins without a list (or with null) see
+  // everything (back-compat for the existing accounts pre-perms). When a
+  // list is set, only those page keys render in the sidebar and only
+  // their routes are reachable — direct URL access gets redirected.
+  const navPermissions = user?.role === "admin" ? (user.nav_permissions ?? null) : null;
+
+  // Filter the SIDEBAR tree to only branches that actually contain at
+  // least one allowed leaf. Groups/subgroups vanish entirely once empty
+  // so we don't leave dangling headers.
+  const filteredSidebar = useMemo(() => {
+    if (navPermissions == null) return SIDEBAR;
+    const allowed = new Set(navPermissions);
+    const walk = (nodes) => {
+      const out = [];
+      for (const n of nodes) {
+        if (n.kind === "item") {
+          if (!n.permKey || allowed.has(n.permKey)) out.push(n);
+        } else if (n.kind === "group" || n.kind === "subgroup") {
+          const kids = walk(n.children);
+          if (kids.length > 0) out.push({ ...n, children: kids });
+        } else if (n.kind === "divider") {
+          // Keep dividers but collapse runs of them post-filter.
+          out.push(n);
+        }
+      }
+      // Trim leading / trailing / duplicate dividers.
+      const trimmed = [];
+      for (const n of out) {
+        if (n.kind === "divider" && (trimmed.length === 0 || trimmed[trimmed.length - 1].kind === "divider")) continue;
+        trimmed.push(n);
+      }
+      while (trimmed.length && trimmed[trimmed.length - 1].kind === "divider") trimmed.pop();
+      return trimmed;
+    };
+    return walk(SIDEBAR);
+  }, [navPermissions]);
+
+  // Page guard — when the user navigates (or refreshes) to a route they
+  // can't access, push them to their first allowed page instead. Skip
+  // the universal "/change-password" route since that's always reachable
+  // for force-change flows.
+  useEffect(() => {
+    if (navPermissions == null) return;
+    if (location.pathname === "/change-password") return;
+    if (!pathAllowed(location.pathname, navPermissions)) {
+      const landing = firstAllowedPath(navPermissions);
+      if (landing && landing !== location.pathname) navigate(landing, { replace: true });
+    }
+  }, [location.pathname, navPermissions, navigate]);
+
   // Track which expandable groups are open. Persisted in localStorage so
   // power-users keep their preferred layout across sessions.
   const [openGroups, setOpenGroups] = useState(() => {
@@ -180,22 +282,25 @@ export default function Layout() {
   };
 
   // Auto-open whichever group contains the currently active path — so a
-  // direct deep-link to /admin/xero opens the Admin group on load.
+  // direct deep-link to /admin/xero opens the Admin group on load. Also
+  // auto-open groups for nav-restricted users where the only entry is
+  // inside one (otherwise Sandra logs in and sees an empty-looking
+  // sidebar with a collapsed Admin section).
   useEffect(() => {
     const path = location.pathname;
     setOpenGroups((s) => {
       const n = new Set(s);
-      for (const node of SIDEBAR) {
+      for (const node of filteredSidebar) {
         if (node.kind !== "group") continue;
         const has = (children) => children.some((c) =>
           (c.kind === "item" && (path === c.to || path.startsWith(c.to + "/")))
           || (c.kind === "subgroup" && has(c.children))
         );
-        if (has(node.children)) n.add(node.key);
+        if (has(node.children) || navPermissions != null) n.add(node.key);
       }
       return n;
     });
-  }, [location.pathname]);
+  }, [location.pathname, filteredSidebar, navPermissions]);
 
   const handleLogout = async () => {
     await logout();
@@ -269,7 +374,7 @@ export default function Layout() {
         </div>
 
         <nav className="flex-1 py-3 overflow-y-auto">
-          {SIDEBAR.map((node, i) => renderNode(node, i, 0))}
+          {filteredSidebar.map((node, i) => renderNode(node, i, 0))}
         </nav>
 
         <div className="p-4 border-t border-stone-200 space-y-3">

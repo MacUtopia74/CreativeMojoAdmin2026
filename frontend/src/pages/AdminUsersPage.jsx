@@ -7,11 +7,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import api from "@/lib/api";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import { ADMIN_NAV_KEYS } from "@/components/Layout";
 import {
   Loader2,
   Users as UsersIcon,
   KeyRound,
   ShieldCheck,
+  ShieldAlert,
   Plus,
   Trash2,
   X as XIcon,
@@ -113,6 +115,7 @@ function UsersTab() {
   const [roleFilter, setRoleFilter] = useState("all");
   const [showCreate, setShowCreate] = useState(false);
   const [createdToast, setCreatedToast] = useState(null); // {email, password}
+  const [permsUser, setPermsUser] = useState(null);       // user being edited
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -237,8 +240,30 @@ function UsersTab() {
                     {u.franchisee_label && (
                       <span>· Linked to <strong className="text-stone-700">{u.franchisee_label}</strong></span>
                     )}
+                    {u.role === "admin" && (
+                      Array.isArray(u.nav_permissions) ? (
+                        <span data-testid={`user-perms-${u.id}`} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-900 border border-amber-200">
+                          <ShieldAlert className="w-3 h-3" />
+                          {u.nav_permissions.length === 0 ? "No pages" : `${u.nav_permissions.length} page${u.nav_permissions.length === 1 ? "" : "s"}`}
+                        </span>
+                      ) : (
+                        <span data-testid={`user-perms-${u.id}`} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-stone-100 text-stone-600 border border-stone-200">
+                          <ShieldCheck className="w-3 h-3" /> Full access
+                        </span>
+                      )
+                    )}
                   </div>
                 </div>
+                {u.role === "admin" && (
+                  <button
+                    onClick={() => setPermsUser(u)}
+                    data-testid={`user-perms-edit-${u.id}`}
+                    className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider border border-stone-300 hover:bg-stone-50 text-stone-700 rounded-lg flex items-center gap-1.5"
+                    title="Restrict which pages this user can see"
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5" /> Permissions
+                  </button>
+                )}
                 {u.id !== me?.id && (
                   <button
                     onClick={() => deleteUser(u)}
@@ -267,6 +292,17 @@ function UsersTab() {
       />
 
       <CredentialsRevealModal data={createdToast} onClose={() => setCreatedToast(null)} />
+      <PermissionsModal
+        me={me}
+        user={permsUser}
+        onClose={() => setPermsUser(null)}
+        onSaved={(patch) => {
+          // Mirror the new value into the local list so the badge updates
+          // immediately without a full reload.
+          setUsers((arr) => arr.map((u) => u.id === patch.id ? { ...u, nav_permissions: patch.nav_permissions } : u));
+          setPermsUser(null);
+        }}
+      />
     </>
   );
 }
@@ -737,6 +773,162 @@ function RevealModal({ data, onClose }) {
             <MoreHorizontal className="w-3.5 h-3.5 inline mr-1" />
             Shown <strong>once</strong>. Close this window and it's gone.
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
+// Permissions modal — picks which sidebar pages a given admin user can
+// see. The "Full access" toggle clears the restriction (sends null);
+// otherwise we send the ticked keys as an explicit list.
+//
+// "Sandra preset" is a one-click shortcut for the original ask from
+// Paul: Sandra should only see Franchises / Licences + Calendar +
+// Sandra's Invoices. Click → pre-fills the boxes; Save commits.
+// ---------------------------------------------------------------------------
+const SANDRA_PRESET = ["franchisees", "calendar", "invoices"];
+
+function PermissionsModal({ user, me, onClose, onSaved }) {
+  const [unrestricted, setUnrestricted] = useState(true);
+  const [picked, setPicked] = useState(() => new Set());
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    if (!user) return;
+    if (Array.isArray(user.nav_permissions)) {
+      setUnrestricted(false);
+      setPicked(new Set(user.nav_permissions));
+    } else {
+      setUnrestricted(true);
+      setPicked(new Set());
+    }
+    setErr("");
+  }, [user]);
+
+  if (!user) return null;
+
+  const isSelf = me?.id === user.id;
+  const toggle = (key) => {
+    setPicked((s) => {
+      const n = new Set(s);
+      if (n.has(key)) n.delete(key); else n.add(key);
+      return n;
+    });
+  };
+
+  const applyPreset = () => {
+    setUnrestricted(false);
+    setPicked(new Set(SANDRA_PRESET));
+  };
+
+  const submit = async () => {
+    setErr(""); setBusy(true);
+    try {
+      const payload = { nav_permissions: unrestricted ? null : Array.from(picked) };
+      await api.patch(`/auth/users/${user.id}`, payload);
+      toast.success("Permissions updated");
+      onSaved({ id: user.id, nav_permissions: payload.nav_permissions });
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Could not save permissions.");
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div onClick={onClose} className="fixed inset-0 z-[80] bg-stone-950/60 backdrop-blur-sm flex items-center justify-center p-6" data-testid="permissions-modal">
+      <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl shadow-2xl max-w-xl w-full overflow-hidden max-h-[92vh] flex flex-col">
+        <div className="px-5 py-3 border-b border-stone-200 flex items-center justify-between shrink-0">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-700">Page Permissions</div>
+            <div className="text-sm font-semibold text-stone-900 mt-0.5">{user.name || user.email}</div>
+          </div>
+          <button onClick={onClose} data-testid="permissions-close" className="w-9 h-9 flex items-center justify-center hover:bg-stone-100 rounded-lg">
+            <XIcon className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4 overflow-y-auto">
+          <label className="flex items-start gap-3 p-3 border border-stone-200 rounded-xl cursor-pointer hover:bg-stone-50" data-testid="perm-full-access">
+            <input
+              type="checkbox"
+              checked={unrestricted}
+              onChange={(e) => setUnrestricted(e.target.checked)}
+              className="mt-1 w-4 h-4 rounded border-stone-300 text-stone-900 focus:ring-stone-900"
+            />
+            <div>
+              <div className="text-sm font-semibold text-stone-900 flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Full access
+              </div>
+              <div className="text-xs text-stone-500 mt-0.5">
+                This user can see every page in the admin sidebar. Untick to restrict to specific pages only.
+              </div>
+            </div>
+          </label>
+
+          <div className="border border-stone-200 rounded-xl">
+            <div className="px-3 py-2 bg-stone-50 border-b border-stone-200 flex items-center justify-between">
+              <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 flex items-center gap-1.5">
+                <ShieldAlert className="w-3 h-3" /> Restrict to these pages
+              </div>
+              <button
+                type="button"
+                onClick={applyPreset}
+                data-testid="perm-sandra-preset"
+                className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-700 hover:text-stone-900 underline">
+                Sandra preset
+              </button>
+            </div>
+            <div className={`p-3 grid grid-cols-1 sm:grid-cols-2 gap-1 ${unrestricted ? "opacity-50 pointer-events-none" : ""}`}>
+              {ADMIN_NAV_KEYS.map((n) => {
+                const checked = picked.has(n.key);
+                return (
+                  <label key={n.key} className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-stone-50 cursor-pointer" data-testid={`perm-${n.key}`}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggle(n.key)}
+                      className="w-4 h-4 rounded border-stone-300 text-stone-900 focus:ring-stone-900"
+                    />
+                    <span className={`text-sm ${checked ? "text-stone-900 font-medium" : "text-stone-700"}`}>{n.label}</span>
+                  </label>
+                );
+              })}
+            </div>
+            {!unrestricted && picked.size === 0 && (
+              <div className="px-3 py-2 text-[11px] text-amber-900 bg-amber-50 border-t border-amber-200 flex items-start gap-1.5">
+                <ShieldAlert className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                <span>No pages ticked. This user will only see the password-change screen when they log in.</span>
+              </div>
+            )}
+          </div>
+
+          {isSelf && (
+            <div className="px-3 py-2 text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-1.5">
+              <ShieldAlert className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              <span>You're editing your <strong>own</strong> account. To avoid locking yourself out, Admin Users will be kept reachable automatically.</span>
+            </div>
+          )}
+
+          {err && (
+            <div className="px-3 py-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg">{err}</div>
+          )}
+        </div>
+
+        <div className="px-5 py-3 border-t border-stone-200 flex items-center justify-end gap-2 shrink-0 bg-stone-50">
+          <button onClick={onClose} className="px-4 py-2 text-xs font-bold uppercase tracking-wider border border-stone-300 bg-white hover:bg-stone-50 rounded-lg">
+            Cancel
+          </button>
+          <button
+            onClick={submit}
+            disabled={busy}
+            data-testid="permissions-save"
+            className="px-5 py-2 text-xs font-bold uppercase tracking-wider bg-[#dddd16] hover:bg-[#aaaa11] text-stone-950 rounded-lg flex items-center gap-1.5 disabled:opacity-50">
+            {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+            Save permissions
+          </button>
         </div>
       </div>
     </div>
