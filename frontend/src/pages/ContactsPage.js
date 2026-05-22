@@ -5,6 +5,7 @@ import LinkExistingFranchiseeModal from "@/components/contacts/LinkExistingFranc
 import MergeContactsModal from "@/components/contacts/MergeContactsModal";
 import DuplicatesModal from "@/components/contacts/DuplicatesModal";
 import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, ChevronsLeft, ChevronsRight, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus, Plus, Sparkles, Upload, FileText, CheckCircle2, Send, Award, Target, Link2, GitMerge, Home, Package, Flame, Clock, Pencil } from "lucide-react";
+import ReplyWithTemplateModal from "@/components/ReplyWithTemplateModal";
 
 const STAGES = [
   { key: "new", label: "New", color: "bg-stone-100 text-stone-700 border-stone-300", barColor: "bg-stone-400" },
@@ -737,6 +738,7 @@ function MoveMenu({ onMove, label = "Move", testid, currentTab, count, contactSo
 function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, onDelete, onReply, onConvert, onLinkExisting, onAdminNotesUpdated, onMergeWith, onChecklistChanged, onChangeSource, allContacts }) {
   const [busy, setBusy] = useState(false);
   const [converting, setConverting] = useState(false);
+  const [replyModalOpen, setReplyModalOpen] = useState(false);  // Reply-with-template modal
   // Inline edit of identity + address — staff routinely fix typos from
   // Gravity-Forms / Airtable imports. We hold a single ``editing``
   // boolean + a working ``draft`` copy that's only persisted on Save.
@@ -825,10 +827,18 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
             {isInPipeline ? "Sales Pipeline" : homeTabLabel}
           </div>
           <div className="flex items-center gap-1">
+            {contact.email && (
+              <button onClick={() => setReplyModalOpen(true)} data-testid="drawer-reply-template"
+                title="Reply using a saved Resend template"
+                className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider bg-[#dddd16] hover:bg-[#aaaa11] text-stone-950 rounded-lg flex items-center gap-1">
+                <Mail className="w-3.5 h-3.5" /> Reply with template
+              </button>
+            )}
             {contact.email && onReply && (
               <button onClick={() => onReply(contact)} data-testid="drawer-reply"
-                className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider bg-[#E2462A] hover:bg-[#C73B22] text-white rounded-lg flex items-center gap-1">
-                <Send className="w-3.5 h-3.5" /> Reply
+                title="Open a quick blank reply in your own mail app"
+                className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider bg-white border border-stone-300 text-stone-700 hover:bg-stone-50 rounded-lg flex items-center gap-1">
+                <Send className="w-3.5 h-3.5" /> Quick reply
               </button>
             )}
             {isInPipeline && (!contact.pipeline_status || contact.pipeline_status === "new") && (
@@ -1211,6 +1221,7 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
           )}
         </div>
       </aside>
+      <ReplyWithTemplateModal open={replyModalOpen} contact={contact} onClose={() => setReplyModalOpen(false)} />
     </div>
   );
 }

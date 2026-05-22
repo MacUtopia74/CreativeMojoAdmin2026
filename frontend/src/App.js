@@ -28,6 +28,7 @@ import ChangePasswordPage from "@/pages/ChangePasswordPage";
 import XeroSettingsPage from "@/pages/XeroSettingsPage";
 import OrdersReconciliationPage from "@/pages/OrdersReconciliationPage";
 import ScotlandDefinitionsPage from "@/pages/ScotlandDefinitionsPage";
+import EmailTemplatesPage from "@/pages/EmailTemplatesPage";
 // Invoices module (merged from Pay-Paperwork)
 import InvoiceList from "@/pages/invoices/InvoiceList";
 import CreateInvoice from "@/pages/invoices/CreateInvoice";
@@ -71,6 +72,7 @@ export default function App() {
               <Route path="/territory-builder" element={<TerritoryBuilderPage />} />
               <Route path="/cqc-definitions" element={<CqcDefinitionsPage />} />
               <Route path="/scotland-definitions" element={<ScotlandDefinitionsPage />} />
+              <Route path="/admin/email-templates" element={<EmailTemplatesPage />} />
               <Route path="/calendar" element={<CalendarPage />} />
               <Route path="/contacts" element={<ContactsPage />} />
               <Route path="/form-intake" element={<FormIntakePage />} />

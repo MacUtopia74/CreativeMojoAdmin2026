@@ -1,6 +1,13 @@
 # Creative Mojo — Unified Admin Platform PRD
 
-## Latest change — LAUNCH CHECKLIST moved to Franchisee detail page (May 22 2026)
+## Latest change — Email Templates + Reply-with-template (pre-deploy half) (May 22 2026)
+- **Backend**: new `email_templates_routes.py` module with CRUD + duplicate endpoints on `/api/email-templates`. Templates store `name`, `subject`, `body_html`, `default_from`, `sender_name`, `default_cc`, `default_bcc`, `attachments[]` (R2 key + name + body-placeholder slug), `category`. Audit fields tracked.
+- **Backend seed**: `seed_email_templates.py` (idempotent) creates two starter templates — **Franchise Enquiry Reply** (`paul@creativemojo.co.uk`, BCC `paul@`, attachment placeholder `franchise_pack`) and **Licence Enquiry Reply (Overseas)** (`licence_pack`). Both reproduce Paul's current Mail.app templates verbatim including the dark "Watch the Mojo promo video" CTA and full signature block. Seeded ✓.
+- **Frontend**: new `EmailTemplatesPage.jsx` at `/admin/email-templates` (sidebar entry under Admin → Settings; permission key `admin-email-templates`). Two-pane layout — left rail lists templates with `+ New`, right pane is the editor (subject + From + display name + Cc/Bcc + category) plus a Body section with **Insert `{{first_name}}`**, **Insert R2 file link** (opens R2 file picker using `/api/files/search`), and **Preview** toggle. Duplicate + Delete on every template.
+- **R2 file picker**: search dialog reads `/api/files/search`, picking a file stores its `key` + `name` against the placeholder slug. Fresh signed URL will be minted at send time post-deploy so links never expire.
+- **Reply Modal** on the Contact drawer: new bright "Reply with template" primary button next to the existing "Quick reply" (the old `mailto:` flow is kept as a secondary path). Modal renders Subject / To / Cc / Bcc (pre-filled from template defaults, all editable) + live preview with `{{first_name}}` substituted. **Send button is intentionally disabled with the tooltip "Wires up to Resend after deployment"** — UX is complete; only the Resend call + webhook receiver remain for stage 2.
+
+
 - The **LAUNCH CHECKLIST** button is now only visible after a contact has been converted to a Franchisee — it lives in the Franchisee detail page top-bar (next to Edit). The button surfaces the "last updated DD/MM/YYYY" stamp once any save has occurred.
 - Removed from the Contact drawer (Interested state) — that panel reverts to just the small Checklist (Territory confirmed / Contract sent / Shadow Day / Training Days).
 - Extracted the modal to `frontend/src/components/LaunchChecklistModal.jsx` — generic over its subject record + endpoint URL so it can be reused anywhere.

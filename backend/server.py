@@ -61,7 +61,7 @@ ADMIN_NAV_KEYS = {
     "contacts", "calendar",
     "find-class", "cqc-definitions", "scotland-definitions",
     "invoices", "banking",
-    "admin-users", "admin-xero", "form-intake",
+    "admin-users", "admin-email-templates", "admin-xero", "form-intake",
 }
 
 
@@ -3430,6 +3430,7 @@ from portal_routes import build_portal_router  # noqa: E402
 from territory_routes import build_territory_router  # noqa: E402
 from cqc_routes import build_cqc_router  # noqa: E402
 from scotland_routes import build_scotland_router  # noqa: E402
+from email_templates_routes import build_email_templates_router  # noqa: E402
 api.include_router(build_migration_router(db, require_role))
 api.include_router(build_files_router(db, require_role))
 api.include_router(build_portal_router(
@@ -3440,6 +3441,7 @@ api.include_router(build_portal_router(
 api.include_router(build_territory_router(db, require_role))
 api.include_router(build_cqc_router(db, require_role))
 api.include_router(build_scotland_router(db, require_role))
+api.include_router(build_email_templates_router(db, require_role))
 
 # Invoices module — merged from the standalone Pay-Paperwork app
 from invoices_routes import build_invoices_router  # noqa: E402

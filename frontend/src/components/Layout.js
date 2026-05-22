@@ -24,6 +24,7 @@ import {
   Settings as SettingsIcon,
   Building2,
   Cog,
+  Mail,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -84,6 +85,7 @@ const SIDEBAR = [
         kind: "subgroup", key: "settings", label: "Settings", icon: Cog,
         children: [
           { kind: "item", to: "/admin/users", label: "Admin Users", icon: KeyRound, testid: "nav-admin-users", permKey: "admin-users" },
+          { kind: "item", to: "/admin/email-templates", label: "Email Templates", icon: Mail, testid: "nav-admin-email-templates", permKey: "admin-email-templates" },
           { kind: "item", to: "/admin/xero", label: "Xero", icon: Calculator, testid: "nav-admin-xero", permKey: "admin-xero" },
           { kind: "item", to: "/form-intake", label: "Form Intake", icon: Inbox, testid: "nav-form-intake", permKey: "form-intake" },
         ],
@@ -111,6 +113,7 @@ export const ADMIN_NAV_KEYS = [
   { key: "invoices",         label: "Sandra's Invoices",    paths: ["/invoices"] },
   { key: "banking",          label: "Banking",              paths: ["/banking"] },
   { key: "admin-users",      label: "Admin Users",          paths: ["/admin/users", "/admin/password-resets"] },
+  { key: "admin-email-templates", label: "Email Templates",  paths: ["/admin/email-templates"] },
   { key: "admin-xero",       label: "Xero (settings)",      paths: ["/admin/xero"] },
   { key: "form-intake",      label: "Form Intake",          paths: ["/form-intake"] },
 ];
