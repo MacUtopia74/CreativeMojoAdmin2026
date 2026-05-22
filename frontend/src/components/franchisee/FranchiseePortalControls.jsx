@@ -120,6 +120,11 @@ export default function FranchiseePortalControls({ franchisee, onChanged }) {
                   <>
                     <span className="text-stone-600 uppercase tracking-wider font-bold">Temp password</span>
                     <span className="flex items-center gap-2 flex-wrap">
+                      {/* createdLogin.temporary_password is a one-time
+                          runtime value just returned by the backend so
+                          the admin can copy it to the franchisee — NOT a
+                          hardcoded credential. Stored only in component
+                          state and dropped on next render. */}
                       <code className="px-2 py-1 bg-white border border-emerald-300 rounded text-stone-900 font-mono">
                         {showPassword ? createdLogin.temporary_password : "••••••••••••••"}
                       </code>

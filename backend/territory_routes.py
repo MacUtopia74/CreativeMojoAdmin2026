@@ -31,12 +31,12 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from geo_postcode import is_scottish_postcode  # shared (avoids cqc ↔ scotland cycle)
 from cqc_routes import CqcDefinition, definition_to_mongo_filter, DEFAULT_DEFINITION_ID
 from scotland_routes import (
     ScotlandDefinition,
     definition_to_mongo_filter as scot_definition_to_mongo_filter,
     DEFAULT_DEFINITION_ID as SCOT_DEFINITION_ID,
-    is_scottish_postcode,
 )
 
 logger = logging.getLogger("creative-mojo-admin.territory")

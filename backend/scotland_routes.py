@@ -35,38 +35,12 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from pydantic import BaseModel, Field
 
+from geo_postcode import is_scottish_postcode, SCOTTISH_PREFIXES  # noqa: F401  re-exported for back-compat
+
 logger = logging.getLogger("creative-mojo-admin.scotland")
 
 DEFAULT_DEFINITION_ID = "scotland-default"
 _POSTCODE_RE = re.compile(r"^\s*([A-Z]{1,2}\d[A-Z\d]?)\s*(\d)([A-Z]{2})\s*$", re.I)
-
-# Scottish UK postcode prefixes (district letter portion). Used both for
-# auto-detecting Scottish addresses + filtering when a franchisee's
-# territory mixes border sectors with England (DG and TD do cross the
-# border but the bulk of their addresses are Scottish — the data source
-# is chosen sector-by-sector so this is fine).
-SCOTTISH_PREFIXES: tuple[str, ...] = (
-    "AB", "DD", "DG", "EH", "FK", "G", "HS", "IV", "KA", "KW",
-    "KY", "ML", "PA", "PH", "TD", "ZE",
-)
-
-
-def is_scottish_postcode(postcode: Optional[str]) -> bool:
-    """True when a postcode (or sector / district) belongs to Scotland."""
-    if not postcode:
-        return False
-    s = re.sub(r"\s+", "", str(postcode).upper())
-    for p in SCOTTISH_PREFIXES:
-        if not s.startswith(p):
-            continue
-        # Guard against "GA" / "GU" / "GL" — only "G" followed by a digit
-        # is Glasgow (Scotland). Same defence applies for any 1-letter
-        # prefix in the list — there are no Scottish 1-letter prefixes
-        # except "G", but we keep this generic.
-        nxt = s[len(p) : len(p) + 1]
-        if nxt.isdigit():
-            return True
-    return False
 
 
 def parse_sector(raw: Optional[str]) -> Optional[str]:
@@ -240,7 +214,10 @@ def build_scotland_router(db, require_role):  # noqa: D401
             })
             # We only own the Scottish portion of the count here. Add the
             # English/Welsh portion (already on the doc) so franchisees
-            # straddling the border keep their full number.
+            # straddling the border keep their full number. The CQC import
+            # is kept *lazy* because the recount cycle is the only
+            # cross-router call site — full top-level cycle is avoided by
+            # ``geo_postcode`` carrying the shared classifier.
             from cqc_routes import CqcDefinition, definition_to_mongo_filter as _cqc_f
             cqc_doc = await db.cqc_definition.find_one({"_id": "system-default"}, {"_id": 0})
             cqc_def = CqcDefinition(**cqc_doc) if cqc_doc else CqcDefinition()

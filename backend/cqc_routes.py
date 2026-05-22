@@ -24,6 +24,8 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from geo_postcode import is_scottish_postcode  # noqa: F401  shared with scotland_routes
+
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -333,13 +335,16 @@ def build_cqc_router(db, require_role):  # noqa: D401
         )
         # Refresh every franchisee's territory_home_count — counts now
         # include Scottish portions via scotland_care_services when sectors
-        # fall in Scottish postcode prefixes.
+        # fall in Scottish postcode prefixes. ``is_scottish_postcode`` is
+        # imported at the top from ``geo_postcode`` (shared module); only
+        # ``ScotlandDefinition`` + its filter helper are pulled lazily
+        # because they're scotland-router-specific.
         from scotland_routes import (
-            is_scottish_postcode as _is_scot,
             ScotlandDefinition as _ScotDef,
             definition_to_mongo_filter as _scot_f,
             DEFAULT_DEFINITION_ID as _scot_id,
         )
+        _is_scot = is_scottish_postcode
         scot_doc = await db.scotland_definition.find_one({"_id": _scot_id}, {"_id": 0})
         scot_def = _ScotDef(**scot_doc) if scot_doc else _ScotDef()
         scot_filter = _scot_f(scot_def)

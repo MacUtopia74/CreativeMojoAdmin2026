@@ -10,6 +10,7 @@
 //                                       share URL at send time
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import api from "@/lib/api";
+import DOMPurify from "dompurify";
 import {
   Loader2, Plus, Copy, Trash2, Save, X, Mail,
   Paperclip, FileText, ChevronRight, Search, AlertTriangle, CheckCircle2,
@@ -327,7 +328,7 @@ function PreviewHtml({ html, sampleFirstName }) {
     return h;
   }, [html, sampleFirstName]);
   // eslint-disable-next-line react/no-danger
-  return <div dangerouslySetInnerHTML={{ __html: rendered }} />;
+  return <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(rendered) }} />;
 }
 
 

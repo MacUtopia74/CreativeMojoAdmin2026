@@ -480,7 +480,11 @@ def build_banking_router(db, require_role):
                                 "message": "No transactions found — let us know and we'll tune the parser",
                                 "page_count": parsed.page_count})
                 continue
-            statement_id = f"stmt_{int(now.timestamp() * 1000)}_{hashlib.md5(upload.filename.encode()).hexdigest()[:6]}"
+            # SHA-256 used purely to mint a short uniqueness-suffix on the
+            # statement ID — not used cryptographically, so a truncated
+            # digest is fine. (Was MD5; switched to SHA-256 to keep the
+            # security scanner happy without changing behaviour.)
+            statement_id = f"stmt_{int(now.timestamp() * 1000)}_{hashlib.sha256(upload.filename.encode()).hexdigest()[:6]}"
             new_tx = 0
             duplicates = 0
             for tx in parsed.transactions:

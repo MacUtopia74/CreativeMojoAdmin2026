@@ -8,6 +8,7 @@
 // handler and the disabled flag flips off.
 import { useEffect, useMemo, useState } from "react";
 import api from "@/lib/api";
+import DOMPurify from "dompurify";
 import {
   Loader2, Send, X, AlertTriangle, FileText, Mail,
 } from "lucide-react";
@@ -138,8 +139,12 @@ export default function ReplyWithTemplateModal({ open, contact, onClose }) {
             <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1">Preview (as {firstName} will see it)</label>
             <div className="border border-stone-200 bg-white rounded-lg p-4 min-h-[300px] prose prose-sm max-w-none text-sm"
               data-testid="reply-preview"
+              // Sanitised with DOMPurify before injection — templates are
+              // admin-authored but contacts (and their potential typos)
+              // feed in via the {{first_name}} substitution above, so the
+              // belt-and-braces sanitise blocks any script injection.
               // eslint-disable-next-line react/no-danger
-              dangerouslySetInnerHTML={{ __html: rendered || "<p class='text-stone-400'>Pick a template to see the preview.</p>" }} />
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(rendered || "<p class='text-stone-400'>Pick a template to see the preview.</p>") }} />
           </div>
         </div>
 

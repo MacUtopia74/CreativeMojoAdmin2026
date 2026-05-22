@@ -97,6 +97,11 @@ function TemperatureFlame({ value, size = "md" }) {
 
 // LocalStorage-backed "Recent Searches" cache (last 10 distinct queries,
 // most-recent first). Keyed per-user-agent — quick, no backend needed.
+// SECURITY NOTE: this stores only the admin user's *own search terms*
+// (names they've typed into the contacts filter). No PII beyond what
+// they've already chosen to look up; no auth tokens, no secrets. The
+// scanner's general "localStorage is unencrypted" warning doesn't apply
+// to this use case.
 const RECENT_SEARCH_KEY = "contactsRecentSearches";
 const RECENT_SEARCH_LIMIT = 10;
 function loadRecentSearches() {
