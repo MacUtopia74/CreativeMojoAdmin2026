@@ -3437,6 +3437,7 @@ from territory_routes import build_territory_router  # noqa: E402
 from cqc_routes import build_cqc_router  # noqa: E402
 from scotland_routes import build_scotland_router  # noqa: E402
 from email_templates_routes import build_email_templates_router  # noqa: E402
+from resend_routes import build_resend_router  # noqa: E402
 api.include_router(build_migration_router(db, require_role))
 api.include_router(build_files_router(db, require_role))
 api.include_router(build_portal_router(
@@ -3448,6 +3449,7 @@ api.include_router(build_territory_router(db, require_role))
 api.include_router(build_cqc_router(db, require_role))
 api.include_router(build_scotland_router(db, require_role))
 api.include_router(build_email_templates_router(db, require_role))
+api.include_router(build_resend_router(db, require_role))
 
 # Invoices module — merged from the standalone Pay-Paperwork app
 from invoices_routes import build_invoices_router  # noqa: E402

@@ -9,11 +9,12 @@
 import { useEffect, useMemo, useState } from "react";
 import api from "@/lib/api";
 import DOMPurify from "dompurify";
+import { toast } from "sonner";
 import {
   Loader2, Send, X, AlertTriangle, FileText, Mail,
 } from "lucide-react";
 
-export default function ReplyWithTemplateModal({ open, contact, onClose }) {
+export default function ReplyWithTemplateModal({ open, contact, onClose, onSent }) {
   const [templates, setTemplates] = useState([]);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
@@ -21,6 +22,7 @@ export default function ReplyWithTemplateModal({ open, contact, onClose }) {
   const [cc, setCc] = useState("");
   const [bcc, setBcc] = useState("");
   const [subject, setSubject] = useState("");
+  const [sending, setSending] = useState(false);
 
   // Load templates lazily — first time the modal opens. Cached after.
   useEffect(() => {
@@ -51,6 +53,14 @@ export default function ReplyWithTemplateModal({ open, contact, onClose }) {
   }, [selected?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const firstName = contact?.first_name || "there";
+
+  // Normalise "a@x.com, b@y.com  ; c@z.com" → ["a@x.com","b@y.com","c@z.com"]
+  // for the To / Cc / Bcc fields. Trims whitespace, drops empties.
+  const parseList = (raw) =>
+    String(raw || "")
+      .split(/[,;\s]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
   // Substitute {{first_name}} (and {{file:*}} → friendly chip text) so
   // the preview reflects exactly what the recipient will see.
   const rendered = useMemo(() => {
@@ -60,6 +70,47 @@ export default function ReplyWithTemplateModal({ open, contact, onClose }) {
     h = h.replace(/\{\{\s*file:([^}]+)\s*\}\}/g, "#preview");
     return h;
   }, [selected, firstName]);
+
+  // What we POST is the *unrendered* body — the backend re-runs the
+  // first_name + file token substitution server-side so we keep the
+  // signed R2 URLs fresh and avoid trusting the client to do it. Only
+  // the {{file:*}} → "#preview" rewrite is preview-only; the real
+  // body still has the original tokens which the backend resolves.
+  const handleSend = async () => {
+    if (!selected) {
+      toast.error("Pick a template first");
+      return;
+    }
+    const toList = parseList(to);
+    if (toList.length === 0) {
+      toast.error("Add at least one recipient");
+      return;
+    }
+    if (!subject.trim()) {
+      toast.error("Subject is required");
+      return;
+    }
+    setSending(true);
+    try {
+      const { data } = await api.post("/email/send-reply", {
+        contact_id: contact.id,
+        template_id: selected.id,
+        to: toList,
+        cc: parseList(cc),
+        bcc: parseList(bcc),
+        subject: subject.trim(),
+        body_html: selected.body_html || "",
+      });
+      toast.success(`Email sent to ${toList[0]}${toList.length > 1 ? ` (+${toList.length - 1})` : ""}`);
+      if (onSent) onSent(data.send);
+      onClose();
+    } catch (e) {
+      const msg = e?.response?.data?.detail || e?.message || "Failed to send";
+      toast.error(msg);
+    } finally {
+      setSending(false);
+    }
+  };
 
   if (!open || !contact) return null;
 
@@ -150,17 +201,21 @@ export default function ReplyWithTemplateModal({ open, contact, onClose }) {
 
         {/* Footer */}
         <div className="px-5 py-3 border-t border-stone-200 bg-stone-50 flex items-center justify-between gap-3 shrink-0">
-          <div className="text-[11px] text-amber-800 flex items-center gap-1.5">
-            <AlertTriangle className="w-3 h-3" />
-            Wires up to Resend after deployment — the Send button stays disabled in dev.
+          <div className="text-[11px] text-stone-500">
+            From <span className="font-medium text-stone-700">Paul · Creative Mojo</span> · sent via Resend
           </div>
           <button
             type="button"
-            disabled
+            onClick={handleSend}
+            disabled={sending || !selected}
             data-testid="reply-send"
-            title="Wires up to Resend after deployment"
-            className="px-5 py-2 text-xs font-bold uppercase tracking-wider bg-stone-300 text-stone-500 rounded-lg flex items-center gap-1.5 cursor-not-allowed">
-            <Send className="w-3.5 h-3.5" /> Send (disabled)
+            title={!selected ? "Pick a template first" : "Send via Resend"}
+            className="px-5 py-2 text-xs font-bold uppercase tracking-wider bg-stone-900 text-white rounded-lg flex items-center gap-1.5 hover:bg-stone-800 transition-colors disabled:bg-stone-300 disabled:text-stone-500 disabled:cursor-not-allowed">
+            {sending ? (
+              <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Sending…</>
+            ) : (
+              <><Send className="w-3.5 h-3.5" /> Send Reply</>
+            )}
           </button>
         </div>
       </aside>
