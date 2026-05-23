@@ -3494,10 +3494,13 @@ app.add_middleware(
     CORSMiddleware,
     # Allow our preview/prod admin frontend (with credentials) plus the
     # public creativemojo.com origin for the unauthenticated Find-a-Class
-    # embed. We don't need credentials for the public endpoints, so the
-    # broader regex is safe (it doesn't enable cookie-based auth).
+    # embed. The regex now matches *any* subdomain of creativemojo.com /
+    # creativemojo.co.uk so the branded hub URL (`hub.creativemojo.co.uk`)
+    # and future portals (`franchises.`, `licensees.`) all work out of
+    # the box without further config changes. Credentialled cookie auth
+    # is fine because the regex is locked to our own apex domains.
     allow_origins=[FRONTEND_URL],
-    allow_origin_regex=r"https://(www\.)?creativemojo\.(com|co\.uk)",
+    allow_origin_regex=r"https://([a-z0-9-]+\.)?creativemojo\.(com|co\.uk)",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
