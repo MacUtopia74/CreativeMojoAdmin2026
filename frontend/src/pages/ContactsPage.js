@@ -6,6 +6,7 @@ import MergeContactsModal from "@/components/contacts/MergeContactsModal";
 import DuplicatesModal from "@/components/contacts/DuplicatesModal";
 import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, ChevronsLeft, ChevronsRight, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus, Plus, Sparkles, Upload, FileText, CheckCircle2, Send, Award, Target, Link2, GitMerge, Home, Package, Flame, Clock, Pencil } from "lucide-react";
 import ReplyWithTemplateModal from "@/components/ReplyWithTemplateModal";
+import EmailTimeline from "@/components/EmailTimeline";
 
 const STAGES = [
   { key: "new", label: "New", color: "bg-stone-100 text-stone-700 border-stone-300", barColor: "bg-stone-400" },
@@ -1217,6 +1218,9 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
           {/* Running admin notes */}
           <AdminNotesEditor contact={contact} onUpdated={onAdminNotesUpdated} />
 
+          {/* Recent email sends — only visible if there's history */}
+          <EmailTimeline contactId={contact.id} refreshSignal={emailRefreshSignal} />
+
           {/* 10. Internal Notes */}
           {contact.notes && (
             <div>
@@ -1226,7 +1230,12 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
           )}
         </div>
       </aside>
-      <ReplyWithTemplateModal open={replyModalOpen} contact={contact} onClose={() => setReplyModalOpen(false)} />
+      <ReplyWithTemplateModal
+        open={replyModalOpen}
+        contact={contact}
+        onClose={() => setReplyModalOpen(false)}
+        onSent={() => setEmailRefreshSignal((n) => n + 1)}
+      />
     </div>
   );
 }

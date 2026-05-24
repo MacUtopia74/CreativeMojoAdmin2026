@@ -41,6 +41,23 @@ export default function ReplyWithTemplateModal({ open, contact, onClose, onSent 
     setCc(""); setBcc(""); setSubject("");
   }, [open, contact?.id, contact?.email, contact?.email_raw]);
 
+  // Auto-pick a sensible default template based on the contact's source
+  // once templates load. Mapping rules below are deliberately loose
+  // (substring match on `category`) so admins can use whatever naming
+  // they like — "franchise" / "franchise-uk" / "Franchise UK" all
+  // resolve to the same template for a `franchise_enquiry` contact.
+  useEffect(() => {
+    if (!open || selectedId || !templates.length || !contact?.source) return;
+    const source = String(contact.source).toLowerCase();
+    const wantedKeyword =
+      source.includes("franchise") ? "franchise"
+      : source.includes("licence") || source.includes("license") ? "licence"
+      : null;
+    if (!wantedKeyword) return;
+    const match = templates.find((t) => (t.category || "").toLowerCase().includes(wantedKeyword));
+    if (match) setSelectedId(match.id);
+  }, [open, templates, contact?.source, selectedId]);
+
   const selected = useMemo(() => templates.find((t) => t.id === selectedId), [templates, selectedId]);
 
   // When the template selection changes, hydrate the editable Subject /
