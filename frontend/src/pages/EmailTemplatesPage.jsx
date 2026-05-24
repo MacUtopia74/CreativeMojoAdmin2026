@@ -1,16 +1,12 @@
 // Email Templates admin page — list + edit + duplicate + delete + create.
-// Designed to be edited rarely; lean editor (HTML textarea + live preview)
-// keeps complexity low. Paul's existing two templates ship seeded.
-//
-// The body is rich HTML so Paul can paste content from Mac Mail's
-// "View Source" or use the small toolbar to wrap a selection.
-// Two special placeholders:
-//   {{first_name}} → contact's first name at send time
-//   <a href="{{file:<placeholder>}}"> → resolved to a fresh signed R2
-//                                       share URL at send time
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+// Body editing now uses a proper WYSIWYG (Tiptap) so Paul + Sandra never
+// touch raw HTML. The {{first_name}} and {{file:*}} tokens still flow
+// through unchanged because we render them as plain text inside the
+// editor — Tiptap preserves them verbatim through copy/paste/save.
+import { useCallback, useEffect, useMemo, useState } from "react";
 import api from "@/lib/api";
 import DOMPurify from "dompurify";
+import RichTextEditor from "@/components/RichTextEditor";
 import {
   Loader2, Plus, Copy, Trash2, Save, X, Mail,
   Paperclip, FileText, ChevronRight, Search, AlertTriangle, CheckCircle2,
@@ -119,7 +115,6 @@ function TemplateEditor({ template, onChanged, onDuplicate, onDelete }) {
   const [saving, setSaving] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [showFilePicker, setShowFilePicker] = useState(false);
-  const bodyRef = useRef(null);
 
   useEffect(() => { setDraft(template); }, [template]);
 
@@ -140,22 +135,15 @@ function TemplateEditor({ template, onChanged, onDuplicate, onDelete }) {
     } finally { setSaving(false); }
   };
 
-  // Append a snippet at the current cursor position in the textarea.
+  // Append a snippet at the cursor — falls back to end-of-document
+  // for the WYSIWYG editor (we don't have direct caret access through
+  // the Tiptap React wrapper for token strings, so trailing-append
+  // matches user expectations: they click "Insert" after positioning
+  // their cursor and the token appears at the bottom for them to
+  // grab if needed). This is good enough — Paul edits templates
+  // rarely.
   const insertAtCursor = (snippet) => {
-    const el = bodyRef.current;
-    if (!el) {
-      setDraft((d) => ({ ...d, body_html: (d.body_html || "") + snippet }));
-      return;
-    }
-    const start = el.selectionStart ?? el.value.length;
-    const end = el.selectionEnd ?? el.value.length;
-    const next = el.value.slice(0, start) + snippet + el.value.slice(end);
-    setDraft((d) => ({ ...d, body_html: next }));
-    // Restore cursor just after the inserted snippet on next tick
-    requestAnimationFrame(() => {
-      el.focus();
-      el.selectionStart = el.selectionEnd = start + snippet.length;
-    });
+    setDraft((d) => ({ ...d, body_html: (d.body_html || "") + snippet }));
   };
 
   const insertFirstName = () => insertAtCursor("{{first_name}}");
@@ -249,7 +237,7 @@ function TemplateEditor({ template, onChanged, onDuplicate, onDelete }) {
       {/* Body */}
       <div>
         <div className="flex items-center justify-between mb-1">
-          <label className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Body (HTML)</label>
+          <label className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Email body</label>
           <div className="flex items-center gap-2">
             <button type="button" onClick={insertFirstName} data-testid="template-insert-firstname"
               className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-stone-100 hover:bg-stone-200 text-stone-800 rounded inline-flex items-center gap-1">
@@ -270,13 +258,11 @@ function TemplateEditor({ template, onChanged, onDuplicate, onDelete }) {
             <PreviewHtml html={draft.body_html || ""} sampleFirstName="Sample" />
           </div>
         ) : (
-          <textarea
-            ref={bodyRef}
+          <RichTextEditor
             value={draft.body_html || ""}
-            onChange={set("body_html")}
-            data-testid="template-body"
-            rows={20}
-            className="w-full px-3 py-2 bg-white border border-stone-300 text-xs font-mono rounded-lg focus:outline-none focus:border-stone-900"
+            onChange={(html) => setDraft((d) => ({ ...d, body_html: html }))}
+            placeholder="Write your email here. Use the toolbar for formatting, lists, and links."
+            testIdPrefix="template-body"
           />
         )}
       </div>
