@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate, Navigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import Logo from "@/components/Logo";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Eye, EyeOff } from "lucide-react";
 import ForgotPasswordModal from "@/components/auth/ForgotPasswordModal";
 
 const LOGIN_IMAGE =
@@ -16,6 +16,7 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [showForgot, setShowForgot] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   if (user) return <Navigate to="/" replace />;
 
@@ -98,16 +99,27 @@ export default function LoginPage() {
               <label htmlFor="password" className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">
                 Password
               </label>
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                data-testid="login-password-input"
-                required
-                className="w-full px-4 py-3 bg-white border border-stone-300 text-stone-950 text-sm font-medium focus:outline-none focus:border-stone-950 focus:ring-1 focus:ring-stone-950 transition-colors rounded-xl"
-                placeholder="••••••••"
-              />
+              <div className="relative">
+                <input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  data-testid="login-password-input"
+                  required
+                  className="w-full px-4 py-3 pr-11 bg-white border border-stone-300 text-stone-950 text-sm font-medium focus:outline-none focus:border-stone-950 focus:ring-1 focus:ring-stone-950 transition-colors rounded-xl"
+                  placeholder="••••••••"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  data-testid="login-password-toggle"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  tabIndex={-1}
+                  className="absolute inset-y-0 right-0 px-3 flex items-center text-stone-500 hover:text-stone-900 transition-colors">
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
 
             {error && (
