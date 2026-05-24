@@ -118,7 +118,11 @@ export default function OrdersPage() {
     try {
       const { data } = await api.get("/orders/counts");
       setCounts(data || {});
-    } catch (e) { /* non-critical */ }
+    } catch (e) {
+      // Non-critical — the badge counts will just be missing until the
+      // next refresh. Log so we notice if /orders/counts ever 500s.
+      console.warn("[OrdersPage] /orders/counts failed", e);
+    }
   };
 
   useEffect(() => {
@@ -497,7 +501,7 @@ function OrderRow({ order, showProducts, hideLegacyIds, selected = false, onSele
             Legacy import — line items not migrated
           </span>
         ) : showProducts && (order.line_items || []).map((li, i) => (
-          <div key={i} className="flex items-start gap-2 mb-0.5 last:mb-0">
+          <div key={`${li.product_id || li.sku || li.name || "li"}-${i}`} className="flex items-start gap-2 mb-0.5 last:mb-0">
             <span className="text-[11px] text-stone-500 mt-0.5 font-mono">×{li.quantity}</span>
             <span className="text-stone-800 text-[12px] leading-tight">{li.name}</span>
           </div>

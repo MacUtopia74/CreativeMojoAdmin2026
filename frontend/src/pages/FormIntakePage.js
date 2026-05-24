@@ -142,7 +142,7 @@ export default function FormIntakePage() {
               { t: "Test it", d: <>Submit a test entry on the Franchise Enquiry form. Within seconds it should appear in the "Recent Submissions" feed below and on the <a href="/contacts" className="text-stone-950 underline">Enquiries page</a>.</> },
               { t: "(Optional) Turn off the old Zapier Zap", d: <>Once you've seen a few live submissions land successfully, deactivate the Zap pointing to Airtable. You can keep it for a few weeks as a safety net if you prefer.</> },
             ].map((step, i) => (
-              <li key={i} className="flex items-start gap-3">
+              <li key={step.t} className="flex items-start gap-3">
                 <div className="w-6 h-6 bg-[#dddd16] flex items-center justify-center text-xs font-bold text-stone-950 shrink-0 rounded-lg">{i + 1}</div>
                 <div>
                   <div className="text-sm font-semibold text-stone-950">{step.t}</div>

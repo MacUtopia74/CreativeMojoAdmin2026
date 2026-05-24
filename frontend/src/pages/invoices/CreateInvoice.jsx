@@ -109,7 +109,7 @@ function InvoicePreview({ formData, subtotal, discountAmount, taxAmount, total, 
             </thead>
             <tbody>
               {formData.line_items.map((item, i) => (
-                <tr key={i} className="border-b border-slate-100">
+                <tr key={item._uid || `${i}-${item.description || ""}`} className="border-b border-slate-100">
                   <td className="py-3 text-slate-900">{item.description || "—"}</td>
                   <td className="py-3 text-right font-mono text-slate-700">{item.quantity}</td>
                   <td className="py-3 text-right font-mono text-slate-700">£{Number(item.unit_price).toFixed(2)}</td>
@@ -164,7 +164,13 @@ function CreateInvoice() {
   
   const today = new Date();
   const fourteenDays = new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000);
-  
+
+  // Per-line stable IDs — used as React keys so reorders/removes keep
+  // each row's input focus + local state intact. Runtime-only, stripped
+  // before POST so we don't pollute the saved invoice document.
+  const _newLineUid = () =>
+    (globalThis.crypto?.randomUUID?.() || `li-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+
   const [formData, setFormData] = useState({
     client_id: "",
     client_name: "",
@@ -175,7 +181,7 @@ function CreateInvoice() {
     invoice_number: "",
     issue_date: format(today, "yyyy-MM-dd"),
     due_date: format(fourteenDays, "yyyy-MM-dd"),
-    line_items: [{ description: "", quantity: 1, unit_price: 0, amount: 0 }],
+    line_items: [{ _uid: _newLineUid(), description: "", quantity: 1, unit_price: 0, amount: 0 }],
     tax_rate: 0,
     discount_rate: 0,
     notes: "",
@@ -232,7 +238,7 @@ function CreateInvoice() {
   };
 
   const addLineItem = () => {
-    setFormData(p => ({ ...p, line_items: [...p.line_items, { description: "", quantity: 1, unit_price: 0, amount: 0 }] }));
+    setFormData(p => ({ ...p, line_items: [...p.line_items, { _uid: _newLineUid(), description: "", quantity: 1, unit_price: 0, amount: 0 }] }));
   };
 
   const removeLineItem = (index) => {
@@ -252,7 +258,10 @@ function CreateInvoice() {
     if (!formData.line_items.some(i => i.description && i.amount > 0)) { toast.error("Please add at least one line item"); return; }
     setLoading(true);
     try {
-      await api.post("/invoices", { ...formData, subtotal, tax_amount: taxAmount, discount_amount: discountAmount, total });
+      // Strip runtime-only `_uid` from line items before POST — it's a
+      // React-key helper, not part of the invoice schema.
+      const cleanItems = formData.line_items.map(({ _uid, ...rest }) => rest);  // eslint-disable-line no-unused-vars
+      await api.post("/invoices", { ...formData, line_items: cleanItems, subtotal, tax_amount: taxAmount, discount_amount: discountAmount, total });
       toast.success("Invoice created successfully");
       navigate("/invoices");
     } catch (err) { toast.error("Failed to create invoice"); }
@@ -366,7 +375,7 @@ function CreateInvoice() {
                 </Button>
               </div>
               {formData.line_items.map((item, idx) => (
-                <LineItemRow key={idx} item={item} index={idx} onUpdate={handleLineItemChange} onRemove={removeLineItem} canRemove={formData.line_items.length > 1} />
+                <LineItemRow key={item._uid || `idx-${idx}`} item={item} index={idx} onUpdate={handleLineItemChange} onRemove={removeLineItem} canRemove={formData.line_items.length > 1} />
               ))}
             </Card>
 

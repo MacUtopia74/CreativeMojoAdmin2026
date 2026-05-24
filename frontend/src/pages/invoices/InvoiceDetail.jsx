@@ -154,7 +154,9 @@ function InvoiceDetail() {
       try {
         const updatedInvoice = await api.get(`/invoices/${id}`);
         setInvoice(updatedInvoice.data);
-      } catch (err) {}
+      } catch (err) {
+        console.warn("[InvoiceDetail] post-send status refresh failed (non-critical)", err);
+      }
     }, 1000);
   };
 
