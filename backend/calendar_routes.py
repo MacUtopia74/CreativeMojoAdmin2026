@@ -45,6 +45,7 @@ from pydantic import BaseModel, Field
 
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request as GoogleRequest
+from google.auth.exceptions import RefreshError
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
@@ -291,8 +292,28 @@ def attach(api, db, require_role, get_current_user=None):
                     # portal come back.
                     sharedExtendedProperty="show_in_portal=1",
                 ).execute()
+            except RefreshError as exc:
+                # Refresh token revoked/expired in Google. Wipe it so the
+                # next admin visit forces a fresh consent, and return an
+                # empty feed so the portal panel doesn't 500.
+                logging.getLogger("creative-mojo-admin").warning(
+                    "Google Calendar refresh token invalid (%s) — clearing stored creds", exc,
+                )
+                try:
+                    await db.google_oauth.update_one(
+                        {"_id": "calendar"},
+                        {"$set": {"status": "disconnected", "last_error": str(exc)}, "$unset": {"refresh_token": "", "token": ""}},
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+                return {"events": [], "count": 0, "connected": False}
             except HttpError as exc:
-                raise HTTPException(502, detail=f"Google Calendar API error: {exc}") from exc
+                # Don't 500 the franchisee dashboard if Google rate-limits
+                # or returns an unexpected error — just degrade.
+                logging.getLogger("creative-mojo-admin").warning(
+                    "Google Calendar API error on portal-events: %s", exc,
+                )
+                return {"events": [], "count": 0, "connected": False}
             events = [_shape_event(e) for e in res.get("items", [])]
             return {"events": events, "count": len(events), "connected": True}
 
