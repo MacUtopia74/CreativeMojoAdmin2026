@@ -14,7 +14,7 @@ import api from "@/lib/api";
 import { toast } from "sonner";
 import {
   ChevronUp, ChevronDown, FileText, Plus, Loader2, X, Save, Download,
-  Trash2, Edit3, Users, Settings, ArrowLeft, Banknote,
+  Trash2, Edit3, Users, Settings, ArrowLeft, Banknote, Upload, Link2, Unlink, CheckCircle2,
 } from "lucide-react";
 
 const STATUS_COLORS = {
@@ -272,6 +272,198 @@ function SettingsTab() {
   );
 }
 
+// ----------------------------- Bank reconciliation tab (Phase 2)
+// Per-franchisee CSV upload + match credits to outstanding invoices.
+// Strictly manual — no TrueLayer/Open Banking — Paul confirmed that's
+// out of scope for franchisees.
+function BankTab({ refreshKey, onChanged }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [filter, setFilter] = useState("unreconciled");  // all | unreconciled | reconciled
+  const [invoices, setInvoices] = useState([]);
+  const [pickerForTxn, setPickerForTxn] = useState(null);  // txn id whose picker is open
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [{ data: txs }, { data: invs }] = await Promise.all([
+        api.get("/portal/invoices/bank/transactions", { params: { only_credits: true } }),
+        api.get("/portal/invoices"),
+      ]);
+      setRows(txs);
+      setInvoices(invs.filter((i) => !i.deleted && i.status !== "paid"));
+    } catch (e) {
+      console.error("[Bank] load failed", e);
+      toast.error(e?.response?.data?.detail || "Couldn't load bank transactions");
+    } finally { setLoading(false); }
+  }, []);
+  useEffect(() => { load(); }, [load, refreshKey]);
+
+  const onUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      const { data } = await api.post("/portal/invoices/bank/upload", fd);
+      toast.success(`Imported ${data.inserted} new · skipped ${data.skipped_duplicates} duplicate${data.skipped_duplicates === 1 ? "" : "s"}`);
+      load();
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Couldn't import CSV");
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  };
+
+  const link = async (txnId, invoiceId) => {
+    try {
+      await api.post(`/portal/invoices/bank/transactions/${txnId}/link`, { invoice_id: invoiceId });
+      toast.success("Linked");
+      setPickerForTxn(null);
+      load();
+      onChanged?.();
+    } catch (e) { toast.error(e?.response?.data?.detail || "Couldn't link"); }
+  };
+  const unlink = async (txnId, invoiceId) => {
+    try {
+      await api.delete(`/portal/invoices/bank/transactions/${txnId}/link/${invoiceId}`);
+      toast.success("Unlinked");
+      load();
+      onChanged?.();
+    } catch (e) { toast.error(e?.response?.data?.detail || "Couldn't unlink"); }
+  };
+  const removeTxn = async (txnId) => {
+    if (!window.confirm("Remove this transaction from the reconciliation list? (Doesn't affect your bank.)")) return;
+    try {
+      await api.delete(`/portal/invoices/bank/transactions/${txnId}`);
+      load();
+    } catch (e) { toast.error(e?.response?.data?.detail || "Couldn't delete"); }
+  };
+
+  const visible = useMemo(() => {
+    if (filter === "all") return rows;
+    if (filter === "reconciled") return rows.filter((r) => (r.linked_invoice_ids || []).length > 0);
+    return rows.filter((r) => (r.linked_invoice_ids || []).length === 0);
+  }, [rows, filter]);
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-stone-50 border border-stone-200 rounded-lg p-3 text-xs text-stone-700">
+        <strong>How it works:</strong> Export a CSV of your bank transactions
+        (Date · Description · Amount, or a similar layout — most UK banks support
+        this). Upload it here and we'll list the incoming payments. Click "Match"
+        to link a payment to one of your outstanding invoices; the invoice will
+        automatically be marked <em>Paid</em> once the full amount is matched.
+        Nothing is sent to your bank — this is reference-only.
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 justify-between">
+        <div className="flex items-center gap-1">
+          {[
+            { id: "unreconciled", label: "Unmatched" },
+            { id: "reconciled",   label: "Matched" },
+            { id: "all",          label: "All credits" },
+          ].map((t) => (
+            <button key={t.id} onClick={() => setFilter(t.id)} data-testid={`bank-filter-${t.id}`}
+              className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded ${
+                filter === t.id ? "bg-stone-950 text-white" : "bg-stone-100 text-stone-700 hover:bg-stone-200"
+              }`}>{t.label}</button>
+          ))}
+        </div>
+        <label className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-md inline-flex items-center gap-1.5 cursor-pointer">
+          {uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />} Upload CSV
+          <input type="file" accept=".csv,text/csv" onChange={onUpload} className="hidden" disabled={uploading} data-testid="bank-csv-upload" />
+        </label>
+      </div>
+
+      {loading ? (
+        <div className="text-xs text-stone-400 flex items-center gap-1.5 py-4">
+          <Loader2 className="w-3 h-3 animate-spin" /> Loading…
+        </div>
+      ) : visible.length === 0 ? (
+        <div className="text-center py-8 text-stone-500 text-sm border border-dashed border-stone-300 rounded-lg">
+          {rows.length === 0 ? (
+            <>No bank transactions yet. <strong>Upload a CSV</strong> from your bank to start matching.</>
+          ) : (
+            <>Nothing to show in this view.</>
+          )}
+        </div>
+      ) : (
+        <div className="border border-stone-200 rounded-lg overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-stone-50 text-[10px] uppercase tracking-wider text-stone-600">
+              <tr>
+                <th className="px-3 py-2 text-left">Date</th>
+                <th className="px-3 py-2 text-left">Description</th>
+                <th className="px-3 py-2 text-right">Amount</th>
+                <th className="px-3 py-2 text-left">Match</th>
+                <th className="px-3 py-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((tx) => {
+                const linked = tx.linked_invoice_ids || [];
+                const linkedInvs = linked.map((id) => invoices.find((i) => i.id === id)).filter(Boolean);
+                return (
+                  <tr key={tx.id} className="border-t border-stone-100 hover:bg-stone-50" data-testid={`bank-row-${tx.id}`}>
+                    <td className="px-3 py-2 tabular-nums text-xs">{tx.date}</td>
+                    <td className="px-3 py-2 text-xs truncate max-w-[280px]">{tx.description}</td>
+                    <td className="px-3 py-2 text-right tabular-nums font-medium text-emerald-700">{moneyFmt(tx.amount)}</td>
+                    <td className="px-3 py-2 text-xs">
+                      {linked.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {linkedInvs.length > 0 ? linkedInvs.map((inv) => (
+                            <span key={inv.id} className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 px-1.5 py-0.5 rounded font-mono text-[10px]">
+                              <CheckCircle2 className="w-3 h-3" /> {inv.invoice_number}
+                              <button onClick={() => unlink(tx.id, inv.id)} className="hover:bg-emerald-100 rounded p-0.5" title="Unlink">
+                                <Unlink className="w-3 h-3" />
+                              </button>
+                            </span>
+                          )) : <span className="text-stone-400">Linked ({linked.length})</span>}
+                        </div>
+                      ) : pickerForTxn === tx.id ? (
+                        <select autoFocus onChange={(e) => e.target.value && link(tx.id, e.target.value)} onBlur={() => setPickerForTxn(null)}
+                          data-testid={`bank-picker-${tx.id}`}
+                          className="px-2 py-1 text-xs border border-stone-300 rounded bg-white">
+                          <option value="">— Pick an invoice —</option>
+                          {invoices.map((inv) => (
+                            <option key={inv.id} value={inv.id}>
+                              {inv.invoice_number} · {inv.client_name} · {moneyFmt(inv.total)}
+                            </option>
+                          ))}
+                        </select>
+                      ) : tx.suggested_invoice ? (
+                        <button onClick={() => link(tx.id, tx.suggested_invoice.id)} data-testid={`bank-match-${tx.id}`}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-amber-100 hover:bg-amber-200 text-amber-900 rounded">
+                          <Link2 className="w-3 h-3" />
+                          Match {tx.suggested_invoice.invoice_number}
+                        </button>
+                      ) : (
+                        <button onClick={() => setPickerForTxn(tx.id)} data-testid={`bank-pick-${tx.id}`}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-stone-200 hover:bg-stone-300 text-stone-800 rounded">
+                          <Link2 className="w-3 h-3" /> Pick…
+                        </button>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <button onClick={() => removeTxn(tx.id)} title="Remove" className="p-1 hover:bg-red-100 rounded">
+                        <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Field({ label, value, onChange, placeholder, testId, wide }) {
   return (
     <div className={wide ? "sm:col-span-2" : ""}>
@@ -450,6 +642,7 @@ export default function PortalInvoicingSection({ open, onToggle }) {
                 {[
                   { id: "invoices", label: "Invoices", icon: FileText },
                   { id: "clients",  label: "Clients",  icon: Users },
+                  { id: "bank",     label: "Bank",     icon: Banknote },
                   { id: "settings", label: "Settings", icon: Settings },
                 ].map((t) => {
                   const TabIcon = t.icon;
@@ -474,6 +667,7 @@ export default function PortalInvoicingSection({ open, onToggle }) {
                 />
               )}
               {tab === "clients" && <ClientsTab refreshKey={refreshKey} onChanged={() => setRefreshKey((k) => k + 1)} />}
+              {tab === "bank" && <BankTab refreshKey={refreshKey} onChanged={() => setRefreshKey((k) => k + 1)} />}
               {tab === "settings" && <SettingsTab />}
             </>
           )}

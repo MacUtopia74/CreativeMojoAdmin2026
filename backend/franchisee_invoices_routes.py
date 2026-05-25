@@ -31,9 +31,11 @@ from datetime import datetime, timezone
 from io import BytesIO
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
+
+from franchisee_bank_csv import parse_bank_csv
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -467,6 +469,216 @@ def build_franchisee_invoices_router(db, require_role):
             media_type="application/pdf",
             headers={"Content-Disposition": f"attachment; filename=invoice-{inv['invoice_number']}.pdf"},
         )
+
+    # ----------------------------- BANK RECONCILIATION (Phase 2 — manual CSV)
+    # Per franchisee: upload a CSV from their own bank, then match each
+    # CREDIT line against an outstanding invoice. No TrueLayer / API
+    # integration — strictly manual to keep things simple and free.
+
+    @router.post("/bank/upload")
+    async def upload_bank_csv(file: UploadFile = File(...), user: dict = franchisee):
+        fid = await _fid(user)
+        blob = await file.read()
+        if not blob:
+            raise HTTPException(400, "Empty file")
+        if len(blob) > 5 * 1024 * 1024:
+            raise HTTPException(400, "CSV too large (max 5 MB)")
+        try:
+            parsed = parse_bank_csv(blob)
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(400, f"Couldn't parse CSV: {e}") from e
+        if not parsed:
+            raise HTTPException(400, "No transactions detected — please check the CSV format.")
+        now = datetime.now(timezone.utc).isoformat()
+        inserted = 0
+        skipped = 0
+        for tx in parsed:
+            doc = {
+                "id": str(uuid.uuid4()),
+                "franchisee_id": fid,
+                "date": tx["date"],
+                "description": tx["description"],
+                "amount": tx["amount"],
+                "transaction_type": tx["transaction_type"],
+                "fingerprint": tx["fingerprint"],
+                "source_filename": file.filename or "upload.csv",
+                "imported_at": now,
+                "linked_invoice_ids": [],
+            }
+            try:
+                res = await db.franchisee_bank_transactions.update_one(
+                    {"franchisee_id": fid, "fingerprint": tx["fingerprint"]},
+                    {"$setOnInsert": doc},
+                    upsert=True,
+                )
+                if res.upserted_id is not None:
+                    inserted += 1
+                else:
+                    skipped += 1
+            except Exception:  # noqa: BLE001
+                skipped += 1
+        return {
+            "filename": file.filename,
+            "total_rows_parsed": len(parsed),
+            "inserted": inserted,
+            "skipped_duplicates": skipped,
+        }
+
+    @router.get("/bank/transactions")
+    async def list_bank_transactions(
+        only_credits: bool = True,
+        only_unreconciled: bool = False,
+        user: dict = franchisee,
+    ):
+        fid = await _fid(user)
+        q: dict = {"franchisee_id": fid}
+        if only_credits:
+            q["transaction_type"] = "CREDIT"
+        if only_unreconciled:
+            q["linked_invoice_ids"] = {"$in": [None, []]}
+        rows = await db.franchisee_bank_transactions.find(
+            q, {"_id": 0, "franchisee_id": 0, "raw": 0}
+        ).sort("date", -1).to_list(2000)
+
+        # Build a fast lookup of outstanding invoices for suggestion logic.
+        outstanding = await db.franchisee_invoices.find(
+            {
+                "franchisee_id": fid,
+                "deleted": {"$ne": True},
+                "status": {"$in": ["sent", "draft", "overdue"]},
+            },
+            {"_id": 0, "id": 1, "invoice_number": 1, "client_name": 1, "total": 1, "issue_date": 1, "due_date": 1, "status": 1},
+        ).to_list(2000)
+        for tx in rows:
+            tx["suggested_invoice"] = None
+            if tx.get("linked_invoice_ids"):
+                continue
+            # Suggest exact-amount match first
+            exact = [
+                inv for inv in outstanding
+                if round(float(inv.get("total") or 0), 2) == round(float(tx["amount"]), 2)
+            ]
+            if len(exact) == 1:
+                tx["suggested_invoice"] = exact[0]
+            elif len(exact) > 1:
+                # Pick the one closest to the transaction date
+                def _date_dist(inv):
+                    try:
+                        return abs(
+                            (datetime.fromisoformat(inv.get("issue_date") or tx["date"])
+                             - datetime.fromisoformat(tx["date"])).days
+                        )
+                    except (ValueError, TypeError):
+                        return 9999
+                exact.sort(key=_date_dist)
+                tx["suggested_invoice"] = exact[0]
+        return rows
+
+    @router.post("/bank/transactions/{txn_id}/link")
+    async def link_transaction(txn_id: str, body: dict, user: dict = franchisee):
+        fid = await _fid(user)
+        invoice_id = (body or {}).get("invoice_id")
+        if not invoice_id:
+            raise HTTPException(400, "invoice_id required")
+        tx = await db.franchisee_bank_transactions.find_one(
+            {"id": txn_id, "franchisee_id": fid}, {"_id": 0}
+        )
+        if not tx:
+            raise HTTPException(404, "Transaction not found")
+        inv = await db.franchisee_invoices.find_one(
+            {"id": invoice_id, "franchisee_id": fid, "deleted": {"$ne": True}}, {"_id": 0}
+        )
+        if not inv:
+            raise HTTPException(404, "Invoice not found")
+        # Link tx → invoice
+        await db.franchisee_bank_transactions.update_one(
+            {"id": txn_id, "franchisee_id": fid},
+            {"$addToSet": {"linked_invoice_ids": invoice_id}},
+        )
+        # Mirror invoice → tx, and auto-flip invoice to "paid" when the
+        # sum of linked credit transactions reaches the invoice total.
+        await db.franchisee_invoices.update_one(
+            {"id": invoice_id, "franchisee_id": fid},
+            {"$addToSet": {"payment_transaction_ids": txn_id}},
+        )
+        # Compute total credited so far for this invoice
+        inv2 = await db.franchisee_invoices.find_one(
+            {"id": invoice_id, "franchisee_id": fid}, {"_id": 0}
+        )
+        linked_ids = inv2.get("payment_transaction_ids") or []
+        if linked_ids:
+            credited = 0.0
+            async for t in db.franchisee_bank_transactions.find(
+                {"franchisee_id": fid, "id": {"$in": linked_ids}, "transaction_type": "CREDIT"},
+                {"_id": 0, "amount": 1},
+            ):
+                credited += float(t.get("amount") or 0)
+            target = float(inv2.get("total") or 0)
+            if credited + 0.005 >= target > 0:
+                await db.franchisee_invoices.update_one(
+                    {"id": invoice_id, "franchisee_id": fid},
+                    {"$set": {"status": "paid", "paid_at": datetime.now(timezone.utc).isoformat()}},
+                )
+            elif credited > 0 and inv2.get("status") == "draft":
+                # Partial — mark as sent so it stops looking like a draft
+                await db.franchisee_invoices.update_one(
+                    {"id": invoice_id, "franchisee_id": fid},
+                    {"$set": {"status": "sent"}},
+                )
+        return {"ok": True}
+
+    @router.delete("/bank/transactions/{txn_id}/link/{invoice_id}")
+    async def unlink_transaction(txn_id: str, invoice_id: str, user: dict = franchisee):
+        fid = await _fid(user)
+        res = await db.franchisee_bank_transactions.update_one(
+            {"id": txn_id, "franchisee_id": fid},
+            {"$pull": {"linked_invoice_ids": invoice_id}},
+        )
+        await db.franchisee_invoices.update_one(
+            {"id": invoice_id, "franchisee_id": fid},
+            {"$pull": {"payment_transaction_ids": txn_id}},
+        )
+        if res.matched_count == 0:
+            raise HTTPException(404, "Transaction not found")
+        # If invoice was auto-paid, recompute — drop back to sent if
+        # under-credited again.
+        inv = await db.franchisee_invoices.find_one(
+            {"id": invoice_id, "franchisee_id": fid}, {"_id": 0}
+        )
+        if inv and inv.get("status") == "paid":
+            linked_ids = inv.get("payment_transaction_ids") or []
+            credited = 0.0
+            if linked_ids:
+                async for t in db.franchisee_bank_transactions.find(
+                    {"franchisee_id": fid, "id": {"$in": linked_ids}, "transaction_type": "CREDIT"},
+                    {"_id": 0, "amount": 1},
+                ):
+                    credited += float(t.get("amount") or 0)
+            if credited + 0.005 < float(inv.get("total") or 0):
+                await db.franchisee_invoices.update_one(
+                    {"id": invoice_id, "franchisee_id": fid},
+                    {"$set": {"status": "sent"}, "$unset": {"paid_at": ""}},
+                )
+        return {"ok": True}
+
+    @router.delete("/bank/transactions/{txn_id}")
+    async def delete_transaction(txn_id: str, user: dict = franchisee):
+        fid = await _fid(user)
+        # Also pull this tx out of any invoice it was linked to
+        tx = await db.franchisee_bank_transactions.find_one(
+            {"id": txn_id, "franchisee_id": fid}, {"_id": 0, "linked_invoice_ids": 1}
+        )
+        if not tx:
+            raise HTTPException(404, "Transaction not found")
+        for inv_id in tx.get("linked_invoice_ids") or []:
+            await db.franchisee_invoices.update_one(
+                {"id": inv_id, "franchisee_id": fid},
+                {"$pull": {"payment_transaction_ids": txn_id}},
+            )
+        await db.franchisee_bank_transactions.delete_one(
+            {"id": txn_id, "franchisee_id": fid}
+        )
+        return {"ok": True}
 
     return router
 
