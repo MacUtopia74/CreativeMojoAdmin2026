@@ -5,6 +5,7 @@ import { formatDate, daysFromToday } from "@/lib/date";
 import { ArrowLeft, MapPin, AlertCircle, User, FileText, Map, MessageSquare, Pencil, Check, X as XIcon, Clock, ShieldCheck, ShieldAlert, Globe, Facebook, CreditCard, RefreshCw, AlertTriangle, Power, PowerOff, BellRing, FolderOpen, LockKeyhole, Calendar, Camera, Loader2, ClipboardList } from "lucide-react";
 import FranchiseeFilesPanel from "@/components/files/FranchiseeFilesPanel";
 import FranchiseePortalControls from "@/components/franchisee/FranchiseePortalControls";
+import PortalModulesPanel from "@/components/franchisee/PortalModulesPanel";
 import FranchiseeTerritoryWidget from "@/components/territory/FranchiseeTerritoryWidget";
 import RecentFilesStrip from "@/components/files/RecentFilesStrip";
 import FilePreviewModal from "@/components/files/FilePreviewModal";
@@ -645,7 +646,22 @@ export default function FranchiseeDetailPage() {
               try {
                 const { data } = await api.get(`/franchisees/${f.id}`);
                 setData((d) => ({ ...d, franchisee: data }));
-              } catch (e) { /* ignore */ }
+              } catch (e) {
+                console.warn("[FranchiseeDetail] post-portal-toggle refresh failed", e);
+              }
+            }} />
+        </Panel>
+
+        {/* Phase 5 — Per-franchisee portal module toggles */}
+        <Panel icon={ClipboardList} title="Portal Modules" testid="panel-portal-modules">
+          <PortalModulesPanel franchisee={f}
+            onChanged={async () => {
+              try {
+                const { data } = await api.get(`/franchisees/${f.id}`);
+                setData((d) => ({ ...d, franchisee: data }));
+              } catch (e) {
+                console.warn("[FranchiseeDetail] post-modules-toggle refresh failed", e);
+              }
             }} />
         </Panel>
 

@@ -1,0 +1,579 @@
+"""Phase 5 — Per-franchisee Invoicing module (portal-side).
+
+Cloned from ``invoices_routes`` (the merged Sandra's-Invoices code) and
+scoped by ``franchisee_id`` so each franchisee sees ONLY their own data:
+
+- Collections (separate from admin invoices to keep Sandra's data
+  fully isolated):
+    franchisee_invoice_clients         (one per franchisee_id)
+    franchisee_invoices                (one per franchisee_id)
+    franchisee_invoice_settings        (one per franchisee_id, _id=franchisee_id)
+    franchisee_bank_transactions       (CSV uploads — Phase 2)
+
+- All routes mounted at /api/portal/invoices/* and require role
+  "franchisee". ``user["franchisee_id"]`` is injected by the JWT so we
+  never trust client-supplied scoping.
+
+- Default invoice settings auto-populate from the franchisee's own
+  profile (organisation, address, email, phone) — NOT Sandra's. Bank
+  fields are blank by default so each franchisee fills in their own.
+
+- "Sandra's Invoices" admin module is untouched. The portal module is
+  a parallel-but-isolated copy.
+
+Phase 1 (this file): clients CRUD, invoices CRUD, settings, PDF download.
+Phase 2 (later): /reconcile endpoints — CSV upload + match + link.
+"""
+from __future__ import annotations
+
+import uuid
+from datetime import datetime, timezone
+from io import BytesIO
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
+from pydantic import BaseModel, ConfigDict, Field
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import mm
+from reportlab.platypus import (
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
+
+
+# =========================== MODELS ===========================
+
+class LineItem(BaseModel):
+    description: str
+    quantity: float = 1
+    unit_price: float
+    amount: float = 0
+
+
+class ClientBase(BaseModel):
+    name: str
+    email: Optional[str] = ""
+    email2: Optional[str] = ""
+    phone: Optional[str] = ""
+    address: Optional[str] = ""
+    city: Optional[str] = ""
+    country: Optional[str] = ""
+    show_name: bool = True
+    show_email: bool = True
+    show_email2: bool = True
+    show_phone: bool = False
+    show_address: bool = True
+    show_city: bool = True
+    show_country: bool = True
+
+
+class ClientCreate(ClientBase):
+    pass
+
+
+class Client(ClientBase):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    created_at: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+
+
+class InvoiceBase(BaseModel):
+    client_id: str
+    client_name: str
+    client_email: Optional[str] = ""
+    client_email2: Optional[str] = ""
+    client_phone: Optional[str] = ""
+    client_address: Optional[str] = ""
+    invoice_number: str
+    issue_date: str
+    due_date: str
+    line_items: List[LineItem]
+    tax_rate: float = 0
+    discount_rate: float = 0
+    subtotal: float = 0
+    tax_amount: float = 0
+    discount_amount: float = 0
+    total: float = 0
+    notes: Optional[str] = ""
+    payment_terms: str = "Net 14 Days"
+    status: str = "draft"
+
+
+class InvoiceCreate(InvoiceBase):
+    pass
+
+
+class Invoice(InvoiceBase):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    created_at: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+    deleted: bool = False
+    deleted_at: Optional[str] = None
+    paid_at: Optional[str] = None
+    payment_link_id: Optional[str] = None
+    payment_transaction_ids: List[str] = Field(default_factory=list)
+
+
+class InvoiceSettings(BaseModel):
+    """Per-franchisee settings — auto-derived from the franchisee profile
+    the first time the settings page is opened. Bank fields are blank by
+    default; each franchisee fills their own."""
+    id: str = ""  # set to franchisee_id by the router
+    business_name: str = ""
+    business_address: str = ""
+    business_address_line1: str = ""
+    business_address_line2: str = ""
+    business_phone: str = ""
+    business_email: str = ""
+    bank_payment_info: str = "Payments by BACS/Online should be made to:"
+    bank_account_name: str = ""
+    bank_details: str = ""  # e.g. "Sort Code: 00-00-00 Account No. 00000000"
+
+
+class InvoiceSettingsUpdate(BaseModel):
+    business_name: Optional[str] = None
+    business_address: Optional[str] = None
+    business_address_line1: Optional[str] = None
+    business_address_line2: Optional[str] = None
+    business_phone: Optional[str] = None
+    business_email: Optional[str] = None
+    bank_payment_info: Optional[str] = None
+    bank_account_name: Optional[str] = None
+    bank_details: Optional[str] = None
+
+
+# =========================== HELPERS ===========================
+
+def _default_settings_from_franchisee(franchisee: dict) -> dict:
+    """Build a fresh InvoiceSettings for a franchisee whose settings doc
+    doesn't yet exist. We pull whatever address/contact data is on their
+    franchisees record so they can start invoicing in 30 seconds; they
+    refine via the Settings page after.
+
+    Bank details are deliberately blank — each franchisee owns those and
+    we never want to inherit Sandra's (or anyone else's) account number.
+    """
+    addr_parts = [
+        franchisee.get("address") or franchisee.get("address_street"),
+        franchisee.get("address_line2"),
+        franchisee.get("city") or franchisee.get("town"),
+        franchisee.get("county"),
+        franchisee.get("postcode"),
+    ]
+    addr_full = ", ".join([p for p in addr_parts if p])
+    line1_parts = [franchisee.get("address") or franchisee.get("address_street"), franchisee.get("address_line2")]
+    line1 = ", ".join([p for p in line1_parts if p])
+    line2_parts = [franchisee.get("city") or franchisee.get("town"), franchisee.get("postcode")]
+    line2 = ", ".join([p for p in line2_parts if p])
+    biz_name = (
+        franchisee.get("full_name")
+        or f"{franchisee.get('first_name') or ''} {franchisee.get('last_name') or ''}".strip()
+        or franchisee.get("organisation")
+        or ""
+    )
+    return {
+        "id": franchisee["id"],
+        "business_name": biz_name,
+        "business_address": addr_full,
+        "business_address_line1": line1,
+        "business_address_line2": line2,
+        "business_phone": franchisee.get("phone") or franchisee.get("mobile") or "",
+        "business_email": franchisee.get("primary_email") or franchisee.get("email") or franchisee.get("contact_email") or "",
+        "bank_payment_info": "Payments by BACS/Online should be made to:",
+        "bank_account_name": "",
+        "bank_details": "",
+    }
+
+
+# =========================== ROUTER ===========================
+
+def build_franchisee_invoices_router(db, require_role):
+    """Mount under prefix `/portal/invoices`. All endpoints scoped by
+    the franchisee_id baked into the JWT — clients can NEVER pass their
+    own franchisee_id."""
+    router = APIRouter(prefix="/portal/invoices", tags=["portal-invoices"])
+    franchisee = Depends(require_role("franchisee"))
+
+    async def _fid(user: dict) -> str:
+        fid = user.get("franchisee_id")
+        if not fid:
+            raise HTTPException(400, detail="Franchisee link missing")
+        # Belt-and-braces: confirm the invoicing module is enabled for
+        # this franchisee. Admin can flip this off any time.
+        f = await db.franchisees.find_one({"id": fid}, {"_id": 0, "portal_modules": 1})
+        if not f:
+            raise HTTPException(404, detail="Franchisee not found")
+        modules = f.get("portal_modules") or {}
+        if modules.get("invoicing") is False:
+            raise HTTPException(403, detail="Invoicing module is disabled for your portal")
+        return fid
+
+    # ----------------------------- CLIENTS
+    @router.get("/clients", response_model=List[Client])
+    async def list_clients(user: dict = franchisee):
+        fid = await _fid(user)
+        return await db.franchisee_invoice_clients.find(
+            {"franchisee_id": fid}, {"_id": 0, "franchisee_id": 0}
+        ).to_list(1000)
+
+    @router.get("/clients/{client_id}", response_model=Client)
+    async def get_client(client_id: str, user: dict = franchisee):
+        fid = await _fid(user)
+        c = await db.franchisee_invoice_clients.find_one(
+            {"id": client_id, "franchisee_id": fid}, {"_id": 0, "franchisee_id": 0},
+        )
+        if not c:
+            raise HTTPException(404, "Client not found")
+        return c
+
+    @router.post("/clients", response_model=Client)
+    async def create_client(body: ClientCreate, user: dict = franchisee):
+        fid = await _fid(user)
+        c = Client(**body.model_dump())
+        doc = c.model_dump()
+        doc["franchisee_id"] = fid
+        await db.franchisee_invoice_clients.insert_one(doc)
+        doc.pop("franchisee_id", None)
+        return doc
+
+    @router.put("/clients/{client_id}", response_model=Client)
+    async def update_client(client_id: str, body: ClientCreate, user: dict = franchisee):
+        fid = await _fid(user)
+        existing = await db.franchisee_invoice_clients.find_one(
+            {"id": client_id, "franchisee_id": fid}, {"_id": 0},
+        )
+        if not existing:
+            raise HTTPException(404, "Client not found")
+        await db.franchisee_invoice_clients.update_one(
+            {"id": client_id, "franchisee_id": fid}, {"$set": body.model_dump()},
+        )
+        out = await db.franchisee_invoice_clients.find_one(
+            {"id": client_id, "franchisee_id": fid}, {"_id": 0, "franchisee_id": 0},
+        )
+        return out
+
+    @router.delete("/clients/{client_id}")
+    async def delete_client(client_id: str, user: dict = franchisee):
+        fid = await _fid(user)
+        res = await db.franchisee_invoice_clients.delete_one(
+            {"id": client_id, "franchisee_id": fid},
+        )
+        if res.deleted_count == 0:
+            raise HTTPException(404, "Client not found")
+        return {"message": "Client deleted"}
+
+    # ----------------------------- INVOICES
+    # IMPORTANT — literal sub-paths declared before /{invoice_id} so the
+    # FastAPI matcher doesn't treat "next-number", "stats" etc. as ids.
+
+    @router.get("", response_model=List[Invoice])
+    async def list_invoices(
+        status: Optional[str] = None,
+        include_deleted: bool = False,
+        user: dict = franchisee,
+    ):
+        fid = await _fid(user)
+        q: dict = {"franchisee_id": fid}
+        if status:
+            q["status"] = status
+        if not include_deleted:
+            q["deleted"] = {"$ne": True}
+        return await db.franchisee_invoices.find(
+            q, {"_id": 0, "franchisee_id": 0},
+        ).sort("created_at", -1).to_list(2000)
+
+    @router.get("/deleted/list", response_model=List[Invoice])
+    async def list_deleted(user: dict = franchisee):
+        fid = await _fid(user)
+        return await db.franchisee_invoices.find(
+            {"franchisee_id": fid, "deleted": True}, {"_id": 0, "franchisee_id": 0},
+        ).sort("deleted_at", -1).to_list(500)
+
+    @router.get("/stats")
+    async def stats(user: dict = franchisee):
+        fid = await _fid(user)
+        cursor = db.franchisee_invoices.find(
+            {"franchisee_id": fid, "deleted": {"$ne": True}},
+            {"_id": 0, "status": 1, "total": 1, "issue_date": 1},
+        )
+        totals = {"draft": 0.0, "sent": 0.0, "paid": 0.0, "overdue": 0.0}
+        counts = {"draft": 0, "sent": 0, "paid": 0, "overdue": 0}
+        all_total = 0.0
+        all_count = 0
+        async for inv in cursor:
+            st = inv.get("status") or "draft"
+            t = float(inv.get("total") or 0)
+            if st in totals:
+                totals[st] += t
+                counts[st] += 1
+            all_total += t
+            all_count += 1
+        return {"totals": totals, "counts": counts, "all_total": all_total, "all_count": all_count}
+
+    @router.get("/next-number")
+    async def next_number(user: dict = franchisee):
+        """Each franchisee gets their own invoice number sequence (INV-XXXX)."""
+        fid = await _fid(user)
+        latest = await db.franchisee_invoices.find_one(
+            {"franchisee_id": fid}, {"_id": 0, "invoice_number": 1},
+            sort=[("created_at", -1)],
+        )
+        last_num = 0
+        if latest and latest.get("invoice_number"):
+            try:
+                last_num = int(str(latest["invoice_number"]).split("-")[-1])
+            except (ValueError, IndexError):
+                last_num = 0
+        return {"next_number": f"INV-{(last_num + 1):04d}"}
+
+    @router.get("/{invoice_id}", response_model=Invoice)
+    async def get_invoice(invoice_id: str, user: dict = franchisee):
+        fid = await _fid(user)
+        inv = await db.franchisee_invoices.find_one(
+            {"id": invoice_id, "franchisee_id": fid}, {"_id": 0, "franchisee_id": 0},
+        )
+        if not inv:
+            raise HTTPException(404, "Invoice not found")
+        return inv
+
+    @router.post("", response_model=Invoice)
+    async def create_invoice(body: InvoiceCreate, user: dict = franchisee):
+        fid = await _fid(user)
+        inv = Invoice(**body.model_dump())
+        doc = inv.model_dump()
+        doc["franchisee_id"] = fid
+        await db.franchisee_invoices.insert_one(doc)
+        doc.pop("franchisee_id", None)
+        return doc
+
+    @router.put("/{invoice_id}", response_model=Invoice)
+    async def update_invoice(invoice_id: str, body: InvoiceCreate, user: dict = franchisee):
+        fid = await _fid(user)
+        existing = await db.franchisee_invoices.find_one(
+            {"id": invoice_id, "franchisee_id": fid}, {"_id": 0},
+        )
+        if not existing:
+            raise HTTPException(404, "Invoice not found")
+        await db.franchisee_invoices.update_one(
+            {"id": invoice_id, "franchisee_id": fid}, {"$set": body.model_dump()},
+        )
+        return await db.franchisee_invoices.find_one(
+            {"id": invoice_id, "franchisee_id": fid}, {"_id": 0, "franchisee_id": 0},
+        )
+
+    @router.delete("/{invoice_id}")
+    async def soft_delete(invoice_id: str, user: dict = franchisee):
+        fid = await _fid(user)
+        res = await db.franchisee_invoices.update_one(
+            {"id": invoice_id, "franchisee_id": fid, "deleted": {"$ne": True}},
+            {"$set": {"deleted": True, "deleted_at": datetime.now(timezone.utc).isoformat()}},
+        )
+        if res.matched_count == 0:
+            raise HTTPException(404, "Invoice not found")
+        return {"message": "Invoice moved to bin"}
+
+    @router.post("/{invoice_id}/restore", response_model=Invoice)
+    async def restore(invoice_id: str, user: dict = franchisee):
+        fid = await _fid(user)
+        res = await db.franchisee_invoices.update_one(
+            {"id": invoice_id, "franchisee_id": fid, "deleted": True},
+            {"$set": {"deleted": False}, "$unset": {"deleted_at": ""}},
+        )
+        if res.matched_count == 0:
+            raise HTTPException(404, "Invoice not found")
+        return await db.franchisee_invoices.find_one(
+            {"id": invoice_id, "franchisee_id": fid}, {"_id": 0, "franchisee_id": 0},
+        )
+
+    @router.patch("/{invoice_id}/status", response_model=Invoice)
+    async def update_status(invoice_id: str, body: dict, user: dict = franchisee):
+        fid = await _fid(user)
+        status = (body or {}).get("status")
+        if status not in ("draft", "sent", "paid", "overdue"):
+            raise HTTPException(400, "Invalid status")
+        update = {"status": status}
+        if status == "paid":
+            update["paid_at"] = datetime.now(timezone.utc).isoformat()
+        res = await db.franchisee_invoices.update_one(
+            {"id": invoice_id, "franchisee_id": fid}, {"$set": update},
+        )
+        if res.matched_count == 0:
+            raise HTTPException(404, "Invoice not found")
+        return await db.franchisee_invoices.find_one(
+            {"id": invoice_id, "franchisee_id": fid}, {"_id": 0, "franchisee_id": 0},
+        )
+
+    # ----------------------------- SETTINGS
+    @router.get("/settings/me", response_model=InvoiceSettings)
+    async def get_settings(user: dict = franchisee):
+        fid = await _fid(user)
+        s = await db.franchisee_invoice_settings.find_one({"_id": fid})
+        if not s:
+            # Lazy-create from the franchisee profile so the user sees
+            # their own brand the moment they open the page.
+            f = await db.franchisees.find_one({"id": fid}, {"_id": 0})
+            if not f:
+                raise HTTPException(404, "Franchisee profile not found")
+            seed = _default_settings_from_franchisee(f)
+            await db.franchisee_invoice_settings.insert_one({**seed, "_id": fid})
+            return seed
+        s.pop("_id", None)
+        return s
+
+    @router.put("/settings/me", response_model=InvoiceSettings)
+    async def update_settings(body: InvoiceSettingsUpdate, user: dict = franchisee):
+        fid = await _fid(user)
+        update = {k: v for k, v in body.model_dump(exclude_none=True).items()}
+        if not update:
+            raise HTTPException(400, "No fields to update")
+        await db.franchisee_invoice_settings.update_one(
+            {"_id": fid}, {"$set": update}, upsert=True,
+        )
+        out = await db.franchisee_invoice_settings.find_one({"_id": fid})
+        if out:
+            out.pop("_id", None)
+            out["id"] = fid
+        return out
+
+    # ----------------------------- PDF
+    @router.get("/{invoice_id}/pdf")
+    async def invoice_pdf(invoice_id: str, user: dict = franchisee):
+        fid = await _fid(user)
+        inv = await db.franchisee_invoices.find_one(
+            {"id": invoice_id, "franchisee_id": fid}, {"_id": 0, "franchisee_id": 0},
+        )
+        if not inv:
+            raise HTTPException(404, "Invoice not found")
+        settings = await db.franchisee_invoice_settings.find_one({"_id": fid})
+        if not settings:
+            # Auto-seed if the franchisee jumped straight to PDF without
+            # visiting Settings first — avoids a confusing "no business
+            # name" PDF.
+            f = await db.franchisees.find_one({"id": fid}, {"_id": 0})
+            settings = _default_settings_from_franchisee(f) if f else {}
+        pdf_bytes = _render_invoice_pdf(inv, settings)
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=invoice-{inv['invoice_number']}.pdf"},
+        )
+
+    return router
+
+
+# =========================== PDF RENDERING ===========================
+
+def _render_invoice_pdf(invoice: dict, settings: dict) -> bytes:
+    """Reuses the same visual layout as Sandra's invoices — A4, big
+    invoice number top-right, line items table, total row, bank details
+    block at the foot. Only the data source differs (per-franchisee
+    settings + invoice doc)."""
+    buf = BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=18 * mm, rightMargin=18 * mm,
+        topMargin=18 * mm, bottomMargin=18 * mm,
+    )
+    styles = getSampleStyleSheet()
+    h_left = ParagraphStyle("hl", parent=styles["Normal"], fontSize=10, leading=12)
+    h_right = ParagraphStyle("hr", parent=styles["Normal"], fontSize=10, leading=12, alignment=2)
+    biz_block = (
+        f"<b>{settings.get('business_name') or ''}</b><br/>"
+        f"{settings.get('business_address_line1') or ''}<br/>"
+        f"{settings.get('business_address_line2') or ''}<br/>"
+        f"{settings.get('business_phone') or ''}<br/>"
+        f"{settings.get('business_email') or ''}"
+    )
+    inv_block = (
+        f"<font size=18><b>INVOICE</b></font><br/>"
+        f"<b>{invoice.get('invoice_number') or ''}</b><br/>"
+        f"Issue: {invoice.get('issue_date') or ''}<br/>"
+        f"Due: {invoice.get('due_date') or ''}"
+    )
+    header_table = Table(
+        [[Paragraph(biz_block, h_left), Paragraph(inv_block, h_right)]],
+        colWidths=[100 * mm, 70 * mm],
+    )
+    header_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
+
+    # Client / Bill-To
+    bill_lines = []
+    if invoice.get("client_name"):
+        bill_lines.append(f"<b>{invoice['client_name']}</b>")
+    for k in ("client_address", "client_email", "client_email2", "client_phone"):
+        if invoice.get(k):
+            bill_lines.append(invoice[k])
+    bill_block = "<br/>".join(bill_lines) or "&nbsp;"
+
+    # Line items table
+    rows = [["Description", "Qty", "Unit", "Amount"]]
+    for li in invoice.get("line_items") or []:
+        rows.append([
+            li.get("description") or "",
+            f"{float(li.get('quantity') or 0):g}",
+            f"£{float(li.get('unit_price') or 0):,.2f}",
+            f"£{float(li.get('amount') or 0):,.2f}",
+        ])
+    items_table = Table(rows, colWidths=[100 * mm, 18 * mm, 26 * mm, 26 * mm], repeatRows=1)
+    items_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f5f5f4")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#1c1917")),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("LINEBELOW", (0, 0), (-1, 0), 0.5, colors.HexColor("#a8a29e")),
+        ("LINEBELOW", (0, -1), (-1, -1), 0.5, colors.HexColor("#a8a29e")),
+        ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+    ]))
+
+    totals_data = [
+        ["Subtotal", f"£{float(invoice.get('subtotal') or 0):,.2f}"],
+    ]
+    if float(invoice.get("discount_amount") or 0) != 0:
+        totals_data.append([f"Discount ({invoice.get('discount_rate', 0)}%)", f"−£{float(invoice['discount_amount']):,.2f}"])
+    if float(invoice.get("tax_amount") or 0) != 0:
+        totals_data.append([f"VAT ({invoice.get('tax_rate', 0)}%)", f"£{float(invoice['tax_amount']):,.2f}"])
+    totals_data.append(["Total", f"£{float(invoice.get('total') or 0):,.2f}"])
+    totals_table = Table(totals_data, colWidths=[40 * mm, 30 * mm], hAlign="RIGHT")
+    totals_table.setStyle(TableStyle([
+        ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+        ("LINEABOVE", (0, -1), (-1, -1), 0.6, colors.HexColor("#1c1917")),
+        ("TOPPADDING", (0, -1), (-1, -1), 6),
+    ]))
+
+    bank_block = (
+        f"<b>{settings.get('bank_payment_info') or ''}</b><br/>"
+        f"{settings.get('bank_account_name') or ''}<br/>"
+        f"{settings.get('bank_details') or ''}"
+    )
+
+    story = [
+        header_table,
+        Spacer(1, 8 * mm),
+        Paragraph("<b>Bill To</b>", styles["Normal"]),
+        Paragraph(bill_block, styles["Normal"]),
+        Spacer(1, 6 * mm),
+        items_table,
+        Spacer(1, 4 * mm),
+        totals_table,
+        Spacer(1, 10 * mm),
+        Paragraph(bank_block, styles["Normal"]),
+    ]
+    if invoice.get("notes"):
+        story.extend([Spacer(1, 6 * mm), Paragraph(f"<i>{invoice['notes']}</i>", styles["Normal"])])
+
+    doc.build(story)
+    return buf.getvalue()

@@ -11,6 +11,7 @@ import RecentFilesStrip from "@/components/files/RecentFilesStrip";
 import FilePreviewModal from "@/components/files/FilePreviewModal";
 import PortalEventsPanel from "@/components/portal/PortalEventsPanel";
 import PortalBottomNav from "@/components/portal/PortalBottomNav";
+import PortalInvoicingSection from "@/components/portal/PortalInvoicingSection";
 import {
   LogOut, Phone, Mail, Globe, MapPin, Calendar, ShieldCheck, ShieldAlert,
   FolderOpen, User as UserIcon, Loader2, AlertCircle, Smartphone,
@@ -123,6 +124,23 @@ export default function PortalDashboardPage() {
     catch { return false; }
   });
   useEffect(() => { try { localStorage.setItem("portal.eventsOpen", JSON.stringify(eventsOpen)); } catch (_) { /* noop */ } }, [eventsOpen]);
+  // Invoicing panel — defaults closed (it's an optional admin-toggled
+  // module so most franchisees won't have it visible anyway).
+  const [invoicingOpen, setInvoicingOpen] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("portal.invoicingOpen") ?? "false"); }
+    catch { return false; }
+  });
+  useEffect(() => { try { localStorage.setItem("portal.invoicingOpen", JSON.stringify(invoicingOpen)); } catch (_) { /* noop */ } }, [invoicingOpen]);
+
+  // Admin-controlled portal module flags. Defaults stay generous so a
+  // brand-new portal user still sees their territory map / calendar /
+  // files even before admin has touched the toggles. Invoicing stays
+  // OFF unless explicitly enabled.
+  const modules = profile?.portal_modules || {};
+  const showMap       = modules.map       !== false;
+  const showCalendar  = modules.calendar  !== false;
+  const showFiles     = modules.files     !== false;
+  const showInvoicing = modules.invoicing === true;
 
   // Compose the full address from any of the field-name variants Airtable
   // / the migrator may have stored under.
@@ -307,7 +325,7 @@ export default function PortalDashboardPage() {
             </section>
 
             {/* Territory map */}
-            <section id="portal-section-map" className="scroll-mt-20">
+            <section id="portal-section-map" className="scroll-mt-20" hidden={!showMap}>
               {territoryOpen ? (
                 <div className="relative">
                   <button onClick={() => setTerritoryOpen(false)} data-testid="toggle-territory"
@@ -336,19 +354,28 @@ export default function PortalDashboardPage() {
             </section>
 
             {/* Events */}
-            <section id="portal-section-events" className="scroll-mt-20">
+            <section id="portal-section-events" className="scroll-mt-20" hidden={!showCalendar}>
               <PortalEventsPanel
                 open={eventsOpen}
                 onToggle={() => setEventsOpen((v) => !v)}
               />
             </section>
 
+            {/* Invoicing — only visible when admin has enabled the module */}
+            {showInvoicing && (
+              <PortalInvoicingSection
+                open={invoicingOpen}
+                onToggle={() => setInvoicingOpen((v) => !v)}
+              />
+            )}
+
             {/* Shared files only — own files moved into Your Franchise
                 Details above. */}
             <section
               id="portal-section-files"
               className={`${filesOpen ? "bg-white" : "bg-stone-100"} border border-stone-200 rounded-2xl overflow-hidden transition-colors scroll-mt-20`}
-              data-testid="portal-files">
+              data-testid="portal-files"
+              hidden={!showFiles}>
               <button onClick={() => setFilesOpen((v) => !v)} data-testid="toggle-files"
                 className={`touch-target w-full flex items-center justify-between gap-3 ${filesOpen ? "hover:bg-stone-50" : "hover:bg-stone-200"} transition-colors px-4 sm:px-6 py-3.5 sm:py-4`}>
                 <div className="flex items-center gap-2">

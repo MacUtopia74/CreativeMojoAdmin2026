@@ -1220,6 +1220,52 @@ async def franchisee_portal_toggle(
     return {"ok": True, "portal_enabled": enabled}
 
 
+@api.patch("/franchisees/{franchisee_id}/portal-modules")
+async def franchisee_portal_modules(
+    franchisee_id: str,
+    body: dict,
+    user: dict = Depends(require_role("admin")),
+):
+    """Admin-only toggle for the per-franchisee portal feature flags.
+
+    Body shape (any subset of these keys; missing keys keep current value):
+        { "map": bool, "calendar": bool, "files": bool, "invoicing": bool }
+
+    Defaults if a franchisee has never had modules touched: map / calendar
+    / files all ON, invoicing OFF. The /portal/me endpoint backfills these
+    defaults on read, so this endpoint only needs to persist *changes*.
+    """
+    # Project enough to confirm the doc actually exists — we can't use
+    # ``if not f`` after projecting only ``portal_modules`` because a
+    # franchisee without modules yet returns ``{}`` (truthy in Mongo,
+    # falsy in Python). Project ``id`` too as a presence sentinel.
+    f = await db.franchisees.find_one(
+        {"id": franchisee_id}, {"_id": 0, "id": 1, "portal_modules": 1},
+    )
+    if f is None:
+        raise HTTPException(404, detail="Franchisee not found")
+    current = f.get("portal_modules") or {}
+    allowed = {"map", "calendar", "files", "invoicing"}
+    next_modules = {
+        "map":       bool(current.get("map",       True)),
+        "calendar":  bool(current.get("calendar",  True)),
+        "files":     bool(current.get("files",     True)),
+        "invoicing": bool(current.get("invoicing", False)),
+    }
+    for key, val in (body or {}).items():
+        if key in allowed:
+            next_modules[key] = bool(val)
+    await db.franchisees.update_one(
+        {"id": franchisee_id},
+        {"$set": {
+            "portal_modules": next_modules,
+            "portal_modules_updated_at": datetime.now(timezone.utc).isoformat(),
+            "portal_modules_updated_by": user.get("email"),
+        }},
+    )
+    return {"ok": True, "portal_modules": next_modules}
+
+
 @api.post("/franchisees/{franchisee_id}/portal-reset")
 async def franchisee_portal_reset(
     franchisee_id: str,
@@ -1401,8 +1447,18 @@ async def portal_me(user: dict = Depends(require_role("franchisee"))):
         "gocardless_mandate_status", "gocardless_last_payment_at",
         "photo_url", "photos", "territory_postcodes", "territory_geojson",
         "territory_sectors", "territory_home_count",
+        "portal_modules",  # Phase 5 — admin-controlled feature toggles
     }
     profile = {k: f.get(k) for k in keep if k in f}
+    # Backfill default portal_modules so the frontend never has to guess.
+    # Defaults: map / calendar / files ON, invoicing OFF.
+    existing_mods = (profile.get("portal_modules") or {}) if isinstance(profile.get("portal_modules"), dict) else {}
+    profile["portal_modules"] = {
+        "map":       bool(existing_mods.get("map",       True)),
+        "calendar":  bool(existing_mods.get("calendar",  True)),
+        "files":     bool(existing_mods.get("files",     True)),
+        "invoicing": bool(existing_mods.get("invoicing", False)),
+    }
     # Fallback: if Airtable didn't carry over a start_date, derive it
     # from the earliest known contract, then `date_added`.
     if not profile.get("start_date"):
@@ -3453,7 +3509,9 @@ api.include_router(build_resend_router(db, require_role))
 
 # Invoices module — merged from the standalone Pay-Paperwork app
 from invoices_routes import build_invoices_router  # noqa: E402
+from franchisee_invoices_routes import build_franchisee_invoices_router  # noqa: E402
 api.include_router(build_invoices_router(db, require_role))
+api.include_router(build_franchisee_invoices_router(db, require_role))
 
 # Banking module — TrueLayer Open Banking (read-only HSBC integration)
 from banking_routes import build_banking_router, ensure_banking_indexes  # noqa: E402
