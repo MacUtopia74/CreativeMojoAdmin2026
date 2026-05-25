@@ -245,6 +245,20 @@ def attach(api, db, require_role, get_current_user=None):
                 singleEvents=True,
                 orderBy="startTime",
             ).execute()
+        except RefreshError as exc:
+            # Google revoked / expired the refresh token. Wipe stored
+            # creds so the Calendar page surfaces a fresh Connect button
+            # instead of pretending we're still authorised.
+            logger.warning("Google Calendar refresh token invalid: %s", exc)
+            try:
+                await db.settings.update_one(
+                    {"_id": SETTINGS_ID},
+                    {"$set": {"status": "disconnected", "last_error": str(exc)},
+                     "$unset": {"refresh_token": "", "access_token": "", "connected_email": "", "connected_at": ""}},
+                )
+            except Exception:  # noqa: BLE001
+                pass
+            raise HTTPException(401, detail="Google Calendar needs to be reconnected") from exc
         except HttpError as exc:
             raise HTTPException(502, detail=f"Google Calendar API error: {exc}") from exc
         events = [_shape_event(e) for e in res.get("items", [])]
