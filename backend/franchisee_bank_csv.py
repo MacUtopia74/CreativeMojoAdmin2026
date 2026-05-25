@@ -145,9 +145,9 @@ def parse_bank_csv(csv_bytes: bytes) -> List[dict]:
                     max_text_len = len(cell)
             if total == 0:
                 col_kinds.append("empty")
-            elif dates >= max(2, total * 0.5):
+            elif dates >= max(1, total * 0.5):
                 col_kinds.append("date")
-            elif numbers >= max(2, total * 0.7):
+            elif numbers >= max(1, total * 0.7):
                 col_kinds.append("number")
             else:
                 col_kinds.append(("text", max_text_len))

@@ -1,5 +1,32 @@
 # Creative Mojo — Unified Admin Platform PRD
 
+## Latest change — Per-Franchisee Invoicing Module (Feb 25 2026)
+- **Phase 1 — Invoicing clone in the Franchisee Portal** ✅
+  - New backend `franchisee_invoices_routes.py` mounted at `/api/portal/invoices/*` with full CRUD for clients, invoices, settings, PDF, stats, next-number — all scoped to `user.franchisee_id` injected by the portal JWT (client-supplied scoping is never accepted).
+  - New isolated Mongo collections: `franchisee_invoice_clients`, `franchisee_invoices`, `franchisee_invoice_settings`, `franchisee_bank_transactions`. None of Sandra's admin "Sandra's Invoices" data is touched.
+  - Per-franchisee Settings auto-seed from the franchisee profile (business_name, address, phone, email) on first read; **bank details deliberately blank** so each franchisee fills their own.
+  - PDF download (`GET /api/portal/invoices/{id}/pdf`) — A4 ReportLab layout cloned from Sandra's Invoices, headers built from per-franchisee settings, attachment Content-Disposition.
+  - Frontend: new `PortalInvoicingSection.jsx` (collapsible card in `PortalDashboardPage`) with Invoices / Clients / Bank / Settings tabs. Section is hidden unless admin enables the `invoicing` module.
+  - Admin toggle UI: new `PortalModulesPanel.jsx` on `FranchiseeDetailPage` with 4 on/off pills (Map / Calendar / Files / Invoicing). Optimistic toggle + toast feedback. Wired to `PATCH /api/franchisees/{id}/portal-modules`.
+  - Defaults: existing franchisees auto-backfill `{map: true, calendar: true, files: true, invoicing: false}` on `/api/portal/me`.
+
+- **Phase 2 — CSV bank reconciliation per franchisee** ✅
+  - New endpoints under `/api/portal/invoices/bank/*`:
+    - `POST /upload` — multipart CSV (≤5 MB), fingerprint-based dedup so re-upload is idempotent
+    - `GET /transactions?only_credits=&only_unreconciled=` — lists with `suggested_invoice` populated when amount exactly matches an outstanding invoice
+    - `POST /transactions/{txn_id}/link` — links to an invoice; auto-marks invoice **paid** when sum of linked CREDIT transactions ≥ invoice total; partial credit flips draft → sent
+    - `DELETE /transactions/{txn_id}/link/{invoice_id}` — unlinks, reverts paid→sent if under-credited again
+    - `DELETE /transactions/{txn_id}` — also cleans up reverse links on any tied invoice
+  - New `franchisee_bank_csv.py` — generic CSV parser:
+    - Auto-detects header row by keyword scan (date / amount / debit / credit / description / narrative)
+    - Falls back to shape inference (date column, numeric column(s), longest text column)
+    - Supports single-amount-column (signed) AND split debit/credit pairs (Monzo/Starling)
+    - Handles UK `DD/MM/YYYY`, ISO `YYYY-MM-DD`, parentheses-negative amounts, `£`/`$`/`€` prefixes, `utf-8-sig`/`latin-1` decoding
+  - Frontend: new **Bank** tab inside `PortalInvoicingSection` — upload CSV, filter (Unmatched / Matched / All credits), one-click match against suggested invoice or pick from dropdown, unlink chip, remove transaction. Auto-refreshes the Invoices tab when a link succeeds.
+  - Strictly no TrueLayer / Open Banking — manual CSV only, per Paul's request.
+
+- **Validation**: 23/23 backend pytest scenarios pass via the testing agent (data isolation, cross-franchisee scoping, CSV dedup, partial/full payment auto-paid logic, headered + headerless CSV, split debit/credit). Frontend smoke confirms section visibility honours the admin toggle.
+
 ## Latest change — Pre-deploy Code Review fixes (May 22 2026)
 Applied all 🔴 Critical findings + 🟡 Important (option d) from the platform Code Review pass:
 - **Circular import resolved**: extracted `CqcDefinition` + filter helper to `cqc_definition.py`; `ScotlandDefinition` + filter helper to `scotland_definition.py`. `cqc_routes`, `scotland_routes`, and `territory_routes` now all import from these leaf modules, no more lazy cross-router imports. Endpoints `/api/cqc/definition` + `/api/scotland/definition` both verified 200.
