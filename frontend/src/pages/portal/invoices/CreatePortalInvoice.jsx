@@ -52,6 +52,23 @@ function InvoicePreview({ formData, subtotal, discountAmount, taxAmount, total, 
   return (
     <Card className="bg-white shadow-xl sticky top-24 overflow-hidden" data-testid="invoice-preview" style={{ aspectRatio: '210/297' }}>
       <div className="h-full flex flex-col p-12">
+        {/* Brand header — logo top-left + franchise name top-right */}
+        <div className="flex items-start justify-between gap-6 border-b border-slate-200 pb-4 mb-6">
+          <img
+            src="/cm-invoice-logo.png"
+            alt="Creative Mojo"
+            className="h-12 w-auto object-contain shrink-0"
+            data-testid="invoice-preview-logo"
+          />
+          {(settings?.franchise_name || settings?.business_name) && (
+            <div className="text-right">
+              <p className="text-2xl font-bold text-slate-900 tracking-tight leading-tight">
+                {settings?.franchise_name || settings?.business_name}
+              </p>
+            </div>
+          )}
+        </div>
+
         {/* Main Content */}
         <div className="flex-1">
           <div className="flex justify-between items-start mb-6">
@@ -76,12 +93,19 @@ function InvoicePreview({ formData, subtotal, discountAmount, taxAmount, total, 
                 </div>
               ) : <p className="text-slate-400 italic text-sm">Select a client</p>}
             </div>
-            <div className="text-right">
-              <p className="font-semibold text-slate-900">{settings?.business_name || "Sandra Caldeira-Dunkerley"}</p>
-              <p className="text-slate-600">{settings?.business_address_line1 || "Channings, Brithem Bottom,"}</p>
-              <p className="text-slate-600">{settings?.business_address_line2 || "Cullompton, EX15 1NB"}</p>
-              <p className="text-slate-600">{settings?.business_phone || "07957 343449"}</p>
-              <p className="text-slate-600">{settings?.business_email || "sandracaldeiradunkerley77@gmail.com"}</p>
+            <div className="text-right text-slate-600 space-y-0.5">
+              {settings?.business_name && <p className="font-semibold text-slate-900">{settings.business_name}</p>}
+              {settings?.business_address_line1 && <p>{settings.business_address_line1}</p>}
+              {settings?.business_address_line2 && <p>{settings.business_address_line2}</p>}
+              {(settings?.business_city || settings?.business_county || settings?.business_postcode) && (
+                <p>
+                  {[settings?.business_city, settings?.business_county, settings?.business_postcode]
+                    .filter(Boolean)
+                    .join(", ")}
+                </p>
+              )}
+              {settings?.business_phone && <p>{settings.business_phone}</p>}
+              {settings?.business_email && <p>{settings.business_email}</p>}
             </div>
           </div>
           

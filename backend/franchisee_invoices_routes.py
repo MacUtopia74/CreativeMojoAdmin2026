@@ -41,12 +41,17 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import (
+    Image as RLImage,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
     Table,
     TableStyle,
 )
+from pathlib import Path as _Path
+
+# Brand logo embedded at the top-left of every generated invoice.
+_LOGO_PATH = _Path(__file__).resolve().parent / "assets" / "cm-invoice-logo.png"
 
 
 # =========================== MODELS ===========================
@@ -957,6 +962,17 @@ def _render_invoice_pdf(invoice: dict, settings: dict) -> bytes:
         + "<br/>".join(addr_lines)
     )
 
+    # Build a top header row: logo top-left, franchise-name + invoice
+    # info top-right. The logo is sized proportionally — image is 616x241
+    # (~2.56:1), so 50mm wide ≈ 19.5mm tall fits comfortably in the
+    # header without dominating the page.
+    logo_flowable = None
+    if _LOGO_PATH.exists():
+        try:
+            logo_flowable = RLImage(str(_LOGO_PATH), width=50 * mm, height=19.5 * mm)
+        except Exception:  # noqa: BLE001
+            logo_flowable = None
+
     franchise_name = settings.get("franchise_name") or settings.get("business_name") or ""
     inv_block = (
         f"<font size=18><b>INVOICE</b></font><br/>"
@@ -964,17 +980,21 @@ def _render_invoice_pdf(invoice: dict, settings: dict) -> bytes:
         f"Issue: {invoice.get('issue_date') or ''}<br/>"
         f"Due: {invoice.get('due_date') or ''}"
     )
-    # Top row — large franchise name on the right, "INVOICE" + number on the left.
+    # Top row — logo left, franchise name on the right (large, bold).
     title_table = Table(
-        [[Paragraph(inv_block, h_left), Paragraph(franchise_name, franchise_style)]],
-        colWidths=[100 * mm, 70 * mm],
+        [[logo_flowable or "", Paragraph(franchise_name, franchise_style)]],
+        colWidths=[60 * mm, 110 * mm],
     )
-    title_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
+    title_table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+    ]))
 
-    # Second row — empty left (or could carry "Bill To" later), business
-    # name + address on the right (smaller than the franchise name).
+    # Second row — INVOICE label + number on the left, business name +
+    # address block on the right.
     header_table = Table(
-        [["", Paragraph(business_block, h_right)]],
+        [[Paragraph(inv_block, h_left), Paragraph(business_block, h_right)]],
         colWidths=[100 * mm, 70 * mm],
     )
     header_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))

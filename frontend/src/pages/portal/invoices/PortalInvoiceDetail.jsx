@@ -433,15 +433,24 @@ function InvoiceDetail() {
 
       <Card className="bg-white shadow-xl max-w-4xl mx-auto overflow-hidden" data-testid="invoice-content" style={{ aspectRatio: '210/297', minHeight: '800px' }}>
         <div className="h-full flex flex-col p-12 md:p-16">
-          {/* Franchise name banner — large, top of the page above
-              everything, mirroring the PDF header. */}
-          {(settings?.franchise_name || settings?.business_name) && (
-            <div className="border-b border-slate-200 pb-4 mb-6 text-right">
-              <p className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-                {settings?.franchise_name || settings?.business_name}
-              </p>
-            </div>
-          )}
+          {/* Brand logo top-left + franchise name top-right.
+              The logo lives in /public so it's served same-origin and
+              doesn't need auth (unlike the PDF bytes). */}
+          <div className="flex items-start justify-between gap-6 border-b border-slate-200 pb-4 mb-6">
+            <img
+              src="/cm-invoice-logo.png"
+              alt="Creative Mojo"
+              className="h-14 sm:h-16 w-auto object-contain shrink-0"
+              data-testid="invoice-logo"
+            />
+            {(settings?.franchise_name || settings?.business_name) && (
+              <div className="text-right">
+                <p className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight leading-tight">
+                  {settings?.franchise_name || settings?.business_name}
+                </p>
+              </div>
+            )}
+          </div>
           {/* Main Content */}
           <div className="flex-1">
             <div className="flex justify-between items-start mb-6">
