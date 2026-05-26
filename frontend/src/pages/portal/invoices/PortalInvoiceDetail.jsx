@@ -144,37 +144,50 @@ function InvoiceDetail() {
     } catch (err) { toast.error("Failed to update status"); }
   };
 
-  const viewPDF = () => {
-    // Open PDF directly in new tab
-    window.open(`${API_BASE}/portal/invoices/${id}/pdf`, '_blank');
-    toast.success("PDF opened in new tab");
-    
-    // Refresh invoice status after a short delay (auto-marked as sent)
+  // Cross-site cookies are blocked by Chrome incognito on production,
+  // so we MUST fetch the PDF as a blob via axios (which attaches the
+  // ``Authorization: Bearer`` header). Static <a href> / window.open
+  // can't carry the token, hence the previous "Not authenticated" error.
+  const viewPDF = async () => {
+    const tabRef = window.open("about:blank", "_blank");
+    try {
+      const res = await api.get(`/portal/invoices/${id}/pdf`, { responseType: "blob" });
+      const url = URL.createObjectURL(res.data);
+      if (tabRef) tabRef.location.href = url;
+      else window.open(url, "_blank");
+      // Revoke after the new tab has had a chance to load.
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      toast.success("PDF opened in new tab");
+    } catch (err) {
+      if (tabRef) tabRef.close();
+      toast.error(err?.response?.data?.detail || "Couldn't open the PDF");
+      return;
+    }
     setTimeout(async () => {
       try {
         const updatedInvoice = await api.get(`/portal/invoices/${id}`);
         setInvoice(updatedInvoice.data);
-      } catch (err) {
-        console.warn("[InvoiceDetail] post-send status refresh failed (non-critical)", err);
+      } catch (e) {
+        console.warn("[InvoiceDetail] post-send status refresh failed (non-critical)", e);
       }
     }, 1000);
   };
 
   const downloadPDF = async () => {
     try {
-      // Use direct URL approach for more reliable downloads
-      const downloadUrl = `${API_BASE}/portal/invoices/${id}/pdf?download=true`;
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = `${invoice.invoice_number}.pdf`;
-      link.target = '_blank';
+      const res = await api.get(`/portal/invoices/${id}/pdf`, {
+        responseType: "blob",
+        params: { download: true },
+      });
+      const url = URL.createObjectURL(res.data);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${invoice.invoice_number || "invoice"}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
       toast.success("PDF download started");
-      
-      // Refresh invoice to show updated status
       setTimeout(async () => {
         const updatedInvoice = await api.get(`/portal/invoices/${id}`);
         setInvoice(updatedInvoice.data);
@@ -215,7 +228,7 @@ function InvoiceDetail() {
           </Button>
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-4xl font-bold tracking-tight font-['Manrope']" data-testid="invoice-number">{invoice.invoice_number}</h1>
+              <h1 className="text-4xl sm:text-5xl font-bold tracking-tight text-slate-900" data-testid="invoice-number">{invoice.invoice_number}</h1>
               <StatusBadge status={invoice.status} />
             </div>
             <p className="text-muted-foreground mt-1">Created {formattedCreatedAt}</p>
@@ -420,6 +433,15 @@ function InvoiceDetail() {
 
       <Card className="bg-white shadow-xl max-w-4xl mx-auto overflow-hidden" data-testid="invoice-content" style={{ aspectRatio: '210/297', minHeight: '800px' }}>
         <div className="h-full flex flex-col p-12 md:p-16">
+          {/* Franchise name banner — large, top of the page above
+              everything, mirroring the PDF header. */}
+          {(settings?.franchise_name || settings?.business_name) && (
+            <div className="border-b border-slate-200 pb-4 mb-6 text-right">
+              <p className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
+                {settings?.franchise_name || settings?.business_name}
+              </p>
+            </div>
+          )}
           {/* Main Content */}
           <div className="flex-1">
             <div className="flex justify-between items-start mb-6">
@@ -440,12 +462,21 @@ function InvoiceDetail() {
                 {invoice.client_phone && <p className="text-slate-600">{invoice.client_phone}</p>}
                 {invoice.client_address && <p className="text-slate-600 mt-1">{invoice.client_address}</p>}
               </div>
-              <div className="text-right">
-                <p className="font-semibold text-slate-900">{settings?.business_name || "Sandra Caldeira-Dunkerley"}</p>
-                <p className="text-slate-600">{settings?.business_address_line1 || "Channings, Brithem Bottom,"}</p>
-                <p className="text-slate-600">{settings?.business_address_line2 || "Cullompton, EX15 1NB"}</p>
-                <p className="text-slate-600">{settings?.business_phone || "07957 343449"}</p>
-                <p className="text-slate-600">{settings?.business_email || "sandracaldeiradunkerley77@gmail.com"}</p>
+              <div className="text-right text-slate-600 space-y-0.5">
+                {settings?.business_name && (
+                  <p className="font-semibold text-slate-900">{settings.business_name}</p>
+                )}
+                {settings?.business_address_line1 && <p>{settings.business_address_line1}</p>}
+                {settings?.business_address_line2 && <p>{settings.business_address_line2}</p>}
+                {(settings?.business_city || settings?.business_county || settings?.business_postcode) && (
+                  <p>
+                    {[settings?.business_city, settings?.business_county, settings?.business_postcode]
+                      .filter(Boolean)
+                      .join(", ")}
+                  </p>
+                )}
+                {settings?.business_phone && <p>{settings.business_phone}</p>}
+                {settings?.business_email && <p>{settings.business_email}</p>}
               </div>
             </div>
 
