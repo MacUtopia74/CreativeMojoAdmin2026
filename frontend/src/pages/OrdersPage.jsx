@@ -16,12 +16,18 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   ShoppingBag, Search, X, Plus, RefreshCw, Loader2, AlertCircle,
-  CheckSquare, Square, CheckCircle2, CreditCard, FileText,
+  CheckSquare, Square, CheckCircle2, CreditCard, FileText, ExternalLink,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import api from "@/lib/api";
 import CreateOrderModal from "@/components/orders/CreateOrderModal";
 import ProductionStatusDropdown from "@/components/orders/ProductionStatusDropdown";
+
+// Public-facing WooCommerce site that owns these orders. Surfaced as a
+// REACT_APP env so the same build can target different deployments
+// (preview vs prod) without code changes. Trailing slash stripped on
+// use to keep concatenations clean.
+const WOO_BASE_URL = (process.env.REACT_APP_WOO_BASE_URL || "https://www.creativemojo.com").replace(/\/+$/, "");
 
 const TABS = [
   { key: "active",    label: "ACTIVE",    activeBg: "bg-[#dddd16] text-stone-950" },
@@ -535,7 +541,22 @@ function OrderRow({ order, showProducts, hideLegacyIds, selected = false, onSele
       </td>
       <td className="px-2 py-2.5 align-top text-xs text-stone-700 whitespace-nowrap">
         {isWoo
-          ? <span className="font-mono">{order.channel_label}</span>
+          ? (
+              order.woo_id ? (
+                <a
+                  href={`${WOO_BASE_URL}/wp-admin/post.php?post=${order.woo_id}&action=edit`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={`Open ${order.channel_label} in WooCommerce`}
+                  onClick={(e) => e.stopPropagation()}
+                  data-testid={`woo-link-${order.woo_id}`}
+                  className="font-mono text-stone-700 hover:text-stone-950 hover:underline underline-offset-2 inline-flex items-center gap-1"
+                >
+                  {order.channel_label}
+                  <ExternalLink className="w-3 h-3 opacity-60" />
+                </a>
+              ) : <span className="font-mono">{order.channel_label}</span>
+            )
           : <span>Direct</span>
         }
       </td>

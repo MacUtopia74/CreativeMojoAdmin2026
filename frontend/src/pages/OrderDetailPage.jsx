@@ -13,11 +13,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import {
   ArrowLeft, Loader2, Save, MoreHorizontal, Plus, X, Trash2,
-  CheckCircle2, FileText, Receipt, CreditCard, UserCog, ChevronDown, AlertCircle,
+  CheckCircle2, FileText, Receipt, CreditCard, UserCog, ChevronDown, AlertCircle, ExternalLink,
 } from "lucide-react";
 import api from "@/lib/api";
 import XeroContactPicker from "@/components/orders/XeroContactPicker";
 import ProductionStatusDropdown from "@/components/orders/ProductionStatusDropdown";
+
+const WOO_BASE_URL = (process.env.REACT_APP_WOO_BASE_URL || "https://www.creativemojo.com").replace(/\/+$/, "");
 
 // Colour palette is now centralised in ProductionStatusDropdown.jsx
 // (PRODUCTION_PILL_CLASS) — header just renders that component.
@@ -360,7 +362,23 @@ export default function OrderDetailPage() {
         {/* RIGHT column (2/5) */}
         <div className="lg:col-span-2 space-y-6">
           <Card title="Order Info">
-            <Row k="Channel" v={order.channel === "woocommerce" ? `Woo#${order.woo_number || order.id}` : "Direct"} />
+            <Row k="Channel" v={
+              order.channel === "woocommerce" ? (
+                order.woo_id ? (
+                  <a
+                    href={`${WOO_BASE_URL}/wp-admin/post.php?post=${order.woo_id}&action=edit`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-testid={`woo-link-${order.woo_id}`}
+                    title={`Open Woo#${order.woo_number || order.woo_id} in WooCommerce admin`}
+                    className="font-mono hover:underline underline-offset-2 inline-flex items-center gap-1"
+                  >
+                    Woo#{order.woo_number || order.woo_id}
+                    <ExternalLink className="w-3 h-3 opacity-60" />
+                  </a>
+                ) : `Woo#${order.woo_number || order.id}`
+              ) : "Direct"
+            } />
             <Row k="Created" v={new Date(order.date_created).toLocaleString("en-GB")} />
             <Row k="Due date" inputable>
               <input
