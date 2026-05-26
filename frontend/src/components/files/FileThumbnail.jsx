@@ -1,17 +1,21 @@
-// Renders a real thumbnail for image + PDF files using the backend's
-// server-side rendering cache. Falls back to a type-specific Lucide
-// icon for everything else.
+// Renders a real thumbnail for image + PDF files via the backend's
+// server-side rendering cache.
 //
 // Endpoint: GET /api/files/thumbnail?key=...&size=md
-// First hit renders + caches in R2; every subsequent hit is served
-// from the cache and is also cached aggressively by the browser
-// (Cache-Control: public, max-age=86400, immutable).
-import { useState } from "react";
+//
+// IMPORTANT: We MUST fetch the bytes via axios (so the
+// ``Authorization: Bearer`` token is attached) and convert them to a
+// blob URL. A plain ``<img src={...}>`` can't carry an Authorization
+// header — and on production the frontend and backend live on
+// different sites, so the browser's cross-site cookie block makes
+// cookie-based auth unreliable too. This was why every image/PDF
+// thumbnail in Sandra's portal silently fell back to the generic icon.
+import { useEffect, useRef, useState } from "react";
 import {
   File as FileIcon, FileText, FileAudio, FileVideo, FileArchive,
   Image as ImageIcon, Loader2,
 } from "lucide-react";
-import { API_BASE } from "@/lib/api";
+import api from "@/lib/api";
 
 function isThumbable(file) {
   const ct = (file.content_type || "").toLowerCase();
@@ -45,8 +49,50 @@ function fallbackTint(file) {
 export default function FileThumbnail({ file, className = "", size = "md" }) {
   const Icon = fallbackIcon(file || {});
   const tint = fallbackTint(file || {});
-  const [loaded, setLoaded] = useState(false);
+  const [src, setSrc] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  const currentUrl = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!file?.key || !isThumbable(file)) {
+      setLoading(false);
+      return undefined;
+    }
+    setLoading(true);
+    setFailed(false);
+    (async () => {
+      try {
+        const res = await api.get("/files/thumbnail", {
+          params: { key: file.key, size },
+          responseType: "blob",
+        });
+        if (cancelled) {
+          // Release the blob immediately if the component already unmounted.
+          try { URL.revokeObjectURL(URL.createObjectURL(res.data)); } catch { /* noop */ }
+          return;
+        }
+        const url = URL.createObjectURL(res.data);
+        // Revoke the previous blob URL if any.
+        if (currentUrl.current) URL.revokeObjectURL(currentUrl.current);
+        currentUrl.current = url;
+        setSrc(url);
+      } catch (e) {
+        if (!cancelled) setFailed(true);
+        console.debug("[FileThumbnail] preview unavailable", e?.response?.status);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (currentUrl.current) {
+        URL.revokeObjectURL(currentUrl.current);
+        currentUrl.current = null;
+      }
+    };
+  }, [file?.key, size, file]);
 
   if (!file?.key || !isThumbable(file) || failed) {
     return (
@@ -56,18 +102,21 @@ export default function FileThumbnail({ file, className = "", size = "md" }) {
     );
   }
 
-  const url = `${API_BASE}/files/thumbnail?key=${encodeURIComponent(file.key)}&size=${size}`;
   return (
     <div className={`relative bg-stone-100 ${className}`}>
-      {!loaded && (
+      {loading && (
         <div className="absolute inset-0 flex items-center justify-center">
           <Loader2 className="w-5 h-5 animate-spin text-stone-400" />
         </div>
       )}
-      <img src={url} alt={file.name} loading="lazy" decoding="async"
-        onLoad={() => setLoaded(true)}
-        onError={() => setFailed(true)}
-        className={`w-full h-full object-cover transition-opacity duration-200 ${loaded ? "opacity-100" : "opacity-0"}`} />
+      {src && (
+        <img
+          src={src}
+          alt={file.name}
+          decoding="async"
+          className="w-full h-full object-cover"
+        />
+      )}
     </div>
   );
 }

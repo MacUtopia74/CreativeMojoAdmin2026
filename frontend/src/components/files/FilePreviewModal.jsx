@@ -5,7 +5,7 @@
 // Anything the browser can't render inline (DOCX, XLSX, ZIP, AI, PSD, …)
 // gets a clear "no preview" message and a Download button.
 import { useEffect, useState } from "react";
-import api, { API_BASE } from "@/lib/api";
+import api from "@/lib/api";
 import {
   Download, X, Loader2, AlertCircle, File as FileIcon,
 } from "lucide-react";
@@ -17,28 +17,46 @@ export default function FilePreviewModal({ file, onClose }) {
   const [err, setErr] = useState("");
 
   useEffect(() => {
-    if (!file) return;
+    if (!file) return undefined;
     setUrl(null); setDlUrl(null); setErr("");
+    let cancelled = false;
+    let createdBlobUrl = null;
     (async () => {
       try {
         const ct = (file.content_type || "").toLowerCase();
         const ext = (file.name?.split(".").pop() || "").toLowerCase();
         const isPdf = ct === "application/pdf" || ext === "pdf";
-        // PDFs: stream through same-origin proxy so the browser
-        // renders them inline (avoids Safari/R2 cross-site refusal).
         if (isPdf) {
-          setUrl(`${API_BASE}/files/proxy?key=${encodeURIComponent(file.key)}`);
-          const { data: dl } = await api.get("/files/download", { params: { key: file.key, attachment: true } });
-          setDlUrl(dl.url);
+          // Fetch via axios so the Authorization: Bearer token is
+          // attached — cross-site cookies are blocked on production
+          // so a raw <iframe src="/api/files/proxy"> would 401. We
+          // convert the bytes to a blob URL the PdfJsViewer can read.
+          const proxyReq = api.get("/files/proxy", {
+            params: { key: file.key },
+            responseType: "blob",
+          });
+          const dlReq = api.get("/files/download", { params: { key: file.key, attachment: true } });
+          const [proxyRes, dlRes] = await Promise.all([proxyReq, dlReq]);
+          if (cancelled) return;
+          createdBlobUrl = URL.createObjectURL(proxyRes.data);
+          setUrl(createdBlobUrl);
+          setDlUrl(dlRes.data.url);
           return;
         }
         const previewReq = api.get("/files/download", { params: { key: file.key, attachment: false } });
         const dlReq = api.get("/files/download", { params: { key: file.key, attachment: true } });
         const [{ data: pv }, { data: dl }] = await Promise.all([previewReq, dlReq]);
+        if (cancelled) return;
         setUrl(pv.url);
         setDlUrl(dl.url);
-      } catch (e) { setErr(e?.response?.data?.detail || "Could not load preview."); }
+      } catch (e) {
+        if (!cancelled) setErr(e?.response?.data?.detail || "Could not load preview.");
+      }
     })();
+    return () => {
+      cancelled = true;
+      if (createdBlobUrl) URL.revokeObjectURL(createdBlobUrl);
+    };
   }, [file]);
 
   if (!file) return null;
