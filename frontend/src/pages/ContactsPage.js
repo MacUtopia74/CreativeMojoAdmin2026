@@ -745,6 +745,9 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
   const [busy, setBusy] = useState(false);
   const [converting, setConverting] = useState(false);
   const [replyModalOpen, setReplyModalOpen] = useState(false);  // Reply-with-template modal
+  // Bumped after a successful send so <EmailTimeline> re-fetches and
+  // surfaces the new entry without a page reload.
+  const [emailRefreshSignal, setEmailRefreshSignal] = useState(0);
   // Inline edit of identity + address — staff routinely fix typos from
   // Gravity-Forms / Airtable imports. We hold a single ``editing``
   // boolean + a working ``draft`` copy that's only persisted on Save.
