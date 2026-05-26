@@ -182,15 +182,15 @@ function EditInvoice() {
     api.get(`/portal/invoices/${id}`).then(r => {
       const inv = r.data;
       setFormData({
-        client_id: inv.client_id, client_name: inv.client_name, client_email: inv.client_email || "",
+        client_id: inv.client_id || "", client_name: inv.client_name || "", client_email: inv.client_email || "",
         client_email2: inv.client_email2 || "", client_phone: inv.client_phone || "",
-        client_address: inv.client_address || "", invoice_number: inv.invoice_number,
-        issue_date: inv.issue_date, due_date: inv.due_date,
+        client_address: inv.client_address || "", invoice_number: inv.invoice_number || "",
+        issue_date: inv.issue_date || "", due_date: inv.due_date || "",
         // Hydrate _uid on server-loaded line items so React keys stay
         // stable across re-renders and row reorders/removes.
         line_items: (inv.line_items || []).map((li) => ({ ...li, _uid: li._uid || _newLineUid() })),
         tax_rate: inv.tax_rate || 0, discount_rate: inv.discount_rate || 0,
-        notes: inv.notes || "", payment_terms: inv.payment_terms || "Net 30", status: inv.status,
+        notes: inv.notes || "", payment_terms: inv.payment_terms || "Net 30", status: inv.status || "draft",
       });
     }).catch(() => { toast.error("Failed to fetch invoice"); navigate("/portal/invoices"); }).finally(() => setFetching(false));
   }, [id, navigate]);
