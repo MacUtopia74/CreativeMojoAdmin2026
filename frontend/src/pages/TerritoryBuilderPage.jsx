@@ -63,6 +63,19 @@ export default function TerritoryBuilderPage() {
     catch (e) { console.debug("[TerritoryBuilder] localStorage write blocked", e); }
   }, [legendOpen]);
 
+  // Selected / Nearby sectors panels now collapsible below the map — defaults
+  // closed so the map gets all the screen real-estate when admins land here.
+  const [selectedListOpen, setSelectedListOpen] = useState(() => {
+    try { return localStorage.getItem("cm.tb.selectedOpen") === "1"; }
+    catch { return false; }
+  });
+  const [nearbyListOpen, setNearbyListOpen] = useState(() => {
+    try { return localStorage.getItem("cm.tb.nearbyOpen") === "1"; }
+    catch { return false; }
+  });
+  useEffect(() => { try { localStorage.setItem("cm.tb.selectedOpen", selectedListOpen ? "1" : "0"); } catch (e) { console.debug("[TerritoryBuilder] localStorage write blocked", e); } }, [selectedListOpen]);
+  useEffect(() => { try { localStorage.setItem("cm.tb.nearbyOpen", nearbyListOpen ? "1" : "0"); } catch (e) { console.debug("[TerritoryBuilder] localStorage write blocked", e); } }, [nearbyListOpen]);
+
   // All saved plans — listed in the bottom-right "Saved plans" panel when
   // there's no contact/franchisee context (e.g. opened via the sidebar).
   // Lets admins re-open prior prospect plans + share/copy/delete them.
@@ -436,9 +449,9 @@ export default function TerritoryBuilderPage() {
         </div>
       )}
 
-      <div className="grid lg:grid-cols-3 gap-5">
-        {/* Map */}
-        <div className="lg:col-span-2 space-y-3">
+      <div className="space-y-5">
+        {/* Map — full width, taller for more breathing room */}
+        <div className="space-y-3">
           {/* Overlay toggle + collapsible legend so admins can see which
               colour belongs to which franchisee. Header stays slim; the
               chip grid below collapses to give the map more room. */}
@@ -490,7 +503,7 @@ export default function TerritoryBuilderPage() {
             centre={centre}
             centreLabel={centreLabel}
             onToggleSector={toggleSector}
-            height={620}
+            height={820}
             franchiseeOverlay={showOverlay ? overlay : null}
           />
           <div className="text-[11px] text-stone-500 mt-2 flex items-center gap-3 flex-wrap">
@@ -503,8 +516,9 @@ export default function TerritoryBuilderPage() {
           </div>
         </div>
 
-        {/* Side panel */}
-        <div className="space-y-4">
+        {/* Below-map panels — Plan Details stays expanded (primary actions),
+            Selected + Nearby sectors collapse so they don't crowd the map. */}
+        <div className="grid lg:grid-cols-3 gap-4">
           <div className="bg-white border border-stone-200 rounded-2xl p-4">
             <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500 mb-2">{franchiseeId ? "Franchisee territory" : "Plan details"}</div>
             {!franchiseeId && (
@@ -604,61 +618,84 @@ export default function TerritoryBuilderPage() {
             )}
           </div>
 
-          {/* Selected sectors list */}
-          <div className="bg-white border border-stone-200 rounded-2xl p-4">
-            <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500 mb-2">Selected sectors ({sortedSelected.length})</div>
-            {!sortedSelected.length && <div className="text-xs text-stone-500">Click sectors on the map to add them here.</div>}
-            <div className="flex flex-wrap gap-1.5">
-              {sortedSelected.map((s) => (
-                <button key={s} onClick={() => toggleSector(s)} data-testid={`chip-selected-${s}`}
-                  className="group inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-red-700 rounded-md">
-                  {s} · {homeCount.per_sector?.[s] || 0}
-                  <Trash2 className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                </button>
-              ))}
-            </div>
+          {/* Selected sectors list — collapsible */}
+          <div className="bg-white border border-stone-200 rounded-2xl">
+            <button
+              type="button"
+              onClick={() => setSelectedListOpen((v) => !v)}
+              data-testid="toggle-selected-sectors"
+              className="w-full flex items-center justify-between gap-3 p-4 hover:bg-stone-50 rounded-2xl"
+            >
+              <span className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">Selected sectors ({sortedSelected.length})</span>
+              {selectedListOpen ? <ChevronUp className="w-4 h-4 text-stone-500" /> : <ChevronDown className="w-4 h-4 text-stone-500" />}
+            </button>
+            {selectedListOpen && (
+              <div className="px-4 pb-4">
+                {!sortedSelected.length && <div className="text-xs text-stone-500">Click sectors on the map to add them here.</div>}
+                <div className="flex flex-wrap gap-1.5 max-h-72 overflow-auto">
+                  {sortedSelected.map((s) => (
+                    <button key={s} onClick={() => toggleSector(s)} data-testid={`chip-selected-${s}`}
+                      className="group inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-red-700 rounded-md">
+                      {s} · {homeCount.per_sector?.[s] || 0}
+                      <Trash2 className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Sectors in radius */}
-          <div className="bg-white border border-stone-200 rounded-2xl p-4">
-            <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500 mb-2 flex items-center justify-between">
-              <span>Nearby sectors ({sectors.length})</span>
-              {loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-stone-400" />}
-            </div>
-            <div className="max-h-72 overflow-auto space-y-1">
-              {sectors.map((s) => {
-                const isSel = selected.includes(s.sector);
-                return (
-                  <button key={s.sector} onClick={() => toggleSector(s.sector)} data-testid={`chip-near-${s.sector}`}
-                    className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 text-xs rounded-lg text-left ${isSel ? "bg-stone-950 text-white" : "hover:bg-stone-50 text-stone-800"}`}>
-                    <span className="font-bold">{s.sector}</span>
-                    <span className="tabular-nums">{s.home_count} homes · {(s.distance_km / KM_PER_MI).toFixed(1)} mi</span>
-                    {isSel ? <CheckCircle2 className="w-3.5 h-3.5 text-[#dddd16] shrink-0" /> : <Plus className="w-3.5 h-3.5 text-stone-400 shrink-0" />}
-                  </button>
-                );
-              })}
-            </div>
+          {/* Sectors in radius — collapsible */}
+          <div className="bg-white border border-stone-200 rounded-2xl">
+            <button
+              type="button"
+              onClick={() => setNearbyListOpen((v) => !v)}
+              data-testid="toggle-nearby-sectors"
+              className="w-full flex items-center justify-between gap-3 p-4 hover:bg-stone-50 rounded-2xl"
+            >
+              <span className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500 flex items-center gap-2">
+                Nearby sectors ({sectors.length})
+                {loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-stone-400" />}
+              </span>
+              {nearbyListOpen ? <ChevronUp className="w-4 h-4 text-stone-500" /> : <ChevronDown className="w-4 h-4 text-stone-500" />}
+            </button>
+            {nearbyListOpen && (
+              <div className="px-4 pb-4 max-h-72 overflow-auto space-y-1">
+                {sectors.map((s) => {
+                  const isSel = selected.includes(s.sector);
+                  return (
+                    <button key={s.sector} onClick={() => toggleSector(s.sector)} data-testid={`chip-near-${s.sector}`}
+                      className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 text-xs rounded-lg text-left ${isSel ? "bg-stone-950 text-white" : "hover:bg-stone-50 text-stone-800"}`}>
+                      <span className="font-bold">{s.sector}</span>
+                      <span className="tabular-nums">{s.home_count} homes · {(s.distance_km / KM_PER_MI).toFixed(1)} mi</span>
+                      {isSel ? <CheckCircle2 className="w-3.5 h-3.5 text-[#dddd16] shrink-0" /> : <Plus className="w-3.5 h-3.5 text-stone-400 shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* Saved territory plans — only shown when there's no contact
               or franchisee context (i.e. user opened the page from the
               sidebar). Lets admins re-open a prior prospect plan and
               copy a share link without leaving the page. */}
-          {!contactId && !franchiseeId && (
-            <SavedPlansPanel
-              plans={allPlans}
-              loading={allPlansLoading}
-              filter={planFilter}
-              onFilter={setPlanFilter}
-              activeId={savedPlan?.id || planId}
-              onCopyShare={copyShareLink}
-              onToggleShare={toggleShare}
-              onDelete={deletePlanById}
-              shareUrlFor={shareUrlFor}
-              shareCopied={shareCopied}
-            />
-          )}
         </div>
+
+        {!contactId && !franchiseeId && (
+          <SavedPlansPanel
+            plans={allPlans}
+            loading={allPlansLoading}
+            filter={planFilter}
+            onFilter={setPlanFilter}
+            activeId={savedPlan?.id || planId}
+            onCopyShare={copyShareLink}
+            onToggleShare={toggleShare}
+            onDelete={deletePlanById}
+            shareUrlFor={shareUrlFor}
+            shareCopied={shareCopied}
+          />
+        )}
       </div>
 
       {/* Paste-sectors modal */}
