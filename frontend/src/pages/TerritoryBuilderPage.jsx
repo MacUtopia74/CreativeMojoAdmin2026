@@ -105,7 +105,10 @@ export default function TerritoryBuilderPage() {
     (async () => {
       try {
         const c = await api.get(`/contacts/${contactId}`);
-        setContact(c.data);
+        // Endpoint returns {contact: {...}, _source_collection: "..."} so
+        // unwrap the nested object (falling back to the raw data for any
+        // older code-paths that already returned a flat contact).
+        setContact(c.data?.contact || c.data);
       } catch (e) {
         console.error("[TerritoryBuilder] Failed to load contact", contactId, e);
       }
@@ -294,6 +297,23 @@ export default function TerritoryBuilderPage() {
     } catch (e) {
       setErr(e?.response?.data?.detail || "Could not save");
     } finally { setSaving(false); }
+  };
+
+  // ---- contact-link helpers ------------------------------------------------
+  // Lets admins attach a previously-drafted territory to a contact that just
+  // landed (or move it to a different contact).
+  const linkPlanToContact = async (plan, contactId) => {
+    if (!plan?.id) return;
+    try {
+      const { data } = await api.post(`/territory-plans/${plan.id}/link-contact`, {
+        contact_id: contactId || null,
+      });
+      // Reload the saved-plans list so the new contact_name attaches.
+      await reloadAllPlans();
+      if (savedPlan?.id === plan.id) setSavedPlan(data);
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Couldn't link contact.");
+    }
   };
 
   const deletePlan = async () => {
@@ -692,6 +712,7 @@ export default function TerritoryBuilderPage() {
             onCopyShare={copyShareLink}
             onToggleShare={toggleShare}
             onDelete={deletePlanById}
+            onLinkContact={linkPlanToContact}
             shareUrlFor={shareUrlFor}
             shareCopied={shareCopied}
           />
@@ -781,8 +802,44 @@ export default function TerritoryBuilderPage() {
 // Delete. Filter box narrows by plan name / contact / centre postcode.
 function SavedPlansPanel({
   plans, loading, filter, onFilter, activeId, onCopyShare, onToggleShare,
-  onDelete, shareUrlFor, shareCopied,
+  onDelete, onLinkContact, shareUrlFor, shareCopied,
 }) {
+  const [pickerForPlanId, setPickerForPlanId] = useState(null);
+  const [contactQuery, setContactQuery] = useState("");
+  const [contactResults, setContactResults] = useState([]);
+  const [contactsLoading, setContactsLoading] = useState(false);
+
+  // Debounced contact search — fires once a picker is open.
+  useEffect(() => {
+    if (!pickerForPlanId) return;
+    if (!contactQuery || contactQuery.trim().length < 2) { setContactResults([]); return; }
+    const t = setTimeout(async () => {
+      setContactsLoading(true);
+      try {
+        const { data } = await api.get("/contacts", {
+          params: { search: contactQuery.trim(), limit: 15 },
+        });
+        const items = data.items || data.contacts || (Array.isArray(data) ? data : []);
+        setContactResults(items);
+      } catch (e) {
+        console.error("[SavedPlansPanel] contact search failed", e);
+        setContactResults([]);
+      } finally { setContactsLoading(false); }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [contactQuery, pickerForPlanId]);
+
+  const openPicker = (planId) => {
+    setPickerForPlanId(planId);
+    setContactQuery("");
+    setContactResults([]);
+  };
+  const closePicker = () => setPickerForPlanId(null);
+  const pick = async (plan, contactId) => {
+    await onLinkContact(plan, contactId);
+    closePicker();
+  };
+
   const filtered = (plans || []).filter((p) => {
     if (!filter.trim()) return true;
     const q = filter.toLowerCase();
@@ -847,7 +904,20 @@ function SavedPlansPanel({
                   {p.centre_postcode && <span> · {p.centre_postcode}</span>}
                 </div>
               </Link>
-              <div className="mt-1.5 flex items-center gap-1">
+              <div className="mt-1.5 flex items-center gap-1 flex-wrap">
+                <button
+                  onClick={() => openPicker(p.id)}
+                  data-testid={`saved-plan-link-${p.id}`}
+                  className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded flex items-center gap-1 ${
+                    p.contact_id
+                      ? "border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+                      : "border border-stone-300 hover:bg-stone-50 text-stone-700"
+                  }`}
+                  title={p.contact_id ? `Linked to ${p.contact_name || "a contact"} — click to change or unlink` : "Link this plan to a contact"}
+                >
+                  <Users className="w-3 h-3" />
+                  {p.contact_id ? "Linked" : "Link contact"}
+                </button>
                 <button
                   onClick={() => onCopyShare(p)}
                   data-testid={`saved-plan-share-${p.id}`}
@@ -881,6 +951,64 @@ function SavedPlansPanel({
               {p.is_shared && p.share_token && (
                 <div className="mt-1 text-[10px] text-stone-500 truncate font-mono">
                   {shareUrlFor(p.share_token)}
+                </div>
+              )}
+              {pickerForPlanId === p.id && (
+                <div className="mt-2 p-2 bg-stone-50 border border-stone-200 rounded-lg" data-testid={`link-picker-${p.id}`}>
+                  {p.contact_id && (
+                    <div className="flex items-center justify-between gap-2 mb-2 text-[11px]">
+                      <span className="text-stone-700">
+                        Currently linked to <strong>{p.contact_name || "a contact"}</strong>
+                      </span>
+                      <button
+                        onClick={() => pick(p, null)}
+                        data-testid={`link-picker-unlink-${p.id}`}
+                        className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded border border-red-300 text-red-700 hover:bg-red-50"
+                      >
+                        Unlink
+                      </button>
+                    </div>
+                  )}
+                  <input
+                    value={contactQuery}
+                    onChange={(e) => setContactQuery(e.target.value)}
+                    placeholder="Search contacts by name or email…"
+                    autoFocus
+                    data-testid={`link-picker-search-${p.id}`}
+                    className="w-full px-2 py-1.5 text-xs bg-white border border-stone-300 rounded"
+                  />
+                  <div className="mt-1.5 max-h-40 overflow-auto space-y-0.5">
+                    {contactsLoading && (
+                      <div className="text-[10px] text-stone-500 px-1 py-0.5 flex items-center gap-1">
+                        <Loader2 className="w-3 h-3 animate-spin" /> Searching…
+                      </div>
+                    )}
+                    {!contactsLoading && contactQuery.trim().length >= 2 && contactResults.length === 0 && (
+                      <div className="text-[10px] text-stone-500 px-1 py-0.5">No matches.</div>
+                    )}
+                    {contactResults.map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => pick(p, c.id)}
+                        data-testid={`link-picker-pick-${p.id}-${c.id}`}
+                        className="w-full text-left px-2 py-1 text-[11px] rounded hover:bg-white border border-transparent hover:border-stone-300"
+                      >
+                        <div className="font-bold text-stone-900 truncate">
+                          {c.first_name} {c.last_name}
+                          {c.organisation && <span className="text-stone-500 font-normal"> · {c.organisation}</span>}
+                        </div>
+                        <div className="text-[10px] text-stone-500 truncate">{c.email || c.postcode || c.source}</div>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-1.5 flex justify-end">
+                    <button
+                      onClick={closePicker}
+                      className="text-[10px] text-stone-500 hover:text-stone-800 px-1"
+                    >
+                      Close
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

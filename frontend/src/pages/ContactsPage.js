@@ -1092,6 +1092,7 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
                   </div>
                   <div className="text-xs text-stone-600 mt-1">
                     Build a sample 150-home territory around their postcode using live CQC data. Saved against this contact and easy to edit.
+                    <span className="block mt-1 text-stone-500">Already drafted one for them elsewhere? Open the builder and click <strong>Link contact</strong> on the matching saved plan.</span>
                   </div>
                 </div>
                 <span className="shrink-0 px-3 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 text-white rounded-lg flex items-center gap-1.5">

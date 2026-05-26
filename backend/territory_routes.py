@@ -408,14 +408,18 @@ def build_territory_router(db, require_role):  # noqa: D401
             q["franchisee_id"] = franchisee_id
         plans = await db.territory_plans.find(q, {"_id": 0}).sort("created_at", -1).to_list(200)
         # Attach contact name (where applicable) so the UI can label plans
-        # with the prospect's name without a second round-trip.
+        # with the prospect's name without a second round-trip. Contacts
+        # may live in either ``contacts`` (legacy Airtable) or
+        # ``web_form_contacts`` (newer Gravity-Forms / web intake), so we
+        # query both and union the lookup.
         contact_ids = [p["contact_id"] for p in plans if p.get("contact_id")]
         if contact_ids:
-            contacts = await db.contacts.find(
-                {"id": {"$in": contact_ids}},
-                {"_id": 0, "id": 1, "first_name": 1, "last_name": 1, "organisation": 1},
-            ).to_list(500)
-            name_map = {c["id"]: c for c in contacts}
+            proj = {"_id": 0, "id": 1, "first_name": 1, "last_name": 1, "organisation": 1}
+            legacy = await db.contacts.find({"id": {"$in": contact_ids}}, proj).to_list(500)
+            webform = await db.web_form_contacts.find({"id": {"$in": contact_ids}}, proj).to_list(500)
+            name_map = {c["id"]: c for c in legacy}
+            for c in webform:
+                name_map.setdefault(c["id"], c)
             for p in plans:
                 cid = p.get("contact_id")
                 if cid and cid in name_map:
@@ -442,6 +446,39 @@ def build_territory_router(db, require_role):  # noqa: D401
             raise HTTPException(404, detail="Plan not found")
         plan = await db.territory_plans.find_one({"id": plan_id}, {"_id": 0})
         return plan
+
+    @router.post("/territory-plans/{plan_id}/link-contact")
+    async def link_plan_to_contact(
+        plan_id: str,
+        body: dict,
+        _user: dict = Depends(require_role("admin")),
+    ):
+        """Associate (or dissociate) a draft territory plan with a contact.
+        Body: ``{contact_id: "<id>"}`` to link, ``{contact_id: null}`` to unlink.
+        Lets admins attach pre-built draft territories to a contact that came
+        in later, without having to recreate the plan from scratch."""
+        plan = await db.territory_plans.find_one({"id": plan_id}, {"_id": 0})
+        if not plan:
+            raise HTTPException(404, detail="Plan not found")
+        cid = (body or {}).get("contact_id")
+        if cid:
+            # Validate that contact exists in either collection
+            existing = await db.contacts.find_one({"id": cid}, {"_id": 0, "id": 1})
+            if not existing:
+                existing = await db.web_form_contacts.find_one({"id": cid}, {"_id": 0, "id": 1})
+            if not existing:
+                raise HTTPException(404, detail="Contact not found")
+            await db.territory_plans.update_one(
+                {"id": plan_id},
+                {"$set": {"contact_id": cid, "updated_at": datetime.now(timezone.utc)}},
+            )
+        else:
+            await db.territory_plans.update_one(
+                {"id": plan_id},
+                {"$unset": {"contact_id": ""}, "$set": {"updated_at": datetime.now(timezone.utc)}},
+            )
+        out = await db.territory_plans.find_one({"id": plan_id}, {"_id": 0})
+        return out
 
     @router.delete("/territory-plans/{plan_id}")
     async def delete_plan(
