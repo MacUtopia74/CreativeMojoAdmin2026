@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import api from "@/lib/api";
-import { Search, AlertCircle, RefreshCw, CreditCard, CheckCircle2, X, ChevronDown } from "lucide-react";
+import { Search, AlertCircle, RefreshCw, CreditCard, CheckCircle2, X, ChevronDown, LayoutGrid, List as ListIcon, Mail, Phone, ArrowRight } from "lucide-react";
 import { formatDate } from "@/lib/date";
 
 // Live GoCardless mandate pill — mirrors the one on FranchiseeDetailPage so the
@@ -270,6 +270,18 @@ export default function FranchiseesPage() {
   const [gcSyncOpen, setGcSyncOpen] = useState(false);
   const [missingMandate, setMissingMandate] = useState({ count: 0, items: [], threshold_days: 14 });
   const [missingMandateExpanded, setMissingMandateExpanded] = useState(false);
+  // Card vs table view. Persisted so admins land on their last-chosen
+  // layout on subsequent visits.
+  const [viewMode, setViewMode] = useState(() => {
+    try { return localStorage.getItem("cm.franchisees.view") === "grid" ? "grid" : "list"; }
+    catch { return "list"; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("cm.franchisees.view", viewMode); }
+    catch (e) { console.debug("[FranchiseesPage] localStorage write blocked", e); }
+  }, [viewMode]);
+  // Card click → quick-preview popover instead of a full page nav.
+  const [previewId, setPreviewId] = useState(null);
   const reload = async () => {
     try {
       const { data } = await api.get("/franchisees", { params: { limit: 500, sort_by: "franchise_number", sort_dir: 1 } });
@@ -348,6 +360,25 @@ export default function FranchiseesPage() {
             className="px-3 py-2 text-xs font-bold uppercase tracking-wider border border-stone-300 bg-white text-stone-900 hover:bg-stone-50 rounded-lg flex items-center gap-1.5">
             <CreditCard className="w-3.5 h-3.5" /> Sync GoCardless
           </button>
+          {/* View toggle: list / grid */}
+          <div className="inline-flex border border-stone-300 rounded-lg overflow-hidden" data-testid="view-toggle">
+            <button
+              onClick={() => setViewMode("list")}
+              data-testid="view-list"
+              title="List view"
+              className={`px-2.5 py-2 flex items-center justify-center ${viewMode === "list" ? "bg-stone-950 text-white" : "bg-white text-stone-700 hover:bg-stone-50"}`}
+            >
+              <ListIcon className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setViewMode("grid")}
+              data-testid="view-grid"
+              title="Card view"
+              className={`px-2.5 py-2 flex items-center justify-center border-l border-stone-300 ${viewMode === "grid" ? "bg-stone-950 text-white" : "bg-white text-stone-700 hover:bg-stone-50"}`}
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </button>
+          </div>
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
             <input
@@ -446,6 +477,8 @@ export default function FranchiseesPage() {
         )}
         {loading ? (
           <div className="text-center text-stone-500 text-sm uppercase tracking-widest p-12" data-testid="franchisees-loading">Loading…</div>
+        ) : viewMode === "grid" ? (
+          <FranchiseeGrid items={filtered} onPreview={setPreviewId} />
         ) : (
           <div className="bg-white border border-stone-200 overflow-hidden rounded-2xl" data-testid="franchisees-table">
             <table className="w-full">
@@ -509,6 +542,174 @@ export default function FranchiseesPage() {
             </table>
           </div>
         )}
+      </div>
+      {/* Quick-preview popover triggered from the grid view */}
+      {previewId && (
+        <FranchiseePreview
+          franchisee={filtered.find((f) => f.id === previewId)}
+          onClose={() => setPreviewId(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Card / grid view — 5 columns on wide screens.
+// Shows photo, organisation, Mojo email, mobile (per Paul's spec).
+// Cards open the quick-preview popover instead of navigating away, so
+// admins can scan many franchisees fast without losing their filter state.
+// ---------------------------------------------------------------------------
+function FranchiseeGrid({ items, onPreview }) {
+  if (!items.length) {
+    return (
+      <div className="bg-white border border-stone-200 rounded-2xl p-10 text-center text-sm text-stone-500" data-testid="franchisees-grid-empty">
+        No franchisees in this view.
+      </div>
+    );
+  }
+  return (
+    <div
+      className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+      data-testid="franchisees-grid"
+    >
+      {items.map((f) => {
+        const photo = f.photos?.[0]?.url;
+        const name = f.organisation || [f.first_name, f.last_name].filter(Boolean).join(" ") || "(no organisation)";
+        return (
+          <button
+            key={f.id}
+            type="button"
+            onClick={() => onPreview(f.id)}
+            data-testid={`franchisee-card-${f.id}`}
+            className="bg-white border border-stone-200 rounded-2xl overflow-hidden text-left hover:border-stone-950 hover:shadow-md transition-all flex flex-col group"
+          >
+            <div className="relative aspect-square bg-stone-100 overflow-hidden">
+              {photo ? (
+                <img
+                  src={photo}
+                  alt=""
+                  loading="lazy"
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-4xl font-bold text-stone-300">
+                  {(f.first_name?.[0] || "?") + (f.last_name?.[0] || "")}
+                </div>
+              )}
+              {f.franchise_number && (
+                <div className="absolute top-2 left-2 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-stone-950/85 text-white rounded-md tabular-nums">
+                  #{f.franchise_number}
+                </div>
+              )}
+            </div>
+            <div className="p-3 flex-1 flex flex-col gap-1.5 min-w-0">
+              <div className="font-semibold text-sm text-stone-950 leading-snug line-clamp-2">
+                {name}
+              </div>
+              <div className="text-xs text-stone-600 truncate flex items-center gap-1.5">
+                <Mail className="w-3 h-3 shrink-0 text-stone-400" />
+                <span className="truncate">{f.mojo_email || "—"}</span>
+              </div>
+              <div className="text-xs text-stone-600 truncate flex items-center gap-1.5">
+                <Phone className="w-3 h-3 shrink-0 text-stone-400" />
+                <span className="truncate tabular-nums">{f.mobile_phone || "—"}</span>
+              </div>
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Quick-preview popover for the grid view.
+// Mirrors the card content but adds a clear "Open detail" CTA so admins
+// can decide whether to dive in. Closes on backdrop click or Esc.
+// ---------------------------------------------------------------------------
+function FranchiseePreview({ franchisee, onClose }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  if (!franchisee) return null;
+  const f = franchisee;
+  const photo = f.photos?.[0]?.url;
+  const name = f.organisation || [f.first_name, f.last_name].filter(Boolean).join(" ") || "(no organisation)";
+  return (
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-50 bg-stone-950/60 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in"
+      data-testid="franchisee-preview-backdrop"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden"
+        data-testid="franchisee-preview"
+      >
+        <div className="relative aspect-[16/10] bg-stone-100">
+          {photo ? (
+            <img src={photo} alt="" className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-6xl font-bold text-stone-300">
+              {(f.first_name?.[0] || "?") + (f.last_name?.[0] || "")}
+            </div>
+          )}
+          <button
+            onClick={onClose}
+            className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/95 text-stone-900 flex items-center justify-center hover:bg-white shadow"
+            data-testid="franchisee-preview-close"
+          >
+            <X className="w-4 h-4" />
+          </button>
+          {f.franchise_number && (
+            <div className="absolute top-3 left-3 px-2.5 py-1 text-xs font-bold uppercase tracking-wider bg-stone-950/85 text-white rounded-md tabular-nums">
+              #{f.franchise_number}
+            </div>
+          )}
+        </div>
+        <div className="p-5 space-y-3">
+          <div>
+            <h2 className="font-display text-2xl text-stone-950 leading-tight">{name}</h2>
+            {f.organisation && (f.first_name || f.last_name) && (
+              <div className="text-sm text-stone-600 mt-0.5">
+                {[f.first_name, f.last_name].filter(Boolean).join(" ")}
+              </div>
+            )}
+          </div>
+          <dl className="space-y-2 text-sm">
+            <div className="flex items-start gap-2">
+              <Mail className="w-4 h-4 text-stone-400 mt-0.5 shrink-0" />
+              {f.mojo_email ? (
+                <a href={`mailto:${f.mojo_email}`} className="text-stone-700 hover:text-stone-950 hover:underline underline-offset-2 break-all">
+                  {f.mojo_email}
+                </a>
+              ) : <span className="text-stone-400">No Mojo email</span>}
+            </div>
+            <div className="flex items-start gap-2">
+              <Phone className="w-4 h-4 text-stone-400 mt-0.5 shrink-0" />
+              {f.mobile_phone ? (
+                <a href={`tel:${(f.mobile_phone || "").replace(/\s+/g, "")}`} className="text-stone-700 hover:text-stone-950 hover:underline underline-offset-2 tabular-nums">
+                  {f.mobile_phone}
+                </a>
+              ) : <span className="text-stone-400">No mobile on file</span>}
+            </div>
+            {(f.city || f.postcode) && (
+              <div className="text-stone-600 pl-6 tabular-nums">
+                {[f.city, f.postcode].filter(Boolean).join(" · ")}
+              </div>
+            )}
+          </dl>
+          <Link
+            to={`/franchisees/${f.id}`}
+            data-testid={`franchisee-preview-open-${f.id}`}
+            className="mt-2 w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#dddd16] hover:bg-[#aaaa11] text-stone-950 font-bold text-sm uppercase tracking-wider rounded-lg"
+          >
+            Open detail <ArrowRight className="w-4 h-4" />
+          </Link>
+        </div>
       </div>
     </div>
   );
