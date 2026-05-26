@@ -1184,6 +1184,94 @@ async def get_franchisee(franchisee_id: str, _: dict = Depends(require_role("adm
     return {"franchisee": f, "contracts": contracts, "territories": territories, "enquiries": enquiries}
 
 
+@api.get("/franchisees/{franchisee_id}/xero-contact-link")
+async def franchisee_xero_contact_link(
+    franchisee_id: str, _: dict = Depends(require_role("admin")),
+):
+    """Resolve the franchisee's Xero contact record by email and return
+    a deep-link to their Xero contact page. Auto-caches the match on the
+    franchisee record so subsequent loads are instant.
+
+    Matching priority (first hit wins):
+      1. Existing cached ``xero_contact_id`` on the franchisee
+      2. mojo_email → xero_contacts_cache.email_lc
+      3. secondary_email → email_lc
+      4. organisation name → name_lc (loose fallback)
+    """
+    f = await db.franchisees.find_one(
+        {"id": franchisee_id},
+        {"_id": 0, "id": 1, "xero_contact_id": 1, "xero_contact_name": 1,
+         "mojo_email": 1, "secondary_email": 1, "email": 1, "organisation": 1,
+         "first_name": 1, "last_name": 1},
+    )
+    if not f:
+        raise HTTPException(404, detail="Franchisee not found")
+
+    def _url(cid: str) -> str:
+        # Xero contact deep-link format used across the rest of the app.
+        return f"https://go.xero.com/Contacts/View/{cid}"
+
+    # 1. Already cached?
+    if f.get("xero_contact_id"):
+        return {
+            "status": "linked",
+            "contact_id": f["xero_contact_id"],
+            "contact_name": f.get("xero_contact_name"),
+            "url": _url(f["xero_contact_id"]),
+            "match_via": "cached",
+        }
+
+    # 2–4. Look up by email / organisation / person-name in the local cache.
+    candidates = []
+    for key in ("mojo_email", "secondary_email", "email"):
+        v = (f.get(key) or "").strip().lower()
+        if v:
+            candidates.append(("email_lc", v, key))
+    org = (f.get("organisation") or "").strip().lower()
+    if org:
+        candidates.append(("name_lc", org, "organisation"))
+    # Personal name fallback — useful when the Xero contact is the
+    # individual rather than the trading name (very common for older
+    # franchisees who Sandra invoiced personally).
+    person = " ".join([
+        (f.get("first_name") or "").strip(),
+        (f.get("last_name") or "").strip(),
+    ]).strip().lower()
+    if person:
+        candidates.append(("name_lc", person, "person_name"))
+
+    for field, val, source in candidates:
+        hit = await db.xero_contacts_cache.find_one(
+            {field: val}, {"_id": 0, "contact_id": 1, "name": 1},
+        )
+        if hit and hit.get("contact_id"):
+            # Cache the match back to the franchisee so we don't repeat
+            # this lookup on every page load.
+            await db.franchisees.update_one(
+                {"id": franchisee_id},
+                {"$set": {
+                    "xero_contact_id": hit["contact_id"],
+                    "xero_contact_name": hit.get("name"),
+                    "xero_contact_match_source": source,
+                }},
+            )
+            return {
+                "status": "linked",
+                "contact_id": hit["contact_id"],
+                "contact_name": hit.get("name"),
+                "url": _url(hit["contact_id"]),
+                "match_via": source,
+            }
+
+    # Nothing matched — surface a generic "open Xero" link so the admin
+    # can still jump there in one click and search manually.
+    return {
+        "status": "unlinked",
+        "url": "https://go.xero.com/Contacts/Search/",
+        "match_via": None,
+    }
+
+
 # Editable franchisee fields (admin only). Any unspecified field is left untouched.
 FRANCHISEE_EDITABLE_FIELDS = {
     "first_name", "last_name", "organisation", "email", "mojo_email", "secondary_email",

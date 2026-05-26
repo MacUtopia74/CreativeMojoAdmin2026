@@ -77,6 +77,71 @@ function MandatePill({ franchisee }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Xero contact pill — mirrors the Mandate pill so the two sit next to each
+// other in the KPI strip. Resolves the linked Xero contact on demand via
+// `/api/franchisees/{id}/xero-contact-link` (the backend matches by mojo
+// email / organisation name and caches the result). One click opens the
+// franchisee's contact page directly in Xero.
+// ---------------------------------------------------------------------------
+function XeroPill({ franchiseeId }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const { data } = await api.get(`/franchisees/${franchiseeId}/xero-contact-link`);
+        if (!cancelled) setData(data);
+      } catch (e) {
+        if (!cancelled) setData({ status: "error", url: "https://go.xero.com/Contacts/Search/" });
+        console.debug("[XeroPill] lookup failed", e);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [franchiseeId]);
+
+  if (loading) {
+    return <div className="font-display text-base text-stone-300 mt-1">…</div>;
+  }
+  if (!data || data.status !== "linked") {
+    return (
+      <>
+        <div className="font-display text-base text-stone-400 mt-1">Not linked</div>
+        <a
+          href={data?.url || "https://go.xero.com/Contacts/Search/"}
+          target="_blank"
+          rel="noopener noreferrer"
+          data-testid="xero-setup-link"
+          className="text-[10px] text-stone-500 underline hover:text-stone-900 mt-0.5 inline-flex items-center gap-1">
+          Find in Xero ↗
+        </a>
+      </>
+    );
+  }
+  return (
+    <>
+      <a
+        href={data.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        data-testid="xero-pill"
+        title={data.contact_name ? `Open ${data.contact_name} on Xero` : "Open contact on Xero"}
+        className="inline-block mt-1 px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider border rounded-md hover:opacity-80 transition-opacity border-sky-300 bg-sky-50 text-sky-800">
+        Open ↗
+      </a>
+      {data.contact_name && (
+        <div className="text-[10px] text-stone-500 mt-0.5 truncate" title={data.contact_name}>
+          {data.contact_name}
+        </div>
+      )}
+    </>
+  );
+}
+
 function Panel({ icon: Icon, title, action, children, testid }) {
   return (
     <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid={testid}>
@@ -547,7 +612,7 @@ export default function FranchiseeDetailPage() {
               </div>
             )}
           </div>
-          <div className="grid grid-cols-3 gap-px bg-stone-200 border border-stone-200 lg:min-w-[420px] rounded-2xl overflow-hidden">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-stone-200 border border-stone-200 lg:min-w-[560px] rounded-2xl overflow-hidden">
             <div className="bg-white p-4">
               <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Contracts</div>
               <div className="font-display text-2xl text-stone-950 mt-1">{contracts.length}</div>
@@ -561,6 +626,10 @@ export default function FranchiseeDetailPage() {
             <div className="bg-white p-4" data-testid="kpi-mandate">
               <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Mandate</div>
               <MandatePill franchisee={f} />
+            </div>
+            <div className="bg-white p-4" data-testid="kpi-xero">
+              <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Xero</div>
+              <XeroPill franchiseeId={f.id} />
             </div>
           </div>
         </div>
