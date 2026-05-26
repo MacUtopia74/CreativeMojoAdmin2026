@@ -1,0 +1,43 @@
+{
+  "summary": "Iteration 21 — Full Portal multi-route restructure + Portal Invoices clone (with new payment-link endpoints). 13/13 new pytest tests pass (test_iter21_portal_invoices.py) and 23/23 regression franchisee-invoicing tests still pass. Frontend smoke verifies all routes /portal, /portal/details, /portal/territory, /portal/events, /portal/files, /portal/invoices, /portal/invoices/new, /portal/invoices/clients, /portal/invoices/settings, /portal/invoices/deleted, /portal/invoices/reconcile each render with the expected heading. Sidebar shows Home/Profile/Territory/Events/Invoicing/Files. Mobile bottom-nav renders at 390px. One bug was found and fixed: POST /api/portal/invoices/{id}/link-payment was returning 422 (Pydantic 'missing body') because the request-body Pydantic model `_LinkPaymentBody` was defined inside `build_franchisee_invoices_router()` while the module has `from __future__ import annotations` enabled — FastAPI couldn't resolve the stringified annotation against the local scope. Fix: moved `LinkPaymentBody` to module level. After the fix the partial/full/unlink-single/unlink-all flows all behave correctly (partial -> 'partial', full credit >= total -> 'paid' with paid_at, unlink one rolls back to 'partial', unlink-all rolls back to 'sent').",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/portal/invoices/{id}/link-payment", "issue": "FIXED — model `_LinkPaymentBody` was function-scoped which collided with `from __future__ import annotations`. Moved to module-level `LinkPaymentBody`. Now returns 200 with proper payload."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Mobile bottom-nav (PortalShell)", "issues": ["Bottom nav at <md viewport shows only Home/Profile/Territory/Events/Sign out — Invoicing and Files are missing from the mobile bottom-nav even though both modules are enabled. Desktop sidebar shows them. Consider adding them to mobile bottom-nav (or overflow menu) so franchisees on mobile can reach Invoicing / Files."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter21_portal_invoices.py",
+    "/app/backend/tests/test_franchisee_invoicing.py",
+    "/app/test_reports/pytest/iter21_portal_invoices.xml"
+  ],
+  "action_items": [
+    "Decide whether mobile bottom-nav should expose Invoicing + Files (currently desktop-sidebar only).",
+    "Address React warning 'A component is changing a controlled input to be uncontrolled' originating from one of the portal form inputs (likely an Invoice or Client form field initialising as undefined). Investigate Create/EditPortalInvoice + PortalInvoiceClients forms — initialise every field as '' instead of undefined.",
+    "Pre-existing flag (carried from iter20): /api/calendar/portal-events still throws 500 on portal load — not investigated this iteration."
+  ],
+  "critical_code_review_comments": [
+    "franchisee_invoices_routes.py — anti-pattern: defining FastAPI request-body Pydantic models inside a closure ALONGSIDE `from __future__ import annotations` silently breaks body resolution. The original `_LinkPaymentBody` was treated as a query parameter named 'body'. Rule-of-thumb: keep all FastAPI request/response models at module scope. (Fixed in this iteration.)",
+    "franchisee_invoices_routes.py L484 `_recalc_invoice_state`: when there are no links and current status is something unexpected (e.g. 'cancelled'), the function silently downgrades it to 'sent'. Probably fine but worth a unit test.",
+    "PortalShell — mobile bottom-nav appears to hard-code its tabs rather than reading the same `portal_modules` map the desktop sidebar uses; this is why Invoicing/Files don't appear on mobile. Consider deriving the bottom-nav from the same source of truth.",
+    "iter20 review items remain valid: 5MB upload cap is enforced AFTER reading entire body; only_unreconciled filter uses `{$in:[None,[]]}` which won't match a missing field; auto-paid threshold rounding is asymmetric."
+  ],
+  "updated_files": [
+    "/app/backend/franchisee_invoices_routes.py (moved LinkPaymentBody to module level — fixes /link-payment 422 regression)",
+    "/app/backend/tests/test_iter21_portal_invoices.py (new — 13 tests, ~4s)"
+  ],
+  "success_rate": {"backend": "100% (13/13 new + 23/23 regression)", "frontend": "100% of smoke routes render with expected heading"},
+  "test_credentials": "From /app/memory/test_credentials.md (verified): sandra@creativemojo.co.uk / Test1234! (franchisee, invoicing module on), admin@creativemojo.co.uk / CreativeMojo2026!. Bearer tokens taken from POST /api/auth/login → body.access_token.",
+  "seed_data_creation": "All TEST_iter21_* invoices, clients, and bank transactions are cleaned up at fixture teardown (hard-delete via ?hard=true). A few TEST_iter21_filler bank transactions may remain in franchisee_bank_transactions if the cleanup ran into a network hiccup — they dedup correctly on re-upload and are harmless.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Regression suite: run `pytest /app/backend/tests/test_iter21_portal_invoices.py` (13 tests, ~4s) + `pytest /app/backend/tests/test_franchisee_invoicing.py` (23 tests, ~26s). The new file covers all 4 new payment-link endpoints (candidates/link/unlink-single/unlink-all), partial→paid→partial→sent state machine, admin↔portal isolation, admin-token rejected on /api/portal/*. Frontend multi-route shell is rendering correctly under both desktop and mobile viewports. The login flow is two-step (email → CONTINUE → password → SIGN IN). When automating UI, wait_for_selector('input[type=password]', timeout=10000) before filling password. PortalShell reads modules from profile.portal_modules (nested). One latent issue carried forward: mobile bottom-nav is missing Invoicing+Files links — only visible in desktop sidebar.",
+  "rca_of_the_issue": "POST /api/portal/invoices/{id}/link-payment returned 422 'missing body'. Reproduction: log in as Sandra, POST {\"transaction_id\":\"...\"} with Content-Type application/json — server replies `{\"detail\":[{\"loc\":[\"query\",\"body\"],...}]}`. Root cause: `_LinkPaymentBody` Pydantic model was declared inside `build_franchisee_invoices_router()` but the module has `from __future__ import annotations`, so all parameter type hints become strings. FastAPI uses `typing.get_type_hints(func)` which evaluates strings against the function's globalns/localns; the local closure scope (where `_LinkPaymentBody` lived) was not in either, so the annotation failed to resolve to a BaseModel and FastAPI fell back to treating `body` as a primitive query parameter. Mitigation applied: moved class to module level as `LinkPaymentBody`. Verified by all 5 TestPaymentLink tests passing post-fix. Generic guidance: with PEP-563 / `from __future__ import annotations` enabled, all FastAPI request- and response-model classes must live at module scope so `get_type_hints` can find them."
+}

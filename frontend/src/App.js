@@ -39,6 +39,24 @@ import DeletedInvoices from "@/pages/invoices/DeletedInvoices";
 import InvoiceSettings from "@/pages/invoices/InvoiceSettings";
 import InvoicesShell from "@/pages/invoices/InvoicesShell";
 import ReconcilePage from "@/pages/invoices/ReconcilePage";
+// Portal shell + section pages (refactored from PortalDashboardPage —
+// each section is now its own route under /portal/* for a cleaner UX).
+import PortalShell from "@/pages/portal/PortalShell";
+import PortalHomePage from "@/pages/portal/PortalHomePage";
+import PortalDetailsPage from "@/pages/portal/PortalDetailsPage";
+import PortalTerritoryPage from "@/pages/portal/PortalTerritoryPage";
+import PortalEventsPage from "@/pages/portal/PortalEventsPage";
+import PortalFilesPage from "@/pages/portal/PortalFilesPage";
+// Portal invoices module — clone of admin Sandra's Invoices, scoped to franchisee.
+import PortalInvoicesShell from "@/pages/portal/invoices/PortalInvoicesShell";
+import PortalInvoiceList from "@/pages/portal/invoices/PortalInvoiceList";
+import PortalInvoiceDetail from "@/pages/portal/invoices/PortalInvoiceDetail";
+import CreatePortalInvoice from "@/pages/portal/invoices/CreatePortalInvoice";
+import EditPortalInvoice from "@/pages/portal/invoices/EditPortalInvoice";
+import PortalInvoiceClients from "@/pages/portal/invoices/PortalInvoiceClients";
+import DeletedPortalInvoices from "@/pages/portal/invoices/DeletedPortalInvoices";
+import PortalInvoiceSettings from "@/pages/portal/invoices/PortalInvoiceSettings";
+import PortalReconcile from "@/pages/portal/invoices/PortalReconcile";
 
 export default function App() {
   return (
@@ -52,8 +70,24 @@ export default function App() {
               <ProtectedRoute><ChangePasswordPage /></ProtectedRoute>
             } />
             <Route path="/portal" element={
-              <ProtectedRoute role="franchisee"><PortalDashboardPage /></ProtectedRoute>
-            } />
+              <ProtectedRoute role="franchisee"><PortalShell /></ProtectedRoute>
+            }>
+              <Route index element={<PortalHomePage />} />
+              <Route path="details" element={<PortalDetailsPage />} />
+              <Route path="territory" element={<PortalTerritoryPage />} />
+              <Route path="events" element={<PortalEventsPage />} />
+              <Route path="files" element={<PortalFilesPage />} />
+              <Route path="invoices" element={<PortalInvoicesShell />}>
+                <Route index element={<PortalInvoiceList />} />
+                <Route path="reconcile" element={<PortalReconcile />} />
+                <Route path="new" element={<CreatePortalInvoice />} />
+                <Route path="deleted" element={<DeletedPortalInvoices />} />
+                <Route path="clients" element={<PortalInvoiceClients />} />
+                <Route path="settings" element={<PortalInvoiceSettings />} />
+                <Route path=":id" element={<PortalInvoiceDetail />} />
+                <Route path=":id/edit" element={<EditPortalInvoice />} />
+              </Route>
+            </Route>
             <Route path="/share/folder/:token" element={<PublicFolderSharePage />} />
             <Route path="/share/territory/:token" element={<PublicTerritorySharePage />} />
             <Route

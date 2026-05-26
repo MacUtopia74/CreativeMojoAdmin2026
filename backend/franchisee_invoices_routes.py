@@ -197,6 +197,10 @@ def _default_settings_from_franchisee(franchisee: dict) -> dict:
     }
 
 
+class LinkPaymentBody(BaseModel):
+    transaction_id: str
+
+
 # =========================== ROUTER ===========================
 
 def build_franchisee_invoices_router(db, require_role):
@@ -468,6 +472,190 @@ def build_franchisee_invoices_router(db, require_role):
             content=pdf_bytes,
             media_type="application/pdf",
             headers={"Content-Disposition": f"attachment; filename=invoice-{inv['invoice_number']}.pdf"},
+        )
+
+    # ----------------------------- INVOICE → PAYMENT linking
+    # Mirrors the admin Invoices module's `/payment-candidates` and
+    # `/link-payment` endpoints. Surfaces incoming bank CREDITS from
+    # `franchisee_bank_transactions` (filtered by this franchisee's
+    # franchisee_id) so the franchisee can match a deposit to one of
+    # their own invoices and have the invoice flip to paid / partial.
+
+    def _recalc_invoice_state(inv: dict) -> dict:
+        total = round(float(inv.get("total") or 0), 2)
+        links = inv.get("linked_transactions") or []
+        paid_total = round(sum(float(x.get("amount") or 0) for x in links), 2)
+        if paid_total + 0.005 >= total > 0:
+            status, paid_at = "paid", (inv.get("paid_at") or datetime.now(timezone.utc).isoformat())
+        elif paid_total > 0:
+            status, paid_at = "partial", None
+        else:
+            status, paid_at = inv.get("status") or "draft", None
+            # Don't flip a "sent" invoice back to draft on unlink.
+            if status not in {"draft", "sent", "partial", "paid", "deleted"}:
+                status = "sent"
+            if status == "partial":
+                status = "sent"  # zero links → no longer partial
+        return {"status": status, "paid_total": paid_total, "paid_at": paid_at}
+
+    @router.get("/{invoice_id}/payment-candidates")
+    async def payment_candidates(invoice_id: str, user: dict = franchisee):
+        fid = await _fid(user)
+        invoice = await db.franchisee_invoices.find_one(
+            {"id": invoice_id, "franchisee_id": fid, "deleted": {"$ne": True}}, {"_id": 0},
+        )
+        if not invoice:
+            raise HTTPException(404, "Invoice not found")
+        total = round(float(invoice.get("total") or 0), 2)
+        state = _recalc_invoice_state(invoice)
+        remaining = round(total - state["paid_total"], 2)
+        target = remaining if state["paid_total"] > 0 else total
+        already = {x.get("transaction_id") for x in (invoice.get("linked_transactions") or [])}
+        creds = await db.franchisee_bank_transactions.find(
+            {"franchisee_id": fid, "transaction_type": "CREDIT"},
+            {"_id": 0, "id": 1, "amount": 1, "description": 1, "date": 1,
+             "linked_invoice_ids": 1},
+        ).to_list(5000)
+        # Normalise shape to match the admin candidate response
+        out = []
+        for t in creds:
+            tid = t.get("id")
+            if tid in already:
+                continue
+            linked_to = t.get("linked_invoice_ids") or []
+            out.append({
+                "transaction_id": tid,
+                "amount": t.get("amount"),
+                "description": t.get("description"),
+                "timestamp": t.get("date"),
+                "currency": "GBP",
+                "linked_invoice_id": linked_to[0] if linked_to else None,
+                "linked_invoice_number": None,
+            })
+        def _score(t):
+            if abs(float(t["amount"] or 0) - target) < 0.005:
+                return 0
+            if abs(float(t["amount"] or 0) - target) < 1.0:
+                return 1
+            return 2
+        out.sort(key=lambda t: t.get("timestamp") or "", reverse=True)
+        out.sort(key=_score)
+        return {
+            "candidates": out[:50],
+            "invoice_total": total,
+            "paid_total": state["paid_total"],
+            "remaining": remaining,
+            "target_amount": target,
+        }
+
+    @router.post("/{invoice_id}/link-payment")
+    async def link_payment(invoice_id: str, body: LinkPaymentBody, user: dict = franchisee):
+        fid = await _fid(user)
+        invoice = await db.franchisee_invoices.find_one(
+            {"id": invoice_id, "franchisee_id": fid, "deleted": {"$ne": True}}, {"_id": 0},
+        )
+        if not invoice:
+            raise HTTPException(404, "Invoice not found")
+        tx = await db.franchisee_bank_transactions.find_one(
+            {"id": body.transaction_id, "franchisee_id": fid}, {"_id": 0},
+        )
+        if not tx:
+            raise HTTPException(404, "Transaction not found")
+        existing = invoice.get("linked_transactions") or []
+        if any(x.get("transaction_id") == body.transaction_id for x in existing):
+            raise HTTPException(400, "Transaction already linked to this invoice")
+        now = datetime.now(timezone.utc).isoformat()
+        link_entry = {
+            "transaction_id": body.transaction_id,
+            "amount": tx.get("amount"),
+            "timestamp": tx.get("date"),
+            "description": tx.get("description"),
+            "linked_at": now,
+        }
+        new_links = existing + [link_entry]
+        merged = {**invoice, "linked_transactions": new_links}
+        state = _recalc_invoice_state(merged)
+        update = {
+            "linked_transactions": new_links,
+            "status": state["status"],
+            "updated_at": now,
+        }
+        if state["status"] == "paid":
+            update["paid_at"] = state["paid_at"] or now
+        await db.franchisee_invoices.update_one(
+            {"id": invoice_id, "franchisee_id": fid},
+            {"$set": update, "$addToSet": {"payment_transaction_ids": body.transaction_id}},
+        )
+        await db.franchisee_bank_transactions.update_one(
+            {"id": body.transaction_id, "franchisee_id": fid},
+            {"$addToSet": {"linked_invoice_ids": invoice_id}},
+        )
+        return await db.franchisee_invoices.find_one(
+            {"id": invoice_id, "franchisee_id": fid}, {"_id": 0},
+        )
+
+    @router.delete("/{invoice_id}/link-payment/{transaction_id}")
+    async def unlink_single_payment(invoice_id: str, transaction_id: str, user: dict = franchisee):
+        fid = await _fid(user)
+        invoice = await db.franchisee_invoices.find_one(
+            {"id": invoice_id, "franchisee_id": fid}, {"_id": 0},
+        )
+        if not invoice:
+            raise HTTPException(404, "Invoice not found")
+        existing = invoice.get("linked_transactions") or []
+        new_links = [x for x in existing if x.get("transaction_id") != transaction_id]
+        if len(new_links) == len(existing):
+            raise HTTPException(404, "Transaction not linked to this invoice")
+        merged = {**invoice, "linked_transactions": new_links}
+        state = _recalc_invoice_state(merged)
+        now = datetime.now(timezone.utc).isoformat()
+        update = {
+            "linked_transactions": new_links,
+            "status": state["status"],
+            "updated_at": now,
+        }
+        if state["status"] != "paid":
+            await db.franchisee_invoices.update_one(
+                {"id": invoice_id, "franchisee_id": fid},
+                {"$set": update, "$unset": {"paid_at": ""},
+                 "$pull": {"payment_transaction_ids": transaction_id}},
+            )
+        else:
+            await db.franchisee_invoices.update_one(
+                {"id": invoice_id, "franchisee_id": fid},
+                {"$set": update, "$pull": {"payment_transaction_ids": transaction_id}},
+            )
+        await db.franchisee_bank_transactions.update_one(
+            {"id": transaction_id, "franchisee_id": fid},
+            {"$pull": {"linked_invoice_ids": invoice_id}},
+        )
+        return await db.franchisee_invoices.find_one(
+            {"id": invoice_id, "franchisee_id": fid}, {"_id": 0},
+        )
+
+    @router.delete("/{invoice_id}/link-payment")
+    async def unlink_all_payments(invoice_id: str, user: dict = franchisee):
+        fid = await _fid(user)
+        invoice = await db.franchisee_invoices.find_one(
+            {"id": invoice_id, "franchisee_id": fid}, {"_id": 0},
+        )
+        if not invoice:
+            raise HTTPException(404, "Invoice not found")
+        tx_ids = [x.get("transaction_id") for x in (invoice.get("linked_transactions") or [])]
+        now = datetime.now(timezone.utc).isoformat()
+        await db.franchisee_invoices.update_one(
+            {"id": invoice_id, "franchisee_id": fid},
+            {"$set": {"linked_transactions": [], "status": "sent",
+                      "updated_at": now, "payment_transaction_ids": []},
+             "$unset": {"paid_at": ""}},
+        )
+        if tx_ids:
+            await db.franchisee_bank_transactions.update_many(
+                {"id": {"$in": tx_ids}, "franchisee_id": fid},
+                {"$pull": {"linked_invoice_ids": invoice_id}},
+            )
+        return await db.franchisee_invoices.find_one(
+            {"id": invoice_id, "franchisee_id": fid}, {"_id": 0},
         )
 
     # ----------------------------- BANK RECONCILIATION (Phase 2 — manual CSV)
