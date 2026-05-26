@@ -1,53 +1,46 @@
+// Portal invoice client — links to /portal/invoices/:id (NOT the admin
+// /invoices route — that's how franchisees ended up at the dashboard
+// every time they clicked an invoice card).
+import { format } from "date-fns";
 import { Link } from "react-router-dom";
-import { format, parseISO } from "date-fns";
-import { ArrowRight } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { ChevronRight, Calendar } from "lucide-react";
 import StatusBadge from "@/components/invoices/StatusBadge";
 
-export const InvoiceCard = ({ invoice }) => {
-  const formattedDate = invoice.due_date 
-    ? format(parseISO(invoice.due_date), "MMM dd, yyyy")
-    : "No date";
+const PortalInvoiceCard = ({ invoice }) => {
+  const formatDate = (dateStr) => {
+    try { return format(new Date(dateStr), "MMM d, yyyy"); }
+    catch { return dateStr; }
+  };
 
   return (
-    <Link to={`/invoices/${invoice.id}`} data-testid={`invoice-card-${invoice.id}`}>
-      <Card className="p-6 hover:shadow-md transition-all duration-200 border border-stone-200 hover:-translate-y-0.5 group rounded-2xl">
-        <div className="flex items-center justify-between gap-6">
-          <div className="flex items-center gap-8 min-w-0 flex-1">
-            {/* Invoice Number + due date */}
-            <div className="shrink-0 w-32">
-              <p className="font-mono text-base font-semibold text-slate-900" data-testid="invoice-number">
+    <Link to={`/portal/invoices/${invoice.id}`} data-testid={`invoice-card-${invoice.id}`}>
+      <Card className="p-4 hover:shadow-md transition-shadow cursor-pointer hover:bg-muted/30 rounded-lg">
+        <div className="flex items-center justify-between">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-3 flex-wrap">
+              <p className="font-mono text-sm font-semibold text-foreground">
                 {invoice.invoice_number}
               </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Due {formattedDate}
-              </p>
+              <StatusBadge status={invoice.status} />
             </div>
-
-            {/* Client */}
-            <div className="hidden sm:block min-w-0 flex-1">
-              <p className="font-semibold text-slate-900 truncate" data-testid="client-name">
-                {invoice.client_name}
-              </p>
-              <p className="text-sm text-muted-foreground truncate">
-                {invoice.client_email}
-              </p>
+            <p className="font-medium text-foreground mt-2 truncate">
+              {invoice.client_name}
+            </p>
+            <div className="flex items-center gap-1 mt-1 text-sm text-muted-foreground">
+              <Calendar className="w-3 h-3" />
+              <span>{formatDate(invoice.issue_date)}</span>
+              <span className="mx-1">·</span>
+              <span>Due {formatDate(invoice.due_date)}</span>
             </div>
           </div>
-
-          <div className="flex items-center gap-6 shrink-0">
-            {/* Status */}
-            <StatusBadge status={invoice.status} />
-
-            {/* Amount */}
-            <div className="text-right w-24">
-              <p className="font-mono text-lg font-bold text-slate-900" data-testid="invoice-total">
-                £{invoice.total.toLocaleString('en-GB', { minimumFractionDigits: 2 })}
+          <div className="flex items-center gap-4 ml-4">
+            <div className="text-right">
+              <p className="font-mono text-lg font-semibold">
+                £{Number(invoice.total).toFixed(2)}
               </p>
             </div>
-
-            {/* Arrow */}
-            <ArrowRight className="w-5 h-5 text-muted-foreground group-hover:text-blue-600 transition-colors" />
+            <ChevronRight className="w-5 h-5 text-muted-foreground" />
           </div>
         </div>
       </Card>
@@ -55,4 +48,4 @@ export const InvoiceCard = ({ invoice }) => {
   );
 };
 
-export default InvoiceCard;
+export default PortalInvoiceCard;

@@ -64,7 +64,10 @@ class ClientBase(BaseModel):
     email2: Optional[str] = ""
     phone: Optional[str] = ""
     address: Optional[str] = ""
+    address_line2: Optional[str] = ""
     city: Optional[str] = ""
+    county: Optional[str] = ""
+    postcode: Optional[str] = ""
     country: Optional[str] = ""
     show_name: bool = True
     show_email: bool = True
@@ -131,10 +134,14 @@ class InvoiceSettings(BaseModel):
     the first time the settings page is opened. Bank fields are blank by
     default; each franchisee fills their own."""
     id: str = ""  # set to franchisee_id by the router
+    franchise_name: str = ""  # e.g. "Creative Mojo North & West Devon" — shown large at top of every invoice
     business_name: str = ""
     business_address: str = ""
     business_address_line1: str = ""
     business_address_line2: str = ""
+    business_city: str = ""
+    business_county: str = ""
+    business_postcode: str = ""
     business_phone: str = ""
     business_email: str = ""
     bank_payment_info: str = "Payments by BACS/Online should be made to:"
@@ -143,10 +150,14 @@ class InvoiceSettings(BaseModel):
 
 
 class InvoiceSettingsUpdate(BaseModel):
+    franchise_name: Optional[str] = None
     business_name: Optional[str] = None
     business_address: Optional[str] = None
     business_address_line1: Optional[str] = None
     business_address_line2: Optional[str] = None
+    business_city: Optional[str] = None
+    business_county: Optional[str] = None
+    business_postcode: Optional[str] = None
     business_phone: Optional[str] = None
     business_email: Optional[str] = None
     bank_payment_info: Optional[str] = None
@@ -173,10 +184,8 @@ def _default_settings_from_franchisee(franchisee: dict) -> dict:
         franchisee.get("postcode"),
     ]
     addr_full = ", ".join([p for p in addr_parts if p])
-    line1_parts = [franchisee.get("address") or franchisee.get("address_street"), franchisee.get("address_line2")]
-    line1 = ", ".join([p for p in line1_parts if p])
-    line2_parts = [franchisee.get("city") or franchisee.get("town"), franchisee.get("postcode")]
-    line2 = ", ".join([p for p in line2_parts if p])
+    line1 = franchisee.get("address") or franchisee.get("address_street") or ""
+    line2 = franchisee.get("address_line2") or ""
     biz_name = (
         franchisee.get("full_name")
         or f"{franchisee.get('first_name') or ''} {franchisee.get('last_name') or ''}".strip()
@@ -185,10 +194,14 @@ def _default_settings_from_franchisee(franchisee: dict) -> dict:
     )
     return {
         "id": franchisee["id"],
+        "franchise_name": franchisee.get("organisation") or biz_name,
         "business_name": biz_name,
         "business_address": addr_full,
         "business_address_line1": line1,
         "business_address_line2": line2,
+        "business_city": franchisee.get("city") or franchisee.get("town") or "",
+        "business_county": franchisee.get("county") or "",
+        "business_postcode": franchisee.get("postcode") or "",
         "business_phone": franchisee.get("phone") or franchisee.get("mobile") or "",
         "business_email": franchisee.get("primary_email") or franchisee.get("email") or franchisee.get("contact_email") or "",
         "bank_payment_info": "Payments by BACS/Online should be made to:",
@@ -308,23 +321,26 @@ def build_franchisee_invoices_router(db, require_role):
     @router.get("/stats")
     async def stats(user: dict = franchisee):
         fid = await _fid(user)
-        cursor = db.franchisee_invoices.find(
-            {"franchisee_id": fid, "deleted": {"$ne": True}},
-            {"_id": 0, "status": 1, "total": 1, "issue_date": 1},
-        )
-        totals = {"draft": 0.0, "sent": 0.0, "paid": 0.0, "overdue": 0.0}
-        counts = {"draft": 0, "sent": 0, "paid": 0, "overdue": 0}
-        all_total = 0.0
-        all_count = 0
-        async for inv in cursor:
-            st = inv.get("status") or "draft"
-            t = float(inv.get("total") or 0)
-            if st in totals:
-                totals[st] += t
-                counts[st] += 1
-            all_total += t
-            all_count += 1
-        return {"totals": totals, "counts": counts, "all_total": all_total, "all_count": all_count}
+        base = {"franchisee_id": fid, "deleted": {"$ne": True}}
+        total_invoices = await db.franchisee_invoices.count_documents(base)
+        draft = await db.franchisee_invoices.count_documents({**base, "status": "draft"})
+        sent = await db.franchisee_invoices.count_documents({**base, "status": "sent"})
+        partial = await db.franchisee_invoices.count_documents({**base, "status": "partial"})
+        paid = await db.franchisee_invoices.count_documents({**base, "status": "paid"})
+        totals = await db.franchisee_invoices.aggregate(
+            [{"$match": base}, {"$group": {"_id": "$status", "total": {"$sum": "$total"}}}]
+        ).to_list(10)
+        total_revenue = sum(t["total"] for t in totals if t["_id"] == "paid")
+        outstanding = sum(t["total"] for t in totals if t["_id"] in ("draft", "sent", "partial"))
+        return {
+            "total_invoices": total_invoices,
+            "draft_count": draft,
+            "sent_count": sent,
+            "partial_count": partial,
+            "paid_count": paid,
+            "total_revenue": total_revenue,
+            "outstanding": outstanding,
+        }
 
     @router.get("/next-number")
     async def next_number(user: dict = franchisee):
@@ -340,7 +356,7 @@ def build_franchisee_invoices_router(db, require_role):
                 last_num = int(str(latest["invoice_number"]).split("-")[-1])
             except (ValueError, IndexError):
                 last_num = 0
-        return {"next_number": f"INV-{(last_num + 1):04d}"}
+        return {"invoice_number": f"INV-{(last_num + 1):04d}"}
 
     @router.get("/{invoice_id}", response_model=Invoice)
     async def get_invoice(invoice_id: str, user: dict = franchisee):
@@ -433,7 +449,25 @@ def build_franchisee_invoices_router(db, require_role):
             seed = _default_settings_from_franchisee(f)
             await db.franchisee_invoice_settings.insert_one({**seed, "_id": fid})
             return seed
+        # Lazy-backfill any newly-added fields (franchise_name, business_city,
+        # county, postcode) from the franchisee profile so older settings
+        # docs created before this iteration also render correctly.
+        backfill = {}
+        for key in ("franchise_name", "business_city", "business_county", "business_postcode"):
+            if key not in s or s.get(key) in (None, ""):
+                backfill[key] = ""
+        if backfill:
+            f = await db.franchisees.find_one({"id": fid}, {"_id": 0})
+            if f:
+                seed = _default_settings_from_franchisee(f)
+                for key in list(backfill.keys()):
+                    backfill[key] = seed.get(key, "") or ""
+                await db.franchisee_invoice_settings.update_one(
+                    {"_id": fid}, {"$set": backfill},
+                )
+                s.update(backfill)
         s.pop("_id", None)
+        s["id"] = fid
         return s
 
     @router.put("/settings/me", response_model=InvoiceSettings)
@@ -887,21 +921,60 @@ def _render_invoice_pdf(invoice: dict, settings: dict) -> bytes:
     styles = getSampleStyleSheet()
     h_left = ParagraphStyle("hl", parent=styles["Normal"], fontSize=10, leading=12)
     h_right = ParagraphStyle("hr", parent=styles["Normal"], fontSize=10, leading=12, alignment=2)
-    biz_block = (
-        f"<b>{settings.get('business_name') or ''}</b><br/>"
-        f"{settings.get('business_address_line1') or ''}<br/>"
-        f"{settings.get('business_address_line2') or ''}<br/>"
-        f"{settings.get('business_phone') or ''}<br/>"
-        f"{settings.get('business_email') or ''}"
+    franchise_style = ParagraphStyle(
+        "franchise",
+        parent=styles["Normal"],
+        fontSize=18,
+        leading=22,
+        fontName="Helvetica-Bold",
+        alignment=2,  # right
+        textColor=colors.HexColor("#0f172a"),
     )
+    # Build the address block for the top-right corner. Each line is its
+    # own field so we never get stray commas or double-spaces when a line
+    # is blank.
+    addr_lines = []
+    for k in (
+        "business_address_line1",
+        "business_address_line2",
+    ):
+        if settings.get(k):
+            addr_lines.append(settings[k])
+    city_line_parts = [
+        settings.get("business_city"),
+        settings.get("business_county"),
+        settings.get("business_postcode"),
+    ]
+    city_line = ", ".join([p for p in city_line_parts if p])
+    if city_line:
+        addr_lines.append(city_line)
+    if settings.get("business_phone"):
+        addr_lines.append(settings["business_phone"])
+    if settings.get("business_email"):
+        addr_lines.append(settings["business_email"])
+    business_block = (
+        f"<b>{settings.get('business_name') or ''}</b><br/>"
+        + "<br/>".join(addr_lines)
+    )
+
+    franchise_name = settings.get("franchise_name") or settings.get("business_name") or ""
     inv_block = (
         f"<font size=18><b>INVOICE</b></font><br/>"
         f"<b>{invoice.get('invoice_number') or ''}</b><br/>"
         f"Issue: {invoice.get('issue_date') or ''}<br/>"
         f"Due: {invoice.get('due_date') or ''}"
     )
+    # Top row — large franchise name on the right, "INVOICE" + number on the left.
+    title_table = Table(
+        [[Paragraph(inv_block, h_left), Paragraph(franchise_name, franchise_style)]],
+        colWidths=[100 * mm, 70 * mm],
+    )
+    title_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
+
+    # Second row — empty left (or could carry "Bill To" later), business
+    # name + address on the right (smaller than the franchise name).
     header_table = Table(
-        [[Paragraph(biz_block, h_left), Paragraph(inv_block, h_right)]],
+        [["", Paragraph(business_block, h_right)]],
         colWidths=[100 * mm, 70 * mm],
     )
     header_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
@@ -961,6 +1034,8 @@ def _render_invoice_pdf(invoice: dict, settings: dict) -> bytes:
     )
 
     story = [
+        title_table,
+        Spacer(1, 3 * mm),
         header_table,
         Spacer(1, 8 * mm),
         Paragraph("<b>Bill To</b>", styles["Normal"]),

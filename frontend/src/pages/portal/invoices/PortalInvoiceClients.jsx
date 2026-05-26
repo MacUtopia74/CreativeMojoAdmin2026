@@ -42,7 +42,10 @@ const emptyClient = {
   email2: "",
   phone: "",
   address: "",
+  address_line2: "",
   city: "",
+  county: "",
+  postcode: "",
   country: "",
   show_name: true,
   show_email: true,
@@ -90,7 +93,10 @@ const Clients = () => {
       email2: client.email2 || "",
       phone: client.phone || "",
       address: client.address || "",
+      address_line2: client.address_line2 || "",
       city: client.city || "",
+      county: client.county || "",
+      postcode: client.postcode || "",
       country: client.country || "",
       show_name: client.show_name !== false,
       show_email: client.show_email !== false,
@@ -144,10 +150,10 @@ const Clients = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-4xl font-bold tracking-tight font-['Manrope']" data-testid="page-title">
+          <h1 className="text-5xl font-bold tracking-tight text-slate-900" data-testid="page-title">
             Clients
           </h1>
-          <p className="text-muted-foreground mt-1">
+          <p className="text-muted-foreground mt-2">
             Manage your client database
           </p>
         </div>
@@ -158,7 +164,7 @@ const Clients = () => {
               Add Client
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-md">
+          <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="">
                 {editingClient ? "Edit Client" : "Add New Client"}
@@ -268,12 +274,25 @@ const Clients = () => {
                     <Label htmlFor="show_address" className="text-xs text-muted-foreground">Show</Label>
                   </div>
                 </div>
-                <div className="flex items-start gap-3">
+                <div className="col-span-2 flex items-start gap-3">
                   <div className="flex-1">
-                    <Label>City</Label>
+                    <Label>Address Line 2</Label>
                     <Input
                       className="mt-2"
-                      placeholder="City"
+                      placeholder="Building, suite, etc."
+                      value={formData.address_line2}
+                      onChange={(e) => setFormData(prev => ({ ...prev, address_line2: e.target.value }))}
+                      data-testid="client-address-line2-input"
+                    />
+                  </div>
+                  <div className="w-[60px] shrink-0" />
+                </div>
+                <div className="flex items-start gap-3">
+                  <div className="flex-1">
+                    <Label>Town / City</Label>
+                    <Input
+                      className="mt-2"
+                      placeholder="Town or city"
                       value={formData.city}
                       onChange={(e) => setFormData(prev => ({ ...prev, city: e.target.value }))}
                       data-testid="client-city-input"
@@ -287,6 +306,32 @@ const Clients = () => {
                     />
                     <Label htmlFor="show_city" className="text-xs text-muted-foreground">Show</Label>
                   </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <div className="flex-1">
+                    <Label>County</Label>
+                    <Input
+                      className="mt-2"
+                      placeholder="County"
+                      value={formData.county}
+                      onChange={(e) => setFormData(prev => ({ ...prev, county: e.target.value }))}
+                      data-testid="client-county-input"
+                    />
+                  </div>
+                  <div className="w-[60px] shrink-0" />
+                </div>
+                <div className="flex items-start gap-3">
+                  <div className="flex-1">
+                    <Label>Postcode</Label>
+                    <Input
+                      className="mt-2 font-mono"
+                      placeholder="EX15 1NB"
+                      value={formData.postcode}
+                      onChange={(e) => setFormData(prev => ({ ...prev, postcode: e.target.value }))}
+                      data-testid="client-postcode-input"
+                    />
+                  </div>
+                  <div className="w-[60px] shrink-0" />
                 </div>
                 <div className="flex items-start gap-3">
                   <div className="flex-1">
