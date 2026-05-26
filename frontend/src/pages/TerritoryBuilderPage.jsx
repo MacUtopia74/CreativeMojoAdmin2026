@@ -526,6 +526,43 @@ export default function TerritoryBuilderPage() {
             height={820}
             franchiseeOverlay={showOverlay ? overlay : null}
           />
+          {/* Live homes-count bar — sits directly below the map so the
+              number is in the user's eyeline as they click sectors. Sticky
+              to the bottom of the viewport so it stays visible even while
+              scrolling through nearby-sectors lists. */}
+          <div
+            data-testid="live-homes-bar"
+            className="sticky bottom-3 z-20 mt-2 bg-white border-2 border-stone-950 rounded-xl shadow-lg px-4 py-2.5 flex items-center gap-4 flex-wrap"
+          >
+            <div className="flex items-baseline gap-2">
+              <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">Homes</div>
+              <div className="font-display text-2xl text-stone-950 tabular-nums leading-none" data-testid="home-count-live">
+                {homeCount.count}
+                {!franchiseeId && <span className="text-stone-400 text-base"> / {TARGET_HOMES}</span>}
+              </div>
+            </div>
+            <div className="flex-1 min-w-[140px] max-w-xs">
+              <div className="h-2 bg-stone-100 rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all ${
+                    franchiseeId ? "bg-emerald-500"
+                    : homeCount.count >= TARGET_HOMES ? "bg-emerald-500"
+                    : homeCount.count >= TARGET_HOMES * 0.8 ? "bg-amber-400"
+                    : "bg-stone-400"
+                  }`}
+                  style={{ width: franchiseeId ? "100%" : `${progress}%` }}
+                />
+              </div>
+              <div className="text-[10px] text-stone-500 mt-1 tabular-nums">
+                {selected.length} sector{selected.length === 1 ? "" : "s"} selected
+                {!franchiseeId && homeCount.count > 0 && (
+                  <> · {homeCount.count >= TARGET_HOMES
+                    ? <span className="text-emerald-700 font-bold">target met</span>
+                    : <span>{TARGET_HOMES - homeCount.count} to go</span>}</>
+                )}
+              </div>
+            </div>
+          </div>
           <div className="text-[11px] text-stone-500 mt-2 flex items-center gap-3 flex-wrap">
             <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-[#dddd16] border border-[#14532D]" /> Selected sector</span>
             <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-stone-200 border border-stone-400" /> Available sector</span>
