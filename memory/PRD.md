@@ -1,5 +1,8 @@
 # Creative Mojo — Unified Admin Platform PRD
 
+## Latest change — Clickable WooCommerce order reference in Orders page (Feb 26 2026)
+- `OrdersPage.jsx` order-reference badge ("8063", "8054", "8047" …) now renders as an anchor when `isWoo && order.woo_id`. Pattern reused from the existing Channel column: `${WOO_BASE_URL}/wp-admin/post.php?post={woo_id}&action=edit`, `target="_blank"`, `rel="noopener noreferrer"`, with an `ExternalLink` icon. Legacy / direct orders keep the plain span. Click-through verified on the live preview (3 woo refs found, first href confirmed).
+
 ## Latest change — Per-Franchisee Invoicing Module (Feb 25 2026)
 - **Phase 1 — Invoicing clone in the Franchisee Portal** ✅
   - New backend `franchisee_invoices_routes.py` mounted at `/api/portal/invoices/*` with full CRUD for clients, invoices, settings, PDF, stats, next-number — all scoped to `user.franchisee_id` injected by the portal JWT (client-supplied scoping is never accepted).

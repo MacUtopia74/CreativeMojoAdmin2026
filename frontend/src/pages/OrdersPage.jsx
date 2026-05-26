@@ -479,9 +479,24 @@ function OrderRow({ order, showProducts, hideLegacyIds, selected = false, onSele
         </button>
       </td>
       <td className="px-2 py-2.5 align-top">
-        <span className="inline-block px-2 py-0.5 bg-white border border-stone-300 rounded-md text-xs font-mono font-semibold">
-          {order.display_order_id || order.woo_number || order.legacy_order_id || order.id}
-        </span>
+        {isWoo && order.woo_id ? (
+          <a
+            href={`${WOO_BASE_URL}/wp-admin/post.php?post=${order.woo_id}&action=edit`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            title="Open this order in WooCommerce"
+            data-testid={`woo-ref-link-${order.woo_id}`}
+            className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-stone-300 rounded-md text-xs font-mono font-semibold text-stone-800 hover:text-stone-950 hover:border-stone-400 hover:bg-stone-50"
+          >
+            {order.display_order_id || order.woo_number || order.legacy_order_id || order.id}
+            <ExternalLink className="w-3 h-3 opacity-60" />
+          </a>
+        ) : (
+          <span className="inline-block px-2 py-0.5 bg-white border border-stone-300 rounded-md text-xs font-mono font-semibold">
+            {order.display_order_id || order.woo_number || order.legacy_order_id || order.id}
+          </span>
+        )}
         {order.legacy_import && !hideLegacyIds && (
           <div
             className="text-[9px] uppercase tracking-wider text-stone-400 mt-1 font-bold"
