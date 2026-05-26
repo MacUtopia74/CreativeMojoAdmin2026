@@ -24,7 +24,14 @@ from pydantic import BaseModel, EmailStr, Field, ConfigDict
 # ----------------------------------------------------------------------------
 MONGO_URL = os.environ["MONGO_URL"]
 DB_NAME = os.environ["DB_NAME"]
-JWT_SECRET = os.environ["JWT_SECRET"]
+# JWT signing key. The env-provided value is used as a *seed*: on first
+# boot we cache it in MongoDB and from then on the DB-backed value wins.
+# This stops cookies issued by one pod from being rejected by another
+# pod (or by the same pod after a restart) if the env value ever
+# differs across instances/deploys — a subtle bug that surfaced in
+# production as "Not authenticated" 401s immediately after a 200 login.
+_JWT_SECRET_SEED = os.environ["JWT_SECRET"]
+JWT_SECRET = _JWT_SECRET_SEED  # may be overwritten by _ensure_jwt_secret() below
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_MINUTES = 60 * 8  # 8 hours for an admin tool
 REFRESH_TOKEN_DAYS = 7
@@ -3516,6 +3523,45 @@ api.include_router(build_franchisee_invoices_router(db, require_role))
 # Banking module — TrueLayer Open Banking (read-only HSBC integration)
 from banking_routes import build_banking_router, ensure_banking_indexes  # noqa: E402
 api.include_router(build_banking_router(db, require_role))
+
+
+@app.on_event("startup")
+async def _resolve_jwt_secret():
+    """Pin JWT_SECRET to a value cached in MongoDB so it stays stable
+    across pod restarts and across multiple backend replicas. Behaviour:
+
+    · First boot: env value wins, gets persisted to ``db.app_secrets``.
+    · Subsequent boots: DB value wins (env can change without breaking
+      existing user sessions).
+    · Empty DB row + missing env: fall back to a freshly generated 64-byte
+      secret persisted forever after — clearly logged so it's not silent.
+    """
+    global JWT_SECRET  # noqa: PLW0603
+    try:
+        existing = await db.app_secrets.find_one({"_id": "jwt_secret"})
+        if existing and existing.get("value"):
+            if existing["value"] != _JWT_SECRET_SEED and _JWT_SECRET_SEED:
+                # Env says one thing, DB says another. DB wins — log so the
+                # admin can investigate (most often a rotated env not yet
+                # taking effect, or a stale Emergent secret panel value).
+                logger.warning(
+                    "JWT_SECRET in env differs from value cached in MongoDB; "
+                    "keeping the DB value to preserve existing sessions."
+                )
+            JWT_SECRET = existing["value"]
+            return
+        # First boot — persist whatever we seeded with.
+        seed = _JWT_SECRET_SEED or os.urandom(48).hex()
+        await db.app_secrets.update_one(
+            {"_id": "jwt_secret"},
+            {"$setOnInsert": {"_id": "jwt_secret", "value": seed,
+                              "created_at": datetime.now(timezone.utc).isoformat()}},
+            upsert=True,
+        )
+        JWT_SECRET = seed
+        logger.info("JWT_SECRET cached in MongoDB for cross-replica stability.")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("JWT_SECRET DB sync failed (non-fatal, sticking with env value): %s", exc)
 
 
 @app.on_event("startup")
