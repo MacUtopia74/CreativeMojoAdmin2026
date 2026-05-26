@@ -472,50 +472,113 @@ export default function TerritoryBuilderPage() {
       <div className="space-y-5">
         {/* Map — full width, taller for more breathing room */}
         <div className="space-y-3">
-          {/* Overlay toggle + collapsible legend so admins can see which
-              colour belongs to which franchisee. Header stays slim; the
-              chip grid below collapses to give the map more room. */}
-          <div className="bg-white border border-stone-200 rounded-2xl">
-            <div className="p-3 flex items-center gap-3 flex-wrap">
-              <button
-                onClick={() => setShowOverlay((v) => !v)}
-                data-testid="toggle-franchisee-overlay"
-                className={`px-3 py-2 text-[11px] font-bold uppercase tracking-wider rounded-lg border flex items-center gap-1.5 shrink-0 ${showOverlay ? "bg-stone-950 text-white border-stone-950" : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"}`}
-                title={showOverlay ? "Hide every franchisee's territory" : "Show every franchisee's territory"}
-              >
-                {showOverlay ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                <Layers className="w-3.5 h-3.5" />
-                {overlay.franchisees.length} live franchisee{overlay.franchisees.length === 1 ? "" : "s"}
-              </button>
-              {showOverlay && overlay.franchisees.length > 0 && (
+          {/* Header strip above the map — three columns:
+                · Live-franchisees toggle + legend (left)
+                · Selected sectors collapsible (middle)
+                · Nearby sectors collapsible (right)
+              Keeps the working chips one click away without crowding the
+              map below. */}
+          <div className="grid lg:grid-cols-3 gap-3 items-start">
+            <div className="bg-white border border-stone-200 rounded-2xl">
+              <div className="p-3 flex items-center gap-3 flex-wrap">
                 <button
-                  onClick={() => setLegendOpen((v) => !v)}
-                  data-testid="toggle-legend"
-                  className="ml-auto text-[11px] font-bold uppercase tracking-wider text-stone-600 hover:text-stone-950 flex items-center gap-1.5 px-2 py-1.5 rounded-md hover:bg-stone-50"
+                  onClick={() => setShowOverlay((v) => !v)}
+                  data-testid="toggle-franchisee-overlay"
+                  className={`px-3 py-2 text-[11px] font-bold uppercase tracking-wider rounded-lg border flex items-center gap-1.5 shrink-0 ${showOverlay ? "bg-stone-950 text-white border-stone-950" : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"}`}
+                  title={showOverlay ? "Hide every franchisee's territory" : "Show every franchisee's territory"}
                 >
-                  {legendOpen ? "Hide legend" : "Show legend"}
-                  {legendOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  {showOverlay ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                  <Layers className="w-3.5 h-3.5" />
+                  {overlay.franchisees.length} live franchisee{overlay.franchisees.length === 1 ? "" : "s"}
                 </button>
+                {showOverlay && overlay.franchisees.length > 0 && (
+                  <button
+                    onClick={() => setLegendOpen((v) => !v)}
+                    data-testid="toggle-legend"
+                    className="ml-auto text-[11px] font-bold uppercase tracking-wider text-stone-600 hover:text-stone-950 flex items-center gap-1.5 px-2 py-1.5 rounded-md hover:bg-stone-50"
+                  >
+                    {legendOpen ? "Hide legend" : "Show legend"}
+                    {legendOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </button>
+                )}
+              </div>
+              {showOverlay && legendOpen && overlay.franchisees.length > 0 && (
+                <div className="px-3 pb-3 grid grid-cols-2 gap-1.5" data-testid="franchisee-legend">
+                  {overlay.franchisees.map((f) => (
+                    <button
+                      key={f.id}
+                      onClick={() => {
+                        if (f.hq_lat != null && f.hq_lng != null) setCentre({ lat: f.hq_lat, lng: f.hq_lng });
+                      }}
+                      title={`Jump to ${f.name}${f.owner_name ? " · " + f.owner_name : ""}${f.postcode ? " · " + f.postcode : ""}`}
+                      className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold rounded-md border border-stone-200 bg-stone-50 hover:bg-stone-100 min-w-0"
+                      data-testid={`legend-${f.id}`}
+                    >
+                      <span className="w-2.5 h-2.5 rounded-full border border-white shadow-sm shrink-0" style={{ background: f.color }} />
+                      <span className="truncate">{f.franchise_number ? `#${f.franchise_number} ` : ""}{f.name}</span>
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
-            {showOverlay && legendOpen && overlay.franchisees.length > 0 && (
-              <div className="px-3 pb-3 grid grid-cols-2 md:grid-cols-3 gap-1.5" data-testid="franchisee-legend">
-                {overlay.franchisees.map((f) => (
-                  <button
-                    key={f.id}
-                    onClick={() => {
-                      if (f.hq_lat != null && f.hq_lng != null) setCentre({ lat: f.hq_lat, lng: f.hq_lng });
-                    }}
-                    title={`Jump to ${f.name}${f.owner_name ? " · " + f.owner_name : ""}${f.postcode ? " · " + f.postcode : ""}`}
-                    className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold rounded-md border border-stone-200 bg-stone-50 hover:bg-stone-100 min-w-0"
-                    data-testid={`legend-${f.id}`}
-                  >
-                    <span className="w-2.5 h-2.5 rounded-full border border-white shadow-sm shrink-0" style={{ background: f.color }} />
-                    <span className="truncate">{f.franchise_number ? `#${f.franchise_number} ` : ""}{f.name}</span>
-                  </button>
-                ))}
-              </div>
-            )}
+
+            {/* Selected sectors — collapsible, sits above the map */}
+            <div className="bg-white border border-stone-200 rounded-2xl">
+              <button
+                type="button"
+                onClick={() => setSelectedListOpen((v) => !v)}
+                data-testid="toggle-selected-sectors"
+                className="w-full flex items-center justify-between gap-3 p-4 hover:bg-stone-50 rounded-2xl"
+              >
+                <span className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">Selected sectors ({sortedSelected.length})</span>
+                {selectedListOpen ? <ChevronUp className="w-4 h-4 text-stone-500" /> : <ChevronDown className="w-4 h-4 text-stone-500" />}
+              </button>
+              {selectedListOpen && (
+                <div className="px-4 pb-4">
+                  {!sortedSelected.length && <div className="text-xs text-stone-500">Click sectors on the map to add them here.</div>}
+                  <div className="flex flex-wrap gap-1.5 max-h-72 overflow-auto">
+                    {sortedSelected.map((s) => (
+                      <button key={s} onClick={() => toggleSector(s)} data-testid={`chip-selected-${s}`}
+                        className="group inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-red-700 rounded-md">
+                        {s} · {homeCount.per_sector?.[s] || 0}
+                        <Trash2 className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Nearby sectors — collapsible, sits above the map */}
+            <div className="bg-white border border-stone-200 rounded-2xl">
+              <button
+                type="button"
+                onClick={() => setNearbyListOpen((v) => !v)}
+                data-testid="toggle-nearby-sectors"
+                className="w-full flex items-center justify-between gap-3 p-4 hover:bg-stone-50 rounded-2xl"
+              >
+                <span className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500 flex items-center gap-2">
+                  Nearby sectors ({sectors.length})
+                  {loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-stone-400" />}
+                </span>
+                {nearbyListOpen ? <ChevronUp className="w-4 h-4 text-stone-500" /> : <ChevronDown className="w-4 h-4 text-stone-500" />}
+              </button>
+              {nearbyListOpen && (
+                <div className="px-4 pb-4 max-h-72 overflow-auto space-y-1">
+                  {sectors.map((s) => {
+                    const isSel = selected.includes(s.sector);
+                    return (
+                      <button key={s.sector} onClick={() => toggleSector(s.sector)} data-testid={`chip-near-${s.sector}`}
+                        className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 text-xs rounded-lg text-left ${isSel ? "bg-stone-950 text-white" : "hover:bg-stone-50 text-stone-800"}`}>
+                        <span className="font-bold">{s.sector}</span>
+                        <span className="tabular-nums">{s.home_count} homes · {(s.distance_km / KM_PER_MI).toFixed(1)} mi</span>
+                        {isSel ? <CheckCircle2 className="w-3.5 h-3.5 text-[#dddd16] shrink-0" /> : <Plus className="w-3.5 h-3.5 text-stone-400 shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
           <TerritoryMap
             sectors={sectors}
@@ -573,13 +636,10 @@ export default function TerritoryBuilderPage() {
           </div>
         </div>
 
-        {/* Below-map panels — Plan Details stays expanded (primary actions),
-            Selected + Nearby sectors collapse so they don't crowd the map.
-            `items-start` keeps each card sized to its own content; without
-            it the grid stretches the two collapsibles to match Plan Details'
-            height, making them *look* expanded when they're actually shut. */}
+        {/* Below-map panels — Plan Details on the left, Saved Plans on
+            the right (when not in contact/franchisee context). */}
         <div className="grid lg:grid-cols-3 gap-4 items-start">
-          <div className="bg-white border border-stone-200 rounded-2xl p-4">
+          <div className="bg-white border border-stone-200 rounded-2xl p-4 lg:col-span-1">
             <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500 mb-2">{franchiseeId ? "Franchisee territory" : "Plan details"}</div>
             {!franchiseeId && (
               <>
@@ -678,85 +738,27 @@ export default function TerritoryBuilderPage() {
             )}
           </div>
 
-          {/* Selected sectors list — collapsible */}
-          <div className="bg-white border border-stone-200 rounded-2xl">
-            <button
-              type="button"
-              onClick={() => setSelectedListOpen((v) => !v)}
-              data-testid="toggle-selected-sectors"
-              className="w-full flex items-center justify-between gap-3 p-4 hover:bg-stone-50 rounded-2xl"
-            >
-              <span className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">Selected sectors ({sortedSelected.length})</span>
-              {selectedListOpen ? <ChevronUp className="w-4 h-4 text-stone-500" /> : <ChevronDown className="w-4 h-4 text-stone-500" />}
-            </button>
-            {selectedListOpen && (
-              <div className="px-4 pb-4">
-                {!sortedSelected.length && <div className="text-xs text-stone-500">Click sectors on the map to add them here.</div>}
-                <div className="flex flex-wrap gap-1.5 max-h-72 overflow-auto">
-                  {sortedSelected.map((s) => (
-                    <button key={s} onClick={() => toggleSector(s)} data-testid={`chip-selected-${s}`}
-                      className="group inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-red-700 rounded-md">
-                      {s} · {homeCount.per_sector?.[s] || 0}
-                      <Trash2 className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Sectors in radius — collapsible */}
-          <div className="bg-white border border-stone-200 rounded-2xl">
-            <button
-              type="button"
-              onClick={() => setNearbyListOpen((v) => !v)}
-              data-testid="toggle-nearby-sectors"
-              className="w-full flex items-center justify-between gap-3 p-4 hover:bg-stone-50 rounded-2xl"
-            >
-              <span className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500 flex items-center gap-2">
-                Nearby sectors ({sectors.length})
-                {loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-stone-400" />}
-              </span>
-              {nearbyListOpen ? <ChevronUp className="w-4 h-4 text-stone-500" /> : <ChevronDown className="w-4 h-4 text-stone-500" />}
-            </button>
-            {nearbyListOpen && (
-              <div className="px-4 pb-4 max-h-72 overflow-auto space-y-1">
-                {sectors.map((s) => {
-                  const isSel = selected.includes(s.sector);
-                  return (
-                    <button key={s.sector} onClick={() => toggleSector(s.sector)} data-testid={`chip-near-${s.sector}`}
-                      className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 text-xs rounded-lg text-left ${isSel ? "bg-stone-950 text-white" : "hover:bg-stone-50 text-stone-800"}`}>
-                      <span className="font-bold">{s.sector}</span>
-                      <span className="tabular-nums">{s.home_count} homes · {(s.distance_km / KM_PER_MI).toFixed(1)} mi</span>
-                      {isSel ? <CheckCircle2 className="w-3.5 h-3.5 text-[#dddd16] shrink-0" /> : <Plus className="w-3.5 h-3.5 text-stone-400 shrink-0" />}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Saved territory plans — only shown when there's no contact
-              or franchisee context (i.e. user opened the page from the
-              sidebar). Lets admins re-open a prior prospect plan and
-              copy a share link without leaving the page. */}
+          {/* Saved territory plans — sits in the same grid row as Plan
+              Details so admins can see both at a glance. Spans 2/3 of
+              the width on large screens. */}
+          {!contactId && !franchiseeId && (
+            <div className="lg:col-span-2">
+              <SavedPlansPanel
+                plans={allPlans}
+                loading={allPlansLoading}
+                filter={planFilter}
+                onFilter={setPlanFilter}
+                activeId={savedPlan?.id || planId}
+                onCopyShare={copyShareLink}
+                onToggleShare={toggleShare}
+                onDelete={deletePlanById}
+                onLinkContact={linkPlanToContact}
+                shareUrlFor={shareUrlFor}
+                shareCopied={shareCopied}
+              />
+            </div>
+          )}
         </div>
-
-        {!contactId && !franchiseeId && (
-          <SavedPlansPanel
-            plans={allPlans}
-            loading={allPlansLoading}
-            filter={planFilter}
-            onFilter={setPlanFilter}
-            activeId={savedPlan?.id || planId}
-            onCopyShare={copyShareLink}
-            onToggleShare={toggleShare}
-            onDelete={deletePlanById}
-            onLinkContact={linkPlanToContact}
-            shareUrlFor={shareUrlFor}
-            shareCopied={shareCopied}
-          />
-        )}
       </div>
 
       {/* Paste-sectors modal */}
