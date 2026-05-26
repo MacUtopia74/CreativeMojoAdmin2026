@@ -537,8 +537,11 @@ export default function TerritoryBuilderPage() {
         </div>
 
         {/* Below-map panels — Plan Details stays expanded (primary actions),
-            Selected + Nearby sectors collapse so they don't crowd the map. */}
-        <div className="grid lg:grid-cols-3 gap-4">
+            Selected + Nearby sectors collapse so they don't crowd the map.
+            `items-start` keeps each card sized to its own content; without
+            it the grid stretches the two collapsibles to match Plan Details'
+            height, making them *look* expanded when they're actually shut. */}
+        <div className="grid lg:grid-cols-3 gap-4 items-start">
           <div className="bg-white border border-stone-200 rounded-2xl p-4">
             <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500 mb-2">{franchiseeId ? "Franchisee territory" : "Plan details"}</div>
             {!franchiseeId && (
