@@ -144,7 +144,10 @@ def build_portal_router(
         refresh = create_refresh_token(user_id)
         set_auth_cookies(response, access, refresh)
         user = await db.users.find_one({"id": user_id}, {"_id": 0})
-        return user_to_public(user)
+        public = user_to_public(user)
+        public["access_token"] = access
+        public["refresh_token"] = refresh
+        return public
 
     @router.post("/portal/login")
     async def portal_login(
@@ -174,6 +177,9 @@ def build_portal_router(
         access = create_access_token(user["id"], user["email"], "franchisee")
         refresh = create_refresh_token(user["id"])
         set_auth_cookies(response, access, refresh)
-        return user_to_public(user)
+        public = user_to_public(user)
+        public["access_token"] = access
+        public["refresh_token"] = refresh
+        return public
 
     return router

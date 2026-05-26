@@ -5,7 +5,7 @@
 // On success the JWT cookie lands and we redirect to /portal.
 import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
-import api, { formatError } from "@/lib/api";
+import api, { formatError, setAuthTokens } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import Logo from "@/components/Logo";
 import { ArrowRight, Loader2, Eye, EyeOff } from "lucide-react";
@@ -52,7 +52,9 @@ export default function PortalLoginPage() {
       if (step === "setup" && password !== confirm) {
         setErr("Passwords don't match."); setBusy(false); return;
       }
-      await api.post(endpoint, { email, password });
+      const { data } = await api.post(endpoint, { email, password });
+      // Mirror tokens into localStorage for cross-site Bearer fallback.
+      setAuthTokens(data);
       await refresh();
       navigate("/portal", { replace: true });
     } catch (e) { setErr(formatError(e)); }

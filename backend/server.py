@@ -284,7 +284,16 @@ async def login(body: LoginRequest, request: Request, response: Response):
     access = create_access_token(user["id"], user["email"], user["role"])
     refresh = create_refresh_token(user["id"])
     set_auth_cookies(response, access, refresh)
-    return user_to_public(user)
+    # Also return tokens in the body so the frontend can fall back to
+    # ``Authorization: Bearer`` when the browser blocks cross-site
+    # cookies (e.g. when the deployed frontend lives on
+    # ``hub.creativemojo.co.uk`` and the backend on ``*.emergent.host`` —
+    # which Chrome treats as a third-party context, especially in
+    # incognito mode).
+    public = user_to_public(user)
+    public["access_token"] = access
+    public["refresh_token"] = refresh
+    return public
 
 
 @api.post("/auth/logout")
@@ -294,12 +303,14 @@ async def logout(response: Response, _: dict = Depends(get_current_user)):
 
 
 @api.post("/auth/refresh")
-async def refresh_token(request: Request, response: Response):
-    """Issue a fresh access_token from the refresh_token cookie. The
-    frontend's axios interceptor hits this transparently when an
-    authenticated call returns 401, so admins don't get bounced to the
-    login screen mid-session after 8 hours."""
+async def refresh_token(request: Request, body: dict | None = None, response: Response = None):
+    """Issue a fresh access_token from the refresh_token cookie OR from a
+    body-supplied ``refresh_token``. Body support lets the frontend keep
+    sessions alive even when the browser blocks the cookie (cross-site
+    incognito etc.)."""
     rtoken = request.cookies.get("refresh_token")
+    if not rtoken and body and isinstance(body, dict):
+        rtoken = body.get("refresh_token")
     if not rtoken:
         raise HTTPException(401, "No refresh token")
     try:
@@ -321,7 +332,10 @@ async def refresh_token(request: Request, response: Response):
     # rather than dying at the 7-day mark.
     new_refresh = create_refresh_token(user["id"])
     set_auth_cookies(response, new_access, new_refresh)
-    return user_to_public(user)
+    public = user_to_public(user)
+    public["access_token"] = new_access
+    public["refresh_token"] = new_refresh
+    return public
 
 
 @api.get("/auth/me")

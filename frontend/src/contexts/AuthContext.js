@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
-import api, { formatError } from "@/lib/api";
+import api, { formatError, setAuthTokens, clearAuthTokens } from "@/lib/api";
 
 const AuthContext = createContext(null);
 
@@ -44,6 +44,9 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     try {
       const { data } = await api.post("/auth/login", { email, password });
+      // Persist tokens for cross-site Bearer auth (Chrome blocks
+      // cross-site cookies in incognito + increasingly in regular mode).
+      setAuthTokens(data);
       setUser(data);
       return { ok: true, user: data };
     } catch (e) {
@@ -57,6 +60,7 @@ export function AuthProvider({ children }) {
     } catch (e) {
       // ignore
     }
+    clearAuthTokens();
     setUser(false);
   };
 
