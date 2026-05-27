@@ -560,8 +560,11 @@ export default function FranchiseeDetailPage() {
           </div>
         )}
 
-        {/* HERO */}
-        <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr_auto] gap-6 items-start">
+        {/* HERO — photo on the left, KPI bar on top of the right column,
+            then the identity block below it so the long name + address have
+            the full row width to breathe (used to be squashed between the
+            photo and the KPI tiles). */}
+        <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-6 items-start">
           <div className="relative group">
             {photo ? (
               <img src={photo} alt={fullName} className="w-full aspect-square object-cover border border-stone-200 rounded-2xl" />
@@ -579,57 +582,59 @@ export default function FranchiseeDetailPage() {
               {photoBusy ? "Uploading…" : (photo ? "Replace" : "Upload photo")}
             </button>
           </div>
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 flex-wrap">
-              {statusTag && <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-md ${statusColor}`}>{statusTag}</span>}
-              {feeTag && <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[#dddd16]/15 border border-[#dddd16]/60 text-stone-900 rounded-md">{feeTag}</span>}
-              {f.franchise_number && <span className="text-xs text-stone-500">Franchise #{f.franchise_number}</span>}
-            </div>
-            <div>
-              <h2 className="font-display text-4xl text-stone-950">{fullName || f.organisation}</h2>
-              {f.organisation && fullName && <div className="text-base text-stone-600 mt-1">{f.organisation}</div>}
-            </div>
-            {/* Full address — line 1, city, county, postcode, country */}
-            <div className="text-sm text-stone-700 flex items-start gap-1.5" data-testid="hero-address">
-              <MapPin className="w-3.5 h-3.5 text-stone-400 mt-0.5 shrink-0" />
-              <div className="leading-relaxed">
-                {[f.address || f.address_street, f.city, f.county, f.postcode, f.country]
-                  .filter(Boolean).join(", ") || "—"}
+          <div className="space-y-6 min-w-0">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-stone-200 border border-stone-200 rounded-2xl overflow-hidden">
+              <div className="bg-white p-4">
+                <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Contracts</div>
+                <div className="font-display text-2xl text-stone-950 mt-1">{contracts.length}</div>
+                <div className="text-xs text-stone-500 mt-0.5">{contracts.filter(c => !c.cancelled_early).length} active</div>
+              </div>
+              <div className="bg-white p-4">
+                <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Territory</div>
+                <div className="font-display text-2xl text-stone-950 mt-1">{territories.length}</div>
+                <div className="text-xs text-stone-500 mt-0.5">postcode sectors</div>
+              </div>
+              <div className="bg-white p-4" data-testid="kpi-mandate">
+                <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Mandate</div>
+                <MandatePill franchisee={f} />
+              </div>
+              <div className="bg-white p-4" data-testid="kpi-xero">
+                <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Xero</div>
+                <XeroPill franchiseeId={f.id} />
               </div>
             </div>
-            {yearsAsFranchisee && (
-              <div className="text-sm text-stone-700 flex items-center gap-1.5" data-testid="hero-years">
-                <Calendar className="w-3.5 h-3.5 text-stone-400 shrink-0" />
-                <span>
-                  <strong className="text-stone-950">{yearsAsFranchisee.years.toFixed(1)} years</strong> as a franchisee
-                  <span className="text-stone-500"> · since {formatDate(yearsAsFranchisee.since)}</span>
-                </span>
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                {statusTag && <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-md ${statusColor}`}>{statusTag}</span>}
+                {feeTag && <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[#dddd16]/15 border border-[#dddd16]/60 text-stone-900 rounded-md">{feeTag}</span>}
+                {f.franchise_number && <span className="text-xs text-stone-500">Franchise #{f.franchise_number}</span>}
               </div>
-            )}
-            {otherTags.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {otherTags.map((t) => <span key={t} className="px-2 py-0.5 bg-stone-100 text-xs text-stone-700 rounded-md">{t}</span>)}
+              <div>
+                <h2 className="font-display text-4xl text-stone-950">{fullName || f.organisation}</h2>
+                {f.organisation && fullName && <div className="text-base text-stone-600 mt-1">{f.organisation}</div>}
               </div>
-            )}
-          </div>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-stone-200 border border-stone-200 lg:min-w-[560px] rounded-2xl overflow-hidden">
-            <div className="bg-white p-4">
-              <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Contracts</div>
-              <div className="font-display text-2xl text-stone-950 mt-1">{contracts.length}</div>
-              <div className="text-xs text-stone-500 mt-0.5">{contracts.filter(c => !c.cancelled_early).length} active</div>
-            </div>
-            <div className="bg-white p-4">
-              <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Territory</div>
-              <div className="font-display text-2xl text-stone-950 mt-1">{territories.length}</div>
-              <div className="text-xs text-stone-500 mt-0.5">postcode sectors</div>
-            </div>
-            <div className="bg-white p-4" data-testid="kpi-mandate">
-              <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Mandate</div>
-              <MandatePill franchisee={f} />
-            </div>
-            <div className="bg-white p-4" data-testid="kpi-xero">
-              <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Xero</div>
-              <XeroPill franchiseeId={f.id} />
+              {/* Full address — line 1, city, county, postcode, country */}
+              <div className="text-sm text-stone-700 flex items-start gap-1.5" data-testid="hero-address">
+                <MapPin className="w-3.5 h-3.5 text-stone-400 mt-0.5 shrink-0" />
+                <div className="leading-relaxed">
+                  {[f.address || f.address_street, f.city, f.county, f.postcode, f.country]
+                    .filter(Boolean).join(", ") || "—"}
+                </div>
+              </div>
+              {yearsAsFranchisee && (
+                <div className="text-sm text-stone-700 flex items-center gap-1.5" data-testid="hero-years">
+                  <Calendar className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                  <span>
+                    <strong className="text-stone-950">{yearsAsFranchisee.years.toFixed(1)} years</strong> as a franchisee
+                    <span className="text-stone-500"> · since {formatDate(yearsAsFranchisee.since)}</span>
+                  </span>
+                </div>
+              )}
+              {otherTags.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {otherTags.map((t) => <span key={t} className="px-2 py-0.5 bg-stone-100 text-xs text-stone-700 rounded-md">{t}</span>)}
+                </div>
+              )}
             </div>
           </div>
         </div>
