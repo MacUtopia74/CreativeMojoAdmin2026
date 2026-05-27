@@ -722,7 +722,9 @@ export default function FilesPage() {
       </div>
 
       <div className="p-8 pt-6">
-        <MigrationPanel onMigrationDone={() => { reloadScopes(); reloadTree(prefix); }} />
+        {/* Migration panel removed from UI — migration completed (1,705 files, 7.2 GB).
+            Backend endpoints under /api/admin/migration/* remain available for ad-hoc
+            re-runs via the admin if ever needed. */}
 
         <div className={`grid gap-6 ${sidebarOpen ? "grid-cols-12" : "grid-cols-1"}`}>
           {/* Sidebar — scope navigation. Collapsible. */}
@@ -847,7 +849,7 @@ export default function FilesPage() {
                       <Database className="w-8 h-8 text-stone-300 mx-auto mb-2" />
                       <div className="text-sm text-stone-500">
                         {scopeTree?.totals.files === 0
-                          ? "No files in R2 yet. Run the FileCamp migration above."
+                          ? "No files in R2 yet. Drop files into a franchisee folder to get started."
                           : "This folder is empty."}
                       </div>
                     </div>
