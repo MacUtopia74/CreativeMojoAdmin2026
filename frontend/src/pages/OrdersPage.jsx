@@ -418,26 +418,57 @@ export default function OrdersPage() {
                       No orders match.
                     </td>
                   </tr>
-                ) : items.map((o) => (
-                  <OrderRow
-                    key={o.id}
-                    order={o}
-                    showProducts={showProducts}
-                    hideLegacyIds={hideLegacyIds}
-                    selected={selectedIds.has(o.id)}
-                    onSelect={() => toggleSelect(o.id)}
-                    onOpen={() => navigate(`/orders/${o.id}`)}
-                    onMakeActive={async (id) => {
-                      try {
-                        await api.post(`/orders/${id}/action`, { action: "mark_active" });
-                        await load();
-                        await loadCounts();
-                      } catch (e) {
-                        setError(e?.response?.data?.detail || "Could not make active.");
-                      }
-                    }}
-                  />
-                ))}
+                ) : (() => {
+                  // Split into two grouped sections — Franchisee Orders at the
+                  // top (highlighted) and Customer Orders below. Each section
+                  // gets a banner row so the eye finds them instantly.
+                  const franchiseeRows = items.filter((o) => o.franchisee_match);
+                  const customerRows = items.filter((o) => !o.franchisee_match);
+                  const renderRow = (o) => (
+                    <OrderRow
+                      key={o.id}
+                      order={o}
+                      showProducts={showProducts}
+                      hideLegacyIds={hideLegacyIds}
+                      selected={selectedIds.has(o.id)}
+                      onSelect={() => toggleSelect(o.id)}
+                      onOpen={() => navigate(`/orders/${o.id}`)}
+                      onMakeActive={async (id) => {
+                        try {
+                          await api.post(`/orders/${id}/action`, { action: "mark_active" });
+                          await load();
+                          await loadCounts();
+                        } catch (e) {
+                          setError(e?.response?.data?.detail || "Could not make active.");
+                        }
+                      }}
+                    />
+                  );
+                  return (
+                    <>
+                      {franchiseeRows.length > 0 && (
+                        <>
+                          <tr data-testid="orders-group-franchisee" className="bg-stone-950 text-[#dddd16]">
+                            <td colSpan={11} className="px-3 py-2 text-[10px] font-bold uppercase tracking-[0.2em]">
+                              Franchisee Orders · {franchiseeRows.length}
+                            </td>
+                          </tr>
+                          {franchiseeRows.map(renderRow)}
+                        </>
+                      )}
+                      {customerRows.length > 0 && (
+                        <>
+                          <tr data-testid="orders-group-customer" className="bg-stone-100 text-stone-700">
+                            <td colSpan={11} className="px-3 py-2 text-[10px] font-bold uppercase tracking-[0.2em]">
+                              Customer Orders · {customerRows.length}
+                            </td>
+                          </tr>
+                          {customerRows.map(renderRow)}
+                        </>
+                      )}
+                    </>
+                  );
+                })()}
               </tbody>
             </table>
           </div>
@@ -471,10 +502,21 @@ export default function OrdersPage() {
 function OrderRow({ order, showProducts, hideLegacyIds, selected = false, onSelect, onOpen, onMakeActive }) {
   const due = dueLabel(order.due_date);
   const isWoo = (order.channel || "").toLowerCase() === "woocommerce";
+  const fm = order.franchisee_match || null;
+  // Franchisee orders get a brand-yellow tint (matches the Subscriptions list).
+  // Selected row still wins over the franchisee tint so bulk-action context
+  // is always obvious.
+  const rowClass = selected
+    ? "bg-amber-50/40"
+    : fm
+      ? "hover:brightness-[0.97]"
+      : "hover:bg-stone-50/50";
+  const rowStyle = !selected && fm ? { backgroundColor: "#f6f6cd" } : undefined;
 
   return (
     <tr
-      className={`border-b border-stone-200 last:border-b-0 cursor-pointer ${selected ? "bg-amber-50/40" : "hover:bg-stone-50/50"}`}
+      className={`border-b border-stone-200 last:border-b-0 cursor-pointer ${rowClass}`}
+      style={rowStyle}
       onClick={(e) => {
         // Don't open the detail page when the click was on the checkbox.
         if (e.target.closest("[data-row-checkbox]")) return;
@@ -530,6 +572,15 @@ function OrderRow({ order, showProducts, hideLegacyIds, selected = false, onSele
       </td>
       <td className="px-2 py-2.5 align-top text-stone-900 font-medium max-w-[200px] text-[13px]">
         <div>{order.customer_label}</div>
+        {fm && (
+          <span
+            className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-stone-950 text-[#dddd16] rounded"
+            title={`Matched on ${fm.matched_by} → ${fm.organisation}`}
+            data-testid={`franchisee-pill-${order.id}`}
+          >
+            Franchisee{fm.is_ex ? " · ex" : ""}
+          </span>
+        )}
       </td>
       <td className="px-2 py-2.5 align-top max-w-[280px]">
         {order.line_items_unavailable ? (

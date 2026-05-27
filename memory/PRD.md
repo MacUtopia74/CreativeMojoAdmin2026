@@ -1,5 +1,11 @@
 # Creative Mojo — Unified Admin Platform PRD
 
+## Latest change — Franchisee vs Customer Orders visual split (Feb 27 2026)
+- New `order_franchisee_match.py` backend module decorates every Order list/detail response with a `franchisee_match` field. Detection: `customer_email` against franchisee `mojo_email`/`secondary_email` first, then `customer_label` against `organisation`. 60-second TTL cache so the lookup isn't rebuilt per request. Includes ex-franchisees with an `is_ex: true` flag so historic orders still group correctly.
+- `OrdersPage.jsx` now splits each tab into two grouped sections — "Franchisee Orders · N" (black banner) at the top and "Customer Orders · N" (stone-100 banner) below. Franchisee rows tinted `#f6f6cd` brand yellow with a small black "FRANCHISEE" pill (and "FRANCHISEE · EX" for ex-franchisees) under the customer name.
+- `OrderDetailPage.jsx` shows a brand-yellow banner under the header for franchisee orders: "FRANCHISEE — Franchisee order — [organisation] · matched on email/organisation" with an "Open franchisee →" deep link.
+- Verified live: 59 of 1,353 orders correctly tagged on the ALL tab; `#8054` resolves to "Dartford, Bexley & Rochester" via email; `#7964` resolves to "Creative Mojo Manchester West" via org name fallback.
+
 ## Latest change — Monthly Subscriptions for Orders (Feb 27 2026)
 - New "Subscriptions" button on the Orders page header (next to "Match to Xero" / "Create Order") opens a paginated modal listing every distinct customer that has at least one order in the DB (Woo + Direct, joined by case-insensitive `customer_label`).
 - Each row exposes a single "Add Subscription" checkbox; ticking it persists a `order_subscriptions` row keyed on the normalised customer name. Untick soft-deletes (`active: false`) so audit + last-draft history survives toggling.

@@ -280,6 +280,34 @@ export default function OrderDetailPage() {
         </div>
       )}
 
+      {order.franchisee_match && (
+        <div
+          className="mx-8 mt-3 px-4 py-3 rounded-xl border flex items-center justify-between gap-3 flex-wrap"
+          style={{ backgroundColor: "#f6f6cd", borderColor: "#dddd16" }}
+          data-testid="franchisee-banner"
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.2em] bg-stone-950 text-[#dddd16] rounded">
+              Franchisee
+            </span>
+            <div className="text-sm text-stone-900">
+              <strong className="font-bold">Franchisee order</strong> — {order.franchisee_match.organisation}
+              {order.franchisee_match.is_ex && <span className="text-stone-600"> (ex-franchisee)</span>}
+              <span className="text-stone-500"> · matched on {order.franchisee_match.matched_by}</span>
+            </div>
+          </div>
+          {order.franchisee_match.id && (
+            <Link
+              to={`/franchisees/${order.franchisee_match.id}`}
+              data-testid="franchisee-banner-link"
+              className="text-[11px] font-bold uppercase tracking-wider text-stone-950 hover:text-stone-700 underline underline-offset-2"
+            >
+              Open franchisee →
+            </Link>
+          )}
+        </div>
+      )}
+
       {/* Two-column body: left = Customer + Line Items + Danger Zone, right = Order Info + Delivery */}
       <div className="px-8 py-6 grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* LEFT column (3/5) */}

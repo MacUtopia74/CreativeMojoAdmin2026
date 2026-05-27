@@ -359,6 +359,8 @@ def attach(api, db, require_role):
             ]
         items = await db.woo_orders.find(q, {"_id": 0, "raw": 0}) \
             .sort("date_created", -1).limit(limit).to_list(limit)
+        from order_franchisee_match import decorate_orders
+        await decorate_orders(db, items)
         return {"items": items, "total": len(items)}
 
     @api.get("/orders/counts")
@@ -373,6 +375,8 @@ def attach(api, db, require_role):
         doc = await db.woo_orders.find_one({"id": order_id}, {"_id": 0})
         if not doc:
             raise HTTPException(404, "Order not found")
+        from order_franchisee_match import decorate_one
+        await decorate_one(db, doc)
         return doc
 
     # ------------------------------------------------------------ Stage B mutations
