@@ -382,9 +382,6 @@ export default function OrdersPage() {
         </div>
       )}
 
-      {/* Stage A banner — only renders until Woo creds are wired */}
-      <OrdersStageBanner />
-
       {/* Orders table */}
       <div className="px-8 pb-12">
         {error && (
@@ -648,40 +645,5 @@ function OrderRow({ order, showProducts, hideLegacyIds, selected = false, onSele
         </div>
       </td>
     </tr>
-  );
-}
-
-function OrdersStageBanner() {
-  // Renders only while we're still on seed data (no live Woo creds yet).
-  // Hidden once the user wires WOO_CONSUMER_KEY into backend/.env tomorrow
-  // and the seed records get replaced by real Woo orders.
-  const [shouldShow, setShouldShow] = useState(true);
-  useEffect(() => {
-    api.get("/orders?tab=all&limit=1").then(({ data }) => {
-      const first = (data.items || [])[0];
-      setShouldShow(!!first?.seed);
-    }).catch(() => setShouldShow(true));
-  }, []);
-  if (!shouldShow) return null;
-  return (
-    <div className="mx-8 mb-2 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-900 flex items-start gap-3" data-testid="orders-stage-banner">
-      <Info className="w-4 h-4 mt-0.5 shrink-0" />
-      <div>
-        <strong>Stage A — Demo data.</strong> Add your WooCommerce Consumer Key / Secret / Webhook Secret
-        to <code>backend/.env</code> as <code>WOO_BASE_URL</code> / <code>WOO_CONSUMER_KEY</code> /
-        {" "}<code>WOO_CONSUMER_SECRET</code> / <code>WOO_WEBHOOK_SECRET</code>, then trigger{" "}
-        <code>POST /api/admin/woo/backfill-orders</code> + <code>POST /api/admin/woo/sync-products</code> and
-        this banner will disappear as real orders replace the seeded ones.
-      </div>
-    </div>
-  );
-}
-
-// Tiny standalone Info icon to keep the banner self-contained.
-function Info({ className = "" }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" />
-    </svg>
   );
 }
