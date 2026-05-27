@@ -425,14 +425,12 @@ export default function OrdersPage() {
                     </td>
                   </tr>
                 ) : (() => {
-                  // Split into two grouped sections — Franchisee Orders at the
-                  // top (highlighted) and Customer Orders below. Each section
-                  // gets a banner row so the eye finds them instantly. The
-                  // dedicated FRANCHISEE tab already filters to a single
-                  // group, so we skip the banner there to avoid noise.
-                  const franchiseeRows = items.filter((o) => o.franchisee_match);
-                  const customerRows = items.filter((o) => !o.franchisee_match);
-                  const showGroupBanners = tab !== "franchisee";
+                  // Render the full list in its natural chronological order.
+                  // Franchisee rows stay visually distinct via row tint +
+                  // pill (handled in OrderRow), and the dedicated FRANCHISEE
+                  // tab is there for "just franchisee" views — so we don't
+                  // pin franchisee rows to the top of the standard tabs
+                  // (doing so visually buries customer orders).
                   const renderRow = (o) => (
                     <OrderRow
                       key={o.id}
@@ -453,34 +451,7 @@ export default function OrdersPage() {
                       }}
                     />
                   );
-                  return (
-                    <>
-                      {franchiseeRows.length > 0 && (
-                        <>
-                          {showGroupBanners && (
-                            <tr data-testid="orders-group-franchisee" className="bg-stone-950 text-[#dddd16]">
-                              <td colSpan={11} className="px-3 py-2 text-[10px] font-bold uppercase tracking-[0.2em]">
-                                Franchisee Orders · {franchiseeRows.length}
-                              </td>
-                            </tr>
-                          )}
-                          {franchiseeRows.map(renderRow)}
-                        </>
-                      )}
-                      {customerRows.length > 0 && (
-                        <>
-                          {showGroupBanners && (
-                            <tr data-testid="orders-group-customer" className="bg-stone-100 text-stone-700">
-                              <td colSpan={11} className="px-3 py-2 text-[10px] font-bold uppercase tracking-[0.2em]">
-                                Customer Orders · {customerRows.length}
-                              </td>
-                            </tr>
-                          )}
-                          {customerRows.map(renderRow)}
-                        </>
-                      )}
-                    </>
-                  );
+                  return <>{items.map(renderRow)}</>;
                 })()}
               </tbody>
             </table>

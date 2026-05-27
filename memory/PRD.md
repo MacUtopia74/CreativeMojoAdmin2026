@@ -6,6 +6,12 @@
 - `OrderDetailPage.jsx` shows a brand-yellow banner under the header for franchisee orders: "FRANCHISEE — Franchisee order — [organisation] · matched on email/organisation" with an "Open franchisee →" deep link.
 - Verified live: 59 of 1,353 orders correctly tagged on the ALL tab; `#8054` resolves to "Dartford, Bexley & Rochester" via email; `#7964` resolves to "Creative Mojo Manchester West" via org name fallback.
 
+## Bug fix — Customer orders hidden behind pinned Franchisee rows (Feb 27 2026)
+- Removed the franchisee-pinned-to-top grouping on standard Orders tabs (ACTIVE/COMPLETED/ALL/DRAFT). With 65 franchisee rows pinned above 1,277 customer rows on COMPLETED, customer orders sat several screens below the fold — user reported "we have lost all the customer orders".
+- Rows now render in natural date-desc order. Franchisee rows remain visually distinct via row tint (`#f6f6cd`) + FRANCHISEE pill (handled in `OrderRow`). Group-banner section headers removed entirely from these tabs.
+- Dedicated **FRANCHISEE** tab still does single-group drill-in for franchisee-only views.
+- Verified live: COMPLETED first 8 rows are all customer orders in date order; ACTIVE 9 customer + 2 franchisee mixed in chronological order; FRANCHISEE shows 67/67.
+
 ## Franchisee tab — easier "just franchisee orders" navigation (Feb 27 2026)
 - Added a 5th **FRANCHISEE** tab pill (black + brand-yellow text) to OrdersPage alongside ACTIVE / COMPLETED / ALL / DRAFT, with its own count badge.
 - Backend `/api/orders?tab=franchisee` widens the base query to `all` then post-filters on `franchisee_match`. `/api/orders/counts` exposes a new `franchisee` total computed via the same decorator.
