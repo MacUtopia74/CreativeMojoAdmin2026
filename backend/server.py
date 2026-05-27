@@ -3570,6 +3570,14 @@ async def on_startup():
     except Exception as e:
         logger.warning(f"Could not start Woo resync scheduler: {e}")
 
+    # Phase 2 — Monthly subscription drafts (08:00 Europe/London on the 1st).
+    try:
+        from subscriptions_routes import schedule_subscriptions_loop
+        asyncio.create_task(schedule_subscriptions_loop(db, every_seconds=3600))
+        logger.info("Monthly subscriptions scheduler started (hourly check)")
+    except Exception as e:
+        logger.warning(f"Could not start subscriptions scheduler: {e}")
+
 
 @app.on_event("shutdown")
 async def on_shutdown():
@@ -3589,6 +3597,12 @@ api.include_router(build_gocardless_router(db, require_role))
 # catch-all /orders/{order_id}.
 import xero_integration  # noqa: E402
 xero_integration.attach(api, db, require_role)
+
+# Phase 2 — Monthly subscription drafts (customer-level recurring order seeds)
+# MOUNT BEFORE woocommerce_integration so the more-specific /orders/subscriptions*
+# routes win over Woo's catch-all /orders/{order_id}.
+import subscriptions_routes  # noqa: E402
+subscriptions_routes.attach(api, db, require_role)
 
 # Phase 2 — WooCommerce live sync (Stage A: read-only orders + product mirror)
 import woocommerce_integration  # noqa: E402

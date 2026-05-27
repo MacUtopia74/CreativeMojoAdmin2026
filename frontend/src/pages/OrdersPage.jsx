@@ -16,11 +16,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   ShoppingBag, Search, X, Plus, RefreshCw, Loader2, AlertCircle,
-  CheckSquare, Square, CheckCircle2, CreditCard, FileText, ExternalLink,
+  CheckSquare, Square, CheckCircle2, CreditCard, FileText, ExternalLink, Repeat,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import api from "@/lib/api";
 import CreateOrderModal from "@/components/orders/CreateOrderModal";
+import SubscriptionsModal from "@/components/orders/SubscriptionsModal";
 import ProductionStatusDropdown from "@/components/orders/ProductionStatusDropdown";
 
 // Public-facing WooCommerce site that owns these orders. Surfaced as a
@@ -103,6 +104,7 @@ export default function OrdersPage() {
   const [counts, setCounts] = useState({ active: 0, completed: 0, all: 0, draft: 0 });
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [createOpen, setCreateOpen] = useState(false);
+  const [subscriptionsOpen, setSubscriptionsOpen] = useState(false);
   const [bulkPending, setBulkPending] = useState(false);
 
   const load = async () => {
@@ -206,6 +208,14 @@ export default function OrdersPage() {
           </h1>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setSubscriptionsOpen(true)}
+            data-testid="open-subscriptions-button"
+            className="px-4 py-2 border border-stone-300 bg-white text-stone-900 text-xs font-bold uppercase tracking-wider hover:bg-stone-50 rounded-lg transition-colors flex items-center gap-2"
+          >
+            <Repeat className="w-3.5 h-3.5" /> Subscriptions
+          </button>
           <Link
             to="/orders/reconcile"
             data-testid="open-reconcile"
@@ -448,6 +458,11 @@ export default function OrdersPage() {
           setCreateOpen(false);
           navigate(`/orders/${newId}`);
         }}
+      />
+
+      <SubscriptionsModal
+        open={subscriptionsOpen}
+        onClose={() => setSubscriptionsOpen(false)}
       />
     </div>
   );

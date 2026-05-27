@@ -1,5 +1,13 @@
 # Creative Mojo — Unified Admin Platform PRD
 
+## Latest change — Monthly Subscriptions for Orders (Feb 27 2026)
+- New "Subscriptions" button on the Orders page header (next to "Match to Xero" / "Create Order") opens a paginated modal listing every distinct customer that has at least one order in the DB (Woo + Direct, joined by case-insensitive `customer_label`).
+- Each row exposes a single "Add Subscription" checkbox; ticking it persists a `order_subscriptions` row keyed on the normalised customer name. Untick soft-deletes (`active: false`) so audit + last-draft history survives toggling.
+- Backend `subscriptions_routes.py` mounts BEFORE `woocommerce_integration` so `/api/orders/subscriptions*` wins over the catch-all `/api/orders/{order_id}`. Endpoints: `GET /customers` (paginated + searchable), `GET /` (full list), `POST /` (add — idempotent reactivate), `DELETE /{id}`, `POST /admin/subscriptions/run-now` (manual trigger).
+- Scheduler: `schedule_subscriptions_loop` runs hourly. From the 1st of the month at 08:00 Europe/London onwards (DST-aware via `zoneinfo`), it creates one empty Draft per active subscription with a memo line `"Monthly subscription — fill in this month's items (DD/MM/YYYY)"`. Idempotent via `last_draft_month` flag so a single sub gets exactly one draft per month even across server restarts.
+- Drafts surface on the Draft tab with `channel_label: "Subscription"` and `subscription_id` back-ref. Mid-month additions wait until the next 1st (per Paul's request) — no immediate backfill.
+- Verified live end-to-end: 392 customers loaded, search narrows to 1 row, optimistic tick → POST 200 + toast, untick → DELETE 200, manual run creates the right draft with the right memo, second run is correctly a no-op.
+
 ## Latest change — Territory list/map two-way highlight (Feb 26 2026)
 - Opening a home row in `TerritoryHomesList` now tints the whole row in soft amber (`bg-amber-50/70`) so the currently-viewed home is unmistakable in a long list. Header button hover tone switches to `amber-100` while a row is active.
 - `TerritoryMap` accepts a new `activeHomeIndex` prop. Whichever numbered pin matches that index is re-skinned in brand yellow (`#dddd16`), enlarged to 30px, ringed with a yellow halo, and lifted with `zIndex: 10`. All other pins revert to the default dark-green style. Implemented as a separate effect so toggling active state never recreates Mapbox markers.
