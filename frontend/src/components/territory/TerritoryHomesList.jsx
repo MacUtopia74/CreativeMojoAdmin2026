@@ -25,10 +25,10 @@ function HomeRow({ home, idx, isOpen, onToggle, onZoom }) {
   const webHref = home.website ? (home.website.startsWith("http") ? home.website : `https://${home.website}`) : null;
 
   return (
-    <div className="border-b border-stone-200 last:border-b-0" data-testid={`home-row-${idx + 1}`}>
+    <div className={`border-b border-stone-200 last:border-b-0 transition-colors ${isOpen ? "bg-amber-50/70" : ""}`} data-testid={`home-row-${idx + 1}`}>
       <button
         onClick={onToggle}
-        className="w-full flex items-center gap-3 px-3 py-3 hover:bg-stone-50 text-left group"
+        className={`w-full flex items-center gap-3 px-3 py-3 text-left group ${isOpen ? "hover:bg-amber-100/60" : "hover:bg-stone-50"}`}
       >
         <span className="w-7 h-7 rounded-full bg-stone-950 text-white text-xs font-bold flex items-center justify-center tabular-nums shrink-0">
           {idx + 1}

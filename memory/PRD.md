@@ -1,5 +1,10 @@
 # Creative Mojo — Unified Admin Platform PRD
 
+## Latest change — Territory list/map two-way highlight (Feb 26 2026)
+- Opening a home row in `TerritoryHomesList` now tints the whole row in soft amber (`bg-amber-50/70`) so the currently-viewed home is unmistakable in a long list. Header button hover tone switches to `amber-100` while a row is active.
+- `TerritoryMap` accepts a new `activeHomeIndex` prop. Whichever numbered pin matches that index is re-skinned in brand yellow (`#dddd16`), enlarged to 30px, ringed with a yellow halo, and lifted with `zIndex: 10`. All other pins revert to the default dark-green style. Implemented as a separate effect so toggling active state never recreates Mapbox markers.
+- `FranchiseeTerritoryWidget` wires `activeHomeIndex={openHome}` so the highlight flows in both directions: clicking a marker opens & tints the matching row, and clicking a row highlights the matching marker.
+
 ## Latest change — Territory map markers auto-expand the Homes list (Feb 26 2026)
 - `FranchiseeTerritoryWidget` now lifts the homes-list expanded state out of `TerritoryHomesList` so a click on any numbered map marker (1, 2, 3…) force-opens the collapsed "Homes in your territory" panel, opens the matching row, and scrolls it into view. Previously a marker click on a collapsed panel was a silent no-op.
 - `TerritoryHomesList` accepts optional `expanded` / `onExpandedChange` controlled props; internal state is preserved as the uncontrolled fallback.

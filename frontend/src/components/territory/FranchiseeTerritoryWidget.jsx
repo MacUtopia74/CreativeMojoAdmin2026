@@ -180,6 +180,7 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
             height={mapHeight}
             interactive={false}
             homes={homes}
+            activeHomeIndex={openHome}
             onMarkerClick={(i) => {
               setOpenHome(i);
               // Auto-expand the homes list so the click is never a no-op,

@@ -35,6 +35,7 @@ export default function TerritoryMap({
   interactive = true,    // false → no click-toggle (read-only widgets)
   homes = [],            // optional: numbered markers on the map
   onMarkerClick = null,  // (idx, home) — typically scrolls the list below
+  activeHomeIndex = null, // optional: highlights the matching numbered pin in brand colour
   flyTo = null,          // { lat, lng } — pan-zoom-here trigger, bumps each update
   pinnedPostcode = null, // { postcode, lat, lng, inside } — looked-up postcode pin
   franchiseeOverlay = null, // { franchisees: [...], geojson: FeatureCollection }
@@ -417,6 +418,38 @@ export default function TerritoryMap({
       homeMarkersRef.current = [];
     };
   }, [homes, ready, onMarkerClick]);
+
+  // ----------------- highlight the active home marker -----------------
+  // When the user opens a row in the homes list below the map, we re-skin the
+  // matching numbered pin in brand yellow so it's instantly findable on the
+  // map. All other pins revert to the default dark-green style.
+  useEffect(() => {
+    if (!homeMarkersRef.current.length) return;
+    homeMarkersRef.current.forEach((marker, i) => {
+      const el = marker.getElement();
+      if (!el) return;
+      const isActive = i === activeHomeIndex;
+      if (isActive) {
+        el.style.background = "#dddd16";
+        el.style.color = "#0c0a09";
+        el.style.borderColor = "#0c0a09";
+        el.style.width = "30px";
+        el.style.height = "30px";
+        el.style.fontSize = "13px";
+        el.style.boxShadow = "0 0 0 3px rgba(221,221,22,0.35), 0 2px 6px rgba(0,0,0,.45)";
+        el.style.zIndex = "10";
+      } else {
+        el.style.background = "#14532D";
+        el.style.color = "#fff";
+        el.style.borderColor = "#fff";
+        el.style.width = "24px";
+        el.style.height = "24px";
+        el.style.fontSize = "11px";
+        el.style.boxShadow = "0 1px 3px rgba(0,0,0,.4)";
+        el.style.zIndex = "";
+      }
+    });
+  }, [activeHomeIndex, homes, ready]);
 
   // ----------------- pan-to (used by "Zoom map here" buttons in the list)
   useEffect(() => {
