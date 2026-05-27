@@ -25,6 +25,7 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
   const [homes, setHomes] = useState([]);
   const [homesLoading, setHomesLoading] = useState(false);
   const [openHome, setOpenHome] = useState(null);
+  const [homesListExpanded, setHomesListExpanded] = useState(false);
   const [flyTo, setFlyTo] = useState(null);
   const [check, setCheck] = useState("");
   const [checkResult, setCheckResult] = useState(null);
@@ -181,9 +182,15 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
             homes={homes}
             onMarkerClick={(i) => {
               setOpenHome(i);
-              // Scroll the list row into view
-              const row = document.querySelector(`[data-testid="home-row-${i + 1}"]`);
-              if (row) row.scrollIntoView({ behavior: "smooth", block: "center" });
+              // Auto-expand the homes list so the click is never a no-op,
+              // then wait for the row to mount before scrolling to it.
+              setHomesListExpanded(true);
+              const scrollToRow = () => {
+                const row = document.querySelector(`[data-testid="home-row-${i + 1}"]`);
+                if (row) row.scrollIntoView({ behavior: "smooth", block: "center" });
+              };
+              // rAF x2 ensures the list has rendered after the state flip.
+              requestAnimationFrame(() => requestAnimationFrame(scrollToRow));
             }}
             flyTo={flyTo}
             pinnedPostcode={pinnedPostcode}
@@ -201,6 +208,8 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
           homes={homes}
           openIndex={openHome}
           onOpenChange={setOpenHome}
+          expanded={homesListExpanded}
+          onExpandedChange={setHomesListExpanded}
           onZoomHome={(h) => setFlyTo({ lat: h.latitude, lng: h.longitude, _t: Date.now() })}
         />
       )}

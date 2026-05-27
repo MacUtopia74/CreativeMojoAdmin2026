@@ -109,14 +109,18 @@ function Detail({ icon: Icon, label, children }) {
   );
 }
 
-export default function TerritoryHomesList({ homes = [], onZoomHome, openIndex, onOpenChange }) {
+export default function TerritoryHomesList({ homes = [], onZoomHome, openIndex, onOpenChange, expanded, onExpandedChange }) {
   const [internalOpen, setInternalOpen] = useState(null);
   const open = openIndex ?? internalOpen;
   const setOpen = (i) => (onOpenChange ?? setInternalOpen)(i);
   // Whole-list collapse — defaults to closed so the dashboard stays scannable.
   // The franchisee opts in by clicking the obvious "Expand to show list of
   // homes" button; once opened we remember the choice for the session.
-  const [listExpanded, setListExpanded] = useState(false);
+  // Optionally controllable from the parent so clicking a map marker can
+  // force-open the list and jump to the matching row.
+  const [internalExpanded, setInternalExpanded] = useState(false);
+  const listExpanded = expanded ?? internalExpanded;
+  const setListExpanded = (v) => (onExpandedChange ?? setInternalExpanded)(v);
 
   const [q, setQ] = useState("");
   const filtered = useMemo(() => {

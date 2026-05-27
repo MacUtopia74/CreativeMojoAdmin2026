@@ -1,5 +1,10 @@
 # Creative Mojo — Unified Admin Platform PRD
 
+## Latest change — Territory map markers auto-expand the Homes list (Feb 26 2026)
+- `FranchiseeTerritoryWidget` now lifts the homes-list expanded state out of `TerritoryHomesList` so a click on any numbered map marker (1, 2, 3…) force-opens the collapsed "Homes in your territory" panel, opens the matching row, and scrolls it into view. Previously a marker click on a collapsed panel was a silent no-op.
+- `TerritoryHomesList` accepts optional `expanded` / `onExpandedChange` controlled props; internal state is preserved as the uncontrolled fallback.
+- Marker click handler waits two `requestAnimationFrame` ticks after expanding so the row exists in the DOM before scrolling. Verified live on `/portal/territory` for Sandra: marker "5" → row #5 (Forge House Services Limited) auto-opens with full details.
+
 ## Latest change — Clickable WooCommerce order reference in Orders page (Feb 26 2026)
 - `OrdersPage.jsx` order-reference badge ("8063", "8054", "8047" …) now renders as an anchor when `isWoo && order.woo_id`. Pattern reused from the existing Channel column: `${WOO_BASE_URL}/wp-admin/post.php?post={woo_id}&action=edit`, `target="_blank"`, `rel="noopener noreferrer"`, with an `ExternalLink` icon. Legacy / direct orders keep the plain span. Click-through verified on the live preview (3 woo refs found, first href confirmed).
 
