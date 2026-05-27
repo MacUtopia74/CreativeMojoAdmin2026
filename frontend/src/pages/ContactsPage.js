@@ -1558,6 +1558,9 @@ export default function ContactsPage() {
   const [lastSelectedId, setLastSelectedId] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  // Contact whose Reply-with-template modal is currently open from the kanban
+  // quick-Reply button (not the drawer — the drawer has its own state).
+  const [kanbanReplyContact, setKanbanReplyContact] = useState(null);
   const [ageFilter, setAgeFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all"); // 'all' | 'franchise' | 'licence'
   const [collapsedStages, setCollapsedStages] = useState(() => {
@@ -1738,19 +1741,20 @@ export default function ContactsPage() {
   };
 
   const replyByEmail = (contact) => {
-    const to = contact.email;
+    const to = contact.email || contact.email_raw;
     if (!to) {
       setError("This contact has no email address on file.");
       return;
     }
-    const name = [contact.first_name, contact.last_name].filter(Boolean).join(" ") || "there";
-    const subject = `Re: Your enquiry to Creative Mojo`;
-    const greeting = contact.first_name ? `Hi ${contact.first_name},` : `Hi ${name},`;
-    const body = `${greeting}\n\nThanks for getting in touch with Creative Mojo.\n\n`;
-    const mailto = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    window.location.href = mailto;
-    // Auto-advance to "Contacted" if currently "new" (or has no stage yet — a
-    // fallback-grouped card visually in the New column).
+    // Open the in-app Reply-with-template modal (uses Resend + saved
+    // template body + signature + attachments). Previously this used a
+    // plain mailto: link which only half-filled the user's local email
+    // client and didn't carry signature/attachments.
+    setKanbanReplyContact(contact);
+    // Auto-advance to "Contacted" if currently "new" — the modal's Send
+    // success path doesn't know about kanban state, and this matches the
+    // historic behaviour (user said "I clicked Reply so it's been
+    // contacted" once the modal opens).
     if (!contact.pipeline_status || contact.pipeline_status === "new") {
       updateStage(contact.id, "contacted");
     }
@@ -2432,6 +2436,16 @@ export default function ContactsPage() {
           if (target && target !== tab) setTab(target);
           load();
         }} />
+      {/* Kanban quick-Reply modal — same flow as the drawer's "Reply with
+          template" button but launched from the orange paper-plane button
+          on each pipeline card. Sends via Resend, picks template by
+          contact source, carries signature + attachments. */}
+      <ReplyWithTemplateModal
+        open={!!kanbanReplyContact}
+        contact={kanbanReplyContact}
+        onClose={() => setKanbanReplyContact(null)}
+        onSent={() => { setKanbanReplyContact(null); load(); }}
+      />
     </div>
   );
 }

@@ -6,6 +6,13 @@
 - `OrderDetailPage.jsx` shows a brand-yellow banner under the header for franchisee orders: "FRANCHISEE — Franchisee order — [organisation] · matched on email/organisation" with an "Open franchisee →" deep link.
 - Verified live: 59 of 1,353 orders correctly tagged on the ALL tab; `#8054` resolves to "Dartford, Bexley & Rochester" via email; `#7964` resolves to "Creative Mojo Manchester West" via org name fallback.
 
+## Bug fix — Kanban Reply button uses Resend instead of mailto: (Feb 27 2026)
+- Root cause: the orange paper-plane **REPLY** button on each pipeline card invoked a `mailto:` URI which only half-fills the user's local email client (no template body, no signature, no attachments, plain-text only).
+- Fix: routed it through the existing `ReplyWithTemplateModal` (same flow as the drawer's "Reply with template"). Auto-picks the licence/franchise template by source, pre-fills To/Bcc/Subject, renders the full HTML preview including signature + Mojo promo CTA + attachments, and sends via Resend on submit. Kanban-card auto-advance to Contacted preserved.
+- Page-level `kanbanReplyContact` state added so kanban + drawer can share the same modal without coupling them.
+- Verified live on `/contacts`: clicking REPLY on a licence pipeline card opens the modal with "Licence Enquiry Reply (Overseas)" auto-selected, To = enquirer email, full HTML preview rendering, "sent via Resend" footer present.
+- Known follow-up (pre-existing, not introduced by this fix): the Licence Info Pack attachment slot on the template still shows "needs an R2 file picked in template" — admin needs to pick the R2 file once at `/admin/email-templates` for the attachment to actually ship with the email.
+
 ## Bug fix — Customer orders hidden behind pinned Franchisee rows (Feb 27 2026)
 - Removed the franchisee-pinned-to-top grouping on standard Orders tabs (ACTIVE/COMPLETED/ALL/DRAFT). With 65 franchisee rows pinned above 1,277 customer rows on COMPLETED, customer orders sat several screens below the fold — user reported "we have lost all the customer orders".
 - Rows now render in natural date-desc order. Franchisee rows remain visually distinct via row tint (`#f6f6cd`) + FRANCHISEE pill (handled in `OrderRow`). Group-banner section headers removed entirely from these tabs.
