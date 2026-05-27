@@ -26,13 +26,13 @@ function HomeRow({ home, idx, isOpen, onToggle, onZoom }) {
 
   return (
     <div
-      className="border-b border-stone-200 last:border-b-0 transition-colors"
-      style={isOpen ? { backgroundColor: "#f1f1b7" } : undefined}
+      className="border-b border-stone-200 last:border-b-0"
       data-testid={`home-row-${idx + 1}`}
     >
       <button
         onClick={onToggle}
-        className={`w-full flex items-center gap-3 px-3 py-3 text-left group ${isOpen ? "" : "hover:bg-stone-50"}`}
+        className={`w-full flex items-center gap-3 px-3 py-3 text-left group transition-colors ${isOpen ? "" : "hover:bg-stone-50"}`}
+        style={isOpen ? { backgroundColor: "#f6f6cd" } : undefined}
       >
         <span className="w-7 h-7 rounded-full bg-stone-950 text-white text-xs font-bold flex items-center justify-center tabular-nums shrink-0">
           {idx + 1}
@@ -56,7 +56,7 @@ function HomeRow({ home, idx, isOpen, onToggle, onZoom }) {
         </span>
       </button>
       {isOpen && (
-        <div className="px-3 pb-4 pt-1 grid sm:grid-cols-2 gap-x-6 gap-y-2 text-sm" data-testid={`home-detail-${idx + 1}`}>
+        <div className="px-3 pb-4 pt-1 grid sm:grid-cols-2 gap-x-6 gap-y-2 text-sm bg-stone-50" data-testid={`home-detail-${idx + 1}`}>
           <Detail icon={MapPin} label="Address">{address || "—"}</Detail>
           <Detail icon={User} label="Manager">{home.registrationManagerName || <span className="text-stone-400">Not on file</span>}</Detail>
           <Detail icon={Phone} label="Phone">
