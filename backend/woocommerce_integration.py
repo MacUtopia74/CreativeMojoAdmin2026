@@ -334,8 +334,13 @@ def attach(api, db, require_role):
         pills make it obvious which tab it really lives in.
         """
         is_search = bool(search and search.strip())
+        # The Franchisee tab is implemented as a *post-decoration* filter
+        # because the franchisee_match field is added after the DB query.
+        # We therefore widen the underlying tab to "all" and apply the
+        # filter once the rows have been decorated below.
+        franchisee_only = (tab == "franchisee")
         q: dict = {}
-        if not is_search:
+        if not is_search and not franchisee_only:
             if tab == "active":
                 q["status"] = "active"
                 q["is_draft"] = {"$ne": True}
@@ -361,6 +366,8 @@ def attach(api, db, require_role):
             .sort("date_created", -1).limit(limit).to_list(limit)
         from order_franchisee_match import decorate_orders
         await decorate_orders(db, items)
+        if franchisee_only:
+            items = [o for o in items if o.get("franchisee_match")]
         return {"items": items, "total": len(items)}
 
     @api.get("/orders/counts")
@@ -368,7 +375,22 @@ def attach(api, db, require_role):
         active = await db.woo_orders.count_documents({"status": "active", "is_draft": {"$ne": True}})
         completed = await db.woo_orders.count_documents({"status": "completed"})
         draft = await db.woo_orders.count_documents({"is_draft": True})
-        return {"active": active, "completed": completed, "draft": draft, "all": active + completed + draft}
+        # Franchisee count needs the same decoration logic as the list
+        # endpoint (email + org-name match), so we just load everything and
+        # re-use the helper. With ~1.3k orders this stays well under 100ms.
+        all_docs = await db.woo_orders.find(
+            {}, {"_id": 0, "customer_label": 1, "customer_email": 1},
+        ).to_list(5000)
+        from order_franchisee_match import decorate_orders
+        await decorate_orders(db, all_docs)
+        franchisee = sum(1 for o in all_docs if o.get("franchisee_match"))
+        return {
+            "active": active,
+            "completed": completed,
+            "draft": draft,
+            "franchisee": franchisee,
+            "all": active + completed + draft,
+        }
 
     @api.get("/orders/{order_id}")
     async def get_order(order_id: str, _: dict = Depends(require_role("admin"))):

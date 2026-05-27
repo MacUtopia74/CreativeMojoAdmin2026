@@ -6,6 +6,12 @@
 - `OrderDetailPage.jsx` shows a brand-yellow banner under the header for franchisee orders: "FRANCHISEE — Franchisee order — [organisation] · matched on email/organisation" with an "Open franchisee →" deep link.
 - Verified live: 59 of 1,353 orders correctly tagged on the ALL tab; `#8054` resolves to "Dartford, Bexley & Rochester" via email; `#7964` resolves to "Creative Mojo Manchester West" via org name fallback.
 
+## Franchisee tab — easier "just franchisee orders" navigation (Feb 27 2026)
+- Added a 5th **FRANCHISEE** tab pill (black + brand-yellow text) to OrdersPage alongside ACTIVE / COMPLETED / ALL / DRAFT, with its own count badge.
+- Backend `/api/orders?tab=franchisee` widens the base query to `all` then post-filters on `franchisee_match`. `/api/orders/counts` exposes a new `franchisee` total computed via the same decorator.
+- Group banners auto-hide on this tab (no point splitting one group). Page title flips to "Franchisee Orders". Limit bumped to 2000 on this tab so older matches don't get cut off by the default 1000-row window.
+- Verified live: tab shows 67/67 franchisee orders, every row tinted, no customer rows leaked.
+
 ## Latest change — Monthly Subscriptions for Orders (Feb 27 2026)
 - New "Subscriptions" button on the Orders page header (next to "Match to Xero" / "Create Order") opens a paginated modal listing every distinct customer that has at least one order in the DB (Woo + Direct, joined by case-insensitive `customer_label`).
 - Each row exposes a single "Add Subscription" checkbox; ticking it persists a `order_subscriptions` row keyed on the normalised customer name. Untick soft-deletes (`active: false`) so audit + last-draft history survives toggling.

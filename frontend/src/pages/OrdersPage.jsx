@@ -31,10 +31,11 @@ import ProductionStatusDropdown from "@/components/orders/ProductionStatusDropdo
 const WOO_BASE_URL = (process.env.REACT_APP_WOO_BASE_URL || "https://www.creativemojo.com").replace(/\/+$/, "");
 
 const TABS = [
-  { key: "active",    label: "ACTIVE",    activeBg: "bg-[#dddd16] text-stone-950" },
-  { key: "completed", label: "COMPLETED", activeBg: "bg-[#dddd16] text-stone-950" },
-  { key: "all",       label: "ALL",       activeBg: "bg-[#dddd16] text-stone-950" },
-  { key: "draft",     label: "DRAFT",     activeBg: "bg-[#dddd16] text-stone-950" },
+  { key: "active",     label: "ACTIVE",     activeBg: "bg-[#dddd16] text-stone-950" },
+  { key: "completed",  label: "COMPLETED",  activeBg: "bg-[#dddd16] text-stone-950" },
+  { key: "all",        label: "ALL",        activeBg: "bg-[#dddd16] text-stone-950" },
+  { key: "draft",      label: "DRAFT",      activeBg: "bg-[#dddd16] text-stone-950" },
+  { key: "franchisee", label: "FRANCHISEE", activeBg: "bg-stone-950 text-[#dddd16]" },
 ];
 
 const PRODUCTION_PILL = {
@@ -112,7 +113,11 @@ export default function OrdersPage() {
     setError("");
     try {
       const { data } = await api.get("/orders", {
-        params: { tab, search: search || undefined, limit: 1000 },
+        // Franchisee tab is a post-decoration filter on the backend, so we
+        // ask for the full headroom (2000) to make sure we don't lose any
+        // older matches when the customer-order tail pushes them past the
+        // default 1000-row window.
+        params: { tab, search: search || undefined, limit: tab === "franchisee" ? 2000 : 1000 },
       });
       setData(data);
     } catch (e) {
@@ -205,6 +210,7 @@ export default function OrdersPage() {
             {tab === "completed" && "Completed Orders"}
             {tab === "all" && "All Orders"}
             {tab === "draft" && "Draft Orders"}
+            {tab === "franchisee" && "Franchisee Orders"}
           </h1>
         </div>
         <div className="flex items-center gap-2">
@@ -421,9 +427,12 @@ export default function OrdersPage() {
                 ) : (() => {
                   // Split into two grouped sections — Franchisee Orders at the
                   // top (highlighted) and Customer Orders below. Each section
-                  // gets a banner row so the eye finds them instantly.
+                  // gets a banner row so the eye finds them instantly. The
+                  // dedicated FRANCHISEE tab already filters to a single
+                  // group, so we skip the banner there to avoid noise.
                   const franchiseeRows = items.filter((o) => o.franchisee_match);
                   const customerRows = items.filter((o) => !o.franchisee_match);
+                  const showGroupBanners = tab !== "franchisee";
                   const renderRow = (o) => (
                     <OrderRow
                       key={o.id}
@@ -448,21 +457,25 @@ export default function OrdersPage() {
                     <>
                       {franchiseeRows.length > 0 && (
                         <>
-                          <tr data-testid="orders-group-franchisee" className="bg-stone-950 text-[#dddd16]">
-                            <td colSpan={11} className="px-3 py-2 text-[10px] font-bold uppercase tracking-[0.2em]">
-                              Franchisee Orders · {franchiseeRows.length}
-                            </td>
-                          </tr>
+                          {showGroupBanners && (
+                            <tr data-testid="orders-group-franchisee" className="bg-stone-950 text-[#dddd16]">
+                              <td colSpan={11} className="px-3 py-2 text-[10px] font-bold uppercase tracking-[0.2em]">
+                                Franchisee Orders · {franchiseeRows.length}
+                              </td>
+                            </tr>
+                          )}
                           {franchiseeRows.map(renderRow)}
                         </>
                       )}
                       {customerRows.length > 0 && (
                         <>
-                          <tr data-testid="orders-group-customer" className="bg-stone-100 text-stone-700">
-                            <td colSpan={11} className="px-3 py-2 text-[10px] font-bold uppercase tracking-[0.2em]">
-                              Customer Orders · {customerRows.length}
-                            </td>
-                          </tr>
+                          {showGroupBanners && (
+                            <tr data-testid="orders-group-customer" className="bg-stone-100 text-stone-700">
+                              <td colSpan={11} className="px-3 py-2 text-[10px] font-bold uppercase tracking-[0.2em]">
+                                Customer Orders · {customerRows.length}
+                              </td>
+                            </tr>
+                          )}
                           {customerRows.map(renderRow)}
                         </>
                       )}
