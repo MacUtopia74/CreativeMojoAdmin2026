@@ -6,6 +6,25 @@
 - `OrderDetailPage.jsx` shows a brand-yellow banner under the header for franchisee orders: "FRANCHISEE — Franchisee order — [organisation] · matched on email/organisation" with an "Open franchisee →" deep link.
 - Verified live: 59 of 1,353 orders correctly tagged on the ALL tab; `#8054` resolves to "Dartford, Bexley & Rochester" via email; `#7964` resolves to "Creative Mojo Manchester West" via org name fallback.
 
+## Feature — Updates / Announcements e-shot system (Feb 28 2026)
+**Admin side** (`/admin/announcements` + quick "Send Update" button on `/files`):
+- Compose modal: title (subject), intro text, N project panels (each file OR folder + title + blurb + auto-derived or manual thumbnail), recipient picker (All active franchisees vs subset).
+- Sends branded HTML email via Resend with Creative Mojo logo header, brand-yellow title banner, intro, panels (thumbnail left, name + blurb + "OPEN FILE/FOLDER →" button right), Creative Mojo footer.
+- "Recently added" quick-pick chips in the composer make it easy to flag freshly uploaded files without searching.
+- List view: every past announcement with status badge (sent/partial/failed), recipient count, panel count; click to re-open inline; soft-delete from archive.
+
+**Backend** (`announcements_routes.py`):
+- Mongo `announcements` collection. POST `/api/admin/announcements` creates, mints **lifetime** share tokens for every file/folder panel, generates personalised HTML and dispatches via Resend (re-using `resend_routes` config). Returns delivery stats (succeeded/failed/errors).
+- GET/DELETE `/api/admin/announcements`, `/api/admin/announcements/{id}`, plus `/recent-files` + `/recipients` helpers for the composer. `/recent-files` route registered before `{ann_id}` to avoid path-collision.
+- New public `GET /api/files/share/{token}/thumb` endpoint serves a cached R2 thumbnail (PNG) using the lifetime share token — works without Bearer auth so Gmail/Outlook render the email thumbnails forever.
+
+**File share lifetime fix**:
+- `POST /api/files/share-link` now accepts `days=0` / `"lifetime"` and creates a non-expiring share token, matching folder shares. (Previously file shares were hard-capped at 30 days.)
+
+**Franchisee portal** (`/portal/updates`):
+- New "Updates" nav item (Megaphone icon). Page lists every announcement the logged-in franchisee was a recipient of, newest first. Each row expands inline with full panels + working file/folder links (same lifetime share tokens).
+- Admins see every announcement (handy for QA).
+
 ## Email templates — paragraph spacing fix + rich signature (Feb 28 2026)
 - Fixed the WYSIWYG editor → preview gap: empty `<p></p>` paragraphs (a single Enter-Enter blank line) now render with visible vertical space in both the in-app preview and any downstream renderer. Two-part fix:
   1. `RichTextEditor` post-processes Tiptap output and converts `<p></p>` / `<p><br></p>` to `<p>&nbsp;</p>` so real email clients (Gmail/Outlook) preserve the spacing.

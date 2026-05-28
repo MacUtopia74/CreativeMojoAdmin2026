@@ -438,7 +438,9 @@ def build_router(db, require_role) -> APIRouter:
     # Share links — these use a stable app-side token that redirects to a
     # freshly-signed R2 URL. This means a single share link can live up to
     # 30 days (and is revocable) even though the underlying R2 sigv4 cap is
-    # 7 days.
+    # 7 days. ``days=0`` / ``"lifetime"`` → no expiry, mirroring the folder
+    # share endpoint below so admins can announce files via the Updates
+    # system without the link going stale.
     @router.post("/files/share-link")
     async def files_share_create(
         body: dict,
@@ -447,21 +449,28 @@ def build_router(db, require_role) -> APIRouter:
         import secrets
         key = body.get("key")
         raw_days = body.get("days")
-        days = int(raw_days if raw_days is not None else 30)
-        days = max(1, min(days, 30))
+        lifetime = raw_days in (0, "0", "lifetime", None) and raw_days is not None and (
+            raw_days == 0 or raw_days == "0" or str(raw_days).lower() == "lifetime"
+        )
         if not key:
             raise HTTPException(400, detail="key required")
         existing = await db.files_index.find_one({"key": key}, {"_id": 0, "name": 1})
         if not existing:
             raise HTTPException(404, detail="File not found in index")
         token = secrets.token_urlsafe(18)
-        now_ts = datetime.now(timezone.utc).timestamp()
-        expires_at_ts = now_ts + days * 86400
+        if lifetime:
+            days = 0
+            expires_iso = None
+        else:
+            days = max(1, min(int(raw_days if raw_days is not None else 30), 3650))
+            now_ts = datetime.now(timezone.utc).timestamp()
+            expires_iso = datetime.fromtimestamp(now_ts + days * 86400, tz=timezone.utc).isoformat()
         doc = {
             "token": token,
             "key": key,
             "filename": existing.get("name"),
-            "expires_at": datetime.fromtimestamp(expires_at_ts, tz=timezone.utc).isoformat(),
+            "expires_at": expires_iso,
+            "lifetime": lifetime,
             "created_at": _now(),
             "created_by": user.get("email"),
             "revoked": False,
@@ -469,9 +478,8 @@ def build_router(db, require_role) -> APIRouter:
         }
         await db.files_share_links.insert_one(doc)
         base = (os.environ.get("FRONTEND_URL") or "").rstrip("/")
-        # Public URL points at our backend, which redirects to a fresh signed URL
         url = f"{base}/api/files/share/{token}"
-        return {"url": url, "token": token, "expires_at": doc["expires_at"], "days": days}
+        return {"url": url, "token": token, "expires_at": expires_iso, "days": days, "lifetime": lifetime}
 
     # Back-compat GET shape used by the older UI — accepts ?key=&days= and
     # creates a share token.
@@ -506,6 +514,45 @@ def build_router(db, require_role) -> APIRouter:
             {"$inc": {"hits": 1}, "$set": {"last_hit_at": _now()}},
         )
         return RedirectResponse(signed, status_code=302)
+
+    # Public (unauthenticated) thumbnail for use in Resend announcement emails.
+    # Email clients fetch `<img src>` without our Bearer token, so we re-use
+    # the lifetime share-token created at announcement time. Returns a
+    # cached thumbnail (PNG) of the underlying file or a small placeholder
+    # if the file isn't an image/PDF.
+    @router.get("/files/share/{token}/thumb")
+    async def files_share_thumb(token: str, size: str = "md"):
+        from fastapi.responses import Response
+        if size not in THUMB_SIZES:
+            size = "md"
+        rec = await db.files_share_links.find_one({"token": token}, {"_id": 0})
+        if not rec or rec.get("revoked"):
+            raise HTTPException(404, detail="Share link not found or revoked")
+        try:
+            exp = datetime.fromisoformat(rec["expires_at"])
+        except Exception:  # noqa: BLE001
+            exp = None
+        if exp and datetime.now(timezone.utc) > exp:
+            raise HTTPException(410, detail="Share link expired")
+        key = rec.get("key")
+        existing = await db.files_index.find_one(
+            {"key": key}, {"_id": 0, "content_type": 1, "name": 1},
+        )
+        if not existing:
+            raise HTTPException(404, detail="File not found")
+        ct_src = (existing.get("content_type") or "").lower()
+        ext = (existing.get("name") or "").rsplit(".", 1)[-1].lower()
+        if not (ct_src.startswith("image/") or ct_src == "application/pdf"
+                or ext in {"jpg", "jpeg", "png", "gif", "webp", "heic", "pdf"}):
+            raise HTTPException(415, detail="Thumbnail not supported for this type")
+        cached = get_cached_thumbnail(key, size)
+        if cached is None:
+            cached = await build_thumbnail(key, size)
+        if cached is None:
+            raise HTTPException(404, detail="Thumbnail could not be built")
+        return Response(content=cached, media_type="image/png",
+                        headers={"Cache-Control": "public, max-age=86400"})
+
 
     # -----------------------------------------------------------------
     @router.post("/files/upload-url")

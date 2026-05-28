@@ -3604,6 +3604,10 @@ xero_integration.attach(api, db, require_role)
 import subscriptions_routes  # noqa: E402
 subscriptions_routes.attach(api, db, require_role)
 
+# Phase 6 — Announcements / "Updates" e-shot system
+import announcements_routes  # noqa: E402
+announcements_routes.attach(api, db, require_role)
+
 # Phase 2 — WooCommerce live sync (Stage A: read-only orders + product mirror)
 import woocommerce_integration  # noqa: E402
 woocommerce_integration.attach(api, db, require_role)

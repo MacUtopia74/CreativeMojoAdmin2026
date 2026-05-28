@@ -1,0 +1,357 @@
+"""Announcements / Updates system — Phase 6.
+
+Admin composes an "Update" (title + intro + N panels referencing files or
+folders + thumbnail + link), picks which franchisees to send to (default
+all active), and we email them via Resend in branded Creative Mojo
+template. Each announcement is then archived to ``announcements`` and
+visible to recipients at ``/portal/updates`` so they can refer back.
+
+The email template uses absolute https URLs everywhere so Gmail/Outlook
+render images without warnings. Thumbnails come from the
+``thumbnail_key`` (an R2 object) which we wrap with our own
+``/api/files/announcement-thumb/{key}`` proxy that always issues a fresh
+signed URL — no rotating presigned URLs in the email body.
+
+Lifetime decision: we only ever send the link a recipient sees once.
+File / folder share tokens are created at *send* time with
+``days=0 (lifetime)`` so the email never rots.
+"""
+from __future__ import annotations
+
+import logging
+import os
+import secrets
+import uuid
+from datetime import datetime, timezone
+from typing import Optional
+
+from fastapi import Depends, HTTPException
+
+logger = logging.getLogger("creative-mojo-admin.announcements")
+
+LOGO_URL = "https://hub.creativemojo.co.uk/brand/creative-mojo-logo.png"
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _frontend_base() -> str:
+    return (os.environ.get("FRONTEND_URL") or "").rstrip("/")
+
+
+async def _resolve_link_for_panel(db, panel: dict) -> tuple[str, Optional[str]]:
+    """Mint a permanent (lifetime) share URL for the panel's target and
+    return (file_url, thumbnail_url). For folder panels the thumbnail
+    falls back to whatever the admin provided (we don't try to auto-pick).
+
+    Each panel is either a single file (``kind=file``, ``key=...``) or a
+    folder (``kind=folder``, ``prefix=...``). We always create a fresh
+    token so revoking an old announcement's links doesn't break a new
+    one. URLs point at our backend's share resolver which 302s to a
+    freshly signed R2 URL — so the URL embedded in the recipient's
+    email never goes stale.
+    """
+    base = _frontend_base()
+    if panel.get("kind") == "folder":
+        prefix = (panel.get("prefix") or "").strip("/")
+        if not prefix:
+            return base, None
+        token = secrets.token_urlsafe(18)
+        await db.folder_share_links.insert_one({
+            "token": token,
+            "prefix": prefix,
+            "expires_at": None,
+            "lifetime": True,
+            "revoked": False,
+            "created_at": _now_iso(),
+            "created_by": "announcement",
+            "hits": 0,
+        })
+        return f"{base}/share/folder/{token}", None
+    # File panel
+    key = panel.get("key")
+    if not key:
+        return base, None
+    existing = await db.files_index.find_one({"key": key}, {"_id": 0, "name": 1})
+    if not existing:
+        return base, None
+    token = secrets.token_urlsafe(18)
+    await db.files_share_links.insert_one({
+        "token": token,
+        "key": key,
+        "filename": existing.get("name"),
+        "expires_at": None,
+        "lifetime": True,
+        "revoked": False,
+        "created_at": _now_iso(),
+        "created_by": "announcement",
+        "hits": 0,
+    })
+    file_url = f"{base}/api/files/share/{token}"
+    # Best-effort permanent thumbnail URL — backend will 415 if the file
+    # type doesn't support thumbnails, in which case admin's manually
+    # supplied thumbnail_url wins.
+    thumb_url = f"{base}/api/files/share/{token}/thumb?size=md"
+    return file_url, thumb_url
+
+
+def _build_html(announcement: dict) -> str:
+    """Branded HTML email. Mirrors the user-supplied example:
+    Creative Mojo logo header → yellow title banner → intro text → list
+    of panels (thumbnail left, name + blurb + button right) →
+    Creative Mojo footer.
+    """
+    panels_html: list[str] = []
+    for p in announcement.get("panels", []):
+        thumb = p.get("thumbnail_url") or ""
+        title = p.get("title") or ""
+        blurb = (p.get("blurb") or "").replace("\n", "<br/>")
+        href = p.get("resolved_url") or "#"
+        panels_html.append(f"""
+<tr><td style="padding:24px 0;border-top:1px solid #eaeaea;">
+  <table cellpadding="0" cellspacing="0" border="0" width="100%">
+    <tr>
+      <td valign="top" width="220" style="padding-right:20px;">
+        {'<img src="' + thumb + '" alt="' + title + '" width="200" style="max-width:200px;height:auto;border-radius:6px;display:block;" />' if thumb else ''}
+      </td>
+      <td valign="top">
+        <div style="font-size:22px;font-weight:700;color:#1a1a1a;line-height:1.2;margin-bottom:10px;">{title}</div>
+        <div style="font-size:14px;line-height:1.6;color:#666666;margin-bottom:14px;">{blurb}</div>
+        <a href="{href}" style="display:inline-block;background:#dddd16;color:#1a1a1a;font-weight:700;text-decoration:none;padding:10px 22px;border-radius:4px;font-size:13px;letter-spacing:0.5px;">OPEN {('FOLDER' if p.get('kind')=='folder' else 'FILE')} &rsaquo;</a>
+      </td>
+    </tr>
+  </table>
+</td></tr>
+""")
+    intro_html = (announcement.get("intro") or "").replace("\n", "<br/>")
+    return f"""
+<!doctype html>
+<html><body style="margin:0;background:#f7f7f4;font-family:Helvetica,Arial,sans-serif;">
+<table cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="#f7f7f4" style="background:#f7f7f4;">
+  <tr><td align="center" style="padding:30px 16px;">
+    <table cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;background:#ffffff;border:1px solid #ececec;">
+      <tr><td align="center" style="padding:30px 30px 14px;">
+        <img src="{LOGO_URL}" alt="Creative Mojo" width="220"
+             style="max-width:220px;height:auto;display:block;" />
+      </td></tr>
+      <tr><td style="padding:0 30px 6px;">
+        <div style="background:#dddd16;padding:18px 22px;font-family:Helvetica,Arial,sans-serif;
+                    font-size:24px;font-weight:800;color:#1a1a1a;line-height:1.2;">
+          {announcement.get('title','')}
+        </div>
+      </td></tr>
+      <tr><td style="padding:18px 30px 4px;font-size:15px;line-height:1.6;color:#1a1a1a;">
+        <div>Hi <strong>{{{{first_name}}}}</strong>,</div>
+        <div style="margin-top:10px;">{intro_html}</div>
+      </td></tr>
+      <tr><td style="padding:0 30px;">
+        <table cellpadding="0" cellspacing="0" border="0" width="100%">{''.join(panels_html)}</table>
+      </td></tr>
+      <tr><td style="padding:30px;font-size:11px;color:#999999;line-height:1.5;text-align:center;border-top:1px solid #eaeaea;">
+        Creative Mojo Ltd · Channings, Brithem Bottom, Cullompton, Devon EX15 1NB<br/>
+        This update is for franchisees only. Please don't forward externally.
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body></html>
+"""
+
+
+def attach(api, db, require_role):
+
+    @api.get("/admin/announcements/recipients")
+    async def list_recipients(_: dict = Depends(require_role("admin"))):
+        """Active franchisees with usable emails — pre-checked default
+        for the composer's recipient picker."""
+        items: list[dict] = []
+        async for f in db.franchisees.find(
+            {},
+            {"_id": 0, "id": 1, "first_name": 1, "last_name": 1, "organisation": 1,
+             "mojo_email": 1, "secondary_email": 1, "tags": 1},
+        ):
+            email = (f.get("mojo_email") or f.get("secondary_email") or "").strip()
+            if not email:
+                continue
+            is_ex = any("ex" in str(t).lower() and "franchisee" in str(t).lower()
+                        for t in (f.get("tags") or []))
+            if is_ex:
+                continue
+            items.append({
+                "id": f.get("id"),
+                "first_name": f.get("first_name") or "",
+                "last_name": f.get("last_name") or "",
+                "organisation": f.get("organisation") or "",
+                "email": email,
+            })
+        items.sort(key=lambda r: (r.get("organisation") or "").lower())
+        return {"items": items, "total": len(items)}
+
+    @api.post("/admin/announcements")
+    async def create_announcement(
+        body: dict,
+        user: dict = Depends(require_role("admin")),
+    ):
+        """Create + send. Body shape:
+        {
+          "title": str,
+          "intro": str,                    # plain text, newlines allowed
+          "panels": [{
+              "kind": "file" | "folder",
+              "key" | "prefix": str,
+              "title": str,
+              "blurb": str,
+              "thumbnail_url": str        # absolute https URL
+          }],
+          "recipient_ids": [str] | null   # null/empty = all active franchisees
+        }
+        """
+        title = (body.get("title") or "").strip()
+        if not title:
+            raise HTTPException(400, "title is required")
+        panels = body.get("panels") or []
+        if not isinstance(panels, list) or not panels:
+            raise HTTPException(400, "At least one panel is required")
+        intro = body.get("intro") or ""
+
+        # Resolve recipients
+        recipient_ids = body.get("recipient_ids") or None
+        match: dict = {}
+        if recipient_ids:
+            match = {"id": {"$in": list(recipient_ids)}}
+        recipients: list[dict] = []
+        async for f in db.franchisees.find(
+            match,
+            {"_id": 0, "id": 1, "first_name": 1, "mojo_email": 1,
+             "secondary_email": 1, "tags": 1},
+        ):
+            email = (f.get("mojo_email") or f.get("secondary_email") or "").strip()
+            if not email:
+                continue
+            is_ex = any("ex" in str(t).lower() and "franchisee" in str(t).lower()
+                        for t in (f.get("tags") or []))
+            if is_ex and not recipient_ids:
+                continue
+            recipients.append({
+                "id": f.get("id"), "email": email,
+                "first_name": f.get("first_name") or "there",
+            })
+        if not recipients:
+            raise HTTPException(400, "No active franchisees matched the recipient filter")
+
+        # Mint lifetime share links for each panel
+        for p in panels:
+            file_url, auto_thumb = await _resolve_link_for_panel(db, p)
+            p["resolved_url"] = file_url
+            # Auto-thumb wins when admin didn't supply one. Admin can
+            # always override per-panel via `thumbnail_url` on the body.
+            if auto_thumb and not p.get("thumbnail_url"):
+                p["thumbnail_url"] = auto_thumb
+
+        ann = {
+            "id": str(uuid.uuid4()),
+            "title": title,
+            "intro": intro,
+            "panels": panels,
+            "created_at": _now_iso(),
+            "created_by": user.get("email"),
+            "sent_to": [r["id"] for r in recipients],
+            "recipient_count": len(recipients),
+            "delivery": {"status": "pending", "succeeded": 0, "failed": 0, "errors": []},
+        }
+        await db.announcements.insert_one(ann)
+
+        # Send via Resend (re-use the existing client)
+        from resend_routes import (
+            RESEND_API_KEY, RESEND_FROM_EMAIL, RESEND_FROM_NAME,
+        )
+        if not RESEND_API_KEY:
+            await db.announcements.update_one(
+                {"id": ann["id"]},
+                {"$set": {"delivery.status": "skipped",
+                          "delivery.errors": ["Resend not configured"]}},
+            )
+            return {"ok": False, "announcement_id": ann["id"], "sent": 0,
+                    "reason": "Resend not configured"}
+        import resend as _resend
+        _resend.api_key = RESEND_API_KEY
+
+        base_html = _build_html(ann)
+        succeeded = 0
+        failed: list[str] = []
+        for r in recipients:
+            personal = base_html.replace("{{first_name}}", r["first_name"])
+            try:
+                _resend.Emails.send({
+                    "from": f"{RESEND_FROM_NAME} <{RESEND_FROM_EMAIL}>",
+                    "to": [r["email"]],
+                    "subject": title,
+                    "html": personal,
+                    "tags": [{"name": "kind", "value": "announcement"},
+                             {"name": "ann_id", "value": ann["id"]}],
+                })
+                succeeded += 1
+            except Exception as exc:  # noqa: BLE001
+                failed.append(f"{r['email']}: {exc}")
+                logger.warning("Announcement send failed for %s: %s", r["email"], exc)
+
+        delivery = {
+            "status": "sent" if succeeded and not failed
+                      else ("partial" if succeeded else "failed"),
+            "succeeded": succeeded, "failed": len(failed),
+            "errors": failed[:10],
+        }
+        await db.announcements.update_one(
+            {"id": ann["id"]},
+            {"$set": {"delivery": delivery, "sent_at": _now_iso()}},
+        )
+        return {"ok": True, "announcement_id": ann["id"], **delivery}
+
+    @api.get("/admin/announcements")
+    async def list_announcements(_: dict = Depends(require_role("admin"))):
+        items = await db.announcements.find({}, {"_id": 0}) \
+            .sort("created_at", -1).limit(200).to_list(200)
+        return {"items": items, "total": len(items)}
+
+    # --------------------- recent files helper for the composer ----
+    # MUST be declared before /admin/announcements/{ann_id} so FastAPI's
+    # path matcher routes the literal "recent-files" segment here rather
+    # than treating it as an announcement id.
+    @api.get("/admin/announcements/recent-files")
+    async def recent_files(limit: int = 40, _: dict = Depends(require_role("admin"))):
+        """The "Recently added" candidates the composer can quickly tick."""
+        items = await db.files_index.find({}, {"_id": 0}) \
+            .sort("uploaded_at", -1).limit(limit).to_list(limit)
+        return {"items": items}
+
+    @api.get("/admin/announcements/{ann_id}")
+    async def get_announcement(ann_id: str, _: dict = Depends(require_role("admin"))):
+        doc = await db.announcements.find_one({"id": ann_id}, {"_id": 0})
+        if not doc:
+            raise HTTPException(404, "Not found")
+        return doc
+
+    @api.delete("/admin/announcements/{ann_id}")
+    async def delete_announcement(ann_id: str, _: dict = Depends(require_role("admin"))):
+        r = await db.announcements.delete_one({"id": ann_id})
+        if not r.deleted_count:
+            raise HTTPException(404, "Not found")
+        return {"ok": True}
+
+    # --------------------- portal endpoint ------------------------
+    @api.get("/portal/announcements")
+    async def portal_list(user: dict = Depends(require_role("franchisee", "admin"))):
+        """Past announcements the logged-in franchisee was a recipient of.
+        Admins see everything (handy for QA). Sorted newest first.
+        """
+        if user.get("role") == "admin":
+            items = await db.announcements.find({}, {"_id": 0}) \
+                .sort("created_at", -1).limit(200).to_list(200)
+        else:
+            fid = user.get("franchisee_id") or user.get("id")
+            items = await db.announcements.find(
+                {"sent_to": fid}, {"_id": 0},
+            ).sort("created_at", -1).limit(200).to_list(200)
+        return {"items": items, "total": len(items)}
+

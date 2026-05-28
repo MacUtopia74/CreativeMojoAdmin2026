@@ -18,7 +18,7 @@ import api from "@/lib/api";
 import Logo from "@/components/Logo";
 import {
   Home, User as UserIcon, MapPin, CalendarDays, FolderOpen, Receipt,
-  LogOut, Type, Loader2, AlertCircle,
+  LogOut, Type, Loader2, AlertCircle, Megaphone,
 } from "lucide-react";
 
 const FONT_SCALES = {
@@ -40,6 +40,7 @@ function buildTabs({ modules }) {
   if (modules.calendar !== false) tabs.push({ to: "/portal/events", label: "Events", icon: CalendarDays, testid: "portal-nav-events" });
   if (modules.invoicing === true) tabs.push({ to: "/portal/invoices", label: "Invoicing", icon: Receipt, testid: "portal-nav-invoices" });
   if (modules.files !== false) tabs.push({ to: "/portal/files", label: "Files", icon: FolderOpen, testid: "portal-nav-files" });
+  tabs.push({ to: "/portal/updates", label: "Updates", icon: Megaphone, testid: "portal-nav-updates" });
   return tabs;
 }
 

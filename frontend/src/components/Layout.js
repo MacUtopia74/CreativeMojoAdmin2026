@@ -25,6 +25,7 @@ import {
   Building2,
   Cog,
   Mail,
+  Megaphone,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -86,6 +87,7 @@ const SIDEBAR = [
         children: [
           { kind: "item", to: "/admin/users", label: "Admin Users", icon: KeyRound, testid: "nav-admin-users", permKey: "admin-users" },
           { kind: "item", to: "/admin/email-templates", label: "Email Templates", icon: Mail, testid: "nav-admin-email-templates", permKey: "admin-email-templates" },
+          { kind: "item", to: "/admin/announcements", label: "Announcements", icon: Megaphone, testid: "nav-admin-announcements", permKey: "admin-announcements" },
           { kind: "item", to: "/admin/xero", label: "Xero", icon: Calculator, testid: "nav-admin-xero", permKey: "admin-xero" },
           { kind: "item", to: "/form-intake", label: "Form Intake", icon: Inbox, testid: "nav-form-intake", permKey: "form-intake" },
         ],
@@ -114,6 +116,7 @@ export const ADMIN_NAV_KEYS = [
   { key: "banking",          label: "Banking",              paths: ["/banking"] },
   { key: "admin-users",      label: "Admin Users",          paths: ["/admin/users", "/admin/password-resets"] },
   { key: "admin-email-templates", label: "Email Templates",  paths: ["/admin/email-templates"] },
+  { key: "admin-announcements", label: "Announcements",  paths: ["/admin/announcements"] },
   { key: "admin-xero",       label: "Xero (settings)",      paths: ["/admin/xero"] },
   { key: "form-intake",      label: "Form Intake",          paths: ["/form-intake"] },
 ];

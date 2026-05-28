@@ -15,6 +15,7 @@ import {
   RefreshCw, ChevronUp, ChevronDown, X, ExternalLink, Share2, Copy, CheckCircle2,
   FolderPlus, Trash2, Eye, LayoutGrid, List, FileText, Image as ImageIcon,
   FileAudio, FileVideo, FileArchive, Sparkles, Clock, PanelLeftClose, PanelLeftOpen,
+  Megaphone,
 } from "lucide-react";
 import FolderActionsMenu from "@/components/files/FolderActionsMenu";
 import FolderMovePicker from "@/components/files/FolderMovePicker";
@@ -719,6 +720,12 @@ export default function FilesPage() {
               )}
             </div>
           </div>
+          <Link to="/admin/announcements"
+            data-testid="files-send-update"
+            title="Send a branded Update to franchisees"
+            className="ml-2 px-3 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 text-[#dddd16] hover:bg-stone-800 rounded-lg flex items-center gap-1.5 whitespace-nowrap">
+            <Megaphone className="w-3.5 h-3.5" /> Send Update
+          </Link>
         </div>
       </div>
 

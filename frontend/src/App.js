@@ -29,6 +29,7 @@ import XeroSettingsPage from "@/pages/XeroSettingsPage";
 import OrdersReconciliationPage from "@/pages/OrdersReconciliationPage";
 import ScotlandDefinitionsPage from "@/pages/ScotlandDefinitionsPage";
 import EmailTemplatesPage from "@/pages/EmailTemplatesPage";
+import AnnouncementsPage from "@/pages/AnnouncementsPage";
 // Invoices module (merged from Pay-Paperwork)
 import InvoiceList from "@/pages/invoices/InvoiceList";
 import CreateInvoice from "@/pages/invoices/CreateInvoice";
@@ -47,6 +48,7 @@ import PortalDetailsPage from "@/pages/portal/PortalDetailsPage";
 import PortalTerritoryPage from "@/pages/portal/PortalTerritoryPage";
 import PortalEventsPage from "@/pages/portal/PortalEventsPage";
 import PortalFilesPage from "@/pages/portal/PortalFilesPage";
+import PortalUpdatesPage from "@/pages/portal/PortalUpdatesPage";
 // Portal invoices module — clone of admin Sandra's Invoices, scoped to franchisee.
 import PortalInvoicesShell from "@/pages/portal/invoices/PortalInvoicesShell";
 import PortalInvoiceList from "@/pages/portal/invoices/PortalInvoiceList";
@@ -77,6 +79,7 @@ export default function App() {
               <Route path="territory" element={<PortalTerritoryPage />} />
               <Route path="events" element={<PortalEventsPage />} />
               <Route path="files" element={<PortalFilesPage />} />
+              <Route path="updates" element={<PortalUpdatesPage />} />
               <Route path="invoices" element={<PortalInvoicesShell />}>
                 <Route index element={<PortalInvoiceList />} />
                 <Route path="reconcile" element={<PortalReconcile />} />
@@ -107,6 +110,7 @@ export default function App() {
               <Route path="/cqc-definitions" element={<CqcDefinitionsPage />} />
               <Route path="/scotland-definitions" element={<ScotlandDefinitionsPage />} />
               <Route path="/admin/email-templates" element={<EmailTemplatesPage />} />
+              <Route path="/admin/announcements" element={<AnnouncementsPage />} />
               <Route path="/calendar" element={<CalendarPage />} />
               <Route path="/contacts" element={<ContactsPage />} />
               <Route path="/form-intake" element={<FormIntakePage />} />
