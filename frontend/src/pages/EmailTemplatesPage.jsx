@@ -304,6 +304,12 @@ function TemplateEditor({ template, onChanged, onDuplicate, onDelete }) {
 // ---------------------------------------------------------------------------
 // PreviewHtml — renders the template body with {{first_name}} replaced
 // and {{file:*}} links shown as friendly chip text.
+//
+// We wrap the rendered HTML in a div whose CSS gives `<p>` real
+// margin-bottom so empty paragraphs (a single Enter-Enter blank line)
+// show visible vertical space — matching how Gmail/Outlook will render
+// the same markup. Without this the preview collapses every paragraph
+// flush against the next, which doesn't reflect the actual email.
 // ---------------------------------------------------------------------------
 function PreviewHtml({ html, sampleFirstName }) {
   const rendered = useMemo(() => {
@@ -314,7 +320,25 @@ function PreviewHtml({ html, sampleFirstName }) {
     return h;
   }, [html, sampleFirstName]);
   // eslint-disable-next-line react/no-danger
-  return <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(rendered) }} />;
+  return (
+    <div
+      className="email-preview-body text-stone-900"
+      // Inline styles so we don't fight Tailwind's preflight on `<p>`.
+      style={{ fontFamily: "Helvetica, Arial, sans-serif", lineHeight: 1.55, fontSize: 15 }}
+    >
+      <style>{`
+        .email-preview-body p { margin: 0 0 14px 0; min-height: 1em; }
+        .email-preview-body p:last-child { margin-bottom: 0; }
+        .email-preview-body h1 { font-size: 22px; font-weight: 700; margin: 18px 0 10px 0; }
+        .email-preview-body h2 { font-size: 18px; font-weight: 700; margin: 16px 0 8px 0; }
+        .email-preview-body h3 { font-size: 16px; font-weight: 600; margin: 14px 0 6px 0; }
+        .email-preview-body ul, .email-preview-body ol { margin: 0 0 14px 22px; }
+        .email-preview-body li { margin: 4px 0; }
+        .email-preview-body a { color: #1a1a1a; text-decoration: underline; }
+      `}</style>
+      <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(rendered) }} />
+    </div>
+  );
 }
 
 

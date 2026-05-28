@@ -16,12 +16,45 @@ from motor.motor_asyncio import AsyncIOMotorClient
 SIGNATURE_HTML = """
 <p>Have a great day.</p>
 <p>Best Regards,</p>
-<p><strong>Paul Caldeira-Dunkerley</strong><br/>
-Managing Director — Creative Mojo Ltd<br/>
-Mobile: 07976 233 660 &nbsp;|&nbsp; Office: 01580 882 230<br/>
-Email: <a href="mailto:paul@creativemojo.co.uk">paul@creativemojo.co.uk</a><br/>
-Website: <a href="https://www.creativemojo.co.uk">www.creativemojo.co.uk</a></p>
-<p style="font-size:11px;color:#666;">Creative Mojo Ltd · Robertsbridge · East Sussex</p>
+<table cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:560px;border-collapse:collapse;font-family:Helvetica,Arial,sans-serif;color:#1a1a1a;">
+  <tr>
+    <td valign="top" style="padding-right:18px;">
+      <div style="font-size:22px;font-weight:bold;color:#dddd16;line-height:1.1;margin-bottom:2px;">Paul Caldeira-Dunkerley</div>
+      <div style="font-size:14px;font-weight:bold;color:#1a1a1a;margin-bottom:8px;">Director, Creative Mojo Ltd</div>
+      <hr style="border:0;border-top:1px solid #cccccc;margin:6px 0 10px 0;" />
+      <div style="font-size:13px;line-height:1.8;">
+        <span style="display:inline-block;">&#9742; 01884 303606 &nbsp;&nbsp; &#128241; 07886 374959</span><br/>
+        <span>&#127760; <a href="https://www.creativemojo.com" style="color:#1a1a1a;text-decoration:none;">www.creativemojo.com</a></span><br/>
+        <span>&#9993; <a href="mailto:paul@creativemojo.co.uk" style="color:#1a1a1a;text-decoration:none;">paul@creativemojo.co.uk</a></span><br/>
+        <span>&#128205; Channings, Brithem Bottom, Cullompton, Devon EX15 1NB</span>
+      </div>
+      <div style="margin-top:10px;font-size:13px;">
+        <a href="https://www.facebook.com/CreativeMojoLtd" style="text-decoration:none;margin-right:6px;color:#1877f2;">&#9679; Facebook</a>
+        <a href="https://www.instagram.com/creativemojoltd" style="text-decoration:none;margin-right:6px;color:#e1306c;">&#9679; Instagram</a>
+        <a href="https://twitter.com/creativemojoltd" style="text-decoration:none;margin-right:6px;color:#000000;">&#9679; X</a>
+        <a href="https://www.youtube.com/@creativemojoltd" style="text-decoration:none;color:#ff0000;">&#9679; YouTube</a>
+      </div>
+    </td>
+    <td valign="top" align="right" style="width:140px;">
+      <img src="https://www.creativemojo.com/wp-content/uploads/2020/02/Creative-Mojo-Logo.png"
+           alt="Creative Mojo" width="120" style="max-width:120px;height:auto;display:block;" />
+    </td>
+  </tr>
+</table>
+<p style="margin:16px 0;">
+  <a href="https://www.creativemojo.com/promo-video"
+     style="display:inline-block;border:2px solid #dddd16;color:#666666;padding:10px 26px;text-decoration:none;font-weight:bold;font-family:Helvetica,Arial,sans-serif;font-size:14px;letter-spacing:0.5px;border-radius:4px;">
+     WATCH THE MOJO PROMO VIDEO &nbsp;&rsaquo;
+  </a>
+</p>
+<p style="font-size:11px;line-height:1.5;color:#a0a0a0;margin-top:20px;">
+  <strong style="color:#a0a0a0;">IMPORTANT:</strong> The contents of this email and any attachments are confidential. They are intended for the named recipient(s) only. If you have received this email by mistake, please notify the sender immediately and do not disclose the contents to anyone or make copies thereof.
+</p>
+<p style="font-size:11px;line-height:1.6;color:#333333;margin-top:14px;">
+  Creative Mojo Ltd Registered Address: Channings, Brithem Bottom, Cullompton, Devon EX15 1NB.<br/>
+  Registered in England and Wales No. 10261882<br/>
+  <strong>VAT Registration No. 301645048</strong>
+</p>
 """
 
 FRANCHISE_BODY = f"""

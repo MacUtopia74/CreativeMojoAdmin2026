@@ -17,6 +17,20 @@ import {
   Link2, Heading1, Heading2, Pilcrow, Undo2, Redo2, Code,
 } from "lucide-react";
 
+// Tiptap exports blank paragraphs as `<p></p>` or `<p><br></p>` (when the
+// user hits Enter twice for a paragraph break). HTML collapses these to
+// zero height, so the preview — and real email clients like Gmail/Outlook
+// — show no visible gap between paragraphs. Inserting a `&nbsp;` gives
+// the paragraph actual content, so it renders at one line of vertical
+// space without otherwise affecting the layout. Cheap, idempotent, and
+// safe to run on every editor update.
+function normaliseEmptyParagraphs(html) {
+  if (!html) return html;
+  return html
+    .replace(/<p>\s*<\/p>/g, "<p>&nbsp;</p>")
+    .replace(/<p>\s*<br\s*\/?>\s*<\/p>/g, "<p>&nbsp;</p>");
+}
+
 export default function RichTextEditor({ value, onChange, placeholder, testIdPrefix = "rte" }) {
   const editor = useEditor({
     extensions: [
@@ -48,7 +62,7 @@ export default function RichTextEditor({ value, onChange, placeholder, testIdPre
       },
     },
     onUpdate: ({ editor: ed }) => {
-      onChange?.(ed.getHTML());
+      onChange?.(normaliseEmptyParagraphs(ed.getHTML()));
     },
   });
 

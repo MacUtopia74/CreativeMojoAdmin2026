@@ -6,6 +6,14 @@
 - `OrderDetailPage.jsx` shows a brand-yellow banner under the header for franchisee orders: "FRANCHISEE — Franchisee order — [organisation] · matched on email/organisation" with an "Open franchisee →" deep link.
 - Verified live: 59 of 1,353 orders correctly tagged on the ALL tab; `#8054` resolves to "Dartford, Bexley & Rochester" via email; `#7964` resolves to "Creative Mojo Manchester West" via org name fallback.
 
+## Email templates — paragraph spacing fix + rich signature (Feb 28 2026)
+- Fixed the WYSIWYG editor → preview gap: empty `<p></p>` paragraphs (a single Enter-Enter blank line) now render with visible vertical space in both the in-app preview and any downstream renderer. Two-part fix:
+  1. `RichTextEditor` post-processes Tiptap output and converts `<p></p>` / `<p><br></p>` to `<p>&nbsp;</p>` so real email clients (Gmail/Outlook) preserve the spacing.
+  2. `EmailTemplatesPage` `PreviewHtml` now wraps the rendered HTML in `.email-preview-body` with explicit `p { margin: 0 0 14px 0; min-height: 1em; }` (and matching heading/list styles), Helvetica/Arial body — matching how a real recipient sees the email.
+- Replaced the seeded `SIGNATURE_HTML` with a rich version mirroring Paul's actual signature: bold yellow name, bold title, hr, phone/mobile/web/email/address with unicode icons, social links (Facebook/Instagram/X/YouTube), "WATCH THE MOJO PROMO VIDEO" yellow-bordered CTA, IMPORTANT confidentiality block in light grey, and the registered company + VAT footer. Includes the Creative Mojo logo image (loaded from `creativemojo.com`).
+- New idempotent endpoint `POST /api/email-templates/refresh-signature` swaps the signature block on every existing template (from "Have a great day." downwards), preserving the per-template body above. Already run live — 2 templates updated.
+- Verified on `/admin/email-templates` preview: paragraphs now have proper gaps, signature renders correctly.
+
 ## Bug fix — Kanban Reply button uses Resend instead of mailto: (Feb 27 2026)
 - Root cause: the orange paper-plane **REPLY** button on each pipeline card invoked a `mailto:` URI which only half-fills the user's local email client (no template body, no signature, no attachments, plain-text only).
 - Fix: routed it through the existing `ReplyWithTemplateModal` (same flow as the drawer's "Reply with template"). Auto-picks the licence/franchise template by source, pre-fills To/Bcc/Subject, renders the full HTML preview including signature + Mojo promo CTA + attachments, and sends via Resend on submit. Kanban-card auto-advance to Contacted preserved.

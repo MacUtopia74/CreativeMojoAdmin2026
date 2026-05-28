@@ -133,4 +133,37 @@ def build_email_templates_router(db, require_role):  # noqa: D401
         await db.email_templates.insert_one(clone)
         return await _serialise(clone)
 
+    @router.post("/email-templates/refresh-signature")
+    async def refresh_signature(user: dict = Depends(require_role("admin"))):
+        """Re-apply the latest ``SIGNATURE_HTML`` constant from
+        ``seed_email_templates.py`` to every template that contains the
+        old marker (``Best Regards,``). Replaces from "Have a great day."
+        downwards so the per-template body above stays intact. Safe to
+        re-run — idempotent on already-updated templates.
+        """
+        from seed_email_templates import SIGNATURE_HTML  # local import to avoid cycle
+        import re
+        updated = 0
+        skipped = 0
+        async for tpl in db.email_templates.find({}, {"_id": 0, "id": 1, "body_html": 1, "name": 1}):
+            body = tpl.get("body_html") or ""
+            # Find the "Have a great day." paragraph and everything after.
+            # Tolerant to slight markup variants (extra spaces, &nbsp; etc.).
+            split_re = re.compile(r"<p[^>]*>\s*Have a great day\.\s*</p>", re.IGNORECASE)
+            m = split_re.search(body)
+            if not m:
+                skipped += 1
+                continue
+            new_body = body[: m.start()] + SIGNATURE_HTML.strip()
+            await db.email_templates.update_one(
+                {"id": tpl["id"]},
+                {"$set": {
+                    "body_html": new_body,
+                    "updated_at": _now_iso(),
+                    "updated_by": user.get("email"),
+                }},
+            )
+            updated += 1
+        return {"updated": updated, "skipped": skipped}
+
     return router
