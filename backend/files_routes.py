@@ -658,6 +658,50 @@ def build_router(db, require_role) -> APIRouter:
         await db.files_index.update_one({"key": key}, {"$set": doc}, upsert=True)
         return {"indexed": True, "file": doc}
 
+    # -----------------------------------------------------------------
+    # Replace an existing file with a new version, keeping the same R2 key
+    # so share links and embeds stay valid. The new file's local filename
+    # is ignored — only its bytes matter. Size, content-type and timestamps
+    # on the index row are updated in place.
+    @router.post("/files/replace")
+    async def files_replace_version(
+        file: UploadFile = File(...),
+        key: str = Form(..., description="Existing R2 key to overwrite"),
+        user: dict = Depends(require_role("admin")),
+    ):
+        if not r2_configured():
+            raise HTTPException(503, detail="R2 not configured")
+        if not key or key.endswith("/"):
+            raise HTTPException(400, detail="key must point to a file")
+        existing = await db.files_index.find_one({"key": key}, {"_id": 0})
+        if not existing:
+            raise HTTPException(404, detail="File not found")
+        data = await file.read()
+        if not data:
+            raise HTTPException(400, detail="Replacement upload is empty")
+        # Prefer the existing content-type when the browser sends generic
+        # octet-stream — keeps inline previews working. If the user
+        # uploaded a clearly different type (e.g. PDF over a JPG), accept
+        # the new value.
+        ct = file.content_type or existing.get("content_type") or "application/octet-stream"
+        if ct == "application/octet-stream" and existing.get("content_type"):
+            ct = existing["content_type"]
+        try:
+            get_client().put_object(Bucket=R2_BUCKET, Key=key, Body=data, ContentType=ct)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(502, detail=f"R2 put_object failed: {exc}") from exc
+        patch = {
+            "size": len(data),
+            "content_type": ct,
+            "replaced_at": _now(),
+            "replaced_by": user.get("email"),
+            "last_modified": _now(),
+        }
+        await db.files_index.update_one({"key": key}, {"$set": patch})
+        merged = {**existing, **patch}
+        return {"replaced": True, "file": merged}
+
+
     @router.post("/files/folder")
     async def files_create_folder(
         body: dict,

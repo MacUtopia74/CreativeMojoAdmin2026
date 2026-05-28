@@ -23,6 +23,7 @@ import RecentFilesStrip from "@/components/files/RecentFilesStrip";
 import TrashView from "@/components/files/TrashView";
 import FileThumbnail from "@/components/files/FileThumbnail";
 import FilePreviewModal from "@/components/files/FilePreviewModal";
+import FileReplaceButton from "@/components/files/FileReplaceButton";
 import { prettyFolderName } from "@/utils/folderName";
 
 function fmtBytes(b) {
@@ -894,6 +895,11 @@ export default function FilesPage() {
                                     className="flex-1 px-1.5 py-1 text-[9px] font-bold uppercase tracking-wider bg-white border border-stone-300 hover:bg-stone-50 text-stone-700 rounded-md flex items-center justify-center gap-1">
                                     <Share2 className="w-3 h-3" /> Share
                                   </button>
+                                  <FileReplaceButton
+                                    file={it}
+                                    onReplaced={() => { reloadTree(prefix); reloadScopes(); }}
+                                    className="flex-1 px-1.5 py-1 text-[9px] font-bold uppercase tracking-wider bg-white border border-stone-300 hover:bg-stone-50 text-stone-700 rounded-md flex items-center justify-center gap-1 disabled:opacity-50"
+                                  />
                                   <button onClick={() => download(it.key)} disabled={downloadingKey === it.key}
                                     data-testid={`download-grid-${it.key}`}
                                     className="flex-1 px-1.5 py-1 text-[9px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-md flex items-center justify-center gap-1 disabled:opacity-50">
@@ -936,6 +942,7 @@ export default function FilesPage() {
                               className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-white border border-stone-300 hover:bg-stone-50 text-stone-700 rounded-md flex items-center gap-1">
                               <Share2 className="w-3 h-3" />
                             </button>
+                            <FileReplaceButton file={it} onReplaced={() => { reloadTree(prefix); reloadScopes(); }} />
                             <button onClick={() => download(it.key)} disabled={downloadingKey === it.key}
                               className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-md flex items-center gap-1 disabled:opacity-50">
                               {downloadingKey === it.key ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />} Download
