@@ -14,7 +14,6 @@ from datetime import datetime, timezone
 from motor.motor_asyncio import AsyncIOMotorClient
 
 SIGNATURE_HTML = """
-<p>Have a great day.</p>
 <p>Best Regards,</p>
 <table cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:560px;border-collapse:collapse;font-family:Helvetica,Arial,sans-serif;color:#1a1a1a;">
   <tr>
@@ -35,9 +34,9 @@ SIGNATURE_HTML = """
         <a href="https://www.youtube.com/@creativemojoltd" style="text-decoration:none;color:#ff0000;">&#9679; YouTube</a>
       </div>
     </td>
-    <td valign="top" align="right" style="width:140px;">
+    <td valign="top" align="right" style="width:165px;">
       <img src="https://hub.creativemojo.co.uk/brand/creative-mojo-logo.png"
-           alt="Creative Mojo" width="120" style="max-width:120px;height:auto;display:block;" />
+           alt="Creative Mojo" width="144" style="max-width:144px;height:auto;display:block;" />
     </td>
   </tr>
 </table>
