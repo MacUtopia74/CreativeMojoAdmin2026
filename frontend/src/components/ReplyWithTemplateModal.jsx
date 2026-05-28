@@ -78,11 +78,12 @@ export default function ReplyWithTemplateModal({ open, contact, onClose, onSent 
       .split(/[,;\s]+/)
       .map((s) => s.trim())
       .filter(Boolean);
-  // Substitute {{first_name}} (and {{file:*}} → friendly chip text) so
-  // the preview reflects exactly what the recipient will see.
+  // Use the rendered_html (editable body + locked signature) for both
+  // the preview and the send. The signature lives outside body_html so
+  // Tiptap can't mangle it.
   const rendered = useMemo(() => {
     if (!selected) return "";
-    let h = selected.body_html || "";
+    let h = selected.rendered_html || selected.body_html || "";
     h = h.replace(/\{\{\s*first_name\s*\}\}/g, firstName);
     h = h.replace(/\{\{\s*file:([^}]+)\s*\}\}/g, "#preview");
     return h;
@@ -116,7 +117,7 @@ export default function ReplyWithTemplateModal({ open, contact, onClose, onSent 
         cc: parseList(cc),
         bcc: parseList(bcc),
         subject: subject.trim(),
-        body_html: selected.body_html || "",
+        body_html: selected.rendered_html || selected.body_html || "",
       });
       toast.success(`Email sent to ${toList[0]}${toList.length > 1 ? ` (+${toList.length - 1})` : ""}`);
       if (onSent) onSent(data.send);

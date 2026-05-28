@@ -36,7 +36,7 @@ SIGNATURE_HTML = """
       </div>
     </td>
     <td valign="top" align="right" style="width:140px;">
-      <img src="https://www.creativemojo.com/wp-content/uploads/2020/02/Creative-Mojo-Logo.png"
+      <img src="https://hub.creativemojo.co.uk/brand/creative-mojo-logo.png"
            alt="Creative Mojo" width="120" style="max-width:120px;height:auto;display:block;" />
     </td>
   </tr>

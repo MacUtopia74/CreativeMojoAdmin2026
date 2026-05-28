@@ -129,6 +129,9 @@ function TemplateEditor({ template, onChanged, onDuplicate, onDelete }) {
     try {
       const { data } = await api.patch(`/email-templates/${template.id}`, draft);
       onChanged(data);
+      // Re-sync local draft so the preview pulls the freshly built
+      // ``rendered_html`` (editable body + system signature).
+      setDraft(data);
       toast.success("Template saved");
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Could not save");
@@ -255,7 +258,7 @@ function TemplateEditor({ template, onChanged, onDuplicate, onDelete }) {
         </div>
         {showPreview ? (
           <div data-testid="template-preview" className="border border-stone-300 rounded-lg p-4 bg-white min-h-[480px] prose prose-sm max-w-none">
-            <PreviewHtml html={draft.body_html || ""} sampleFirstName="Sample" />
+            <PreviewHtml html={draft.rendered_html || draft.body_html || ""} sampleFirstName="Sample" />
           </div>
         ) : (
           <RichTextEditor
