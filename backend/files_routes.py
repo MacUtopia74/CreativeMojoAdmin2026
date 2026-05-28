@@ -307,7 +307,39 @@ def build_router(db, require_role) -> APIRouter:
             query["$and"] = (query.get("$and") or []) + [scope_clause]
         cur = db.files_index.find(query, {"_id": 0}).sort("name", 1).limit(limit)
         items = await cur.to_list(limit)
-        return {"items": items, "count": len(items)}
+        # Folder search: distinct folder paths whose final segment matches.
+        # Walks all index keys (~1.7k in production) and emits one entry per
+        # unique folder name that matches the search terms. Cheap enough
+        # to run on every keystroke since the admin search debounces.
+        folders: list[dict] = []
+        try:
+            seen: set[str] = set()
+            async for row in db.files_index.find(
+                {"hidden": {"$ne": True}, "key": {"$not": re.compile(r"^\.trash/")}},
+                {"_id": 0, "key": 1},
+            ):
+                parts = (row.get("key") or "").split("/")
+                # last element is the filename; everything before is a folder path
+                for end in range(1, len(parts)):
+                    name = parts[end - 1]
+                    if not name:
+                        continue
+                    haystack = name.lower()
+                    if not all(re.search(re.escape(t.lower()), haystack) for t in terms):
+                        continue
+                    prefix = "/".join(parts[:end]) + "/"
+                    if prefix in seen:
+                        continue
+                    seen.add(prefix)
+                    folders.append({"prefix": prefix, "name": name, "depth": end})
+                    if len(folders) >= limit:
+                        break
+                if len(folders) >= limit:
+                    break
+            folders.sort(key=lambda f: (f["depth"], f["name"]))
+        except Exception:  # noqa: BLE001
+            folders = []
+        return {"items": items, "files": items, "folders": folders, "count": len(items)}
 
     # -----------------------------------------------------------------
     # Same-origin proxy for R2 objects. Used by PDF.js (and any other

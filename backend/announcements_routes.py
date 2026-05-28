@@ -188,6 +188,80 @@ def attach(api, db, require_role):
         items.sort(key=lambda r: (r.get("organisation") or "").lower())
         return {"items": items, "total": len(items)}
 
+    @api.post("/admin/announcements/preview-html")
+    async def preview_html(body: dict, _: dict = Depends(require_role("admin"))):
+        """Build the rendered HTML for the composer right-pane preview.
+        Doesn't write to the DB or mint share tokens — it just substitutes
+        the in-flight panel data (using the thumbnail URLs the composer
+        already has) into the same template the real send uses.
+        """
+        panels = list(body.get("panels") or [])
+        # For preview, point the buttons at "#" so we don't have to mint
+        # tokens. Use the admin-supplied thumbnail_url or a 1x1 grey
+        # placeholder image so the layout doesn't shift.
+        for p in panels:
+            p.setdefault("resolved_url", "#")
+            if not p.get("thumbnail_url") and p.get("kind") == "file" and p.get("key"):
+                # Use the admin-side authenticated thumbnail proxy; the
+                # composer iframe carries the admin's Bearer cookie via
+                # the api client when we load via blob fetch. For the
+                # right-pane preview we render the HTML directly though,
+                # so we substitute a transparent placeholder.
+                p["thumbnail_url"] = ("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20"
+                                       "width%3D%22200%22%20height%3D%22130%22%3E%3Crect%20width%3D%22100%25%22%20"
+                                       "height%3D%22100%25%22%20fill%3D%22%23eeeeee%22%2F%3E%3Ctext%20x%3D%2250%25%22%20"
+                                       "y%3D%2250%25%22%20fill%3D%22%23999999%22%20font-family%3D%22sans-serif%22%20"
+                                       "font-size%3D%2212%22%20text-anchor%3D%22middle%22%20dominant-baseline%3D%22middle%22%3E"
+                                       "thumbnail%3C%2Ftext%3E%3C%2Fsvg%3E")
+        sample = {
+            "title": body.get("title") or "(no subject yet)",
+            "intro": body.get("intro") or "",
+            "panels": panels,
+        }
+        html = _build_html(sample).replace("{{first_name}}", body.get("sample_first_name") or "Friend")
+        return {"html": html}
+
+    @api.post("/admin/announcements/test-send")
+    async def test_send(body: dict, user: dict = Depends(require_role("admin"))):
+        """Send a one-off test copy of the in-flight announcement to the
+        admin (or a custom email if provided). Mints lifetime share tokens
+        so the buttons actually work, but does NOT archive the
+        announcement to ``announcements`` — purely for proofreading.
+        """
+        title = (body.get("title") or "").strip() or "(test) Announcement preview"
+        intro = body.get("intro") or ""
+        panels = body.get("panels") or []
+        if not isinstance(panels, list):
+            raise HTTPException(400, "panels must be a list")
+        for p in panels:
+            file_url, auto_thumb = await _resolve_link_for_panel(db, p)
+            p["resolved_url"] = file_url
+            if auto_thumb and not p.get("thumbnail_url"):
+                p["thumbnail_url"] = auto_thumb
+        to = (body.get("to") or user.get("email") or "").strip()
+        if not to:
+            raise HTTPException(400, "No recipient email available")
+        from resend_routes import (
+            RESEND_API_KEY, RESEND_FROM_EMAIL, RESEND_FROM_NAME,
+        )
+        if not RESEND_API_KEY:
+            raise HTTPException(503, "Resend not configured")
+        import resend as _resend
+        _resend.api_key = RESEND_API_KEY
+        html = _build_html({"title": title, "intro": intro, "panels": panels}) \
+            .replace("{{first_name}}", body.get("sample_first_name") or user.get("first_name") or "Paul")
+        try:
+            _resend.Emails.send({
+                "from": f"{RESEND_FROM_NAME} <{RESEND_FROM_EMAIL}>",
+                "to": [to],
+                "subject": f"[TEST] {title}",
+                "html": html,
+                "tags": [{"name": "kind", "value": "announcement-test"}],
+            })
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(502, detail=str(exc)) from exc
+        return {"ok": True, "to": to}
+
     @api.post("/admin/announcements")
     async def create_announcement(
         body: dict,
@@ -324,6 +398,47 @@ def attach(api, db, require_role):
         items = await db.files_index.find({}, {"_id": 0}) \
             .sort("uploaded_at", -1).limit(limit).to_list(limit)
         return {"items": items}
+
+    @api.get("/admin/announcements/recent-folders")
+    async def recent_folders(limit: int = 30, _: dict = Depends(require_role("admin"))):
+        """Distinct top-level folders ordered by their most-recent file
+        upload — same heuristic the FilesPage's Recently Added strip uses."""
+        from datetime import timedelta
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=90)).isoformat()
+        pipeline = [
+            {"$match": {"uploaded_at": {"$gte": cutoff}}},
+            {"$project": {
+                "_id": 0,
+                "uploaded_at": 1,
+                "parts": {"$split": ["$key", "/"]},
+            }},
+            {"$project": {
+                "uploaded_at": 1,
+                "prefix": {"$concat": [
+                    {"$arrayElemAt": ["$parts", 0]}, "/",
+                    {"$arrayElemAt": ["$parts", 1]}, "/",
+                ]},
+                "name": {"$arrayElemAt": ["$parts", 1]},
+            }},
+            {"$match": {"name": {"$nin": [None, ""]}}},
+            {"$group": {
+                "_id": "$prefix",
+                "name": {"$first": "$name"},
+                "last_uploaded": {"$max": "$uploaded_at"},
+                "file_count": {"$sum": 1},
+            }},
+            {"$sort": {"last_uploaded": -1}},
+            {"$limit": limit},
+        ]
+        out = []
+        async for row in db.files_index.aggregate(pipeline):
+            out.append({
+                "prefix": row.get("_id"),
+                "name": row.get("name"),
+                "file_count": row.get("file_count", 0),
+                "last_uploaded": row.get("last_uploaded"),
+            })
+        return {"items": out}
 
     @api.get("/admin/announcements/{ann_id}")
     async def get_announcement(ann_id: str, _: dict = Depends(require_role("admin"))):
