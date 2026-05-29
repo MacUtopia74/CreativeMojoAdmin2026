@@ -25,7 +25,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, UploadFile, File
 
 logger = logging.getLogger("creative-mojo-admin.announcements")
 
@@ -164,10 +164,11 @@ def _build_html(announcement: dict) -> str:
         title = p.get("title") or ""
         blurb = (p.get("blurb") or "").replace("\n", "<br/>")
         href = p.get("resolved_url") or "#"
-        # Separator: 0.5pt grey horizontal keyline between panels (skip
-        # for the first one — the intro already provides separation).
+        # Separator: 0.5pt grey horizontal keyline between subsequent
+        # panels (first panel uses the green keyline above the table for
+        # separation, so no top border here).
         sep_style = ("border-top:1px solid #d4d4d4;padding:28px 0;"
-                     if idx > 0 else "padding:10px 0 28px 0;")
+                     if idx > 0 else "padding:0 0 28px 0;")
         thumb_html = (
             f'<img src="{thumb}" alt="{title}" width="320" '
             'style="max-width:100%;height:auto;border-radius:8px;display:block;margin:0 auto 18px auto;" />'
@@ -192,18 +193,20 @@ def _build_html(announcement: dict) -> str:
         <img src="{LOGO_URL}" alt="Creative Mojo" width="220"
              style="max-width:220px;height:auto;display:block;" />
       </td></tr>
-      <tr><td style="padding:18px 30px 0;">
+      <tr><td align="center" style="padding:22px 30px 0;">
         <div style="font-family:Helvetica,Arial,sans-serif;font-size:24px;font-weight:800;
-                    color:#1a1a1a;line-height:1.2;padding-bottom:10px;
-                    border-bottom:2px solid #dddd16;">
+                    color:#1a1a1a;line-height:1.2;text-align:center;">
           {announcement.get('title','')}
         </div>
       </td></tr>
-      <tr><td style="padding:18px 30px 4px;font-size:15px;line-height:1.6;color:#1a1a1a;">
+      <tr><td style="padding:14px 30px 0;font-size:15px;line-height:1.6;color:#1a1a1a;">
         <div>Hi <strong>{{{{first_name}}}}</strong>,</div>
         <div style="margin-top:10px;">{intro_html}</div>
       </td></tr>
-      <tr><td style="padding:0 30px;">
+      <tr><td style="padding:30px 30px 0 30px;">
+        <div style="height:0;border-top:1px solid #dddd16;margin:0;"></div>
+      </td></tr>
+      <tr><td style="padding:0 30px 30px 30px;">
         <table cellpadding="0" cellspacing="0" border="0" width="100%">{''.join(panels_html)}</table>
       </td></tr>
       <tr><td style="padding:30px;font-size:11px;color:#999999;line-height:1.5;text-align:center;border-top:1px solid #eaeaea;">
@@ -218,6 +221,50 @@ def _build_html(announcement: dict) -> str:
 
 
 def attach(api, db, require_role):
+
+    @api.post("/admin/announcements/upload-thumbnail")
+    async def upload_thumbnail(
+        file: UploadFile = File(...),
+        user: dict = Depends(require_role("admin")),
+    ):
+        """Direct-from-computer thumbnail upload. Stores the image under
+        the dedicated R2 prefix ``shared/_announcement_thumbs/{uuid}.ext``
+        and registers it in ``files_index`` so the same downstream pipeline
+        (cached thumbnail builder + public share-token URL) works without
+        a special case. Returns ``{ "key": str, "name": str }`` — the
+        composer then sets ``thumbnail_key`` on the panel.
+        """
+        from file_storage import r2_configured, get_client, R2_BUCKET, SCOPE_SHARED
+        if not r2_configured():
+            raise HTTPException(503, detail="R2 not configured")
+        ct = (file.content_type or "").lower()
+        ext = (file.filename or "").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else ""
+        if not (ct.startswith("image/") or ext in {"jpg", "jpeg", "png", "gif", "webp", "heic"}):
+            raise HTTPException(415, detail="Only image files are supported")
+        if not ext:
+            ext = (ct.split("/")[-1] if "/" in ct else "jpg")
+        # Read body & cap at 20MB
+        data = await file.read()
+        if len(data) > 20 * 1024 * 1024:
+            raise HTTPException(413, detail="Thumbnail must be ≤ 20 MB")
+        new_id = uuid.uuid4().hex[:12]
+        safe_name = f"{new_id}.{ext}"
+        key = f"shared/_announcement_thumbs/{safe_name}"
+        client = get_client()
+        client.put_object(
+            Bucket=R2_BUCKET, Key=key, Body=data,
+            ContentType=ct or f"image/{ext}",
+        )
+        await db.files_index.insert_one({
+            "key": key,
+            "name": file.filename or safe_name,
+            "size": len(data),
+            "content_type": ct or f"image/{ext}",
+            "scope": SCOPE_SHARED,
+            "uploaded_at": _now_iso(),
+            "uploaded_by": user.get("email"),
+        })
+        return {"key": key, "name": file.filename or safe_name, "size": len(data)}
 
     @api.get("/admin/announcements/recipients")
     async def list_recipients(_: dict = Depends(require_role("admin"))):

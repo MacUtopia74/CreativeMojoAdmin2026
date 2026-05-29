@@ -11,7 +11,7 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import {
   Megaphone, Send, Loader2, AlertCircle, Plus, Trash2, X, CheckCircle2,
-  Search, FileText, Folder, RefreshCw, Calendar, Image as ImageIcon, Eye,
+  Search, FileText, Folder, RefreshCw, Calendar, Image as ImageIcon, Eye, Upload,
 } from "lucide-react";
 import api from "@/lib/api";
 import FileThumbnail from "@/components/files/FileThumbnail";
@@ -293,6 +293,21 @@ function ComposeModal({ open, onClose, onSent }) {
   };
   const updatePanel = (idx, patch) => setPanels((arr) => arr.map((p, i) => (i === idx ? { ...p, ...patch } : p)));
   const removePanel = (idx) => setPanels((arr) => arr.filter((_, i) => i !== idx));
+
+  // Upload an image file from the user's computer as the thumbnail for a panel.
+  const uploadThumbForPanel = async (idx, fileObj) => {
+    if (!fileObj) return;
+    const fd = new FormData();
+    fd.append("file", fileObj);
+    try {
+      const { data } = await api.post("/admin/announcements/upload-thumbnail", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      updatePanel(idx, { thumbnail_key: data.key, thumbnail_url: "" });
+    } catch (e) {
+      setError(e?.response?.data?.detail || "Thumbnail upload failed");
+    }
+  };
   const handlePick = (item) => {
     if (!picker) return;
     if (picker.kind === "thumb") {
@@ -443,6 +458,16 @@ function ComposeModal({ open, onClose, onSent }) {
                             )}
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
+                            <label className="px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider text-stone-700 border border-stone-300 hover:bg-stone-50 rounded cursor-pointer inline-flex items-center gap-1"
+                              data-testid={`panel-${idx}-upload-thumb`}>
+                              <Upload className="w-3 h-3" /> Upload
+                              <input type="file" accept="image/*" className="hidden"
+                                onChange={(e) => {
+                                  const f = e.target.files?.[0];
+                                  if (f) uploadThumbForPanel(idx, f);
+                                  e.target.value = "";
+                                }} />
+                            </label>
                             <button onClick={() => setPicker({ kind: "thumb", panelIdx: idx })}
                               data-testid={`panel-${idx}-pick-thumb`}
                               className="px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider text-stone-700 border border-stone-300 hover:bg-stone-50 rounded">

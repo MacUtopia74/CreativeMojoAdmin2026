@@ -579,10 +579,13 @@ def build_router(db, require_role) -> APIRouter:
             raise HTTPException(415, detail="Thumbnail not supported for this type")
         cached = get_cached_thumbnail(key, size)
         if cached is None:
-            cached = await build_thumbnail(key, size)
+            import anyio
+            cached = await anyio.to_thread.run_sync(
+                build_thumbnail, key, size, existing.get("content_type"),
+            )
         if cached is None:
             raise HTTPException(404, detail="Thumbnail could not be built")
-        return Response(content=cached, media_type="image/png",
+        return Response(content=cached, media_type="image/jpeg",
                         headers={"Cache-Control": "public, max-age=86400"})
 
 
