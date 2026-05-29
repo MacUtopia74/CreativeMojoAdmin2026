@@ -25,7 +25,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import Depends, HTTPException, UploadFile, File
+from fastapi import Depends, HTTPException, UploadFile, File, Request
 
 logger = logging.getLogger("creative-mojo-admin.announcements")
 
@@ -36,11 +36,36 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _frontend_base() -> str:
+def _frontend_base(request: Request | None = None, body_origin: str = "") -> str:
+    """Resolve the public base URL for the share-link viewer.
+
+    Priority:
+      1. ``body_origin`` — the composer sends ``window.location.origin``
+         in the request body. Browser-truth, no proxy rewriting.
+      2. ``Origin`` header (skipped if it's the internal Kubernetes
+         ingress host — the preview ingress rewrites Origin to
+         ``cluster-X.preview.emergentcf.cloud`` which is not reachable
+         from outside).
+      3. ``Referer`` header.
+      4. ``FRONTEND_URL`` env var.
+    """
+    bo = (body_origin or "").rstrip("/")
+    if bo:
+        return bo
+    if request is not None:
+        origin = request.headers.get("origin") or ""
+        if origin and "emergentcf.cloud" not in origin:
+            return origin.rstrip("/")
+        ref = request.headers.get("referer") or ""
+        if ref:
+            from urllib.parse import urlparse
+            parsed = urlparse(ref)
+            if parsed.scheme and parsed.netloc and "emergentcf.cloud" not in parsed.netloc:
+                return f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
     return (os.environ.get("FRONTEND_URL") or "").rstrip("/")
 
 
-async def _resolve_link_for_panel(db, panel: dict) -> tuple[str, Optional[str]]:
+async def _resolve_link_for_panel(db, panel: dict, request: Request | None = None, body_origin: str = "") -> tuple[str, Optional[str]]:
     """Mint a permanent (lifetime) share URL for the panel's target and
     return (file_url, thumbnail_url). For folder panels the thumbnail
     falls back to whatever the admin provided (we don't try to auto-pick).
@@ -52,7 +77,7 @@ async def _resolve_link_for_panel(db, panel: dict) -> tuple[str, Optional[str]]:
     freshly signed R2 URL — so the URL embedded in the recipient's
     email never goes stale.
     """
-    base = _frontend_base()
+    base = _frontend_base(request, body_origin)
     if panel.get("kind") == "folder":
         prefix = (panel.get("prefix") or "").strip("/")
         if not prefix:
@@ -96,7 +121,7 @@ async def _resolve_link_for_panel(db, panel: dict) -> tuple[str, Optional[str]]:
     return file_url, thumb_url
 
 
-async def _public_thumb_url_for_key(db, key: str) -> Optional[str]:
+async def _public_thumb_url_for_key(db, key: str, request: Request | None = None, body_origin: str = "") -> Optional[str]:
     """Mint a lifetime share token for ``key`` and return the public
     ``/api/files/share/{token}/thumb?size=md`` URL. Used when admin
     picks a custom thumbnail file for a panel (typically for folder
@@ -117,7 +142,7 @@ async def _public_thumb_url_for_key(db, key: str) -> Optional[str]:
         "created_by": "announcement-thumb",
         "hits": 0,
     })
-    return f"{_frontend_base()}/api/files/share/{token}/thumb?size=md"
+    return f"{_frontend_base(request, body_origin)}/api/files/share/{token}/thumb?size=md"
 
 
 async def _thumb_base64_for_key(db, key: str) -> Optional[str]:
@@ -342,7 +367,7 @@ def attach(api, db, require_role):
         return {"html": html}
 
     @api.post("/admin/announcements/test-send")
-    async def test_send(body: dict, user: dict = Depends(require_role("admin"))):
+    async def test_send(body: dict, request: Request, user: dict = Depends(require_role("admin"))):
         """Send a one-off test copy of the in-flight announcement to the
         admin (or a custom email if provided). Mints lifetime share tokens
         so the buttons actually work, but does NOT archive the
@@ -351,14 +376,15 @@ def attach(api, db, require_role):
         title = (body.get("title") or "").strip() or "(test) Announcement preview"
         intro = body.get("intro") or ""
         panels = body.get("panels") or []
+        body_origin = body.get("frontend_origin") or ""
         if not isinstance(panels, list):
             raise HTTPException(400, "panels must be a list")
         for p in panels:
-            file_url, auto_thumb = await _resolve_link_for_panel(db, p)
+            file_url, auto_thumb = await _resolve_link_for_panel(db, p, request, body_origin)
             p["resolved_url"] = file_url
             # Admin-picked thumbnail trumps everything else.
             if p.get("thumbnail_key") and not p.get("thumbnail_url"):
-                tk_url = await _public_thumb_url_for_key(db, p["thumbnail_key"])
+                tk_url = await _public_thumb_url_for_key(db, p["thumbnail_key"], request, body_origin)
                 if tk_url:
                     p["thumbnail_url"] = tk_url
             if auto_thumb and not p.get("thumbnail_url"):
@@ -390,6 +416,7 @@ def attach(api, db, require_role):
     @api.post("/admin/announcements")
     async def create_announcement(
         body: dict,
+        request: Request,
         user: dict = Depends(require_role("admin")),
     ):
         """Create + send. Body shape:
@@ -440,12 +467,13 @@ def attach(api, db, require_role):
             raise HTTPException(400, "No active franchisees matched the recipient filter")
 
         # Mint lifetime share links for each panel
+        body_origin = body.get("frontend_origin") or ""
         for p in panels:
-            file_url, auto_thumb = await _resolve_link_for_panel(db, p)
+            file_url, auto_thumb = await _resolve_link_for_panel(db, p, request, body_origin)
             p["resolved_url"] = file_url
             # Admin-picked thumbnail trumps everything else.
             if p.get("thumbnail_key") and not p.get("thumbnail_url"):
-                tk_url = await _public_thumb_url_for_key(db, p["thumbnail_key"])
+                tk_url = await _public_thumb_url_for_key(db, p["thumbnail_key"], request, body_origin)
                 if tk_url:
                     p["thumbnail_url"] = tk_url
             # Auto-thumb wins when admin didn't supply one. Admin can
@@ -514,7 +542,8 @@ def attach(api, db, require_role):
 
     @api.put("/admin/announcements/{ann_id}")
     async def edit_announcement(
-        ann_id: str, body: dict, user: dict = Depends(require_role("admin")),
+        ann_id: str, body: dict, request: Request,
+        user: dict = Depends(require_role("admin")),
     ):
         """Replace an existing announcement and re-send to its (possibly
         changed) recipient list. Same body shape as POST /admin/announcements.
@@ -559,11 +588,12 @@ def attach(api, db, require_role):
             raise HTTPException(400, "No active franchisees matched the recipient filter")
 
         # Re-mint links + thumbs for every panel.
+        body_origin = body.get("frontend_origin") or ""
         for p in panels:
-            file_url, auto_thumb = await _resolve_link_for_panel(db, p)
+            file_url, auto_thumb = await _resolve_link_for_panel(db, p, request, body_origin)
             p["resolved_url"] = file_url
             if p.get("thumbnail_key") and not p.get("thumbnail_url"):
-                tk_url = await _public_thumb_url_for_key(db, p["thumbnail_key"])
+                tk_url = await _public_thumb_url_for_key(db, p["thumbnail_key"], request, body_origin)
                 if tk_url:
                     p["thumbnail_url"] = tk_url
             if auto_thumb and not p.get("thumbnail_url"):

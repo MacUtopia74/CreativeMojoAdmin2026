@@ -7,6 +7,20 @@ import { Megaphone, Calendar, Loader2, AlertCircle, ChevronDown, Image as ImageI
 import api from "@/lib/api";
 import FileThumbnail from "@/components/files/FileThumbnail";
 
+// Defensive: rewrite an absolute share URL so the host matches the
+// current window. Old announcements may have been minted with the
+// wrong host (preview ↔ production drift); the share TOKEN itself is
+// still valid against whichever backend matches the current host.
+function shareUrlOnCurrentHost(url) {
+  if (!url || typeof window === "undefined") return url;
+  try {
+    const u = new URL(url, window.location.origin);
+    return window.location.origin + u.pathname + u.search + u.hash;
+  } catch {
+    return url;
+  }
+}
+
 // Render a panel's thumbnail via the authed /files/thumbnail proxy so
 // it never depends on the brittle public share-token URL stored in
 // `thumbnail_url`. Falls back to a placeholder when no key is set.
@@ -110,7 +124,7 @@ export default function PortalUpdatesPage() {
                         <div>
                           <div className="font-display text-lg font-bold text-stone-950">{p.title}</div>
                           {p.blurb && <p className="text-sm text-stone-700 whitespace-pre-line mt-1">{p.blurb}</p>}
-                          <a href={p.resolved_url} target="_blank" rel="noopener noreferrer"
+                          <a href={shareUrlOnCurrentHost(p.resolved_url)} target="_blank" rel="noopener noreferrer"
                             data-testid={`portal-update-link-${it.id}-${i}`}
                             className="inline-block mt-3 px-4 py-2 bg-[#dddd16] text-stone-950 font-bold text-xs uppercase tracking-wider rounded-md hover:brightness-95">
                             Open {p.kind === "folder" ? "folder" : "file"} →

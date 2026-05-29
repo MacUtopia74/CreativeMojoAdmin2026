@@ -21,7 +21,7 @@ import urllib.parse
 import logging
 from datetime import datetime, timezone
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form, Request
 
 from file_storage import (
     R2_BUCKET, r2_configured, presigned_get_url, presigned_put_url,
@@ -476,6 +476,7 @@ def build_router(db, require_role) -> APIRouter:
     @router.post("/files/share-link")
     async def files_share_create(
         body: dict,
+        request: Request,
         user: dict = Depends(require_role("admin")),
     ):
         import secrets
@@ -509,7 +510,21 @@ def build_router(db, require_role) -> APIRouter:
             "hits": 0,
         }
         await db.files_share_links.insert_one(doc)
-        base = (os.environ.get("FRONTEND_URL") or "").rstrip("/")
+        # Prefer body-supplied frontend_origin (browser knows its own
+        # window.location.origin), then Origin/Referer headers, then the
+        # static FRONTEND_URL env var. Skip ingress-internal hosts.
+        body_origin = (body.get("frontend_origin") or "").rstrip("/")
+        origin = (request.headers.get("origin") or "").rstrip("/")
+        if origin and "emergentcf.cloud" in origin:
+            origin = ""
+        if not origin:
+            ref = request.headers.get("referer") or ""
+            if ref:
+                from urllib.parse import urlparse
+                parsed = urlparse(ref)
+                if parsed.scheme and parsed.netloc and "emergentcf.cloud" not in parsed.netloc:
+                    origin = f"{parsed.scheme}://{parsed.netloc}"
+        base = body_origin or origin or (os.environ.get("FRONTEND_URL") or "").rstrip("/")
         url = f"{base}/api/files/share/{token}"
         return {"url": url, "token": token, "expires_at": expires_iso, "days": days, "lifetime": lifetime}
 
@@ -517,11 +532,12 @@ def build_router(db, require_role) -> APIRouter:
     # creates a share token.
     @router.get("/files/share-link")
     async def files_share_create_get(
+        request: Request,
         key: str = Query(...),
         days: int = Query(30, ge=1, le=30),
         user: dict = Depends(require_role("admin")),
     ):
-        return await files_share_create({"key": key, "days": days}, user=user)
+        return await files_share_create({"key": key, "days": days}, request=request, user=user)
 
     @router.get("/files/share/{token}")
     async def files_share_redirect(token: str):
@@ -1187,7 +1203,7 @@ def build_router(db, require_role) -> APIRouter:
     # gets a page listing all files in the folder with per-file download
     # buttons AND a "Download All as ZIP" button.
     @router.post("/files/folder-share")
-    async def files_folder_share_create(body: dict, user: dict = Depends(require_role("admin"))):
+    async def files_folder_share_create(body: dict, request: Request, user: dict = Depends(require_role("admin"))):
         import secrets
         prefix = (body.get("prefix") or "").strip()
         raw_days = body.get("days")
@@ -1229,7 +1245,26 @@ def build_router(db, require_role) -> APIRouter:
             "hits": 0,
         }
         await db.files_share_links.insert_one(doc)
-        base = (os.environ.get("FRONTEND_URL") or "").rstrip("/")
+        # Prefer the inbound request's Origin so the link goes back to
+        # whichever host the admin is composing from.
+        origin = (request.headers.get("origin") or "").rstrip("/")
+        # The Kubernetes ingress in the preview cluster rewrites the
+        # Origin header to the internal service host (cluster-5.preview...
+        # emergentcf.cloud). Detect that and fall back so links don't
+        # point at an internal URL.
+        if origin and "emergentcf.cloud" in origin:
+            origin = ""
+        if not origin:
+            ref = request.headers.get("referer") or ""
+            if ref:
+                from urllib.parse import urlparse
+                parsed = urlparse(ref)
+                if parsed.scheme and parsed.netloc and "emergentcf.cloud" not in parsed.netloc:
+                    origin = f"{parsed.scheme}://{parsed.netloc}"
+        # Body-supplied frontend_origin is the final, most reliable
+        # signal because the browser knows its own ``window.location.origin``.
+        body_origin = (body.get("frontend_origin") or "").rstrip("/")
+        base = body_origin or origin or (os.environ.get("FRONTEND_URL") or "").rstrip("/")
         # Public viewer URL — handled by the React app
         url = f"{base}/share/folder/{token}"
         return {"url": url, "token": token, "expires_at": expires_iso,

@@ -375,6 +375,11 @@ function ComposeModal({ open, onClose, onSent, seed }) {
 
   // ---- send + test ----
   const buildBody = () => ({
+    // Browser-truth origin so the backend can mint share links that
+    // point back at THIS host. Without this, links default to the
+    // backend's FRONTEND_URL env var which can drift between preview
+    // and production deployments.
+    frontend_origin: typeof window !== "undefined" ? window.location.origin : "",
     title: title.trim(),
     intro: intro.trim(),
     panels: panels.map((p) => ({
@@ -682,6 +687,20 @@ function ComposeModal({ open, onClose, onSent, seed }) {
 // file-panels) — that way the view modal never depends on the brittle
 // share-thumb URL stored in `thumbnail_url`.
 // =====================================================================
+// Defensive: rewrite an absolute share URL so the host matches the
+// current window. Old announcements may have been minted with the
+// wrong host (preview ↔ production drift); the share TOKEN itself is
+// still valid against whichever backend matches the current host.
+function shareUrlOnCurrentHost(url) {
+  if (!url || typeof window === "undefined") return url;
+  try {
+    const u = new URL(url, window.location.origin);
+    return window.location.origin + u.pathname + u.search + u.hash;
+  } catch {
+    return url;
+  }
+}
+
 function PanelThumb({ panel }) {
   // Prefer the explicit thumbnail_key (admin upload or pick); fall back
   // to the file panel's own key. Folder panels with no thumbnail_key
@@ -734,7 +753,7 @@ function ViewModal({ ann, onClose, onEdit, onDuplicate }) {
               <div>
                 <div className="font-display text-xl font-bold text-stone-950">{p.title}</div>
                 <p className="text-sm text-stone-700 whitespace-pre-line mt-1">{p.blurb}</p>
-                <a href={p.resolved_url} target="_blank" rel="noopener noreferrer" className="inline-block mt-2 px-3 py-1.5 bg-[#dddd16] text-stone-950 font-bold text-xs uppercase tracking-wider rounded-md">Open {p.kind} →</a>
+                <a href={shareUrlOnCurrentHost(p.resolved_url)} target="_blank" rel="noopener noreferrer" className="inline-block mt-2 px-3 py-1.5 bg-[#dddd16] text-stone-950 font-bold text-xs uppercase tracking-wider rounded-md">Open {p.kind} →</a>
               </div>
             </div>
           ))}
