@@ -255,7 +255,7 @@ function PickerModal({ open, kind, onPick, onClose }) {
 // =====================================================================
 // COMPOSE modal — two-pane (editor | live preview)
 // =====================================================================
-function ComposeModal({ open, onClose, onSent }) {
+function ComposeModal({ open, onClose, onSent, seed }) {
   const [title, setTitle] = useState("");
   const [intro, setIntro] = useState("");
   const [panels, setPanels] = useState([]);
@@ -273,16 +273,46 @@ function ComposeModal({ open, onClose, onSent }) {
 
   const [previewHtml, setPreviewHtml] = useState("");
 
-  // Reset on open
+  // Mode: 'new' (default), 'edit' (PATCH replaces the original), or
+  // 'duplicate' (POST creates a fresh announcement).
+  const mode = seed?.mode || "new";
+  const seededAnn = seed?.ann || null;
+
+  // Reset on open — seeded from the supplied announcement when in
+  // edit/duplicate mode. Otherwise blank.
   useEffect(() => {
     if (!open) return;
-    setTitle(""); setIntro(""); setPanels([]); setSelectedRecipients(new Set());
-    setError(""); setInfo(""); setRecipientFilter("all"); setPreviewHtml("");
-    setRecipientSearch("");
-    api.get("/admin/announcements/recipients").then(({ data }) => setRecipients(data.items || []));
-    // Default test recipient is the current admin (no fetch needed; use Resend FROM safely)
+    setError(""); setInfo(""); setPreviewHtml(""); setRecipientSearch("");
     setTestTo("");
-  }, [open]);
+    if (seededAnn) {
+      setTitle(seededAnn.title || "");
+      setIntro(seededAnn.intro || "");
+      // Strip server-minted resolved_url + thumbnail_url so a fresh send
+      // re-mints them (avoids re-using a revoked or stale share token).
+      setPanels((seededAnn.panels || []).map((p) => ({
+        kind: p.kind,
+        key: p.key,
+        prefix: p.prefix,
+        title: p.title || "",
+        blurb: p.blurb || "",
+        thumbnail_key: p.thumbnail_key || "",
+        thumbnail_url: "",
+      })));
+      // For edit, default to the original recipients; for duplicate,
+      // default to All so the admin actively chooses.
+      if (mode === "edit" && Array.isArray(seededAnn.sent_to) && seededAnn.sent_to.length) {
+        setRecipientFilter("subset");
+        setSelectedRecipients(new Set(seededAnn.sent_to));
+      } else {
+        setRecipientFilter("all");
+        setSelectedRecipients(new Set());
+      }
+    } else {
+      setTitle(""); setIntro(""); setPanels([]); setSelectedRecipients(new Set());
+      setRecipientFilter("all");
+    }
+    api.get("/admin/announcements/recipients").then(({ data }) => setRecipients(data.items || []));
+  }, [open, seededAnn, mode]);
 
   // Live preview — re-render whenever title/intro/panels change (debounced)
   useEffect(() => {
@@ -362,10 +392,20 @@ function ComposeModal({ open, onClose, onSent }) {
   const send = async () => {
     setSending(true); setError(""); setInfo("");
     try {
-      const { data } = await api.post("/admin/announcements", buildBody());
-      setInfo(data.status === "sent"
-        ? `Sent to ${data.succeeded} franchisee(s).`
-        : `${data.succeeded} sent · ${data.failed} failed.`);
+      const body = buildBody();
+      if (mode === "edit" && seededAnn?.id) {
+        // Replace the existing announcement in-place (re-send to the
+        // chosen recipients). Backend treats this as a full overwrite.
+        const { data } = await api.put(`/admin/announcements/${seededAnn.id}`, body);
+        setInfo(data.status === "sent"
+          ? `Resent to ${data.succeeded} franchisee(s).`
+          : `${data.succeeded} sent · ${data.failed} failed.`);
+      } else {
+        const { data } = await api.post("/admin/announcements", body);
+        setInfo(data.status === "sent"
+          ? `Sent to ${data.succeeded} franchisee(s).`
+          : `${data.succeeded} sent · ${data.failed} failed.`);
+      }
       onSent?.();
     } catch (e) {
       setError(e?.response?.data?.detail || "Send failed.");
@@ -395,8 +435,8 @@ function ComposeModal({ open, onClose, onSent }) {
         {/* Header */}
         <div className="px-6 py-4 border-b border-stone-200 flex items-start justify-between gap-4">
           <div>
-            <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 flex items-center gap-1.5"><Megaphone className="w-3 h-3" /> Send Update</div>
-            <h2 className="font-display text-2xl font-black text-stone-950 mt-1">Compose Announcement</h2>
+            <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 flex items-center gap-1.5"><Megaphone className="w-3 h-3" /> {mode === "edit" ? "Edit Update" : mode === "duplicate" ? "Duplicate Update" : "Send Update"}</div>
+            <h2 className="font-display text-2xl font-black text-stone-950 mt-1">{mode === "edit" ? "Edit & Resend" : mode === "duplicate" ? "Duplicate Announcement" : "Compose Announcement"}</h2>
           </div>
           <button onClick={onClose} className="w-9 h-9 rounded-full border border-stone-300 hover:bg-stone-50 flex items-center justify-center" data-testid="announcement-modal-close"><X className="w-4 h-4" /></button>
         </div>
@@ -624,7 +664,7 @@ function ComposeModal({ open, onClose, onSent }) {
             data-testid="announcement-send"
             className="px-5 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 text-[#dddd16] hover:bg-stone-800 rounded-lg flex items-center gap-1.5 disabled:bg-stone-300 disabled:text-stone-500">
             {sending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
-            {sending ? "Sending…" : "Send to franchisees"}
+            {sending ? (mode === "edit" ? "Resending…" : "Sending…") : (mode === "edit" ? "Save & resend" : "Send to franchisees")}
           </button>
         </div>
       </div>
@@ -635,28 +675,62 @@ function ComposeModal({ open, onClose, onSent }) {
 }
 
 // =====================================================================
-// VIEW modal
+// VIEW modal — read-only summary of a past announcement, with EDIT and
+// DUPLICATE shortcuts that hand the data off to the compose modal.
+// Thumbnails render via the authed /files/thumbnail proxy (using the
+// panel's thumbnail_key when present, otherwise the file key for
+// file-panels) — that way the view modal never depends on the brittle
+// share-thumb URL stored in `thumbnail_url`.
 // =====================================================================
-function ViewModal({ ann, onClose }) {
+function PanelThumb({ panel }) {
+  // Prefer the explicit thumbnail_key (admin upload or pick); fall back
+  // to the file panel's own key. Folder panels with no thumbnail_key
+  // show a placeholder.
+  const key = panel.thumbnail_key || (panel.kind === "file" ? panel.key : null);
+  if (!key) {
+    return (
+      <div className="w-full aspect-[4/3] bg-stone-100 rounded-lg flex items-center justify-center text-stone-400">
+        <ImageIcon className="w-6 h-6" />
+      </div>
+    );
+  }
+  // FileThumbnail uses the authed /files/thumbnail proxy via Bearer token.
+  return (
+    <FileThumbnail
+      file={{ key, name: panel.title || "thumb.jpg", content_type: "image/jpeg" }}
+      className="w-full aspect-[4/3] rounded-lg border border-stone-200 overflow-hidden"
+    />
+  );
+}
+
+function ViewModal({ ann, onClose, onEdit, onDuplicate }) {
   if (!ann) return null;
   return (
     <div className="fixed inset-0 z-50 bg-stone-950/40 backdrop-blur-sm flex items-start justify-center px-4 py-8 overflow-y-auto" onClick={onClose}>
       <div className="bg-white w-full max-w-3xl rounded-2xl border border-stone-200 my-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="px-6 py-5 border-b border-stone-200 flex items-start justify-between">
-          <div>
+        <div className="px-6 py-5 border-b border-stone-200 flex items-start justify-between gap-3">
+          <div className="min-w-0">
             <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Update</div>
-            <h2 className="font-display text-2xl font-black text-stone-950">{ann.title}</h2>
+            <h2 className="font-display text-2xl font-black text-stone-950 truncate">{ann.title}</h2>
             <div className="text-xs text-stone-500 mt-1 flex items-center gap-3"><Calendar className="w-3 h-3" /> {fmtDate(ann.sent_at || ann.created_at)} · {ann.recipient_count} recipients · {ann.delivery?.status}</div>
           </div>
-          <button onClick={onClose} className="w-9 h-9 rounded-full border border-stone-300 hover:bg-stone-50 flex items-center justify-center"><X className="w-4 h-4" /></button>
+          <div className="flex items-center gap-1 shrink-0">
+            <button onClick={() => onDuplicate?.(ann)} data-testid="ann-view-duplicate"
+              className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider bg-white border border-stone-300 hover:bg-stone-50 text-stone-700 rounded-lg flex items-center gap-1">
+              <Plus className="w-3 h-3" /> Duplicate
+            </button>
+            <button onClick={() => onEdit?.(ann)} data-testid="ann-view-edit"
+              className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider bg-stone-950 text-[#dddd16] hover:bg-stone-800 rounded-lg flex items-center gap-1">
+              <Send className="w-3 h-3" /> Edit / Resend
+            </button>
+            <button onClick={onClose} className="w-9 h-9 rounded-full border border-stone-300 hover:bg-stone-50 flex items-center justify-center"><X className="w-4 h-4" /></button>
+          </div>
         </div>
         <div className="px-6 py-4">
           {ann.intro && <p className="text-sm text-stone-700 whitespace-pre-line mb-4">{ann.intro}</p>}
           {(ann.panels || []).map((p, i) => (
             <div key={i} className="grid grid-cols-[160px_1fr] gap-4 mb-4 border-t border-stone-100 pt-3 first:border-t-0 first:pt-0">
-              <div>{p.thumbnail_url
-                ? <img src={p.thumbnail_url} alt={p.title} className="w-full rounded-lg border border-stone-200" />
-                : <div className="w-full aspect-video bg-stone-100 rounded-lg flex items-center justify-center text-stone-400"><ImageIcon className="w-6 h-6" /></div>}</div>
+              <PanelThumb panel={p} />
               <div>
                 <div className="font-display text-xl font-bold text-stone-950">{p.title}</div>
                 <p className="text-sm text-stone-700 whitespace-pre-line mt-1">{p.blurb}</p>
@@ -674,14 +748,29 @@ function ViewModal({ ann, onClose }) {
 // ROOT
 // =====================================================================
 export default function AnnouncementsPage() {
-  const [composeOpen, setComposeOpen] = useState(false);
+  // ``seed`` carries the announcement we're editing OR duplicating into
+  // the compose modal. When mode='edit' a PATCH replaces the original
+  // and (optionally) re-sends to the chosen recipients; when 'duplicate'
+  // a fresh announcement is created — handy for "send the same update
+  // to a different cohort".
+  const [composeSeed, setComposeSeed] = useState(null); // { mode, ann } | null
   const [viewing, setViewing] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  const openBlank = () => setComposeSeed({ mode: "new", ann: null });
+  const openEdit = (ann) => { setViewing(null); setComposeSeed({ mode: "edit", ann }); };
+  const openDuplicate = (ann) => { setViewing(null); setComposeSeed({ mode: "duplicate", ann }); };
+
   return (
     <>
-      <AnnouncementsList onCompose={() => setComposeOpen(true)} onView={setViewing} refresh={refreshKey} />
-      <ComposeModal open={composeOpen} onClose={() => setComposeOpen(false)} onSent={() => setRefreshKey((k) => k + 1)} />
-      <ViewModal ann={viewing} onClose={() => setViewing(null)} />
+      <AnnouncementsList onCompose={openBlank} onView={setViewing} refresh={refreshKey} />
+      <ComposeModal
+        open={!!composeSeed}
+        seed={composeSeed}
+        onClose={() => setComposeSeed(null)}
+        onSent={() => { setComposeSeed(null); setRefreshKey((k) => k + 1); }}
+      />
+      <ViewModal ann={viewing} onClose={() => setViewing(null)} onEdit={openEdit} onDuplicate={openDuplicate} />
     </>
   );
 }

@@ -512,6 +512,117 @@ def attach(api, db, require_role):
         )
         return {"ok": True, "announcement_id": ann["id"], **delivery}
 
+    @api.put("/admin/announcements/{ann_id}")
+    async def edit_announcement(
+        ann_id: str, body: dict, user: dict = Depends(require_role("admin")),
+    ):
+        """Replace an existing announcement and re-send to its (possibly
+        changed) recipient list. Same body shape as POST /admin/announcements.
+        Keeps the original ``id`` and ``created_at``; refreshes
+        ``panels``, ``intro``, ``title``, ``sent_to``, ``sent_at``,
+        ``delivery``. Re-mints share-link tokens for every panel — old
+        ones still resolve (we don't revoke) so previously-sent emails
+        keep working.
+        """
+        original = await db.announcements.find_one({"id": ann_id}, {"_id": 0})
+        if not original:
+            raise HTTPException(404, detail="Announcement not found")
+        title = (body.get("title") or "").strip()
+        if not title:
+            raise HTTPException(400, "title is required")
+        panels = body.get("panels") or []
+        if not isinstance(panels, list) or not panels:
+            raise HTTPException(400, "At least one panel is required")
+        intro = body.get("intro") or ""
+
+        # Resolve recipients
+        recipient_ids = body.get("recipient_ids") or None
+        match: dict = {"id": {"$in": list(recipient_ids)}} if recipient_ids else {}
+        recipients: list[dict] = []
+        async for f in db.franchisees.find(
+            match,
+            {"_id": 0, "id": 1, "first_name": 1, "mojo_email": 1,
+             "secondary_email": 1, "tags": 1},
+        ):
+            email = (f.get("mojo_email") or f.get("secondary_email") or "").strip()
+            if not email:
+                continue
+            is_ex = any("ex" in str(t).lower() and "franchisee" in str(t).lower()
+                        for t in (f.get("tags") or []))
+            if is_ex and not recipient_ids:
+                continue
+            recipients.append({
+                "id": f.get("id"), "email": email,
+                "first_name": f.get("first_name") or "there",
+            })
+        if not recipients:
+            raise HTTPException(400, "No active franchisees matched the recipient filter")
+
+        # Re-mint links + thumbs for every panel.
+        for p in panels:
+            file_url, auto_thumb = await _resolve_link_for_panel(db, p)
+            p["resolved_url"] = file_url
+            if p.get("thumbnail_key") and not p.get("thumbnail_url"):
+                tk_url = await _public_thumb_url_for_key(db, p["thumbnail_key"])
+                if tk_url:
+                    p["thumbnail_url"] = tk_url
+            if auto_thumb and not p.get("thumbnail_url"):
+                p["thumbnail_url"] = auto_thumb
+
+        updated = {
+            "title": title, "intro": intro, "panels": panels,
+            "sent_to": [r["id"] for r in recipients],
+            "recipient_count": len(recipients),
+            "edited_at": _now_iso(),
+            "edited_by": user.get("email"),
+            "delivery": {"status": "pending", "succeeded": 0, "failed": 0, "errors": []},
+        }
+        await db.announcements.update_one({"id": ann_id}, {"$set": updated})
+
+        # Re-send via Resend
+        from resend_routes import (
+            RESEND_API_KEY, RESEND_FROM_EMAIL, RESEND_FROM_NAME,
+        )
+        if not RESEND_API_KEY:
+            await db.announcements.update_one(
+                {"id": ann_id},
+                {"$set": {"delivery.status": "skipped",
+                          "delivery.errors": ["Resend not configured"]}},
+            )
+            return {"ok": False, "announcement_id": ann_id, "sent": 0,
+                    "reason": "Resend not configured"}
+        import resend as _resend
+        _resend.api_key = RESEND_API_KEY
+        base_html = _build_html({"title": title, "intro": intro, "panels": panels})
+        succeeded = 0
+        failed: list[str] = []
+        for r in recipients:
+            personal = base_html.replace("{{first_name}}", r["first_name"])
+            try:
+                _resend.Emails.send({
+                    "from": f"{RESEND_FROM_NAME} <{RESEND_FROM_EMAIL}>",
+                    "to": [r["email"]],
+                    "subject": title,
+                    "html": personal,
+                    "tags": [{"name": "kind", "value": "announcement-edit"},
+                             {"name": "ann_id", "value": ann_id}],
+                })
+                succeeded += 1
+            except Exception as exc:  # noqa: BLE001
+                failed.append(f"{r['email']}: {exc}")
+                logger.warning("Announcement re-send failed for %s: %s", r["email"], exc)
+        delivery = {
+            "status": "sent" if succeeded and not failed
+                      else ("partial" if succeeded else "failed"),
+            "succeeded": succeeded, "failed": len(failed),
+            "errors": failed[:10],
+        }
+        await db.announcements.update_one(
+            {"id": ann_id},
+            {"$set": {"delivery": delivery, "sent_at": _now_iso()}},
+        )
+        return {"ok": True, "announcement_id": ann_id, **delivery}
+
     @api.get("/admin/announcements")
     async def list_announcements(_: dict = Depends(require_role("admin"))):
         items = await db.announcements.find({}, {"_id": 0}) \

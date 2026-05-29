@@ -3,8 +3,29 @@
 // expands inline to show the original panels with working file/folder
 // links (the same lifetime share token Paul emailed them).
 import { useEffect, useState } from "react";
-import { Megaphone, Calendar, Loader2, AlertCircle, ChevronDown } from "lucide-react";
+import { Megaphone, Calendar, Loader2, AlertCircle, ChevronDown, Image as ImageIcon } from "lucide-react";
 import api from "@/lib/api";
+import FileThumbnail from "@/components/files/FileThumbnail";
+
+// Render a panel's thumbnail via the authed /files/thumbnail proxy so
+// it never depends on the brittle public share-token URL stored in
+// `thumbnail_url`. Falls back to a placeholder when no key is set.
+function PanelThumb({ panel }) {
+  const key = panel.thumbnail_key || (panel.kind === "file" ? panel.key : null);
+  if (!key) {
+    return (
+      <div className="w-full h-full flex items-center justify-center text-stone-400">
+        <ImageIcon className="w-6 h-6" />
+      </div>
+    );
+  }
+  return (
+    <FileThumbnail
+      file={{ key, name: panel.title || "thumb.jpg", content_type: "image/jpeg" }}
+      className="w-full h-full"
+    />
+  );
+}
 
 function fmtDate(iso) {
   if (!iso) return "—";
@@ -84,9 +105,7 @@ export default function PortalUpdatesPage() {
                     {(it.panels || []).map((p, i) => (
                       <div key={i} className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-4 mb-4 last:mb-0">
                         <div className="rounded-lg overflow-hidden border border-stone-200 bg-stone-50 aspect-video sm:aspect-square">
-                          {p.thumbnail_url
-                            ? <img src={p.thumbnail_url} alt={p.title} className="w-full h-full object-cover" />
-                            : <div className="w-full h-full flex items-center justify-center text-stone-400 text-xs">No thumbnail</div>}
+                          <PanelThumb panel={p} />
                         </div>
                         <div>
                           <div className="font-display text-lg font-bold text-stone-950">{p.title}</div>

@@ -1,6 +1,10 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## Edit/Duplicate + reliable thumbnails (Feb 28 2026)
+- **Edit / Resend**: clicking a past announcement now shows two buttons in the modal header: **DUPLICATE** and **EDIT / RESEND**. Edit reopens the full compose modal pre-filled with title, intro, panels and the **original recipient list** pre-selected; saving via the new `PUT /api/admin/announcements/{id}` overwrites the existing record (keeps `id` + `created_at`), re-mints share-link tokens for every panel, and re-sends via Resend. Duplicate opens compose modal with the same data but creates a brand new announcement on send.
+- **Robust thumbnail rendering**: the admin view modal AND the franchisee portal `/portal/updates` page now render panel thumbnails via the **authed `/files/thumbnail` proxy** (new `PanelThumb` component on both pages, using `FileThumbnail`). The brittle public `thumbnail_url` (share-token URL) is still stored on the panel and used in the email body, but the in-app views no longer depend on it — they read `thumbnail_key` directly. This fixes the broken thumbnails reported on production where uploaded panel thumbnails were rendering as alt-text only.
+
 ## Polish — Announcement template & multi-panel composer (Feb 28 2026)
 - **Email design**: dropped the large brand-yellow banner that wrapped the announcement title. Title now appears **centered** as a plain H1. A separate 1pt green (`#dddd16`) keyline now sits between the intro paragraph and the first panel, with a 30px gap below — gives a clear "summary → projects" rhythm.
 - **Panel layout**: redesigned to a centered/stacked layout with order **title → thumbnail → blurb → button** (title centered, wraps naturally with `max-width:480px; word-wrap:break-word`). Solves long-title overflow and gives every panel the full email width.
