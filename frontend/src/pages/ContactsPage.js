@@ -1746,15 +1746,14 @@ export default function ContactsPage() {
       setError("This contact has no email address on file.");
       return;
     }
-    // Open the in-app Reply-with-template modal (uses Resend + saved
-    // template body + signature + attachments). Previously this used a
-    // plain mailto: link which only half-filled the user's local email
-    // client and didn't carry signature/attachments.
-    setKanbanReplyContact(contact);
-    // Auto-advance to "Contacted" if currently "new" — the modal's Send
-    // success path doesn't know about kanban state, and this matches the
-    // historic behaviour (user said "I clicked Reply so it's been
-    // contacted" once the modal opens).
+    // Open a plain mailto: link — pops the user's default mail client
+    // (Apple Mail / Outlook) with To pre-filled. Subject prefixed with
+    // "Re:" if we have one. No HTML body / signature — the local mail
+    // client uses its own signature.
+    const subject = contact.subject ? `Re: ${contact.subject}` : "";
+    const params = subject ? `?subject=${encodeURIComponent(subject)}` : "";
+    window.location.href = `mailto:${encodeURIComponent(to)}${params}`;
+    // Auto-advance to "Contacted" if currently "new" — same UX as before.
     if (!contact.pipeline_status || contact.pipeline_status === "new") {
       updateStage(contact.id, "contacted");
     }
