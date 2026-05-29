@@ -203,7 +203,7 @@ def _build_html(announcement: dict) -> str:
         <div>Hi <strong>{{{{first_name}}}}</strong>,</div>
         <div style="margin-top:10px;">{intro_html}</div>
       </td></tr>
-      <tr><td style="padding:30px 30px 0 30px;">
+      <tr><td style="padding:30px 30px 30px 30px;">
         <div style="height:0;border-top:1px solid #dddd16;margin:0;"></div>
       </td></tr>
       <tr><td style="padding:0 30px 30px 30px;">
