@@ -725,6 +725,53 @@ def attach(api, db, require_role):
             raise HTTPException(404, "Not found")
         return {"ok": True}
 
+    @api.post("/admin/announcements/rewrite-urls")
+    async def rewrite_urls(
+        body: dict, _: dict = Depends(require_role("admin")),
+    ):
+        """One-off backfill. Rewrites the host on every panel's
+        ``resolved_url`` and ``thumbnail_url`` across every saved
+        announcement. Useful when a deployment's ``FRONTEND_URL`` env
+        was wrong at compose-time and minted links pointing at the
+        wrong host (preview ↔ production drift).
+
+        Body:
+        ```
+        {"from": "https://licensee-vault.preview.emergentagent.com",
+         "to":   "https://hub.creativemojo.co.uk"}
+        ```
+
+        Returns: ``{ scanned, updated, panels_touched }``. Safe to run
+        multiple times — substitution is idempotent.
+        """
+        frm = (body.get("from") or "").rstrip("/")
+        to = (body.get("to") or "").rstrip("/")
+        if not frm or not to:
+            raise HTTPException(400, "Both 'from' and 'to' base URLs are required")
+        scanned = 0
+        updated = 0
+        panels_touched = 0
+        async for ann in db.announcements.find({}, {"_id": 0}):
+            scanned += 1
+            changed = False
+            new_panels: list[dict] = []
+            for p in (ann.get("panels") or []):
+                np = dict(p)
+                for field in ("resolved_url", "thumbnail_url"):
+                    v = np.get(field) or ""
+                    if v.startswith(frm):
+                        np[field] = to + v[len(frm):]
+                        changed = True
+                        panels_touched += 1
+                new_panels.append(np)
+            if changed:
+                await db.announcements.update_one(
+                    {"id": ann["id"]},
+                    {"$set": {"panels": new_panels}},
+                )
+                updated += 1
+        return {"scanned": scanned, "updated": updated, "panels_touched": panels_touched}
+
     # --------------------- portal endpoint ------------------------
     @api.get("/portal/announcements")
     async def portal_list(user: dict = Depends(require_role("franchisee", "admin"))):

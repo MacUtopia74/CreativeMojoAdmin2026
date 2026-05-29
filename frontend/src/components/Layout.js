@@ -58,7 +58,6 @@ const SIDEBAR = [
       { kind: "item", to: "/franchisees", label: "Franchises / Licences", icon: Users, testid: "nav-franchisees", permKey: "franchisees", alertBadge: "missing_mandate" },
       { kind: "item", to: "/renewals", label: "Renewals", icon: BellRing, testid: "nav-renewals", permKey: "renewals" },
       { kind: "item", to: "/territory-builder", label: "Territory Builder", icon: Target, testid: "nav-territory-builder", permKey: "territory-builder" },
-      { kind: "item", to: "/files", label: "Files", icon: FolderOpen, testid: "nav-files", permKey: "files" },
     ],
   },
   { kind: "divider" },
@@ -66,20 +65,40 @@ const SIDEBAR = [
   { kind: "item", to: "/contacts", label: "Sales & Contacts", icon: Contact, testid: "nav-contacts", permKey: "contacts" },
   { kind: "divider" },
 
+  // Files promoted to top-level (was a child under Franchises) so it lives
+  // alongside the other primary nouns the franchise owner uses daily.
+  { kind: "item", to: "/files", label: "Files", icon: FolderOpen, testid: "nav-files", permKey: "files" },
+  { kind: "divider" },
+
+  // Announcements promoted out of Admin → Settings so it sits next to the
+  // outbound-comms tools (Files + Calendar).
+  { kind: "item", to: "/admin/announcements", label: "Announcements", icon: Megaphone, testid: "nav-admin-announcements", permKey: "admin-announcements" },
+  { kind: "divider" },
+
   { kind: "item", to: "/calendar", label: "Calendar", icon: CalendarDays, testid: "nav-calendar", permKey: "calendar" },
   { kind: "divider" },
 
+  // Sandra's Invoices promoted to its own top-level group (was a subgroup
+  // under Admin). Keeps the day-to-day invoicing flow one click away.
+  {
+    kind: "group", key: "sandras", label: "Sandra's Invoices", icon: Receipt, testid: "nav-sandras-group",
+    children: [
+      { kind: "item", to: "/invoices", label: "Sandra's Invoice Admin", icon: Receipt, testid: "nav-invoices", permKey: "invoices" },
+      { kind: "item", to: "/banking", label: "Banking", icon: Banknote, testid: "nav-banking", permKey: "banking" },
+    ],
+  },
+  { kind: "divider" },
+
+  // ---- Admin section — pushed to the bottom of the column ----
   {
     kind: "group", key: "admin", label: "Admin", icon: Wrench, testid: "nav-admin-group",
     children: [
-      { kind: "item", to: "/find-class", label: "Find-a-Class", icon: MapPin, testid: "nav-find-class", permKey: "find-class" },
-      { kind: "item", to: "/cqc-definitions", label: "CQC Definitions", icon: Stethoscope, testid: "nav-cqc-definitions", permKey: "cqc-definitions" },
-      { kind: "item", to: "/scotland-definitions", label: "Scotland Definitions", icon: Stethoscope, testid: "nav-scotland-definitions", permKey: "scotland-definitions" },
       {
-        kind: "subgroup", key: "sandras", label: "Sandra's Invoices", icon: Receipt,
+        kind: "subgroup", key: "mapping", label: "Mapping", icon: MapPin,
         children: [
-          { kind: "item", to: "/invoices", label: "Sandra's Invoices", icon: Receipt, testid: "nav-invoices", permKey: "invoices" },
-          { kind: "item", to: "/banking", label: "Banking", icon: Banknote, testid: "nav-banking", permKey: "banking" },
+          { kind: "item", to: "/find-class", label: "Find-a-Class", icon: MapPin, testid: "nav-find-class", permKey: "find-class" },
+          { kind: "item", to: "/cqc-definitions", label: "CQC Definitions", icon: Stethoscope, testid: "nav-cqc-definitions", permKey: "cqc-definitions" },
+          { kind: "item", to: "/scotland-definitions", label: "Scotland Definitions", icon: Stethoscope, testid: "nav-scotland-definitions", permKey: "scotland-definitions" },
         ],
       },
       {
@@ -87,7 +106,6 @@ const SIDEBAR = [
         children: [
           { kind: "item", to: "/admin/users", label: "Admin Users", icon: KeyRound, testid: "nav-admin-users", permKey: "admin-users" },
           { kind: "item", to: "/admin/email-templates", label: "Email Templates", icon: Mail, testid: "nav-admin-email-templates", permKey: "admin-email-templates" },
-          { kind: "item", to: "/admin/announcements", label: "Announcements", icon: Megaphone, testid: "nav-admin-announcements", permKey: "admin-announcements" },
           { kind: "item", to: "/admin/xero", label: "Xero", icon: Calculator, testid: "nav-admin-xero", permKey: "admin-xero" },
           { kind: "item", to: "/form-intake", label: "Form Intake", icon: Inbox, testid: "nav-form-intake", permKey: "form-intake" },
         ],
