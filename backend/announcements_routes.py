@@ -103,13 +103,17 @@ def _build_html(announcement: dict) -> str:
     Creative Mojo footer.
     """
     panels_html: list[str] = []
-    for p in announcement.get("panels", []):
+    for idx, p in enumerate(announcement.get("panels", [])):
         thumb = p.get("thumbnail_url") or ""
         title = p.get("title") or ""
         blurb = (p.get("blurb") or "").replace("\n", "<br/>")
         href = p.get("resolved_url") or "#"
+        # Separator: 0.5pt grey horizontal keyline between panels (skip
+        # for the first one — the intro already provides separation).
+        sep_style = ("border-top:1px solid #d4d4d4;padding:24px 0;"
+                     if idx > 0 else "padding:8px 0 24px 0;")
         panels_html.append(f"""
-<tr><td style="padding:24px 0;border-top:1px solid #eaeaea;">
+<tr><td style="{sep_style}">
   <table cellpadding="0" cellspacing="0" border="0" width="100%">
     <tr>
       <td valign="top" width="220" style="padding-right:20px;">
@@ -135,9 +139,10 @@ def _build_html(announcement: dict) -> str:
         <img src="{LOGO_URL}" alt="Creative Mojo" width="220"
              style="max-width:220px;height:auto;display:block;" />
       </td></tr>
-      <tr><td style="padding:0 30px 6px;">
-        <div style="background:#dddd16;padding:18px 22px;font-family:Helvetica,Arial,sans-serif;
-                    font-size:24px;font-weight:800;color:#1a1a1a;line-height:1.2;">
+      <tr><td style="padding:18px 30px 0;">
+        <div style="font-family:Helvetica,Arial,sans-serif;font-size:24px;font-weight:800;
+                    color:#1a1a1a;line-height:1.2;padding-bottom:10px;
+                    border-bottom:2px solid #dddd16;">
           {announcement.get('title','')}
         </div>
       </td></tr>
@@ -194,19 +199,47 @@ def attach(api, db, require_role):
         Doesn't write to the DB or mint share tokens — it just substitutes
         the in-flight panel data (using the thumbnail URLs the composer
         already has) into the same template the real send uses.
+
+        File panels: inline the actual file thumbnail as a base64 data:
+        URL so the iframe preview shows the real image without needing
+        the auth cookie/header (iframe srcDoc can't forward our Bearer
+        token to a separate request).
         """
+        from thumbnail_service import get_cached_thumbnail, build_thumbnail
+        import base64
+        import anyio
+
         panels = list(body.get("panels") or [])
-        # For preview, point the buttons at "#" so we don't have to mint
-        # tokens. Use the admin-supplied thumbnail_url or a 1x1 grey
-        # placeholder image so the layout doesn't shift.
         for p in panels:
             p.setdefault("resolved_url", "#")
-            if not p.get("thumbnail_url") and p.get("kind") == "file" and p.get("key"):
-                # Use the admin-side authenticated thumbnail proxy; the
-                # composer iframe carries the admin's Bearer cookie via
-                # the api client when we load via blob fetch. For the
-                # right-pane preview we render the HTML directly though,
-                # so we substitute a transparent placeholder.
+            if p.get("thumbnail_url"):
+                continue
+            if p.get("kind") == "file" and p.get("key"):
+                key = p["key"]
+                existing = await db.files_index.find_one(
+                    {"key": key}, {"_id": 0, "content_type": 1, "name": 1},
+                )
+                if not existing:
+                    continue
+                ct = (existing.get("content_type") or "").lower()
+                ext = (existing.get("name") or "").rsplit(".", 1)[-1].lower()
+                if not (ct.startswith("image/") or ct == "application/pdf"
+                        or ext in {"jpg", "jpeg", "png", "gif", "webp", "heic", "pdf"}):
+                    continue
+                data = get_cached_thumbnail(key, "md")
+                if not data:
+                    try:
+                        data = await anyio.to_thread.run_sync(
+                            build_thumbnail, key, "md", existing.get("content_type"),
+                        )
+                    except Exception:  # noqa: BLE001
+                        data = None
+                if data:
+                    p["thumbnail_url"] = (
+                        "data:image/jpeg;base64," + base64.b64encode(data).decode("ascii")
+                    )
+            if not p.get("thumbnail_url"):
+                # Fallback: transparent grey placeholder so layout doesn't shift.
                 p["thumbnail_url"] = ("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20"
                                        "width%3D%22200%22%20height%3D%22130%22%3E%3Crect%20width%3D%22100%25%22%20"
                                        "height%3D%22100%25%22%20fill%3D%22%23eeeeee%22%2F%3E%3Ctext%20x%3D%2250%25%22%20"

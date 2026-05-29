@@ -392,33 +392,43 @@ function ComposeModal({ open, onClose, onSent }) {
                   Add at least one File or Folder panel above.
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {panels.map((p, idx) => (
-                    <div key={idx} className="border border-stone-200 rounded-lg p-3" data-testid={`panel-${idx}`}>
-                      <div className="flex items-start justify-between gap-2 mb-2">
-                        <div className="flex items-center gap-1.5 text-xs text-stone-600 min-w-0">
-                          {p.kind === "file" ? <FileText className="w-3.5 h-3.5 shrink-0" /> : <Folder className="w-3.5 h-3.5 shrink-0" />}
-                          <span className="font-mono truncate">{p.key || p.prefix || "(no target)"}</span>
+                <>
+                  <div className="space-y-2">
+                    {panels.map((p, idx) => (
+                      <div key={idx} className="border border-stone-200 rounded-lg p-3" data-testid={`panel-${idx}`}>
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <div className="flex items-center gap-1.5 text-xs text-stone-600 min-w-0">
+                            {p.kind === "file" ? <FileText className="w-3.5 h-3.5 shrink-0" /> : <Folder className="w-3.5 h-3.5 shrink-0" />}
+                            <span className="font-mono truncate">{p.key || p.prefix || "(no target)"}</span>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button onClick={() => setPicker({ kind: p.kind, panelIdx: idx })}
+                              className="text-stone-500 hover:text-stone-900 text-[10px] uppercase font-bold tracking-wider">Change</button>
+                            <button onClick={() => removePanel(idx)} className="text-stone-400 hover:text-rose-600"><Trash2 className="w-3.5 h-3.5" /></button>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button onClick={() => setPicker({ kind: p.kind, panelIdx: idx })}
-                            className="text-stone-500 hover:text-stone-900 text-[10px] uppercase font-bold tracking-wider">Change</button>
-                          <button onClick={() => removePanel(idx)} className="text-stone-400 hover:text-rose-600"><Trash2 className="w-3.5 h-3.5" /></button>
-                        </div>
+                        <label className="block mb-1">
+                          <div className="text-[10px] uppercase tracking-wider font-bold text-stone-500 mb-1">Panel title</div>
+                          <input value={p.title} onChange={(e) => updatePanel(idx, { title: e.target.value })}
+                            className="w-full px-2 py-1.5 text-sm bg-white border border-stone-300 rounded" />
+                        </label>
+                        <label className="block">
+                          <div className="text-[10px] uppercase tracking-wider font-bold text-stone-500 mb-1">Blurb</div>
+                          <textarea rows={2} value={p.blurb} onChange={(e) => updatePanel(idx, { blurb: e.target.value })}
+                            className="w-full px-2 py-1.5 text-sm bg-white border border-stone-300 rounded" />
+                        </label>
                       </div>
-                      <label className="block mb-1">
-                        <div className="text-[10px] uppercase tracking-wider font-bold text-stone-500 mb-1">Panel title</div>
-                        <input value={p.title} onChange={(e) => updatePanel(idx, { title: e.target.value })}
-                          className="w-full px-2 py-1.5 text-sm bg-white border border-stone-300 rounded" />
-                      </label>
-                      <label className="block">
-                        <div className="text-[10px] uppercase tracking-wider font-bold text-stone-500 mb-1">Blurb</div>
-                        <textarea rows={2} value={p.blurb} onChange={(e) => updatePanel(idx, { blurb: e.target.value })}
-                          className="w-full px-2 py-1.5 text-sm bg-white border border-stone-300 rounded" />
-                      </label>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                  {/* Add-another row: makes the multi-panel affordance obvious. */}
+                  <div className="mt-3 flex items-center gap-2 justify-center py-2 border-t border-stone-200">
+                    <span className="text-[10px] uppercase tracking-wider font-bold text-stone-400 mr-1">Add another</span>
+                    <button onClick={() => setPicker({ kind: "file", panelIdx: null })} data-testid="add-another-file"
+                      className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-white border border-stone-300 hover:bg-stone-50 text-stone-700 rounded-full flex items-center gap-1"><Plus className="w-3 h-3" /> File</button>
+                    <button onClick={() => setPicker({ kind: "folder", panelIdx: null })} data-testid="add-another-folder"
+                      className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-white border border-stone-300 hover:bg-stone-50 text-stone-700 rounded-full flex items-center gap-1"><Plus className="w-3 h-3" /> Folder</button>
+                  </div>
+                </>
               )}
             </div>
 

@@ -1,5 +1,13 @@
 # Creative Mojo — Unified Admin Platform PRD
 
+
+## Polish — Announcement template & multi-panel composer (Feb 28 2026)
+- **Email design**: dropped the large brand-yellow banner that wrapped the announcement title; replaced with a simple H1 followed by a thin 2px green (`#dddd16`) keyline underneath. Quieter, more newsletter-like.
+- **Panel separators**: each project panel is now divided by a 0.5pt grey (`#d4d4d4`) horizontal keyline (first panel has no top border — flows directly from the intro).
+- **Composer "Add another" affordance**: below the panels list there's now an obvious `ADD ANOTHER · + File · + Folder` row, so the multi-panel capability is no longer hidden behind the small top-right pills. Unlimited panels supported.
+- **Live preview thumbnails**: `/admin/announcements/preview-html` now inlines real file thumbnails as base64 `data:image/jpeg` URIs for file panels (uses the existing `thumbnail_service`), so the right-pane iframe shows actual images rather than placeholders or broken auth-blocked URLs.
+
+
 ## Latest change — Franchisee vs Customer Orders visual split (Feb 27 2026)
 - New `order_franchisee_match.py` backend module decorates every Order list/detail response with a `franchisee_match` field. Detection: `customer_email` against franchisee `mojo_email`/`secondary_email` first, then `customer_label` against `organisation`. 60-second TTL cache so the lookup isn't rebuilt per request. Includes ex-franchisees with an `is_ex: true` flag so historic orders still group correctly.
 - `OrdersPage.jsx` now splits each tab into two grouped sections — "Franchisee Orders · N" (black banner) at the top and "Customer Orders · N" (stone-100 banner) below. Franchisee rows tinted `#f6f6cd` brand yellow with a small black "FRANCHISEE" pill (and "FRANCHISEE · EX" for ex-franchisees) under the customer name.
