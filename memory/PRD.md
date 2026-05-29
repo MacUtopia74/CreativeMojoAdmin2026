@@ -3,9 +3,11 @@
 
 ## Polish — Announcement template & multi-panel composer (Feb 28 2026)
 - **Email design**: dropped the large brand-yellow banner that wrapped the announcement title; replaced with a simple H1 followed by a thin 2px green (`#dddd16`) keyline underneath. Quieter, more newsletter-like.
+- **Panel layout**: redesigned to a centered/stacked layout — thumbnail centered on top, title centered (wraps naturally with `max-width:480px; word-wrap:break-word`), blurb centered, button centered. Solves long-title overflow and gives every panel the full email width.
 - **Panel separators**: each project panel is now divided by a 0.5pt grey (`#d4d4d4`) horizontal keyline (first panel has no top border — flows directly from the intro).
 - **Composer "Add another" affordance**: below the panels list there's now an obvious `ADD ANOTHER · + File · + Folder` row, so the multi-panel capability is no longer hidden behind the small top-right pills. Unlimited panels supported.
-- **Live preview thumbnails**: `/admin/announcements/preview-html` now inlines real file thumbnails as base64 `data:image/jpeg` URIs for file panels (uses the existing `thumbnail_service`), so the right-pane iframe shows actual images rather than placeholders or broken auth-blocked URLs.
+- **Per-panel thumbnail picker**: every panel (file OR folder) now has a "THUMBNAIL · Pick / Change" row. Opens a new picker mode (`kind=thumb`) that lets the admin attach any R2 image file as the panel's thumbnail. Backend resolves it to a public lifetime share-token thumbnail URL for the email body, and inlines as base64 for the live preview iframe. Folders no longer have to show the grey placeholder — admin can pick a representative project shot.
+- **Live preview thumbnails**: `/admin/announcements/preview-html` inlines real file thumbnails as base64 `data:image/jpeg` URIs for file panels AND for admin-picked `thumbnail_key` (works without auth, no broken images in the composer iframe).
 
 
 ## Latest change — Franchisee vs Customer Orders visual split (Feb 27 2026)

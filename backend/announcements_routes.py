@@ -96,6 +96,62 @@ async def _resolve_link_for_panel(db, panel: dict) -> tuple[str, Optional[str]]:
     return file_url, thumb_url
 
 
+async def _public_thumb_url_for_key(db, key: str) -> Optional[str]:
+    """Mint a lifetime share token for ``key`` and return the public
+    ``/api/files/share/{token}/thumb?size=md`` URL. Used when admin
+    picks a custom thumbnail file for a panel (typically for folder
+    panels where there's no obvious auto-thumbnail).
+    """
+    existing = await db.files_index.find_one({"key": key}, {"_id": 0, "name": 1})
+    if not existing:
+        return None
+    token = secrets.token_urlsafe(18)
+    await db.files_share_links.insert_one({
+        "token": token,
+        "key": key,
+        "filename": existing.get("name"),
+        "expires_at": None,
+        "lifetime": True,
+        "revoked": False,
+        "created_at": _now_iso(),
+        "created_by": "announcement-thumb",
+        "hits": 0,
+    })
+    return f"{_frontend_base()}/api/files/share/{token}/thumb?size=md"
+
+
+async def _thumb_base64_for_key(db, key: str) -> Optional[str]:
+    """Return a ``data:image/jpeg;base64,...`` URI for the given R2 key,
+    or ``None`` if the file isn't thumbnail-eligible. Used by:
+      • Live preview HTML (iframe can't carry our Bearer header).
+      • Admin-picked folder thumbnails (``thumbnail_key`` on the panel).
+    """
+    from thumbnail_service import get_cached_thumbnail, build_thumbnail
+    import base64
+    import anyio
+    existing = await db.files_index.find_one(
+        {"key": key}, {"_id": 0, "content_type": 1, "name": 1},
+    )
+    if not existing:
+        return None
+    ct = (existing.get("content_type") or "").lower()
+    ext = (existing.get("name") or "").rsplit(".", 1)[-1].lower()
+    if not (ct.startswith("image/") or ct == "application/pdf"
+            or ext in {"jpg", "jpeg", "png", "gif", "webp", "heic", "pdf"}):
+        return None
+    data = get_cached_thumbnail(key, "md")
+    if not data:
+        try:
+            data = await anyio.to_thread.run_sync(
+                build_thumbnail, key, "md", existing.get("content_type"),
+            )
+        except Exception:  # noqa: BLE001
+            return None
+    if not data:
+        return None
+    return "data:image/jpeg;base64," + base64.b64encode(data).decode("ascii")
+
+
 def _build_html(announcement: dict) -> str:
     """Branded HTML email. Mirrors the user-supplied example:
     Creative Mojo logo header → yellow title banner → intro text → list
@@ -110,22 +166,18 @@ def _build_html(announcement: dict) -> str:
         href = p.get("resolved_url") or "#"
         # Separator: 0.5pt grey horizontal keyline between panels (skip
         # for the first one — the intro already provides separation).
-        sep_style = ("border-top:1px solid #d4d4d4;padding:24px 0;"
-                     if idx > 0 else "padding:8px 0 24px 0;")
+        sep_style = ("border-top:1px solid #d4d4d4;padding:28px 0;"
+                     if idx > 0 else "padding:10px 0 28px 0;")
+        thumb_html = (
+            f'<img src="{thumb}" alt="{title}" width="320" '
+            'style="max-width:100%;height:auto;border-radius:8px;display:block;margin:0 auto 18px auto;" />'
+        ) if thumb else ""
         panels_html.append(f"""
-<tr><td style="{sep_style}">
-  <table cellpadding="0" cellspacing="0" border="0" width="100%">
-    <tr>
-      <td valign="top" width="220" style="padding-right:20px;">
-        {'<img src="' + thumb + '" alt="' + title + '" width="200" style="max-width:200px;height:auto;border-radius:6px;display:block;" />' if thumb else ''}
-      </td>
-      <td valign="top">
-        <div style="font-size:22px;font-weight:700;color:#1a1a1a;line-height:1.2;margin-bottom:10px;">{title}</div>
-        <div style="font-size:14px;line-height:1.6;color:#666666;margin-bottom:14px;">{blurb}</div>
-        <a href="{href}" style="display:inline-block;background:#dddd16;color:#1a1a1a;font-weight:700;text-decoration:none;padding:10px 22px;border-radius:4px;font-size:13px;letter-spacing:0.5px;">OPEN {('FOLDER' if p.get('kind')=='folder' else 'FILE')} &rsaquo;</a>
-      </td>
-    </tr>
-  </table>
+<tr><td align="center" style="{sep_style}">
+  {thumb_html}
+  <div style="font-size:22px;font-weight:700;color:#1a1a1a;line-height:1.25;margin:0 auto 12px auto;text-align:center;max-width:480px;word-wrap:break-word;">{title}</div>
+  {('<div style="font-size:14px;line-height:1.6;color:#666666;margin:0 auto 16px auto;text-align:center;max-width:480px;">' + blurb + '</div>') if blurb else ''}
+  <a href="{href}" style="display:inline-block;background:#dddd16;color:#1a1a1a;font-weight:700;text-decoration:none;padding:11px 26px;border-radius:4px;font-size:13px;letter-spacing:0.5px;">OPEN {('FOLDER' if p.get('kind')=='folder' else 'FILE')} &rsaquo;</a>
 </td></tr>
 """)
     intro_html = (announcement.get("intro") or "").replace("\n", "<br/>")
@@ -197,55 +249,42 @@ def attach(api, db, require_role):
     async def preview_html(body: dict, _: dict = Depends(require_role("admin"))):
         """Build the rendered HTML for the composer right-pane preview.
         Doesn't write to the DB or mint share tokens — it just substitutes
-        the in-flight panel data (using the thumbnail URLs the composer
-        already has) into the same template the real send uses.
+        the in-flight panel data into the template the real send uses.
 
-        File panels: inline the actual file thumbnail as a base64 data:
-        URL so the iframe preview shows the real image without needing
-        the auth cookie/header (iframe srcDoc can't forward our Bearer
-        token to a separate request).
+        Thumbnails are inlined as base64 ``data:`` URIs so the iframe
+        preview shows the real image without needing the auth cookie/
+        header. Resolution order per panel:
+          1. ``thumbnail_url`` provided by the composer (already a URL).
+          2. ``thumbnail_key`` — admin picked any R2 file as the thumbnail
+             (works for both file AND folder panels).
+          3. File panels only: auto-derived from the panel's own ``key``.
+          4. SVG placeholder so the layout doesn't shift.
         """
-        from thumbnail_service import get_cached_thumbnail, build_thumbnail
-        import base64
-        import anyio
-
         panels = list(body.get("panels") or [])
         for p in panels:
             p.setdefault("resolved_url", "#")
             if p.get("thumbnail_url"):
                 continue
+            # 1. Explicit admin pick
+            tk = p.get("thumbnail_key")
+            if tk:
+                b64 = await _thumb_base64_for_key(db, tk)
+                if b64:
+                    p["thumbnail_url"] = b64
+                    continue
+            # 2. Auto-derive for file panels
             if p.get("kind") == "file" and p.get("key"):
-                key = p["key"]
-                existing = await db.files_index.find_one(
-                    {"key": key}, {"_id": 0, "content_type": 1, "name": 1},
-                )
-                if not existing:
+                b64 = await _thumb_base64_for_key(db, p["key"])
+                if b64:
+                    p["thumbnail_url"] = b64
                     continue
-                ct = (existing.get("content_type") or "").lower()
-                ext = (existing.get("name") or "").rsplit(".", 1)[-1].lower()
-                if not (ct.startswith("image/") or ct == "application/pdf"
-                        or ext in {"jpg", "jpeg", "png", "gif", "webp", "heic", "pdf"}):
-                    continue
-                data = get_cached_thumbnail(key, "md")
-                if not data:
-                    try:
-                        data = await anyio.to_thread.run_sync(
-                            build_thumbnail, key, "md", existing.get("content_type"),
-                        )
-                    except Exception:  # noqa: BLE001
-                        data = None
-                if data:
-                    p["thumbnail_url"] = (
-                        "data:image/jpeg;base64," + base64.b64encode(data).decode("ascii")
-                    )
-            if not p.get("thumbnail_url"):
-                # Fallback: transparent grey placeholder so layout doesn't shift.
-                p["thumbnail_url"] = ("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20"
-                                       "width%3D%22200%22%20height%3D%22130%22%3E%3Crect%20width%3D%22100%25%22%20"
-                                       "height%3D%22100%25%22%20fill%3D%22%23eeeeee%22%2F%3E%3Ctext%20x%3D%2250%25%22%20"
-                                       "y%3D%2250%25%22%20fill%3D%22%23999999%22%20font-family%3D%22sans-serif%22%20"
-                                       "font-size%3D%2212%22%20text-anchor%3D%22middle%22%20dominant-baseline%3D%22middle%22%3E"
-                                       "thumbnail%3C%2Ftext%3E%3C%2Fsvg%3E")
+            # 3. Placeholder
+            p["thumbnail_url"] = ("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20"
+                                   "width%3D%22320%22%20height%3D%22200%22%3E%3Crect%20width%3D%22100%25%22%20"
+                                   "height%3D%22100%25%22%20fill%3D%22%23f0f0eb%22%2F%3E%3Ctext%20x%3D%2250%25%22%20"
+                                   "y%3D%2250%25%22%20fill%3D%22%23999999%22%20font-family%3D%22sans-serif%22%20"
+                                   "font-size%3D%2213%22%20text-anchor%3D%22middle%22%20dominant-baseline%3D%22middle%22%3E"
+                                   "Pick%20a%20thumbnail%3C%2Ftext%3E%3C%2Fsvg%3E")
         sample = {
             "title": body.get("title") or "(no subject yet)",
             "intro": body.get("intro") or "",
@@ -269,6 +308,11 @@ def attach(api, db, require_role):
         for p in panels:
             file_url, auto_thumb = await _resolve_link_for_panel(db, p)
             p["resolved_url"] = file_url
+            # Admin-picked thumbnail trumps everything else.
+            if p.get("thumbnail_key") and not p.get("thumbnail_url"):
+                tk_url = await _public_thumb_url_for_key(db, p["thumbnail_key"])
+                if tk_url:
+                    p["thumbnail_url"] = tk_url
             if auto_thumb and not p.get("thumbnail_url"):
                 p["thumbnail_url"] = auto_thumb
         to = (body.get("to") or user.get("email") or "").strip()
@@ -351,6 +395,11 @@ def attach(api, db, require_role):
         for p in panels:
             file_url, auto_thumb = await _resolve_link_for_panel(db, p)
             p["resolved_url"] = file_url
+            # Admin-picked thumbnail trumps everything else.
+            if p.get("thumbnail_key") and not p.get("thumbnail_url"):
+                tk_url = await _public_thumb_url_for_key(db, p["thumbnail_key"])
+                if tk_url:
+                    p["thumbnail_url"] = tk_url
             # Auto-thumb wins when admin didn't supply one. Admin can
             # always override per-panel via `thumbnail_url` on the body.
             if auto_thumb and not p.get("thumbnail_url"):

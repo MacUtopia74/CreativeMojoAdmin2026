@@ -124,7 +124,10 @@ function PickerModal({ open, kind, onPick, onClose }) {
     setQ(""); setResults([]);
     (async () => {
       try {
-        if (kind === "file") {
+        if (kind === "file" || kind === "thumb") {
+          // Thumb mode reuses recent-files but the UI badges/labels it as
+          // a thumbnail pick. We rely on FileThumbnail to render a preview
+          // so non-thumbnailable files just look like a paper icon — fine.
           const { data } = await api.get("/admin/announcements/recent-files?limit=24");
           setRecents(data.items || []);
         } else {
@@ -156,9 +159,11 @@ function PickerModal({ open, kind, onPick, onClose }) {
   if (!open) return null;
 
   const showList = q.length >= 2 ? results : recents;
+  const isFolderPicker = kind === "folder";
+  const kindLabel = kind === "thumb" ? "thumbnail" : kind;
   const sectionLabel = q.length >= 2
     ? (loading ? "Searching…" : `${results.length} match${results.length === 1 ? "" : "es"}`)
-    : (kind === "file" ? "Recently added files" : "Recently added folders");
+    : (isFolderPicker ? "Recently added folders" : (kind === "thumb" ? "Recently added images" : "Recently added files"));
 
   return (
     <div className="fixed inset-0 z-[60] bg-stone-950/50 backdrop-blur-sm flex items-start justify-center px-4 py-8 overflow-y-auto"
@@ -167,10 +172,12 @@ function PickerModal({ open, kind, onPick, onClose }) {
         <div className="px-6 py-5 border-b border-stone-200 flex items-start justify-between">
           <div>
             <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 flex items-center gap-1.5">
-              {kind === "file" ? <FileText className="w-3 h-3" /> : <Folder className="w-3 h-3" />}
-              Pick a {kind}
+              {isFolderPicker ? <Folder className="w-3 h-3" /> : (kind === "thumb" ? <ImageIcon className="w-3 h-3" /> : <FileText className="w-3 h-3" />)}
+              Pick a {kindLabel}
             </div>
-            <h2 className="font-display text-xl font-black text-stone-950 mt-1">{kind === "file" ? "Choose a file to share" : "Choose a folder to share"}</h2>
+            <h2 className="font-display text-xl font-black text-stone-950 mt-1">
+              {kind === "thumb" ? "Choose a file as the panel thumbnail" : (isFolderPicker ? "Choose a folder to share" : "Choose a file to share")}
+            </h2>
           </div>
           <button onClick={onClose} className="w-9 h-9 rounded-full border border-stone-300 hover:bg-stone-50 flex items-center justify-center"><X className="w-4 h-4" /></button>
         </div>
@@ -179,7 +186,7 @@ function PickerModal({ open, kind, onPick, onClose }) {
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
             <input autoFocus value={q} onChange={(e) => setQ(e.target.value)}
-              placeholder={`Search ${kind}s by name…`}
+              placeholder={`Search ${kindLabel}s by name…`}
               data-testid="picker-search"
               className="w-full pl-10 pr-9 py-2.5 text-sm bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:border-stone-400 focus:bg-white" />
           </div>
@@ -195,14 +202,13 @@ function PickerModal({ open, kind, onPick, onClose }) {
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-h-[55vh] overflow-y-auto">
               {showList.map((it) => {
-                const isFolder = kind === "folder";
-                const key = isFolder ? it.prefix : it.key;
+                const key = isFolderPicker ? it.prefix : it.key;
                 return (
                   <button key={key} onClick={() => onPick(it)}
                     data-testid={`picker-tile-${key}`}
                     className="group text-left bg-white border border-stone-200 rounded-xl overflow-hidden hover:border-stone-400 hover:shadow-md transition-all">
                     <div className="aspect-square bg-stone-50 flex items-center justify-center">
-                      {isFolder ? (
+                      {isFolderPicker ? (
                         <div className="flex flex-col items-center gap-2">
                           <Folder className="w-10 h-10 text-[#dddd16]" />
                           {it.file_count != null && <div className="text-[10px] text-stone-500">{it.file_count} files</div>}
@@ -287,7 +293,10 @@ function ComposeModal({ open, onClose, onSent }) {
   const removePanel = (idx) => setPanels((arr) => arr.filter((_, i) => i !== idx));
   const handlePick = (item) => {
     if (!picker) return;
-    if (picker.panelIdx == null) {
+    if (picker.kind === "thumb") {
+      // Picker is being used to select a thumbnail file for an existing panel.
+      updatePanel(picker.panelIdx, { thumbnail_key: item.key, thumbnail_url: "" });
+    } else if (picker.panelIdx == null) {
       addPanel(picker.kind, item);
     } else {
       updatePanel(picker.panelIdx, picker.kind === "file"
@@ -308,6 +317,7 @@ function ComposeModal({ open, onClose, onSent }) {
       title: p.title,
       blurb: p.blurb,
       thumbnail_url: p.thumbnail_url || undefined,
+      thumbnail_key: p.thumbnail_key || undefined,
     })),
     recipient_ids: recipientFilter === "subset" ? Array.from(selectedRecipients) : null,
   });
@@ -412,11 +422,35 @@ function ComposeModal({ open, onClose, onSent }) {
                           <input value={p.title} onChange={(e) => updatePanel(idx, { title: e.target.value })}
                             className="w-full px-2 py-1.5 text-sm bg-white border border-stone-300 rounded" />
                         </label>
-                        <label className="block">
+                        <label className="block mb-2">
                           <div className="text-[10px] uppercase tracking-wider font-bold text-stone-500 mb-1">Blurb</div>
                           <textarea rows={2} value={p.blurb} onChange={(e) => updatePanel(idx, { blurb: e.target.value })}
                             className="w-full px-2 py-1.5 text-sm bg-white border border-stone-300 rounded" />
                         </label>
+                        {/* Thumbnail picker — required for folder panels, optional override for file panels. */}
+                        <div className="flex items-center justify-between gap-2 pt-1 border-t border-stone-100">
+                          <div className="text-[10px] uppercase tracking-wider font-bold text-stone-500 flex items-center gap-1.5 min-w-0">
+                            <ImageIcon className="w-3 h-3 shrink-0" />
+                            <span>Thumbnail</span>
+                            {p.thumbnail_key ? (
+                              <span className="font-mono normal-case text-stone-400 truncate">· {p.thumbnail_key.split("/").pop()}</span>
+                            ) : p.kind === "file" ? (
+                              <span className="normal-case text-stone-400">· auto</span>
+                            ) : (
+                              <span className="normal-case text-stone-400">· none picked</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button onClick={() => setPicker({ kind: "thumb", panelIdx: idx })}
+                              data-testid={`panel-${idx}-pick-thumb`}
+                              className="px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider text-stone-700 border border-stone-300 hover:bg-stone-50 rounded">
+                              {p.thumbnail_key ? "Change" : "Pick"}
+                            </button>
+                            {p.thumbnail_key && (
+                              <button onClick={() => updatePanel(idx, { thumbnail_key: "" })} className="text-stone-400 hover:text-rose-600"><X className="w-3.5 h-3.5" /></button>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
