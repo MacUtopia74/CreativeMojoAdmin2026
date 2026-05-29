@@ -23,6 +23,14 @@ function fmtDate(iso) {
   } catch { return "—"; }
 }
 
+function fmtBytes(b) {
+  if (b == null) return null;
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+  if (b < 1024 ** 3) return `${(b / 1024 / 1024).toFixed(1)} MB`;
+  return `${(b / 1024 ** 3).toFixed(2)} GB`;
+}
+
 // =====================================================================
 // LIST view
 // =====================================================================
@@ -124,14 +132,24 @@ function PickerModal({ open, kind, onPick, onClose }) {
     setQ(""); setResults([]);
     (async () => {
       try {
-        if (kind === "file" || kind === "thumb") {
-          // Thumb mode reuses recent-files but the UI badges/labels it as
-          // a thumbnail pick. We rely on FileThumbnail to render a preview
-          // so non-thumbnailable files just look like a paper icon — fine.
-          const { data } = await api.get("/admin/announcements/recent-files?limit=24");
-          setRecents(data.items || []);
+        // Use the same /files/recent endpoint that powers the main
+        // Recently-added strip on /files. This gives us the actual
+        // project folders (e.g. "Hello Summer", "Game Set and Match")
+        // not just top-level shared/franchisees prefixes, plus inline
+        // preview URLs for file thumbnails.
+        const { data } = await api.get("/files/recent", { params: { days: 30, limit: 200 } });
+        if (kind === "folder") {
+          // Folder shape from /files/recent: { key, name, file_count, bytes, ... }
+          // Normalise to { prefix, name, file_count, bytes } so the
+          // downstream picker + onPick handler keeps working.
+          setRecents((data.folders || []).map((f) => ({
+            prefix: f.key,
+            name: f.name,
+            file_count: f.file_count,
+            bytes: f.bytes,
+          })));
         } else {
-          const { data } = await api.get("/admin/announcements/recent-folders?limit=24");
+          // file + thumb modes both browse files.
           setRecents(data.items || []);
         }
       } catch { setRecents([]); }
@@ -203,23 +221,25 @@ function PickerModal({ open, kind, onPick, onClose }) {
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-h-[55vh] overflow-y-auto">
               {showList.map((it) => {
                 const key = isFolderPicker ? it.prefix : it.key;
+                const subtitle = isFolderPicker
+                  ? (it.file_count != null
+                      ? `+${it.file_count} file${it.file_count === 1 ? "" : "s"}${it.bytes ? " · " + fmtBytes(it.bytes) : ""}`
+                      : null)
+                  : (it.size != null ? fmtBytes(it.size) : null);
                 return (
                   <button key={key} onClick={() => onPick(it)}
                     data-testid={`picker-tile-${key}`}
                     className="group text-left bg-white border border-stone-200 rounded-xl overflow-hidden hover:border-stone-400 hover:shadow-md transition-all">
-                    <div className="aspect-square bg-stone-50 flex items-center justify-center">
+                    <div className={`aspect-[3/4] flex items-center justify-center ${isFolderPicker ? "bg-[#f6f6cd]" : "bg-stone-50"}`}>
                       {isFolderPicker ? (
-                        <div className="flex flex-col items-center gap-2">
-                          <Folder className="w-10 h-10 text-[#dddd16]" />
-                          {it.file_count != null && <div className="text-[10px] text-stone-500">{it.file_count} files</div>}
-                        </div>
+                        <Folder className="w-14 h-14 text-emerald-700" strokeWidth={1.5} />
                       ) : (
                         <FileThumbnail file={it} className="w-full h-full object-cover" />
                       )}
                     </div>
                     <div className="px-2.5 py-2 border-t border-stone-100">
                       <div className="text-xs font-medium text-stone-900 truncate">{it.name || it.prefix?.split("/").filter(Boolean).pop()}</div>
-                      <div className="text-[10px] text-stone-500 truncate font-mono mt-0.5">{key}</div>
+                      {subtitle && <div className="text-[10px] text-stone-500 truncate mt-0.5">{subtitle}</div>}
                     </div>
                   </button>
                 );
