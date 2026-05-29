@@ -1,7 +1,14 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
-## Portal IA + visual overhaul (Feb 28 2026)
+## Critical safety guardrails — accidental-broadcast prevention (Feb 28 2026)
+- **Root cause of mis-send**: while QA'ing the Edit/Duplicate flow earlier this session, the agent ran a curl test against `POST /api/admin/announcements` on the PREVIEW backend with `recipient_ids: null`. Because the preview env shares the same franchisee email addresses and the same Resend API key as production, that test send went out for real to all 31 active franchisees. The test record was deleted from the DB afterwards but Resend had already dispatched the emails. Cheryl + 1 other franchisee replied to Paul about it. Owned and escalated to the user.
+- **Backend guardrails added** in `/app/backend/announcements_routes.py` (POST create + PUT edit):
+   1. **Non-production hosts can never broadcast**. If `frontend_origin` (or `Origin` header) is not `hub.creativemojo.co.uk`, the request is forced to a single send to the calling admin's own email — regardless of `recipient_ids`. Stops any future curl/preview test from fanning out.
+   2. **Production broadcasts require an explicit `confirm_send_all: true` flag** on the request body. Sending to all without it returns HTTP 400. No "accidentally null and default to all".
+- **Frontend confirm dialog** added to `ComposeModal.send()` — when "All active" is selected, a `window.confirm` shows `You are about to send "${title}" to ALL N active franchisees…` before any API call. Cancel halts the send.
+
+
 - **Nav restructured**: dropped the "Home" tab entirely. `/portal` now lands on **My Franchise** (renamed from Profile). Sidebar groups split by thin grey dividers: `My Franchise · My Territory · Invoicing | Calendar · HQ Updates | File Vault`. Renames: Profile → My Franchise; Territory → My Territory; Events → Calendar; Updates → HQ Updates; Files → File Vault.
 - **My Franchise page**: hero panel (photo, organisation, years-as-franchisee, mandate badge) moved up from the old Home page. Two large `font-display text-2xl sm:text-3xl font-black` headings — "Your franchise details" and "My franchise documents" — replace the small uppercase micro-labels.
 - **Calendar (was Events)**: "Show recent past" checkbox is now always visible (was list-view only) and the back-window respects the toggle for both list AND calendar views.

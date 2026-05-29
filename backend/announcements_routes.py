@@ -443,26 +443,61 @@ def attach(api, db, require_role):
 
         # Resolve recipients
         recipient_ids = body.get("recipient_ids") or None
+
+        # ----- SAFETY GUARDRAILS -----
+        # (1) Non-production hosts (preview, localhost) can NEVER broadcast.
+        #     If the composer is on a non-production host, force the send
+        #     to the calling admin's own email. This stops accidental
+        #     fan-outs from preview-environment curl tests or smoke tests.
+        host = (body.get("frontend_origin") or
+                request.headers.get("origin") or "").lower()
+        is_production = ("hub.creativemojo.co.uk" in host)
+        if not is_production:
+            admin_email = (user.get("email") or "").strip()
+            if not admin_email:
+                raise HTTPException(400, "Admin email required for non-production sends")
+            # Override recipient_ids with an empty marker; we'll send only to
+            # the admin themselves with a [PREVIEW] prefix on the subject.
+            recipient_ids = ["__admin_only_preview_send__"]
+
+        # (2) Production broadcasts (no recipient_ids => all active)
+        #     require an explicit confirm_send_all flag on the body so
+        #     no curl/script can fan out by omission.
+        confirm_all = bool(body.get("confirm_send_all"))
+        if is_production and not recipient_ids and not confirm_all:
+            raise HTTPException(400, detail=(
+                "Sending to ALL franchisees requires confirm_send_all=true. "
+                "Either pick a recipient subset or set confirm_send_all on the request body."
+            ))
+
         match: dict = {}
-        if recipient_ids:
+        if recipient_ids and recipient_ids != ["__admin_only_preview_send__"]:
             match = {"id": {"$in": list(recipient_ids)}}
         recipients: list[dict] = []
-        async for f in db.franchisees.find(
-            match,
-            {"_id": 0, "id": 1, "first_name": 1, "mojo_email": 1,
-             "secondary_email": 1, "tags": 1},
-        ):
-            email = (f.get("mojo_email") or f.get("secondary_email") or "").strip()
-            if not email:
-                continue
-            is_ex = any("ex" in str(t).lower() and "franchisee" in str(t).lower()
-                        for t in (f.get("tags") or []))
-            if is_ex and not recipient_ids:
-                continue
+        if recipient_ids == ["__admin_only_preview_send__"]:
+            # Preview / non-prod: send a single copy to the calling admin.
             recipients.append({
-                "id": f.get("id"), "email": email,
-                "first_name": f.get("first_name") or "there",
+                "id": "__admin_self__",
+                "email": (user.get("email") or "").strip(),
+                "first_name": (user.get("first_name") or "Admin"),
             })
+        else:
+            async for f in db.franchisees.find(
+                match,
+                {"_id": 0, "id": 1, "first_name": 1, "mojo_email": 1,
+                 "secondary_email": 1, "tags": 1},
+            ):
+                email = (f.get("mojo_email") or f.get("secondary_email") or "").strip()
+                if not email:
+                    continue
+                is_ex = any("ex" in str(t).lower() and "franchisee" in str(t).lower()
+                            for t in (f.get("tags") or []))
+                if is_ex and not recipient_ids:
+                    continue
+                recipients.append({
+                    "id": f.get("id"), "email": email,
+                    "first_name": f.get("first_name") or "there",
+                })
         if not recipients:
             raise HTTPException(400, "No active franchisees matched the recipient filter")
 
@@ -564,26 +599,47 @@ def attach(api, db, require_role):
             raise HTTPException(400, "At least one panel is required")
         intro = body.get("intro") or ""
 
-        # Resolve recipients
+        # Resolve recipients (same guardrails as POST /admin/announcements).
         recipient_ids = body.get("recipient_ids") or None
-        match: dict = {"id": {"$in": list(recipient_ids)}} if recipient_ids else {}
+        host = (body.get("frontend_origin") or
+                request.headers.get("origin") or "").lower()
+        is_production = ("hub.creativemojo.co.uk" in host)
+        if not is_production:
+            recipient_ids = ["__admin_only_preview_send__"]
+        confirm_all = bool(body.get("confirm_send_all"))
+        if is_production and not recipient_ids and not confirm_all:
+            raise HTTPException(400, detail=(
+                "Re-sending to ALL franchisees requires confirm_send_all=true. "
+                "Either pick a recipient subset or set confirm_send_all on the request body."
+            ))
+
+        match: dict = {}
+        if recipient_ids and recipient_ids != ["__admin_only_preview_send__"]:
+            match = {"id": {"$in": list(recipient_ids)}}
         recipients: list[dict] = []
-        async for f in db.franchisees.find(
-            match,
-            {"_id": 0, "id": 1, "first_name": 1, "mojo_email": 1,
-             "secondary_email": 1, "tags": 1},
-        ):
-            email = (f.get("mojo_email") or f.get("secondary_email") or "").strip()
-            if not email:
-                continue
-            is_ex = any("ex" in str(t).lower() and "franchisee" in str(t).lower()
-                        for t in (f.get("tags") or []))
-            if is_ex and not recipient_ids:
-                continue
+        if recipient_ids == ["__admin_only_preview_send__"]:
             recipients.append({
-                "id": f.get("id"), "email": email,
-                "first_name": f.get("first_name") or "there",
+                "id": "__admin_self__",
+                "email": (user.get("email") or "").strip(),
+                "first_name": (user.get("first_name") or "Admin"),
             })
+        else:
+            async for f in db.franchisees.find(
+                match,
+                {"_id": 0, "id": 1, "first_name": 1, "mojo_email": 1,
+                 "secondary_email": 1, "tags": 1},
+            ):
+                email = (f.get("mojo_email") or f.get("secondary_email") or "").strip()
+                if not email:
+                    continue
+                is_ex = any("ex" in str(t).lower() and "franchisee" in str(t).lower()
+                            for t in (f.get("tags") or []))
+                if is_ex and not recipient_ids:
+                    continue
+                recipients.append({
+                    "id": f.get("id"), "email": email,
+                    "first_name": f.get("first_name") or "there",
+                })
         if not recipients:
             raise HTTPException(400, "No active franchisees matched the recipient filter")
 

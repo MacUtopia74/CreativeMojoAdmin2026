@@ -374,7 +374,7 @@ function ComposeModal({ open, onClose, onSent, seed }) {
   };
 
   // ---- send + test ----
-  const buildBody = () => ({
+  const buildBody = (opts = {}) => ({
     // Browser-truth origin so the backend can mint share links that
     // point back at THIS host. Without this, links default to the
     // backend's FRONTEND_URL env var which can drift between preview
@@ -392,15 +392,29 @@ function ComposeModal({ open, onClose, onSent, seed }) {
       thumbnail_key: p.thumbnail_key || undefined,
     })),
     recipient_ids: recipientFilter === "subset" ? Array.from(selectedRecipients) : null,
+    // Explicit acknowledgement that we mean to broadcast to everyone.
+    // Backend rejects "send to all" without this flag — guardrail against
+    // accidental fan-outs from curl tests or stale UI state.
+    confirm_send_all: opts.confirm_send_all === true,
   });
 
   const send = async () => {
+    // Guardrail: explicit confirm when sending to ALL active franchisees.
+    // Stops the muscle-memory "title → send" muscle-memory from blasting
+    // every franchisee by accident.
+    let confirm_send_all = false;
+    if (recipientFilter !== "subset") {
+      const ok = window.confirm(
+        `You are about to send "${title.trim() || "(no subject)"}" to ALL ${recipients.length} active franchisees.\n\n` +
+        "Click OK to confirm, or Cancel to go back and pick a subset."
+      );
+      if (!ok) return;
+      confirm_send_all = true;
+    }
     setSending(true); setError(""); setInfo("");
     try {
-      const body = buildBody();
+      const body = buildBody({ confirm_send_all });
       if (mode === "edit" && seededAnn?.id) {
-        // Replace the existing announcement in-place (re-send to the
-        // chosen recipients). Backend treats this as a full overwrite.
         const { data } = await api.put(`/admin/announcements/${seededAnn.id}`, body);
         setInfo(data.status === "sent"
           ? `Resent to ${data.succeeded} franchisee(s).`
