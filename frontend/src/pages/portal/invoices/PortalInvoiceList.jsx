@@ -62,7 +62,9 @@ const InvoiceList = () => {
 
   return (
     <div className="space-y-8" data-testid="invoice-list-page">
-      {/* Page header — restored to match the original Invoicing look */}
+      {/* Page header — restored to match the original Invoicing look. The
+          "Create Invoice" button is intentionally absent here because
+          the shell already shows a sticky "New Invoice" CTA at the top. */}
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
           <h1 className="text-5xl font-bold tracking-tight text-slate-900" data-testid="page-title">
@@ -72,12 +74,6 @@ const InvoiceList = () => {
             Manage and track your invoices
           </p>
         </div>
-        <Link to="/portal/invoices/new">
-          <Button className="gap-2 rounded-full px-6 bg-blue-600 hover:bg-blue-700 text-white shadow-sm" data-testid="new-invoice-btn">
-            <Plus className="w-4 h-4" />
-            Create Invoice
-          </Button>
-        </Link>
       </div>
 
       {/* Stats Cards */}

@@ -17,7 +17,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import api from "@/lib/api";
 import Logo from "@/components/Logo";
 import {
-  Home, User as UserIcon, MapPin, CalendarDays, FolderOpen, Receipt,
+  User as UserIcon, MapPin, CalendarDays, FolderOpen, Receipt,
   LogOut, Type, Loader2, AlertCircle, Megaphone,
 } from "lucide-react";
 
@@ -28,20 +28,28 @@ const FONT_SCALES = {
   xlarge: { label: "Extra large", zoom: 1.3 },
 };
 
-// Map a tab id to a route. The id mirrors the old section anchor names
-// so we don't have to rewrite every bit of muscle-memory test code, but
-// the tab now triggers a real route change.
+// Map a tab id to a route. Sections are split with thin dividing rules
+// per Paul's spec: My Franchise / My Territory / Invoicing |---|
+// Calendar / HQ Updates |---| File Vault.
 function buildTabs({ modules }) {
-  const tabs = [
-    { to: "/portal", label: "Home", icon: Home, end: true, testid: "portal-nav-home" },
-    { to: "/portal/details", label: "Profile", icon: UserIcon, testid: "portal-nav-profile" },
+  const sections = [];
+  // ---- Section 1: identity + commercial ----
+  const s1 = [
+    { to: "/portal/details", label: "My Franchise", icon: UserIcon, end: true, testid: "portal-nav-profile" },
   ];
-  if (modules.map !== false) tabs.push({ to: "/portal/territory", label: "Territory", icon: MapPin, testid: "portal-nav-territory" });
-  if (modules.calendar !== false) tabs.push({ to: "/portal/events", label: "Events", icon: CalendarDays, testid: "portal-nav-events" });
-  if (modules.invoicing === true) tabs.push({ to: "/portal/invoices", label: "Invoicing", icon: Receipt, testid: "portal-nav-invoices" });
-  if (modules.files !== false) tabs.push({ to: "/portal/files", label: "Files", icon: FolderOpen, testid: "portal-nav-files" });
-  tabs.push({ to: "/portal/updates", label: "Updates", icon: Megaphone, testid: "portal-nav-updates" });
-  return tabs;
+  if (modules.map !== false) s1.push({ to: "/portal/territory", label: "My Territory", icon: MapPin, testid: "portal-nav-territory" });
+  if (modules.invoicing === true) s1.push({ to: "/portal/invoices", label: "Invoicing", icon: Receipt, testid: "portal-nav-invoices" });
+  sections.push(s1);
+  // ---- Section 2: comms + scheduling ----
+  const s2 = [];
+  if (modules.calendar !== false) s2.push({ to: "/portal/events", label: "Calendar", icon: CalendarDays, testid: "portal-nav-events" });
+  s2.push({ to: "/portal/updates", label: "HQ Updates", icon: Megaphone, testid: "portal-nav-updates" });
+  sections.push(s2);
+  // ---- Section 3: files vault ----
+  const s3 = [];
+  if (modules.files !== false) s3.push({ to: "/portal/files", label: "File Vault", icon: FolderOpen, testid: "portal-nav-files" });
+  sections.push(s3);
+  return sections.filter((s) => s.length);
 }
 
 export default function PortalShell() {
@@ -73,7 +81,8 @@ export default function PortalShell() {
   }, [fontScale]);
 
   const modules = profile?.profile?.portal_modules || {};
-  const tabs = buildTabs({ modules });
+  const sections = buildTabs({ modules });
+  const flatTabs = sections.flat();
 
   return (
     <div
@@ -136,23 +145,28 @@ export default function PortalShell() {
               below outside the flex container). */}
           <aside className="hidden md:block w-56 shrink-0" data-testid="portal-sidebar">
             <nav className="sticky top-24 space-y-1">
-              {tabs.map(({ to, label, icon: Icon, end, testid }) => (
-                <NavLink
-                  key={to}
-                  to={to}
-                  end={end}
-                  data-testid={testid}
-                  className={({ isActive }) =>
-                    `flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg font-medium transition-colors ${
-                      isActive
-                        ? "bg-stone-950 text-white"
-                        : "text-stone-700 hover:bg-stone-100"
-                    }`
-                  }
-                >
-                  <Icon className="w-4 h-4" />
-                  {label}
-                </NavLink>
+              {sections.map((tabs, sIdx) => (
+                <div key={sIdx}>
+                  {sIdx > 0 && <div className="my-3 border-t border-stone-200" data-testid={`portal-nav-divider-${sIdx}`} />}
+                  {tabs.map(({ to, label, icon: Icon, end, testid }) => (
+                    <NavLink
+                      key={to}
+                      to={to}
+                      end={end}
+                      data-testid={testid}
+                      className={({ isActive }) =>
+                        `flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg font-medium transition-colors ${
+                          isActive
+                            ? "bg-stone-950 text-white"
+                            : "text-stone-700 hover:bg-stone-100"
+                        }`
+                      }
+                    >
+                      <Icon className="w-4 h-4" />
+                      {label}
+                    </NavLink>
+                  ))}
+                </div>
               ))}
             </nav>
           </aside>
@@ -170,7 +184,7 @@ export default function PortalShell() {
 
       {/* Mobile bottom-nav — visible <md only, navigates between routes. */}
       <PortalMobileBottomNav
-        tabs={tabs}
+        tabs={flatTabs}
         currentPath={location.pathname}
         onLogout={logout}
       />

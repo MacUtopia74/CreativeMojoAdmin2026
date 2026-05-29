@@ -43,7 +43,6 @@ import ReconcilePage from "@/pages/invoices/ReconcilePage";
 // Portal shell + section pages (refactored from PortalDashboardPage —
 // each section is now its own route under /portal/* for a cleaner UX).
 import PortalShell from "@/pages/portal/PortalShell";
-import PortalHomePage from "@/pages/portal/PortalHomePage";
 import PortalDetailsPage from "@/pages/portal/PortalDetailsPage";
 import PortalTerritoryPage from "@/pages/portal/PortalTerritoryPage";
 import PortalEventsPage from "@/pages/portal/PortalEventsPage";
@@ -74,7 +73,7 @@ export default function App() {
             <Route path="/portal" element={
               <ProtectedRoute role="franchisee"><PortalShell /></ProtectedRoute>
             }>
-              <Route index element={<PortalHomePage />} />
+              <Route index element={<PortalDetailsPage />} />
               <Route path="details" element={<PortalDetailsPage />} />
               <Route path="territory" element={<PortalTerritoryPage />} />
               <Route path="events" element={<PortalEventsPage />} />

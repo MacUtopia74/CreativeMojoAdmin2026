@@ -60,7 +60,7 @@ export default function PortalEventsPanel({ open, onToggle }) {
       // days_ahead so navigating prev/next inside FullCalendar feels
       // natural without re-fetching every month change.
       const days_ahead = viewMode === "calendar" ? 365 : 90;
-      const days_back = viewMode === "calendar" ? 30 : (showPast ? 30 : 0);
+      const days_back = showPast ? 30 : 0;
       const { data } = await api.get("/calendar/portal-events", {
         params: { days_ahead, days_back },
       });
@@ -155,18 +155,16 @@ export default function PortalEventsPanel({ open, onToggle }) {
                   <LayoutGrid className="w-3 h-3" /> Calendar
                 </button>
               </div>
-              {viewMode === "list" && (
-                <label className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-bold text-stone-600 select-none">
-                  <input
-                    type="checkbox"
-                    checked={showPast}
-                    onChange={(e) => setShowPast(e.target.checked)}
-                    data-testid="events-show-past"
-                    className="accent-stone-950"
-                  />
-                  Show recent past
-                </label>
-              )}
+              <label className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-bold text-stone-600 select-none">
+                <input
+                  type="checkbox"
+                  checked={showPast}
+                  onChange={(e) => setShowPast(e.target.checked)}
+                  data-testid="events-show-past"
+                  className="accent-stone-950"
+                />
+                Show recent past
+              </label>
               <button
                 onClick={load}
                 disabled={busy}

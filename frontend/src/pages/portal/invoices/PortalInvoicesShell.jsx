@@ -10,12 +10,10 @@ import {
   Trash2,
   Settings as SettingsIcon,
   Plus,
-  Link2,
 } from "lucide-react";
 
 const TABS = [
   { to: "/portal/invoices", label: "Invoices", icon: Receipt, end: true, testid: "portal-inv-tab-list" },
-  { to: "/portal/invoices/reconcile", label: "Reconcile", icon: Link2, testid: "portal-inv-tab-reconcile" },
   { to: "/portal/invoices/clients", label: "Clients", icon: UsersIcon, testid: "portal-inv-tab-clients" },
   { to: "/portal/invoices/deleted", label: "Deleted", icon: Trash2, testid: "portal-inv-tab-deleted" },
   { to: "/portal/invoices/settings", label: "Settings", icon: SettingsIcon, testid: "portal-inv-tab-settings" },

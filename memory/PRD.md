@@ -1,6 +1,16 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## Portal IA + visual overhaul (Feb 28 2026)
+- **Nav restructured**: dropped the "Home" tab entirely. `/portal` now lands on **My Franchise** (renamed from Profile). Sidebar groups split by thin grey dividers: `My Franchise · My Territory · Invoicing | Calendar · HQ Updates | File Vault`. Renames: Profile → My Franchise; Territory → My Territory; Events → Calendar; Updates → HQ Updates; Files → File Vault.
+- **My Franchise page**: hero panel (photo, organisation, years-as-franchisee, mandate badge) moved up from the old Home page. Two large `font-display text-2xl sm:text-3xl font-black` headings — "Your franchise details" and "My franchise documents" — replace the small uppercase micro-labels.
+- **Calendar (was Events)**: "Show recent past" checkbox is now always visible (was list-view only) and the back-window respects the toggle for both list AND calendar views.
+- **File Vault (was Files)**: large brand-yellow hero banner "Files for all Franchisees" with sparkle icon, matches the admin Files header.
+- **Invoicing**:
+   - Removed the **Reconcile** tab from the portal invoices shell (parked for 2.0; CSV bank import + reconciliation UI hidden).
+   - Removed the duplicate **"+ Create Invoice"** button from the invoices list header — the shell's sticky **"+ New Invoice"** CTA is now the single entry point. The empty-state CTA shown when there are zero invoices is kept (one-off onboarding nudge).
+- `PortalHomePage.jsx` file deleted (route no longer referenced).
+
 ## Edit/Duplicate + reliable thumbnails (Feb 28 2026)
 - **Edit / Resend**: clicking a past announcement now shows two buttons in the modal header: **DUPLICATE** and **EDIT / RESEND**. Edit reopens the full compose modal pre-filled with title, intro, panels and the **original recipient list** pre-selected; saving via the new `PUT /api/admin/announcements/{id}` overwrites the existing record (keeps `id` + `created_at`), re-mints share-link tokens for every panel, and re-sends via Resend. Duplicate opens compose modal with the same data but creates a brand new announcement on send.
 - **Robust thumbnail rendering**: the admin view modal AND the franchisee portal `/portal/updates` page now render panel thumbnails via the **authed `/files/thumbnail` proxy** (new `PanelThumb` component on both pages, using `FileThumbnail`). The brittle public `thumbnail_url` (share-token URL) is still stored on the panel and used in the email body, but the in-app views no longer depend on it — they read `thumbnail_key` directly. This fixes the broken thumbnails reported on production where uploaded panel thumbnails were rendering as alt-text only.
