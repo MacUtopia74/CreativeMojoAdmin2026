@@ -3,11 +3,13 @@
 
 ## Polish — Announcement template & multi-panel composer (Feb 28 2026)
 - **Email design**: dropped the large brand-yellow banner that wrapped the announcement title; replaced with a simple H1 followed by a thin 2px green (`#dddd16`) keyline underneath. Quieter, more newsletter-like.
-- **Panel layout**: redesigned to a centered/stacked layout — thumbnail centered on top, title centered (wraps naturally with `max-width:480px; word-wrap:break-word`), blurb centered, button centered. Solves long-title overflow and gives every panel the full email width.
+- **Panel layout**: redesigned to a centered/stacked layout with order **title → thumbnail → blurb → button** (title centered, wraps naturally with `max-width:480px; word-wrap:break-word`). Solves long-title overflow and gives every panel the full email width.
 - **Panel separators**: each project panel is now divided by a 0.5pt grey (`#d4d4d4`) horizontal keyline (first panel has no top border — flows directly from the intro).
-- **Composer "Add another" affordance**: below the panels list there's now an obvious `ADD ANOTHER · + File · + Folder` row, so the multi-panel capability is no longer hidden behind the small top-right pills. Unlimited panels supported.
-- **Per-panel thumbnail picker**: every panel (file OR folder) now has a "THUMBNAIL · Pick / Change" row. Opens a new picker mode (`kind=thumb`) that lets the admin attach any R2 image file as the panel's thumbnail. Backend resolves it to a public lifetime share-token thumbnail URL for the email body, and inlines as base64 for the live preview iframe. Folders no longer have to show the grey placeholder — admin can pick a representative project shot.
+- **Composer "Add another" affordance**: below the panels list there's now an obvious `ADD ANOTHER · + File · + Folder` row, so the multi-panel capability is no longer hidden behind the small top-right pills. Unlimited panels supported, each containing its own title/thumbnail/blurb/button.
+- **Per-panel thumbnail picker**: every panel (file OR folder) now has a "THUMBNAIL · Pick / Change" row. Admin can attach any R2 file as the panel's thumbnail via a new picker mode (`kind=thumb`). Backend resolves it to a public lifetime share-token thumbnail URL for the email body, and inlines as base64 for the live preview iframe.
 - **Live preview thumbnails**: `/admin/announcements/preview-html` inlines real file thumbnails as base64 `data:image/jpeg` URIs for file panels AND for admin-picked `thumbnail_key` (works without auth, no broken images in the composer iframe).
+- **Wider compose modal** (`max-w-[1400px]`): the right-pane preview iframe now comfortably fits the 600px email template with no horizontal scrollbar.
+- **Improved recipient picker**: full-width list with a "Search Franchisee" box (matches first/last/org/email substrings), per-row organisation + email visible, Select-all-shown / Clear shortcut buttons, `max-h-72` scroll area. Sandra (`sandra@creativemojo.co.uk`) was always in the API but the cramped 2-col x 40px-max-height list made her hard to find.
 
 
 ## Latest change — Franchisee vs Customer Orders visual split (Feb 27 2026)

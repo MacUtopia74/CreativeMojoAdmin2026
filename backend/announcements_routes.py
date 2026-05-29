@@ -172,10 +172,11 @@ def _build_html(announcement: dict) -> str:
             f'<img src="{thumb}" alt="{title}" width="320" '
             'style="max-width:100%;height:auto;border-radius:8px;display:block;margin:0 auto 18px auto;" />'
         ) if thumb else ""
+        # Order: TITLE → THUMBNAIL → BLURB → BUTTON
         panels_html.append(f"""
 <tr><td align="center" style="{sep_style}">
+  <div style="font-size:22px;font-weight:700;color:#1a1a1a;line-height:1.25;margin:0 auto 18px auto;text-align:center;max-width:480px;word-wrap:break-word;">{title}</div>
   {thumb_html}
-  <div style="font-size:22px;font-weight:700;color:#1a1a1a;line-height:1.25;margin:0 auto 12px auto;text-align:center;max-width:480px;word-wrap:break-word;">{title}</div>
   {('<div style="font-size:14px;line-height:1.6;color:#666666;margin:0 auto 16px auto;text-align:center;max-width:480px;">' + blurb + '</div>') if blurb else ''}
   <a href="{href}" style="display:inline-block;background:#dddd16;color:#1a1a1a;font-weight:700;text-decoration:none;padding:11px 26px;border-radius:4px;font-size:13px;letter-spacing:0.5px;">OPEN {('FOLDER' if p.get('kind')=='folder' else 'FILE')} &rsaquo;</a>
 </td></tr>

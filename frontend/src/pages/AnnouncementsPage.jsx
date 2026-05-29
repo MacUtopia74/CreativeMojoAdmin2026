@@ -245,6 +245,7 @@ function ComposeModal({ open, onClose, onSent }) {
 
   const [picker, setPicker] = useState(null); // { kind, panelIdx | null }
   const [testTo, setTestTo] = useState("");
+  const [recipientSearch, setRecipientSearch] = useState("");
   const [sending, setSending] = useState(false);
   const [testing, setTesting] = useState(false);
   const [error, setError] = useState("");
@@ -257,6 +258,7 @@ function ComposeModal({ open, onClose, onSent }) {
     if (!open) return;
     setTitle(""); setIntro(""); setPanels([]); setSelectedRecipients(new Set());
     setError(""); setInfo(""); setRecipientFilter("all"); setPreviewHtml("");
+    setRecipientSearch("");
     api.get("/admin/announcements/recipients").then(({ data }) => setRecipients(data.items || []));
     // Default test recipient is the current admin (no fetch needed; use Resend FROM safely)
     setTestTo("");
@@ -354,7 +356,7 @@ function ComposeModal({ open, onClose, onSent }) {
 
   return (
     <div className="fixed inset-0 z-50 bg-stone-950/40 backdrop-blur-sm flex items-stretch justify-center p-4 overflow-y-auto" onClick={onClose} data-testid="announcement-modal">
-      <div className="bg-white w-full max-w-6xl rounded-2xl border border-stone-200 shadow-2xl my-auto flex flex-col max-h-[95vh]" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white w-full max-w-[1400px] rounded-2xl border border-stone-200 shadow-2xl my-auto flex flex-col max-h-[95vh]" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="px-6 py-4 border-b border-stone-200 flex items-start justify-between gap-4">
           <div>
@@ -478,18 +480,61 @@ function ComposeModal({ open, onClose, onSent }) {
                   <input type="radio" checked={recipientFilter === "subset"} onChange={() => setRecipientFilter("subset")} data-testid="recipients-subset" />
                   Pick recipients
                 </label>
+                {recipientFilter === "subset" && selectedRecipients.size > 0 && (
+                  <span className="text-[10px] uppercase tracking-wider font-bold text-stone-500">{selectedRecipients.size} selected</span>
+                )}
               </div>
-              {recipientFilter === "subset" && (
-                <div className="border border-stone-200 rounded-lg max-h-40 overflow-y-auto p-2 grid grid-cols-2 gap-1">
-                  {recipients.map((r) => (
-                    <label key={r.id} className="flex items-center gap-2 px-2 py-1 hover:bg-stone-50 text-xs cursor-pointer">
-                      <input type="checkbox" checked={selectedRecipients.has(r.id)}
-                        onChange={(e) => setSelectedRecipients((s) => { const n = new Set(s); if (e.target.checked) n.add(r.id); else n.delete(r.id); return n; })} />
-                      <span className="truncate">{r.organisation} · {r.first_name}</span>
-                    </label>
-                  ))}
-                </div>
-              )}
+              {recipientFilter === "subset" && (() => {
+                const q = recipientSearch.trim().toLowerCase();
+                const filtered = q
+                  ? recipients.filter((r) =>
+                      (r.first_name || "").toLowerCase().includes(q)
+                      || (r.last_name || "").toLowerCase().includes(q)
+                      || (r.organisation || "").toLowerCase().includes(q)
+                      || (r.email || "").toLowerCase().includes(q))
+                  : recipients;
+                return (
+                  <div className="border border-stone-200 rounded-lg overflow-hidden bg-white">
+                    <div className="px-2 py-2 border-b border-stone-100 flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400" />
+                        <input
+                          value={recipientSearch}
+                          onChange={(e) => setRecipientSearch(e.target.value)}
+                          placeholder="Search franchisees by name, org or email…"
+                          data-testid="recipients-search"
+                          className="w-full pl-7 pr-2 py-1.5 text-xs bg-stone-50 border border-stone-200 rounded focus:outline-none focus:border-stone-400 focus:bg-white"
+                        />
+                      </div>
+                      <button onClick={() => setSelectedRecipients(new Set(filtered.map((r) => r.id)))}
+                        type="button"
+                        className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-stone-600 border border-stone-200 hover:bg-stone-50 rounded">
+                        Select all{q ? " shown" : ""}
+                      </button>
+                      <button onClick={() => setSelectedRecipients(new Set())}
+                        type="button"
+                        className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-stone-600 border border-stone-200 hover:bg-stone-50 rounded">
+                        Clear
+                      </button>
+                    </div>
+                    <div className="max-h-72 overflow-y-auto p-1" data-testid="recipients-list">
+                      {filtered.length === 0 ? (
+                        <div className="px-3 py-6 text-center text-stone-500 text-xs">No franchisees match "{recipientSearch}".</div>
+                      ) : filtered.map((r) => (
+                        <label key={r.id} data-testid={`recipient-row-${r.id}`}
+                          className="flex items-center gap-2 px-2 py-1.5 hover:bg-stone-50 text-xs cursor-pointer rounded">
+                          <input type="checkbox" checked={selectedRecipients.has(r.id)}
+                            onChange={(e) => setSelectedRecipients((s) => { const n = new Set(s); if (e.target.checked) n.add(r.id); else n.delete(r.id); return n; })} />
+                          <div className="min-w-0 flex-1">
+                            <div className="font-medium text-stone-900 truncate">{r.first_name} {r.last_name} <span className="text-stone-400">·</span> <span className="text-stone-600">{r.organisation}</span></div>
+                            <div className="text-[10px] text-stone-500 font-mono truncate">{r.email}</div>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
 
