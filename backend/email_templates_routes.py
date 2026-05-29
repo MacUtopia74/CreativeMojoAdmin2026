@@ -83,10 +83,10 @@ def build_email_templates_router(db, require_role):  # noqa: D401
         # Local import keeps the cyclic dep off the module top.
         from seed_email_templates import SIGNATURE_HTML
         editable = _strip_signature(body_html or "")
-        # Single blank paragraph between editable body and signature so the
-        # editor's last paragraph doesn't visually butt against "Have a
-        # great day." in the rendered preview/email.
-        return f"{editable}\n<p>&nbsp;</p>\n{SIGNATURE_HTML.strip()}"
+        # No extra spacer paragraph — the signature's own "Best Regards,"
+        # has a tight top margin and its own internal spacing, so the
+        # body's last sentence flows naturally into the sign-off.
+        return f"{editable}\n{SIGNATURE_HTML.strip()}"
 
     async def _serialise(doc: dict, *, for_editor: bool = False) -> dict:
         doc.pop("_id", None)

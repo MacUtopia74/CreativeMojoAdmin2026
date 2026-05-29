@@ -14,8 +14,8 @@ from datetime import datetime, timezone
 from motor.motor_asyncio import AsyncIOMotorClient
 
 SIGNATURE_HTML = """
-<p>Best Regards,</p>
-<table cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:560px;border-collapse:collapse;font-family:Helvetica,Arial,sans-serif;color:#1a1a1a;">
+<p style="margin:0 0 6px 0;">Best Regards,</p>
+<table cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;border-collapse:collapse;font-family:Helvetica,Arial,sans-serif;color:#1a1a1a;">
   <tr>
     <td valign="top" style="padding-right:18px;">
       <div style="font-size:22px;font-weight:bold;color:#dddd16;line-height:1.1;margin-bottom:2px;">Paul Caldeira-Dunkerley</div>
@@ -27,16 +27,24 @@ SIGNATURE_HTML = """
         <span>&#9993; <a href="mailto:paul@creativemojo.co.uk" style="color:#1a1a1a;text-decoration:none;">paul@creativemojo.co.uk</a></span><br/>
         <span>&#128205; Channings, Brithem Bottom, Cullompton, Devon EX15 1NB</span>
       </div>
-      <div style="margin-top:10px;font-size:13px;">
-        <a href="https://www.facebook.com/CreativeMojoLtd" style="text-decoration:none;margin-right:6px;color:#1877f2;">&#9679; Facebook</a>
-        <a href="https://www.instagram.com/creativemojoltd" style="text-decoration:none;margin-right:6px;color:#e1306c;">&#9679; Instagram</a>
-        <a href="https://twitter.com/creativemojoltd" style="text-decoration:none;margin-right:6px;color:#000000;">&#9679; X</a>
-        <a href="https://www.youtube.com/@creativemojoltd" style="text-decoration:none;color:#ff0000;">&#9679; YouTube</a>
+      <div style="margin-top:14px;font-size:13px;line-height:1;">
+        <a href="https://www.facebook.com/CreativeMojoLtd" style="text-decoration:none;margin-right:8px;display:inline-block;vertical-align:middle;">
+          <img src="https://hub.creativemojo.co.uk/brand/social-facebook.png" alt="Facebook" width="32" height="32" style="display:inline-block;border:0;vertical-align:middle;" />
+        </a>
+        <a href="https://www.instagram.com/creativemojoltd" style="text-decoration:none;margin-right:8px;display:inline-block;vertical-align:middle;">
+          <img src="https://hub.creativemojo.co.uk/brand/social-instagram.png" alt="Instagram" width="32" height="32" style="display:inline-block;border:0;vertical-align:middle;" />
+        </a>
+        <a href="https://twitter.com/creativemojoltd" style="text-decoration:none;margin-right:8px;display:inline-block;vertical-align:middle;">
+          <img src="https://hub.creativemojo.co.uk/brand/social-x.png" alt="X" width="32" height="32" style="display:inline-block;border:0;vertical-align:middle;" />
+        </a>
+        <a href="https://www.youtube.com/@creativemojoltd" style="text-decoration:none;display:inline-block;vertical-align:middle;">
+          <img src="https://hub.creativemojo.co.uk/brand/social-youtube.png" alt="YouTube" width="32" height="32" style="display:inline-block;border:0;vertical-align:middle;" />
+        </a>
       </div>
     </td>
-    <td valign="top" align="right" style="width:165px;">
+    <td valign="top" align="right" style="width:240px;">
       <img src="https://hub.creativemojo.co.uk/brand/creative-mojo-logo.png"
-           alt="Creative Mojo" width="144" style="max-width:144px;height:auto;display:block;" />
+           alt="Creative Mojo" width="220" style="max-width:220px;height:auto;display:block;" />
     </td>
   </tr>
 </table>
