@@ -1354,12 +1354,14 @@ async def franchisee_portal_modules(
     if f is None:
         raise HTTPException(404, detail="Franchisee not found")
     current = f.get("portal_modules") or {}
-    allowed = {"map", "calendar", "files", "invoicing"}
+    allowed = {"map", "calendar", "files", "territory_plus", "marketing", "invoicing"}
     next_modules = {
-        "map":       bool(current.get("map",       True)),
-        "calendar":  bool(current.get("calendar",  True)),
-        "files":     bool(current.get("files",     True)),
-        "invoicing": bool(current.get("invoicing", False)),
+        "map":            bool(current.get("map",            True)),
+        "calendar":       bool(current.get("calendar",       True)),
+        "files":          bool(current.get("files",          True)),
+        "territory_plus": bool(current.get("territory_plus", False)),
+        "marketing":      bool(current.get("marketing",      False)),
+        "invoicing":      bool(current.get("invoicing",      False)),
     }
     for key, val in (body or {}).items():
         if key in allowed:
@@ -1373,6 +1375,122 @@ async def franchisee_portal_modules(
         }},
     )
     return {"ok": True, "portal_modules": next_modules}
+
+
+@api.post("/admin/seed-demo-franchisee")
+async def admin_seed_demo_franchisee(
+    body: dict | None = None,
+    user: dict = Depends(require_role("admin")),
+):
+    """Create or reset a generic "Creative Mojo Demo" franchisee account
+    that can be shared with prospective franchisees during a portal demo.
+
+    Idempotent — safe to call repeatedly. If the demo franchisee/user
+    already exist, the user's password is reset to the supplied (or
+    default) demo password and the franchisee's `portal_modules` are
+    re-applied. Returns `{ email, password, franchisee_id }`.
+
+    Body (all optional):
+      • email      — defaults to `demo@creativemojo.co.uk`
+      • password   — defaults to `CreativeMojoDemo2026!`
+      • modules    — dict of portal_modules toggles (defaults: all 6 ON
+                     so demo viewers see every module incl. Plus add-ons).
+    """
+    body = body or {}
+    email = (body.get("email") or "demo@creativemojo.co.uk").strip().lower()
+    password = body.get("password") or "CreativeMojoDemo2026!"
+    modules_override = body.get("modules") or {}
+    # Default: all modules ON (standard + every Plus add-on) so the demo
+    # account shows the full feature set off the bat.
+    default_modules = {
+        "map":            True,
+        "calendar":       True,
+        "files":          True,
+        "territory_plus": True,
+        "marketing":      True,
+        "invoicing":      True,
+    }
+    modules = {**default_modules, **{
+        k: bool(v) for k, v in modules_override.items()
+        if k in default_modules
+    }}
+
+    now = datetime.now(timezone.utc).isoformat()
+    demo_franchisee = {
+        "first_name": "Creative Mojo",
+        "last_name": "Demo",
+        "organisation": "Creative Mojo Demo",
+        "franchise_number": "DEMO",
+        "mojo_email": email,
+        "phone": "01884 303606",
+        "mobile_phone": "07886 374959",
+        "website": "https://www.creativemojo.com",
+        "address_street": "Channings, Brithem Bottom",
+        "city": "Cullompton",
+        "county": "Devon",
+        "postcode": "EX15 1NB",
+        "country": "United Kingdom",
+        "start_date": "2024-01-01",
+        "portal_enabled": True,
+        "portal_modules": modules,
+        "portal_modules_updated_at": now,
+        "portal_modules_updated_by": user.get("email"),
+        "tags": ["Demo"],
+        "updated_at": now,
+    }
+
+    # Upsert franchisee — match by mojo_email so re-running rewrites the same row.
+    existing = await db.franchisees.find_one(
+        {"mojo_email": email}, {"_id": 0, "id": 1},
+    )
+    if existing:
+        franchisee_id = existing["id"]
+        await db.franchisees.update_one(
+            {"id": franchisee_id}, {"$set": demo_franchisee},
+        )
+    else:
+        franchisee_id = str(uuid.uuid4())
+        demo_franchisee["id"] = franchisee_id
+        demo_franchisee["created_at"] = now
+        demo_franchisee["created_by"] = user.get("email")
+        await db.franchisees.insert_one(demo_franchisee)
+
+    # Upsert the user account.
+    existing_user = await db.users.find_one(
+        {"email": email}, {"_id": 0, "id": 1},
+    )
+    user_doc = {
+        "email": email,
+        "name": "Creative Mojo Demo",
+        "role": "franchisee",
+        "franchisee_id": franchisee_id,
+        "password_hash": hash_password(password),
+        "active": True,
+        "must_change_password": False,  # Demo password is shared — don't force a reset.
+        "is_demo": True,
+        "updated_at": now,
+        "updated_by": user.get("email"),
+    }
+    if existing_user:
+        await db.users.update_one({"id": existing_user["id"]}, {"$set": user_doc})
+        user_id = existing_user["id"]
+        action = "reset"
+    else:
+        user_id = str(uuid.uuid4())
+        user_doc["id"] = user_id
+        user_doc["created_at"] = now
+        user_doc["created_by"] = user.get("email")
+        await db.users.insert_one(user_doc)
+        action = "created"
+    return {
+        "ok": True,
+        "action": action,
+        "email": email,
+        "password": password,
+        "franchisee_id": franchisee_id,
+        "user_id": user_id,
+        "portal_modules": modules,
+    }
 
 
 @api.post("/franchisees/{franchisee_id}/portal-reset")
@@ -1562,11 +1680,17 @@ async def portal_me(user: dict = Depends(require_role("franchisee"))):
     # Backfill default portal_modules so the frontend never has to guess.
     # Defaults: map / calendar / files ON, invoicing OFF.
     existing_mods = (profile.get("portal_modules") or {}) if isinstance(profile.get("portal_modules"), dict) else {}
+    # Standard modules (always available) plus the "Plus" subscription
+    # add-ons (territory_plus / marketing / invoicing). Defaults: standard
+    # ON, plus OFF.
     profile["portal_modules"] = {
-        "map":       bool(existing_mods.get("map",       True)),
-        "calendar":  bool(existing_mods.get("calendar",  True)),
-        "files":     bool(existing_mods.get("files",     True)),
-        "invoicing": bool(existing_mods.get("invoicing", False)),
+        "map":            bool(existing_mods.get("map",            True)),
+        "calendar":       bool(existing_mods.get("calendar",       True)),
+        "files":          bool(existing_mods.get("files",          True)),
+        # Plus add-ons (subscription-gated)
+        "territory_plus": bool(existing_mods.get("territory_plus", False)),
+        "marketing":      bool(existing_mods.get("marketing",      False)),
+        "invoicing":      bool(existing_mods.get("invoicing",      False)),
     }
     # Fallback: if Airtable didn't carry over a start_date, derive it
     # from the earliest known contract, then `date_added`.

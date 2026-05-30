@@ -44,6 +44,7 @@ import ReconcilePage from "@/pages/invoices/ReconcilePage";
 // each section is now its own route under /portal/* for a cleaner UX).
 import PortalShell from "@/pages/portal/PortalShell";
 import PortalDetailsPage from "@/pages/portal/PortalDetailsPage";
+import PortalMarketingPage from "@/pages/portal/PortalMarketingPage";
 import PortalTerritoryPage from "@/pages/portal/PortalTerritoryPage";
 import PortalEventsPage from "@/pages/portal/PortalEventsPage";
 import PortalFilesPage from "@/pages/portal/PortalFilesPage";
@@ -77,6 +78,7 @@ export default function App() {
               <Route path="details" element={<PortalDetailsPage />} />
               <Route path="territory" element={<PortalTerritoryPage />} />
               <Route path="events" element={<PortalEventsPage />} />
+              <Route path="marketing" element={<PortalMarketingPage />} />
               <Route path="files" element={<PortalFilesPage />} />
               <Route path="updates" element={<PortalUpdatesPage />} />
               <Route path="invoices" element={<PortalInvoicesShell />}>

@@ -29,16 +29,36 @@ const FONT_SCALES = {
 };
 
 // Map a tab id to a route. Sections are split with thin dividing rules
-// per Paul's spec: My Franchise / My Territory / Invoicing |---|
-// Calendar / HQ Updates |---| File Vault.
+// per Paul's spec.
+//
+// Standard modules (always available): My Franchise, My Territory,
+//   Calendar, HQ Updates, File Vault.
+//
+// Plus add-ons (subscription-gated, toggled per franchisee via the
+// admin "Portal Modules" panel):
+//   • territory_plus  → label becomes "My Territory+"
+//   • marketing       → adds "Marketing" item
+//   • invoicing       → adds "Invoicing" item
 function buildTabs({ modules }) {
   const sections = [];
-  // ---- Section 1: identity + commercial ----
+  // ---- Section 1: identity, territory, marketing, invoicing ----
   const s1 = [
     { to: "/portal/details", label: "My Franchise", icon: UserIcon, end: true, testid: "portal-nav-profile" },
   ];
-  if (modules.map !== false) s1.push({ to: "/portal/territory", label: "My Territory", icon: MapPin, testid: "portal-nav-territory" });
-  if (modules.invoicing === true) s1.push({ to: "/portal/invoices", label: "Invoicing", icon: Receipt, testid: "portal-nav-invoices" });
+  if (modules.map !== false) {
+    s1.push({
+      to: "/portal/territory",
+      label: modules.territory_plus ? "My Territory+" : "My Territory",
+      icon: MapPin,
+      testid: "portal-nav-territory",
+    });
+  }
+  if (modules.marketing === true) {
+    s1.push({ to: "/portal/marketing", label: "Marketing", icon: Megaphone, testid: "portal-nav-marketing" });
+  }
+  if (modules.invoicing === true) {
+    s1.push({ to: "/portal/invoices", label: "Invoicing", icon: Receipt, testid: "portal-nav-invoices" });
+  }
   sections.push(s1);
   // ---- Section 2: comms + scheduling ----
   const s2 = [];
