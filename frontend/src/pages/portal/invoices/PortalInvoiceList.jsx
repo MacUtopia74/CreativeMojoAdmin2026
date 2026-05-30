@@ -80,7 +80,7 @@ const InvoiceList = () => {
       {stats && (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4" data-testid="stats-section">
           <Card 
-            className={`p-6 cursor-pointer transition-all hover:shadow-md hover:scale-[1.02] ${statusFilter === "all" ? "ring-2 ring-blue-500" : ""}`}
+            className={`p-6 cursor-pointer transition-all hover:shadow-md hover:scale-[1.02] ${statusFilter === "all" ? "ring-2 ring-[#dedd0a]" : ""}`}
             onClick={() => setStatusFilter("all")}
             data-testid="stat-card-total"
           >
@@ -100,12 +100,12 @@ const InvoiceList = () => {
             </p>
           </Card>
           <Card 
-            className={`p-6 cursor-pointer transition-all hover:shadow-md hover:scale-[1.02] ${statusFilter === "sent" ? "ring-2 ring-blue-500" : ""}`}
+            className={`p-6 cursor-pointer transition-all hover:shadow-md hover:scale-[1.02] ${statusFilter === "sent" ? "ring-2 ring-[#dedd0a]" : ""}`}
             onClick={() => setStatusFilter("sent")}
             data-testid="stat-card-sent"
           >
             <p className="text-sm font-medium text-muted-foreground">Sent</p>
-            <p className="text-4xl font-bold mt-3 text-blue-600" data-testid="stat-sent">
+            <p className="text-4xl font-bold mt-3 text-stone-950" data-testid="stat-sent">
               {stats.sent_count}
             </p>
           </Card>
@@ -175,7 +175,7 @@ const InvoiceList = () => {
             </p>
             {!searchQuery && statusFilter === "all" && (
               <Link to="/portal/invoices/new">
-                <Button className="mt-6 gap-2" data-testid="empty-create-btn">
+                <Button className="mt-6 gap-2 bg-[#dedd0a] hover:brightness-95 text-stone-950" data-testid="empty-create-btn">
                   <Plus className="w-4 h-4" />
                   Create Invoice
                 </Button>

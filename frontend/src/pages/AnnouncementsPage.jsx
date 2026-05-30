@@ -52,9 +52,9 @@ function AnnouncementsList({ onCompose, onView, refresh }) {
       <div className="flex items-end justify-between mb-6 gap-4 flex-wrap">
         <div>
           <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 flex items-center gap-1.5">
-            <Megaphone className="w-3 h-3" /> Updates & Announcements
+            <Megaphone className="w-3 h-3" /> HQ Updates
           </div>
-          <h1 className="font-display text-4xl font-black text-stone-950 mt-1">Updates</h1>
+          <h1 className="font-display text-4xl font-black text-stone-950 mt-1">HQ Updates</h1>
           <p className="text-sm text-stone-600 mt-1 max-w-2xl">
             Send a branded "What's New" e-shot to franchisees. Each one is archived to
             <code className="px-1 py-0.5 bg-stone-100 rounded mx-1">/portal/updates</code>

@@ -82,10 +82,26 @@ async def _resolve_link_for_panel(db, panel: dict, request: Request | None = Non
         prefix = (panel.get("prefix") or "").strip("/")
         if not prefix:
             return base, None
+        # Normalise to trailing slash so the file-count regex matches.
+        prefix_pfx = prefix + "/"
         token = secrets.token_urlsafe(18)
-        await db.folder_share_links.insert_one({
+        # Compute file_count so the public viewer can show "+ N files".
+        import re as _re
+        file_count = await db.files_index.count_documents({
+            "key": {"$regex": f"^{_re.escape(prefix_pfx)}"},
+            "hidden": {"$ne": True},
+        })
+        leaf = prefix.rstrip("/").rsplit("/", 1)[-1] or prefix.rstrip("/")
+        # IMPORTANT: must live in the SAME collection (`files_share_links`)
+        # and use `kind: "folder"` so the public resolver finds it. An
+        # earlier version of this code wrote to a separate
+        # `folder_share_links` collection — those links 404'd.
+        await db.files_share_links.insert_one({
             "token": token,
-            "prefix": prefix,
+            "kind": "folder",
+            "prefix": prefix_pfx,
+            "label": leaf.replace("-", " "),
+            "file_count": file_count,
             "expires_at": None,
             "lifetime": True,
             "revoked": False,
@@ -799,11 +815,54 @@ def attach(api, db, require_role):
 
         Returns: ``{ scanned, updated, panels_touched }``. Safe to run
         multiple times — substitution is idempotent.
+
+        Also migrates any pre-bug ``folder_share_links`` rows into the
+        canonical ``files_share_links`` collection so historic OPEN
+        FOLDER buttons resolve.
         """
         frm = (body.get("from") or "").rstrip("/")
         to = (body.get("to") or "").rstrip("/")
+
+        # ---- Migrate legacy folder_share_links → files_share_links ----
+        migrated = 0
+        try:
+            import re as _re
+            async for doc in db.folder_share_links.find({}, {"_id": 0}):
+                token = doc.get("token")
+                if not token:
+                    continue
+                already = await db.files_share_links.find_one(
+                    {"token": token}, {"_id": 0, "token": 1},
+                )
+                if already:
+                    continue
+                prefix = (doc.get("prefix") or "").rstrip("/") + "/"
+                file_count = await db.files_index.count_documents({
+                    "key": {"$regex": f"^{_re.escape(prefix)}"},
+                    "hidden": {"$ne": True},
+                })
+                leaf = prefix.rstrip("/").rsplit("/", 1)[-1] or prefix.rstrip("/")
+                await db.files_share_links.insert_one({
+                    "token": token,
+                    "kind": "folder",
+                    "prefix": prefix,
+                    "label": leaf.replace("-", " "),
+                    "file_count": file_count,
+                    "expires_at": doc.get("expires_at"),
+                    "lifetime": doc.get("lifetime", True),
+                    "revoked": doc.get("revoked", False),
+                    "created_at": doc.get("created_at"),
+                    "created_by": doc.get("created_by") or "announcement-migrated",
+                    "hits": doc.get("hits", 0),
+                })
+                migrated += 1
+        except Exception:  # noqa: BLE001
+            pass
+
         if not frm or not to:
-            raise HTTPException(400, "Both 'from' and 'to' base URLs are required")
+            return {"migrated_folder_tokens": migrated,
+                    "scanned": 0, "updated": 0, "panels_touched": 0,
+                    "note": "from/to not provided — URL rewrite skipped, folder-token migration ran."}
         scanned = 0
         updated = 0
         panels_touched = 0
@@ -826,7 +885,9 @@ def attach(api, db, require_role):
                     {"$set": {"panels": new_panels}},
                 )
                 updated += 1
-        return {"scanned": scanned, "updated": updated, "panels_touched": panels_touched}
+        return {"scanned": scanned, "updated": updated,
+                "panels_touched": panels_touched,
+                "migrated_folder_tokens": migrated}
 
     # --------------------- portal endpoint ------------------------
     @api.get("/portal/announcements")

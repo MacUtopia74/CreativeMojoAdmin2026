@@ -27,7 +27,7 @@ from file_storage import (
 
 logger = logging.getLogger("creative-mojo-admin.franchisee_folders")
 
-STANDARD_FOLDERS = ["Artwork", "Franchise Agreement", "Territory"]
+STANDARD_FOLDERS = ["Artwork", "Franchise Documents", "Other Files"]
 
 
 def derive_franchisee_prefix(f: dict) -> Optional[str]:

@@ -47,7 +47,7 @@ export const InvoiceCard = ({ invoice }) => {
             </div>
 
             {/* Arrow */}
-            <ArrowRight className="w-5 h-5 text-muted-foreground group-hover:text-blue-600 transition-colors" />
+            <ArrowRight className="w-5 h-5 text-muted-foreground group-hover:text-stone-950 transition-colors" />
           </div>
         </div>
       </Card>

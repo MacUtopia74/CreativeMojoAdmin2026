@@ -402,7 +402,7 @@ function BootstrapFoldersButton({ franchiseeId, onCreated }) {
   const create = async () => {
     setBusy(true);
     try {
-      await api.post("/franchisees/bootstrap-folders", { franchisee_id: franchiseeId });
+      await api.post(`/franchisees/${franchiseeId}/bootstrap-folders`);
       onCreated?.();
     } catch (e) { alert(e?.response?.data?.detail || "Could not create folders."); }
     finally { setBusy(false); }

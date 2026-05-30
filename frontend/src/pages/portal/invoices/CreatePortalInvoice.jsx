@@ -422,7 +422,7 @@ function CreateInvoice() {
               <Textarea placeholder="Additional notes..." className="min-h-[80px]" value={formData.notes} onChange={(e) => setFormData(p => ({ ...p, notes: e.target.value }))} data-testid="notes-input" />
             </Card>
 
-            <Button type="submit" className="w-full h-12 rounded-full" disabled={loading} data-testid="save-invoice-btn">
+            <Button type="submit" className="w-full h-12 rounded-full bg-[#dedd0a] hover:brightness-95 text-stone-950" disabled={loading} data-testid="save-invoice-btn">
               <Save className="w-4 h-4 mr-2" />{loading ? "Saving..." : "Save Invoice"}
             </Button>
           </div>

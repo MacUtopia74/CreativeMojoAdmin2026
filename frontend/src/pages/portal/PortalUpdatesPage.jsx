@@ -73,7 +73,7 @@ export default function PortalUpdatesPage() {
         <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 flex items-center gap-1.5">
           <Megaphone className="w-3 h-3" /> Updates from Creative Mojo
         </div>
-        <h1 className="font-display text-4xl font-black text-stone-950 mt-1">Updates</h1>
+        <h1 className="font-display text-4xl font-black text-stone-950 mt-1">HQ Updates</h1>
         <p className="text-sm text-stone-600 mt-1">All the announcements we've sent you. Tap one to re-open the linked file or folder.</p>
       </div>
 

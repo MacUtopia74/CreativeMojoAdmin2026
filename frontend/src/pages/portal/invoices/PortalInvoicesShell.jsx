@@ -38,7 +38,7 @@ export default function PortalInvoicesShell() {
                 className={({ isActive }) =>
                   `inline-flex items-center gap-2 px-3.5 py-2 text-sm font-medium rounded-lg transition-colors ${
                     isActive
-                      ? "bg-blue-50 text-blue-700 ring-1 ring-blue-200"
+                      ? "bg-[#dedd0a]/20 text-stone-950 ring-1 ring-[#dedd0a]"
                       : "text-slate-600 hover:bg-stone-100"
                   }`
                 }
@@ -51,7 +51,7 @@ export default function PortalInvoicesShell() {
           <button
             onClick={() => navigate("/portal/invoices/new")}
             data-testid="portal-inv-new-cta"
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-sm transition shrink-0"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold bg-[#dedd0a] hover:brightness-95 text-stone-950 rounded-full shadow-sm transition shrink-0"
           >
             <Plus className="w-4 h-4" />
             New Invoice

@@ -72,7 +72,7 @@ const SIDEBAR = [
 
   // Announcements promoted out of Admin → Settings so it sits next to the
   // outbound-comms tools (Files + Calendar).
-  { kind: "item", to: "/admin/announcements", label: "Announcements", icon: Megaphone, testid: "nav-admin-announcements", permKey: "admin-announcements" },
+  { kind: "item", to: "/admin/announcements", label: "HQ Updates", icon: Megaphone, testid: "nav-admin-announcements", permKey: "admin-announcements" },
   { kind: "divider" },
 
   { kind: "item", to: "/calendar", label: "Calendar", icon: CalendarDays, testid: "nav-calendar", permKey: "calendar" },
