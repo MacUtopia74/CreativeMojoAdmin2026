@@ -6,7 +6,7 @@
 import { useEffect, useState } from "react";
 import {
   Youtube, RefreshCw, Loader2, AlertCircle, CheckCircle2, Clock,
-  GraduationCap, Users, EyeOff, ExternalLink,
+  GraduationCap, Users, EyeOff, ExternalLink, ShieldCheck, ShieldOff, KeyRound,
 } from "lucide-react";
 import api from "@/lib/api";
 
@@ -38,23 +38,41 @@ function StatusPill({ status }) {
 export default function AdminYouTubePage() {
   const [items, setItems] = useState([]);
   const [logs, setLogs] = useState([]);
+  const [oauth, setOauth] = useState(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [authorising, setAuthorising] = useState(false);
   const [error, setError] = useState("");
+  const [flash, setFlash] = useState("");
 
   const load = async () => {
     try {
-      const [pls, syncLog] = await Promise.all([
+      const [pls, syncLog, oauthRes] = await Promise.all([
         api.get("/admin/youtube/playlists"),
         api.get("/admin/youtube/sync-log?limit=10"),
+        api.get("/admin/youtube/oauth/status"),
       ]);
       setItems(pls.data.items || []);
       setLogs(syncLog.data.items || []);
+      setOauth(oauthRes.data || null);
     } catch (e) {
       setError(e?.response?.data?.detail || "Couldn't load playlists.");
     } finally { setLoading(false); }
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    // Surface OAuth callback result if Google bounced us back here.
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("yt_connected") === "1") {
+      setFlash("YouTube channel connected. Run a sync to pull Unlisted + Private playlists.");
+      url.searchParams.delete("yt_connected");
+      window.history.replaceState({}, "", url.pathname + (url.search || ""));
+    } else if (url.searchParams.get("yt_error")) {
+      setError(`YouTube authorisation failed: ${url.searchParams.get("yt_error")}`);
+      url.searchParams.delete("yt_error");
+      window.history.replaceState({}, "", url.pathname + (url.search || ""));
+    }
+  }, []);
 
   const sync = async () => {
     setSyncing(true); setError("");
@@ -64,6 +82,29 @@ export default function AdminYouTubePage() {
     } catch (e) {
       setError(e?.response?.data?.detail || "Sync failed.");
     } finally { setSyncing(false); }
+  };
+
+  const authorise = async () => {
+    setAuthorising(true); setError("");
+    try {
+      const r = await api.get("/admin/youtube/oauth/auth-url");
+      // Full-page redirect — Google's flow requires it.
+      window.location.href = r.data.url;
+    } catch (e) {
+      setError(e?.response?.data?.detail || "Couldn't start authorisation.");
+      setAuthorising(false);
+    }
+  };
+
+  const disconnect = async () => {
+    if (!window.confirm("Disconnect the YouTube channel? Future syncs will only see Public playlists until you re-authorise.")) return;
+    setError("");
+    try {
+      await api.post("/admin/youtube/oauth/disconnect");
+      await load();
+    } catch (e) {
+      setError(e?.response?.data?.detail || "Disconnect failed.");
+    }
   };
 
   const patch = async (id, body) => {
@@ -109,6 +150,83 @@ export default function AdminYouTubePage() {
           <AlertCircle className="w-4 h-4 shrink-0" /> {error}
         </div>
       )}
+
+      {flash && (
+        <div className="px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-900 flex items-center gap-2" data-testid="yt-oauth-flash">
+          <CheckCircle2 className="w-4 h-4 shrink-0" /> {flash}
+        </div>
+      )}
+
+      {/* OAuth connection panel — enables sync of Unlisted + Private playlists */}
+      <div className="bg-white border border-stone-200 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center gap-4" data-testid="yt-oauth-panel">
+        <div className="shrink-0">
+          {oauth?.connected ? (
+            <div className="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+              <ShieldCheck className="w-6 h-6" />
+            </div>
+          ) : (
+            <div className="w-12 h-12 rounded-xl bg-stone-100 text-stone-500 flex items-center justify-center">
+              <ShieldOff className="w-6 h-6" />
+            </div>
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="font-display text-base font-black text-stone-950">
+            Channel authorisation
+            {oauth?.connected ? (
+              <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border bg-emerald-100 text-emerald-800 border-emerald-300">
+                <CheckCircle2 className="w-3 h-3" /> Connected
+              </span>
+            ) : (
+              <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border bg-stone-100 text-stone-700 border-stone-300">
+                <KeyRound className="w-3 h-3" /> API-key only
+              </span>
+            )}
+          </div>
+          {oauth?.connected ? (
+            <div className="text-xs text-stone-600 mt-1">
+              Authorised by <strong>{oauth.connected_email || "—"}</strong>
+              {oauth.connected_channel ? <> · channel <strong>{oauth.connected_channel}</strong></> : null}
+              {oauth.connected_at ? <> · {fmtDate(oauth.connected_at)}</> : null}
+              <div className="text-stone-500 mt-0.5">Syncs now include Public, Unlisted, <em>and</em> Private playlists owned by this channel.</div>
+            </div>
+          ) : (
+            <div className="text-xs text-stone-600 mt-1">
+              Only Public playlists are visible right now. Authorise the channel owner&rsquo;s Google account to also pull in Unlisted and Private playlists.
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {oauth?.connected ? (
+            <>
+              <button
+                onClick={authorise}
+                data-testid="yt-reauthorise-btn"
+                className="px-3 py-2 text-xs font-bold uppercase tracking-wider bg-stone-100 hover:bg-stone-200 text-stone-800 rounded-lg flex items-center gap-2"
+              >
+                <RefreshCw className="w-4 h-4" /> Re-authorise
+              </button>
+              <button
+                onClick={disconnect}
+                data-testid="yt-disconnect-btn"
+                className="px-3 py-2 text-xs font-bold uppercase tracking-wider bg-red-50 hover:bg-red-100 text-red-700 rounded-lg flex items-center gap-2"
+              >
+                <ShieldOff className="w-4 h-4" /> Disconnect
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={authorise}
+              disabled={authorising || !oauth?.configured}
+              data-testid="yt-authorise-btn"
+              className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider bg-stone-950 hover:bg-stone-800 text-white rounded-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {authorising ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+              {authorising ? "Redirecting…" : "Authorise YouTube channel"}
+            </button>
+          )}
+        </div>
+      </div>
 
       {/* Playlists table */}
       <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden">

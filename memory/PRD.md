@@ -1,6 +1,21 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## YouTube OAuth — Unlisted/Private playlist sync (May 31 2026)
+- **Problem solved**: the standard `YOUTUBE_API_KEY` only returns Public playlists. Creative Mojo Ltd has 5 internal training/meeting playlists set to Unlisted on YouTube (Mojo Grow Meetings, Zoom Chats, Project Videos, Technique Training, Dementia Training) which were therefore missing from the portal.
+- **Solution**: added Google OAuth 2.0 flow (scope `youtube.readonly`) so the backend can call the YouTube Data API on behalf of the channel owner using `mine=true`, surfacing Public + Unlisted + Private playlists.
+- **New env vars** in `/app/backend/.env`: `YOUTUBE_OAUTH_CLIENT_ID`, `YOUTUBE_OAUTH_CLIENT_SECRET`. Redirect URI defaults to `{REACT_APP_BACKEND_URL}/api/admin/youtube/oauth/callback` (overridable via `YOUTUBE_OAUTH_REDIRECT_URI`). Both preview + prod redirect URIs are registered in Google Cloud Console under "Creative Mojo Admin Portal (YouTube)" OAuth client.
+- **New endpoints** in `youtube_routes.py`:
+   - `GET /admin/youtube/oauth/status` → `{configured, connected, connected_email, connected_channel, connected_at, redirect_uri}`.
+   - `GET /admin/youtube/oauth/auth-url` → returns the Google consent URL (`access_type=offline`, `prompt=consent` to guarantee a refresh_token).
+   - `GET /admin/youtube/oauth/callback` → exchanges code, stores `refresh_token` + `access_token` + audit fields (connected email + channel title) in `db.settings._id=youtube_oauth`, redirects to `/admin/youtube?yt_connected=1`.
+   - `POST /admin/youtube/oauth/disconnect` → wipes stored credentials.
+- **Sync behaviour**: `_sync_all_playlists` now calls `_get_access_token(db)` first. If OAuth is connected, all YouTube calls go out with `Authorization: Bearer …` and `mine=true`; otherwise it falls back to the API key + `channelId=…` (Public-only). Each sync-log row records `auth_mode: oauth|api_key`. Playlist docs now also capture `privacy_status`.
+- **Admin UI**: new "Channel authorisation" panel on `/admin/youtube` with `Authorise YouTube channel` button (full-page redirect to Google), connected state badge with Google account + channel + timestamp, plus Re-authorise / Disconnect controls. Surfaces `?yt_connected=1` / `?yt_error=…` query params returned from the callback.
+- **OAuth consent screen** is currently in "Testing" mode; `paul@creativemojo.co.uk` is added as a Test User. Authorising account: Creative Mojo Ltd (`@creativemojoltd` channel).
+
+
+
 ## Training & Meetings — YouTube playlist integration (Feb 28 2026)
 - **New module**: `youtube_routes.py` with full sync pipeline — pulls every playlist on Creative Mojo's channel via YouTube Data API v3, caches in MongoDB (`youtube_playlists` + `youtube_sync_log`), serves portal reads from cache only.
 - **Endpoints**:
