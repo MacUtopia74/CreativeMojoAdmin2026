@@ -1,4 +1,4 @@
-// Portal — Training & Meetings landing page.
+// Portal — Video Hub landing page.
 //
 // Two sections (Training Videos / Franchisee Meetings) populated from
 // the admin-curated YouTube playlist cache. Each card clicks through
@@ -76,7 +76,7 @@ export default function PortalTrainingPage() {
       <div className="bg-[#dedd0a] rounded-2xl px-5 sm:px-8 py-5 sm:py-7 flex items-center gap-4">
         <GraduationCap className="w-7 h-7 sm:w-8 sm:h-8 text-stone-950 shrink-0" strokeWidth={2.2} />
         <h1 className="font-display text-2xl sm:text-4xl font-black text-stone-950 tracking-tight">
-          Training & Meetings
+          Video Hub
         </h1>
       </div>
 
