@@ -19,6 +19,7 @@ import Logo from "@/components/Logo";
 import {
   User as UserIcon, MapPin, CalendarDays, FolderOpen, Receipt,
   LogOut, Type, Loader2, AlertCircle, Megaphone, GraduationCap,
+  CalendarClock, KeyRound, Sparkles,
 } from "lucide-react";
 
 const FONT_SCALES = {
@@ -53,6 +54,9 @@ function buildTabs({ modules }) {
       testid: "portal-nav-territory",
     });
   }
+  // Bookings — placeholder for now, ships behind a "coming soon" page.
+  // Available to all franchisees so they can register interest.
+  s1.push({ to: "/portal/bookings", label: "Bookings", icon: CalendarClock, testid: "portal-nav-bookings" });
   if (modules.marketing === true) {
     s1.push({ to: "/portal/marketing", label: "Marketing", icon: Megaphone, testid: "portal-nav-marketing" });
   }
@@ -71,6 +75,12 @@ function buildTabs({ modules }) {
   const s3 = [];
   if (modules.files !== false) s3.push({ to: "/portal/files", label: "File Vault", icon: FolderOpen, testid: "portal-nav-files" });
   sections.push(s3);
+  // ---- Section 4: account (always last) — change password, subscriptions, sign out
+  const s4 = [
+    { to: "/portal/account/password", label: "Change password", icon: KeyRound, testid: "portal-nav-password" },
+    { to: "/portal/account/subscriptions", label: "Subscriptions", icon: Sparkles, testid: "portal-nav-subscriptions" },
+  ];
+  sections.push(s4);
   return sections.filter((s) => s.length);
 }
 
@@ -135,13 +145,6 @@ export default function PortalShell() {
               <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Signed in as</div>
               <div className="text-xs text-stone-900 font-mono truncate max-w-[180px]">{user?.email}</div>
             </div>
-            <button
-              onClick={logout}
-              data-testid="portal-logout"
-              className="hidden md:inline-flex px-3 py-2 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-lg items-center gap-1.5"
-            >
-              <LogOut className="w-3 h-3" /> Sign out
-            </button>
           </div>
         </div>
       </header>
@@ -170,6 +173,9 @@ export default function PortalShell() {
               {sections.map((tabs, sIdx) => (
                 <div key={sIdx}>
                   {sIdx > 0 && <div className="my-3 border-t border-stone-200" data-testid={`portal-nav-divider-${sIdx}`} />}
+                  {sIdx === sections.length - 1 && (
+                    <div className="px-3 pb-1.5 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500" data-testid="portal-nav-account-label">Account</div>
+                  )}
                   {tabs.map(({ to, label, icon: Icon, end, testid }) => (
                     <NavLink
                       key={to}
@@ -188,6 +194,16 @@ export default function PortalShell() {
                       {label}
                     </NavLink>
                   ))}
+                  {sIdx === sections.length - 1 && (
+                    <button
+                      onClick={logout}
+                      data-testid="portal-logout"
+                      className="w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg font-medium transition-colors text-stone-700 hover:bg-stone-100"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      Sign out
+                    </button>
+                  )}
                 </div>
               ))}
             </nav>

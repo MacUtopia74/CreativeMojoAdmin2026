@@ -1803,6 +1803,41 @@ async def portal_me(user: dict = Depends(require_role("franchisee"))):
     return {"profile": profile, "user": user_to_public(user)}
 
 
+@api.post("/portal/subscriptions/request")
+async def portal_subscription_request(
+    body: dict,
+    user: dict = Depends(require_role("franchisee")),
+):
+    """Audit log for franchisee-initiated subscription requests.
+
+    The frontend ALSO opens a mailto: to HQ — this endpoint just ensures
+    every click is recorded server-side so we never lose a lead even if
+    the franchisee's mail client misfires. No-op safe: returns ok=true
+    even on a partial body so the UX is never blocked by validation.
+    """
+    addon = (body or {}).get("addon") or ""
+    action = (body or {}).get("action") or ""
+    allowed_addons = {"territory_plus", "marketing", "invoicing", "bookings"}
+    allowed_actions = {"enable", "cancel"}
+    if addon not in allowed_addons or action not in allowed_actions:
+        raise HTTPException(400, detail="Invalid addon or action")
+    doc = {
+        "id": str(uuid.uuid4()),
+        "franchisee_id": user.get("franchisee_id"),
+        "user_id": user.get("id"),
+        "email": user.get("email"),
+        "addon": addon,
+        "action": action,
+        "status": "pending",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.subscription_requests.insert_one(doc)
+    return {"ok": True, "id": doc["id"]}
+
+
+
+
+
 @api.patch("/franchisees/{franchisee_id}/lifecycle")
 async def update_franchisee_lifecycle(
     franchisee_id: str,

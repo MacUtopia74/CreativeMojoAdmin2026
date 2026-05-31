@@ -47,6 +47,9 @@ import PortalDetailsPage from "@/pages/portal/PortalDetailsPage";
 import PortalMarketingPage from "@/pages/portal/PortalMarketingPage";
 import PortalTrainingPage from "@/pages/portal/PortalTrainingPage";
 import PortalPlaylistPage from "@/pages/portal/PortalPlaylistPage";
+import PortalBookingsPage from "@/pages/portal/PortalBookingsPage";
+import PortalChangePasswordPage from "@/pages/portal/PortalChangePasswordPage";
+import PortalSubscriptionsPage from "@/pages/portal/PortalSubscriptionsPage";
 import AdminYouTubePage from "@/pages/AdminYouTubePage";
 import PortalTerritoryPage from "@/pages/portal/PortalTerritoryPage";
 import PortalEventsPage from "@/pages/portal/PortalEventsPage";
@@ -84,6 +87,9 @@ export default function App() {
               <Route path="marketing" element={<PortalMarketingPage />} />
               <Route path="training" element={<PortalTrainingPage />} />
               <Route path="training/:playlistId" element={<PortalPlaylistPage />} />
+              <Route path="bookings" element={<PortalBookingsPage />} />
+              <Route path="account/password" element={<PortalChangePasswordPage />} />
+              <Route path="account/subscriptions" element={<PortalSubscriptionsPage />} />
               <Route path="files" element={<PortalFilesPage />} />
               <Route path="updates" element={<PortalUpdatesPage />} />
               <Route path="invoices" element={<PortalInvoicesShell />}>
