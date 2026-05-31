@@ -237,7 +237,7 @@ export default function AdminYouTubePage() {
       <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden">
         <div className="px-5 py-4 border-b border-stone-200">
           <h2 className="font-display text-lg font-black text-stone-950">Playlists ({items.length})</h2>
-          <p className="text-xs text-stone-500 mt-1">Assign each to a category + toggle enabled to show it on the franchisee portal.</p>
+          <p className="text-xs text-stone-500 mt-1">Set the sort order (lower number first), assign a category, then toggle enabled to show on the franchisee portal.</p>
         </div>
         {loading ? (
           <div className="p-10 text-center text-stone-500"><Loader2 className="w-5 h-5 animate-spin inline" /></div>
@@ -262,6 +262,18 @@ export default function AdminYouTubePage() {
                   {p.description && <div className="text-[11px] text-stone-500 mt-0.5 line-clamp-2">{p.description}</div>}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
+                  <input
+                    type="number"
+                    defaultValue={p.sort_order ?? 0}
+                    onBlur={(e) => {
+                      const n = parseInt(e.target.value, 10) || 0;
+                      if (n !== (p.sort_order ?? 0)) patch(p.id, { sort_order: n });
+                    }}
+                    onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                    data-testid={`yt-order-${p.id}`}
+                    title="Sort order — lower numbers appear first"
+                    className="w-14 px-2 py-1.5 text-xs bg-stone-50 border border-stone-300 rounded font-mono text-center"
+                  />
                   <select
                     value={p.category || ""}
                     onChange={(e) => patch(p.id, { category: e.target.value || null })}
