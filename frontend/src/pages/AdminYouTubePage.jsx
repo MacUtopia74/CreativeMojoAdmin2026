@@ -87,7 +87,12 @@ export default function AdminYouTubePage() {
   const authorise = async () => {
     setAuthorising(true); setError("");
     try {
-      const r = await api.get("/admin/youtube/oauth/auth-url");
+      // Pass our origin so the backend mints a redirect_uri that EXACTLY
+      // matches the host the user is on (preview vs production). Both are
+      // registered in Google Cloud Console.
+      const r = await api.get("/admin/youtube/oauth/auth-url", {
+        params: { origin: window.location.origin },
+      });
       // Full-page redirect — Google's flow requires it.
       window.location.href = r.data.url;
     } catch (e) {

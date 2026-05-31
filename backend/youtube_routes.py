@@ -28,7 +28,7 @@ from typing import Any, Optional
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 
 logger = logging.getLogger("creative-mojo-admin.youtube")
@@ -58,15 +58,69 @@ def _channel_id() -> str:
     return c
 
 
-def _oauth_redirect_uri() -> str:
+def _origin_from_query(origin: Optional[str]) -> Optional[str]:
+    """Validate an ``origin`` query param (must be https://host)."""
+    if not origin:
+        return None
+    try:
+        from urllib.parse import urlparse
+        u = urlparse(origin)
+        if u.scheme in ("http", "https") and u.netloc:
+            return f"{u.scheme}://{u.netloc}"
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
+def _oauth_redirect_uri(request=None, origin_override: Optional[str] = None) -> str:
+    """Return the OAuth redirect URI Google should bounce back to.
+
+    Strategy (in order of preference):
+      1. Explicit override via ``YOUTUBE_OAUTH_REDIRECT_URI`` env var.
+      2. ``origin_override`` (frontend passed ?origin=https://… when starting
+         the flow). This is the most reliable cross-environment signal
+         because the Kubernetes ingress can rewrite forwarded headers.
+      3. The host of the incoming request — works when ingress preserves
+         headers.
+      4. Fallback to ``REACT_APP_BACKEND_URL`` / ``FRONTEND_URL`` env.
+    """
     explicit = os.environ.get("YOUTUBE_OAUTH_REDIRECT_URI")
     if explicit:
         return explicit
+    if origin_override:
+        return f"{origin_override.rstrip('/')}/api/admin/youtube/oauth/callback"
+    if request is not None:
+        proto = (
+            request.headers.get("x-forwarded-proto")
+            or request.url.scheme
+            or "https"
+        )
+        host = (
+            request.headers.get("x-forwarded-host")
+            or request.headers.get("host")
+        )
+        if host:
+            return f"{proto}://{host}/api/admin/youtube/oauth/callback"
     base = (os.environ.get("REACT_APP_BACKEND_URL") or os.environ.get("FRONTEND_URL") or "").rstrip("/")
     return f"{base}/api/admin/youtube/oauth/callback"
 
 
-def _public_app_url() -> str:
+def _public_app_url(request=None, origin_override: Optional[str] = None) -> str:
+    """Where to bounce the user back inside our own app after the OAuth dance."""
+    if origin_override:
+        return origin_override.rstrip("/")
+    if request is not None:
+        proto = (
+            request.headers.get("x-forwarded-proto")
+            or request.url.scheme
+            or "https"
+        )
+        host = (
+            request.headers.get("x-forwarded-host")
+            or request.headers.get("host")
+        )
+        if host:
+            return f"{proto}://{host}"
     return (os.environ.get("FRONTEND_URL") or os.environ.get("REACT_APP_BACKEND_URL") or "").rstrip("/")
 
 
@@ -349,7 +403,7 @@ def attach(api: APIRouter, db, require_role):
     # OAuth — admin endpoints
     # -----------------------------------------------------------------
     @api.get("/admin/youtube/oauth/status")
-    async def oauth_status(user: dict = Depends(require_role("admin"))):
+    async def oauth_status(request: Request, user: dict = Depends(require_role("admin"))):
         doc = await db.settings.find_one({"_id": OAUTH_SETTINGS_ID}, {"_id": 0})
         return {
             "configured": bool(
@@ -360,43 +414,76 @@ def attach(api: APIRouter, db, require_role):
             "connected_email": (doc or {}).get("connected_email"),
             "connected_channel": (doc or {}).get("connected_channel"),
             "connected_at": (doc or {}).get("connected_at"),
-            "redirect_uri": _oauth_redirect_uri(),
+            "redirect_uri": _oauth_redirect_uri(request),
         }
 
     @api.get("/admin/youtube/oauth/auth-url")
-    async def oauth_auth_url(user: dict = Depends(require_role("admin"))):
+    async def oauth_auth_url(
+        request: Request,
+        origin: Optional[str] = Query(None, description="Caller's window.location.origin"),
+        user: dict = Depends(require_role("admin")),
+    ):
         cid, _sec = _oauth_creds_or_raise()
-        params = {
+        origin_clean = _origin_from_query(origin)
+        # We stash the origin in the OAuth ``state`` param so the callback
+        # (which Google calls server-to-server with no Origin header)
+        # can rebuild the exact same redirect_uri for token exchange.
+        state = ""
+        if origin_clean:
+            import base64
+            state = base64.urlsafe_b64encode(origin_clean.encode()).decode().rstrip("=")
+        params: dict = {
             "client_id": cid,
-            "redirect_uri": _oauth_redirect_uri(),
+            "redirect_uri": _oauth_redirect_uri(request, origin_override=origin_clean),
             "response_type": "code",
             "scope": " ".join(OAUTH_SCOPES),
             "access_type": "offline",
             "prompt": "consent",  # force refresh_token even on re-grant
             "include_granted_scopes": "true",
         }
+        if state:
+            params["state"] = state
         return {"url": f"https://accounts.google.com/o/oauth2/auth?{urlencode(params)}"}
 
     @api.get("/admin/youtube/oauth/callback")
-    async def oauth_callback(code: str = Query(...), error: Optional[str] = Query(None)):
+    async def oauth_callback(
+        request: Request,
+        code: str = Query(...),
+        error: Optional[str] = Query(None),
+        state: Optional[str] = Query(None),
+    ):
         # No auth dep — Google calls this directly via browser redirect.
+        # Recover the original caller origin from ``state`` so the
+        # redirect_uri we send to Google's token endpoint matches the one
+        # used to start the flow (otherwise: redirect_uri_mismatch).
+        origin_override: Optional[str] = None
+        if state:
+            try:
+                import base64
+                padding = "=" * (-len(state) % 4)
+                origin_override = _origin_from_query(
+                    base64.urlsafe_b64decode(state + padding).decode()
+                )
+            except Exception:  # noqa: BLE001
+                origin_override = None
+        app_url = _public_app_url(request, origin_override=origin_override)
         if error:
-            return RedirectResponse(f"{_public_app_url()}/admin/youtube?yt_error={error}")
+            return RedirectResponse(f"{app_url}/admin/youtube?yt_error={error}")
         try:
             cid, sec = _oauth_creds_or_raise()
         except HTTPException as exc:
-            return RedirectResponse(f"{_public_app_url()}/admin/youtube?yt_error={exc.detail}")
+            return RedirectResponse(f"{app_url}/admin/youtube?yt_error={exc.detail}")
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.post("https://oauth2.googleapis.com/token", data={
                 "code": code,
                 "client_id": cid,
                 "client_secret": sec,
-                "redirect_uri": _oauth_redirect_uri(),
+                "redirect_uri": _oauth_redirect_uri(request, origin_override=origin_override),
                 "grant_type": "authorization_code",
             })
             if r.status_code != 200:
                 logger.warning("[youtube-oauth] token exchange failed: %s %s", r.status_code, r.text[:300])
-                return RedirectResponse(f"{_public_app_url()}/admin/youtube?yt_error=token_exchange_failed")
+                return RedirectResponse(f"{app_url}/admin/youtube?yt_error=token_exchange_failed")
             tok = r.json()
             access_token = tok.get("access_token")
             refresh_token = tok.get("refresh_token")
@@ -423,7 +510,7 @@ def attach(api: APIRouter, db, require_role):
 
         if not refresh_token:
             # Google only emits refresh_token on first consent; force a re-prompt if missing.
-            return RedirectResponse(f"{_public_app_url()}/admin/youtube?yt_error=no_refresh_token_remove_app_access_and_retry")
+            return RedirectResponse(f"{app_url}/admin/youtube?yt_error=no_refresh_token_remove_app_access_and_retry")
 
         expiry = datetime.now(timezone.utc) + timedelta(seconds=expires_in - 60)
         await db.settings.update_one({"_id": OAUTH_SETTINGS_ID}, {"$set": {
@@ -435,7 +522,7 @@ def attach(api: APIRouter, db, require_role):
             "connected_channel": channel_title,
             "connected_at": _now_iso(),
         }}, upsert=True)
-        return RedirectResponse(f"{_public_app_url()}/admin/youtube?yt_connected=1")
+        return RedirectResponse(f"{app_url}/admin/youtube?yt_connected=1")
 
     @api.post("/admin/youtube/oauth/disconnect")
     async def oauth_disconnect(user: dict = Depends(require_role("admin"))):
