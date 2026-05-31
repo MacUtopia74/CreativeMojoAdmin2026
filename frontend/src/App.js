@@ -45,6 +45,9 @@ import ReconcilePage from "@/pages/invoices/ReconcilePage";
 import PortalShell from "@/pages/portal/PortalShell";
 import PortalDetailsPage from "@/pages/portal/PortalDetailsPage";
 import PortalMarketingPage from "@/pages/portal/PortalMarketingPage";
+import PortalTrainingPage from "@/pages/portal/PortalTrainingPage";
+import PortalPlaylistPage from "@/pages/portal/PortalPlaylistPage";
+import AdminYouTubePage from "@/pages/AdminYouTubePage";
 import PortalTerritoryPage from "@/pages/portal/PortalTerritoryPage";
 import PortalEventsPage from "@/pages/portal/PortalEventsPage";
 import PortalFilesPage from "@/pages/portal/PortalFilesPage";
@@ -79,6 +82,8 @@ export default function App() {
               <Route path="territory" element={<PortalTerritoryPage />} />
               <Route path="events" element={<PortalEventsPage />} />
               <Route path="marketing" element={<PortalMarketingPage />} />
+              <Route path="training" element={<PortalTrainingPage />} />
+              <Route path="training/:playlistId" element={<PortalPlaylistPage />} />
               <Route path="files" element={<PortalFilesPage />} />
               <Route path="updates" element={<PortalUpdatesPage />} />
               <Route path="invoices" element={<PortalInvoicesShell />}>
@@ -112,6 +117,7 @@ export default function App() {
               <Route path="/scotland-definitions" element={<ScotlandDefinitionsPage />} />
               <Route path="/admin/email-templates" element={<EmailTemplatesPage />} />
               <Route path="/admin/announcements" element={<AnnouncementsPage />} />
+              <Route path="/admin/youtube" element={<AdminYouTubePage />} />
               <Route path="/calendar" element={<CalendarPage />} />
               <Route path="/contacts" element={<ContactsPage />} />
               <Route path="/form-intake" element={<FormIntakePage />} />

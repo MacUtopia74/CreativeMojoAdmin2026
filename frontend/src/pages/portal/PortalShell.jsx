@@ -18,7 +18,7 @@ import api from "@/lib/api";
 import Logo from "@/components/Logo";
 import {
   User as UserIcon, MapPin, CalendarDays, FolderOpen, Receipt,
-  LogOut, Type, Loader2, AlertCircle, Megaphone,
+  LogOut, Type, Loader2, AlertCircle, Megaphone, GraduationCap,
 } from "lucide-react";
 
 const FONT_SCALES = {
@@ -63,6 +63,8 @@ function buildTabs({ modules }) {
   // ---- Section 2: comms + scheduling ----
   const s2 = [];
   if (modules.calendar !== false) s2.push({ to: "/portal/events", label: "Calendar", icon: CalendarDays, testid: "portal-nav-events" });
+  // Training & Meetings is available for ALL franchisees (not gated).
+  s2.push({ to: "/portal/training", label: "Training & Meetings", icon: GraduationCap, testid: "portal-nav-training" });
   s2.push({ to: "/portal/updates", label: "HQ Updates", icon: Megaphone, testid: "portal-nav-updates" });
   sections.push(s2);
   // ---- Section 3: files vault ----

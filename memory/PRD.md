@@ -1,6 +1,20 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## Training & Meetings — YouTube playlist integration (Feb 28 2026)
+- **New module**: `youtube_routes.py` with full sync pipeline — pulls every playlist on Creative Mojo's channel via YouTube Data API v3, caches in MongoDB (`youtube_playlists` + `youtube_sync_log`), serves portal reads from cache only.
+- **Endpoints**:
+   - Admin: `POST /admin/youtube/sync`, `GET /admin/youtube/playlists`, `PATCH /admin/youtube/playlists/{id}` (category/enabled/sort_order), `POST /admin/youtube/playlists/{id}/refresh`, `GET /admin/youtube/sync-log`.
+   - Portal: `GET /portal/training` (enabled+categorised playlists grouped), `GET /portal/training/{id}` (single playlist + video list).
+- **Admin UI** at `/admin/youtube`: manual "Sync from YouTube" button + last-sync pill, playlists table with category dropdown (None / Training / Meetings) + enabled toggle + sync log table.
+- **Portal page** at `/portal/training`: yellow hero "Training & Meetings", two sections (Training Videos / Franchisee Meetings) of playlist cards. Card click → `/portal/training/{id}` with embedded `youtube-nocookie.com` iframe, Up-Next video list (with durations), and "WATCH ON YOUTUBE" CTA.
+- **Defaults**: every newly-synced playlist arrives `enabled=false` + `category=null` — admin must opt-in before it shows on the portal.
+- **Fallback**: a failed sync NEVER wipes the cache. Failed runs write a log row; portal keeps serving last-known-good data.
+- **Scheduler**: daily 03:00 UTC tick. Env-var-guarded (no-ops without `YOUTUBE_API_KEY` + `YOUTUBE_CHANNEL_ID`).
+- **Sidebar**: portal `Training & Meetings` between Calendar and HQ Updates (available to ALL franchisees, NOT gated). Admin `YouTube Playlists` under Admin → Settings.
+
+
+
 ## Critical safety guardrails — accidental-broadcast prevention (Feb 28 2026)
 - **Root cause of mis-send**: while QA'ing the Edit/Duplicate flow earlier this session, the agent ran a curl test against `POST /api/admin/announcements` on the PREVIEW backend with `recipient_ids: null`. Because the preview env shares the same franchisee email addresses and the same Resend API key as production, that test send went out for real to all 31 active franchisees. The test record was deleted from the DB afterwards but Resend had already dispatched the emails. Cheryl + 1 other franchisee replied to Paul about it. Owned and escalated to the user.
 - **Backend guardrails added** in `/app/backend/announcements_routes.py` (POST create + PUT edit):

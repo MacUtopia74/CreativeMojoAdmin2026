@@ -3809,6 +3809,9 @@ subscriptions_routes.attach(api, db, require_role)
 import announcements_routes  # noqa: E402
 announcements_routes.attach(api, db, require_role)
 
+import youtube_routes  # noqa: E402
+youtube_routes.attach(api, db, require_role)
+
 # Phase 2 — WooCommerce live sync (Stage A: read-only orders + product mirror)
 import woocommerce_integration  # noqa: E402
 woocommerce_integration.attach(api, db, require_role)
@@ -3883,6 +3886,14 @@ async def _resolve_jwt_secret():
         logger.info("JWT_SECRET cached in MongoDB for cross-replica stability.")
     except Exception as exc:  # noqa: BLE001
         logger.warning("JWT_SECRET DB sync failed (non-fatal, sticking with env value): %s", exc)
+
+
+@app.on_event("startup")
+async def _start_youtube_scheduler():
+    try:
+        await youtube_routes.start_scheduler(db)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("YouTube scheduler failed to start (non-fatal): %s", exc)
 
 
 @app.on_event("startup")
