@@ -19,7 +19,7 @@ import Logo from "@/components/Logo";
 import {
   User as UserIcon, MapPin, CalendarDays, FolderOpen, Receipt,
   LogOut, Type, Loader2, AlertCircle, Megaphone, GraduationCap,
-  CalendarClock, KeyRound, Sparkles,
+  CalendarClock, KeyRound, Sparkles, UserCog, ChevronDown,
 } from "lucide-react";
 
 const FONT_SCALES = {
@@ -116,6 +116,15 @@ export default function PortalShell() {
   const sections = buildTabs({ modules });
   const flatTabs = sections.flat();
 
+  // Account dropdown — auto-opens if the user is currently on any
+  // /portal/account/* route (so a fresh navigate doesn't hide the
+  // active tab) or if they explicitly toggled it open.
+  const onAccountRoute = location.pathname.startsWith("/portal/account");
+  const [accountOpen, setAccountOpen] = useState(onAccountRoute);
+  useEffect(() => {
+    if (onAccountRoute) setAccountOpen(true);
+  }, [onAccountRoute]);
+
   return (
     <div
       className="min-h-screen bg-[#FBFAF8] pl-safe pr-safe"
@@ -170,42 +179,86 @@ export default function PortalShell() {
               below outside the flex container). */}
           <aside className="hidden md:block w-56 shrink-0" data-testid="portal-sidebar">
             <nav className="sticky top-24 space-y-1">
-              {sections.map((tabs, sIdx) => (
-                <div key={sIdx}>
-                  {sIdx > 0 && <div className="my-3 border-t border-stone-200" data-testid={`portal-nav-divider-${sIdx}`} />}
-                  {sIdx === sections.length - 1 && (
-                    <div className="px-3 pb-1.5 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500" data-testid="portal-nav-account-label">Account</div>
-                  )}
-                  {tabs.map(({ to, label, icon: Icon, end, testid }) => (
-                    <NavLink
-                      key={to}
-                      to={to}
-                      end={end}
-                      data-testid={testid}
-                      className={({ isActive }) =>
-                        `flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg font-medium transition-colors ${
-                          isActive
-                            ? "bg-stone-950 text-white"
-                            : "text-stone-700 hover:bg-stone-100"
-                        }`
-                      }
-                    >
-                      <Icon className="w-4 h-4" />
-                      {label}
-                    </NavLink>
-                  ))}
-                  {sIdx === sections.length - 1 && (
-                    <button
-                      onClick={logout}
-                      data-testid="portal-logout"
-                      className="w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg font-medium transition-colors text-stone-700 hover:bg-stone-100"
-                    >
-                      <LogOut className="w-4 h-4" />
-                      Sign out
-                    </button>
-                  )}
-                </div>
-              ))}
+              {sections.map((tabs, sIdx) => {
+                const isAccount = sIdx === sections.length - 1;
+                if (isAccount) {
+                  return (
+                    <div key={sIdx}>
+                      <div className="my-3 border-t border-stone-200" data-testid={`portal-nav-divider-${sIdx}`} />
+                      <button
+                        type="button"
+                        onClick={() => setAccountOpen((v) => !v)}
+                        aria-expanded={accountOpen}
+                        data-testid="portal-nav-account-toggle"
+                        className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 text-sm rounded-lg font-medium transition-colors ${
+                          accountOpen ? "bg-stone-100 text-stone-950" : "text-stone-700 hover:bg-stone-100"
+                        }`}
+                      >
+                        <span className="flex items-center gap-3 min-w-0">
+                          <UserCog className="w-4 h-4 shrink-0" />
+                          <span>Account</span>
+                        </span>
+                        <ChevronDown
+                          className={`w-4 h-4 shrink-0 transition-transform ${accountOpen ? "rotate-180" : ""}`}
+                        />
+                      </button>
+                      {accountOpen && (
+                        <div className="mt-1 ml-3 pl-3 border-l border-stone-200 space-y-1" data-testid="portal-nav-account-panel">
+                          {tabs.map(({ to, label, icon: Icon, end, testid }) => (
+                            <NavLink
+                              key={to}
+                              to={to}
+                              end={end}
+                              data-testid={testid}
+                              className={({ isActive }) =>
+                                `flex items-center gap-3 px-3 py-2 text-sm rounded-lg font-medium transition-colors ${
+                                  isActive
+                                    ? "bg-stone-950 text-white"
+                                    : "text-stone-700 hover:bg-stone-100"
+                                }`
+                              }
+                            >
+                              <Icon className="w-4 h-4" />
+                              {label}
+                            </NavLink>
+                          ))}
+                          <button
+                            onClick={logout}
+                            data-testid="portal-logout"
+                            className="w-full flex items-center gap-3 px-3 py-2 text-sm rounded-lg font-medium transition-colors text-stone-700 hover:bg-stone-100"
+                          >
+                            <LogOut className="w-4 h-4" />
+                            Sign out
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+                return (
+                  <div key={sIdx}>
+                    {sIdx > 0 && <div className="my-3 border-t border-stone-200" data-testid={`portal-nav-divider-${sIdx}`} />}
+                    {tabs.map(({ to, label, icon: Icon, end, testid }) => (
+                      <NavLink
+                        key={to}
+                        to={to}
+                        end={end}
+                        data-testid={testid}
+                        className={({ isActive }) =>
+                          `flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg font-medium transition-colors ${
+                            isActive
+                              ? "bg-stone-950 text-white"
+                              : "text-stone-700 hover:bg-stone-100"
+                          }`
+                        }
+                      >
+                        <Icon className="w-4 h-4" />
+                        {label}
+                      </NavLink>
+                    ))}
+                  </div>
+                );
+              })}
             </nav>
           </aside>
 
