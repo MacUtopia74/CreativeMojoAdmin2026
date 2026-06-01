@@ -1,6 +1,15 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## My Territory+ — Care Groups in your territory breakdown card (Jun 01 2026)
+- **New component**: `TerritoryCareGroupsCard.jsx` (~95 lines). Sits between the map and the homes list on My Territory+. Lists every distinct care group in the franchisee's territory with home counts, a relative-size horizontal bar, and a % share of the total.
+- **Interactive**: each row is a click-to-filter button. Tapping "WCS Care Group · 11 homes · 22%" filters the map markers + homes list to just that group's homes (delegates to the existing `providerFilter` state). Tapping it again — or hitting the "Clear filter" button at the top right — releases the filter.
+- **Default shows top 8** with a "Show all N care groups" expander for the long tail. The data-testids follow the kebab-case provider name pattern (`care-groups-row-wcs-care-group-limited` etc.).
+- **Live signal for Sandra (Devon)**: 16 distinct care groups across 25 homes. **Coventry & Nuneaton**: 151 distinct groups, top WCS Care Group with 11 homes.
+- **Provider memo refactored**: previously capped to top-12 inside the widget. Now returns the full ranked list; `topProviders` slice keeps the toolbar pills capped at 12, the card uses the full list.
+- **Action required: redeploy** so production gets the card.
+
+
 ## My Territory+ post-deploy hotfix: dim markers + Care Groups provider join (Jun 01 2026)
 - **Bug 1 — "Show My Clients only" wasn't visually dimming non-client markers.** Fix: made non-client markers in dim mode much more obviously secondary — opacity 0.22 (was 0.3), `filter: grayscale(0.85) brightness(1.1)`, and shrunk from 24px to 18px. The `activeHomeIndex` highlight effect now respects both client-state AND dim-state when it re-applies styles so toggling the filter never loses the dim/gold treatment.
 - **Bug 2 — Care Groups filter pills missing despite homes being present.** Root cause: the live CQC API (`/locations/{id}`) does NOT return `providerName` — all 73,703 live homes have it as null. The legacy Excel-imported `cqc_locations` collection (56,437 rows) DOES carry `provider_name` keyed on `provider_id`. Fix: `_list_homes` in `territory_routes.py` now enriches `providerName` at query time via a single bulk lookup against `cqc_locations` (provider_id → provider_name). For Sandra's Devon territory 24/25 homes are now enriched; for Coventry & Nuneaton 151 distinct providers surface (top group WCS Care Group Limited with 11 homes). Filter pills now appear and meaningfully group homes.

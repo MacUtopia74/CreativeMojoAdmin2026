@@ -13,6 +13,7 @@ import api from "@/lib/api";
 import TerritoryMap from "@/components/territory/TerritoryMap";
 import TerritoryHomesList from "@/components/territory/TerritoryHomesList";
 import TerritoryClientModal from "@/components/territory/TerritoryClientModal";
+import TerritoryCareGroupsCard from "@/components/territory/TerritoryCareGroupsCard";
 import {
   Loader2, Map as MapIcon, Search, CheckCircle2, XCircle, AlertCircle,
   Route,
@@ -209,10 +210,10 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
     return m;
   }, [homes]);
 
-  // Provider buckets — drive the "Care groups" filter buttons. Show
-  // every provider with one or more homes (top 12 sorted by count).
-  // Even when no group has multiples, exposing all of them lets the
-  // franchisee click any single home's care group as a filter.
+  // Provider buckets — drive the "Care groups" filter buttons + the
+  // breakdown card. Show every provider with one or more homes; the
+  // card decides how many to show by default. The filter pills in
+  // TerritoryHomesList still cap to 12 for visual sanity.
   const providers = useMemo(() => {
     if (!plusOn) return [];
     const counts = new Map();
@@ -223,9 +224,16 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
     });
     return [...counts.entries()]
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-      .slice(0, 12)
       .map(([name, count]) => ({ name, count }));
   }, [homes, plusOn]);
+
+  // Top 12 only for the filter pill row in the list toolbar.
+  const topProviders = useMemo(() => providers.slice(0, 12), [providers]);
+
+  const providersTotalHomes = useMemo(
+    () => providers.reduce((a, p) => a + p.count, 0),
+    [providers],
+  );
 
   if (loading) {
     return (
@@ -366,6 +374,16 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
         )}
       </div>
 
+      {plusOn && providers.length > 0 && (
+        <TerritoryCareGroupsCard
+          providers={providers}
+          totalHomes={providersTotalHomes}
+          totalAllHomes={homes.length}
+          activeProvider={providerFilter}
+          onSelectProvider={setProviderFilter}
+        />
+      )}
+
       {(hasTerritory || plusOn) && (
         <TerritoryHomesList
           homes={homes}
@@ -381,7 +399,7 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
           onUnmarkHomeClient={handleUnmarkHomeClient}
           onAddClient={() => setEditingClient({ __new: true })}
           onEditClient={(c) => setEditingClient(c)}
-          providers={providers}
+          providers={topProviders}
           providerFilter={providerFilter}
           onProviderFilter={setProviderFilter}
           leadsByKey={leadsByKey}
