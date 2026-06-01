@@ -2523,6 +2523,53 @@ async def unmark_contract_contacted(
 # ----------------------------------------------------------------------------
 # CRM — Contacts (unified, with pipeline)
 # ----------------------------------------------------------------------------
+def _date_to_epoch(value) -> float:
+    """Parse a date-ish value (datetime, ISO string, slash-string, etc.)
+    into a comparable epoch-seconds float. Missing / unparseable → 0.
+
+    The legacy Airtable export stored ``date`` as strings like
+    ``"2026/05/19 a"`` (note the trailing ``" a"``). Mongo's natural
+    string ordering puts these AFTER ISO ``"2026-05-29 …"`` because
+    ``/`` (47) > ``-`` (45) in ASCII — which means the older record
+    sorts ABOVE the newer one. Normalising to epoch fixes this.
+    """
+    if value is None:
+        return 0.0
+    if isinstance(value, datetime):
+        return value.timestamp() if value.tzinfo else value.replace(tzinfo=timezone.utc).timestamp()
+    if not isinstance(value, str):
+        return 0.0
+    s = value.strip()
+    if not s:
+        return 0.0
+    # Strip Airtable's trailing " a" / " p" am/pm hint if present.
+    if len(s) >= 2 and s[-2] == " " and s[-1] in ("a", "p"):
+        s = s[:-2].strip()
+    # Coerce slashes → dashes for date portion. We only touch the first
+    # 10 chars to avoid mangling any time component.
+    if len(s) >= 10 and s[4] == "/" and s[7] == "/":
+        s = s[:4] + "-" + s[5:7] + "-" + s[8:10] + s[10:]
+    # ``fromisoformat`` accepts "YYYY-MM-DD" and "YYYY-MM-DD HH:MM:SS".
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.timestamp()
+    except (ValueError, TypeError):
+        return 0.0
+
+
+def _pipeline_recency(item: dict) -> float:
+    """Recency key for kanban sort — picks the freshest pipeline signal."""
+    for k in ("pipeline_status_updated_at", "updated_at", "date_added", "date"):
+        v = item.get(k)
+        if v:
+            ep = _date_to_epoch(v)
+            if ep:
+                return ep
+    return 0.0
+
+
 @api.get("/contacts")
 async def list_contacts(
     source: Optional[str] = None,
@@ -2674,8 +2721,19 @@ async def list_contacts(
             return s
 
         items.sort(key=lambda x: (-_score(x), -(x.get("date") or x.get("date_added") or "").__hash__()))
+    elif tab == "pipeline":
+        # Pipeline kanban — sort by *when the card was last actioned in
+        # the pipeline*, not by the original enquiry date. This makes
+        # freshly-moved cards (e.g. someone you just marked "Contacted"
+        # today) jump to the top of their column, regardless of how old
+        # the enquiry itself is. Fallback chain:
+        #   pipeline_status_updated_at  →  updated_at  →  date_added  →  date
+        # All values are normalised to a comparable epoch float so the
+        # legacy "2026/05/19 a" string-format Airtable dates can't beat
+        # newer ISO timestamps via lexicographic sort.
+        items.sort(key=lambda x: _pipeline_recency(x), reverse=True)
     else:
-        items.sort(key=lambda x: x.get("date") or x.get("date_added") or "", reverse=True)
+        items.sort(key=lambda x: _date_to_epoch(x.get("date") or x.get("date_added")), reverse=True)
 
     return {"items": items[:limit], "total": len(items)}
 
@@ -3020,14 +3078,23 @@ async def import_contacts(body: ContactImportRequest, user: dict = Depends(requi
 async def update_pipeline(contact_id: str, body: PipelineUpdateRequest, _: dict = Depends(require_role("admin"))):
     if body.pipeline_status not in PIPELINE_STAGES:
         raise HTTPException(status_code=400, detail=f"Status must be one of {PIPELINE_STAGES}")
+    # Stamp `pipeline_status_updated_at` so the Kanban column can sort
+    # freshly-actioned contacts to the top regardless of original
+    # enquiry date.
+    now_iso = datetime.now(timezone.utc).isoformat()
+    patch = {
+        "pipeline_status": body.pipeline_status,
+        "updated_at": now_iso,
+        "pipeline_status_updated_at": now_iso,
+    }
     r = await db.web_form_contacts.update_one(
         {"id": contact_id},
-        {"$set": {"pipeline_status": body.pipeline_status, "in_pipeline": True, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        {"$set": {**patch, "in_pipeline": True}},
     )
     if r.matched_count == 0:
         r = await db.contacts.update_one(
             {"id": contact_id},
-            {"$set": {"pipeline_status": body.pipeline_status, "updated_at": datetime.now(timezone.utc).isoformat()}},
+            {"$set": patch},
         )
     if r.matched_count == 0:
         raise HTTPException(status_code=404, detail="Contact not found")
@@ -3258,7 +3325,7 @@ async def promote_contact(contact_id: str, _: dict = Depends(require_role("admin
     # Try web_form_contacts first (general enquiries from form 1)
     r = await db.web_form_contacts.update_one(
         {"id": contact_id},
-        {"$set": {"in_pipeline": True, "pipeline_status": "new", "updated_at": now}},
+        {"$set": {"in_pipeline": True, "pipeline_status": "new", "updated_at": now, "pipeline_status_updated_at": now}},
     )
     if r.matched_count == 0:
         # Legacy contact: copy into web_form_contacts so it shows up in the pipeline
@@ -3267,6 +3334,7 @@ async def promote_contact(contact_id: str, _: dict = Depends(require_role("admin
             raise HTTPException(status_code=404, detail="Contact not found")
         legacy["in_pipeline"] = True
         legacy["pipeline_status"] = "new"
+        legacy["pipeline_status_updated_at"] = now
         legacy["promoted_from_legacy"] = True
         legacy["updated_at"] = now
         await db.web_form_contacts.insert_one(legacy)
@@ -3545,10 +3613,18 @@ async def _move_one_contact(contact_id: str, target: str, pipeline_status: Optio
 
     if target == "pipeline":
         stage = pipeline_status if pipeline_status in PIPELINE_STAGES else "new"
+        # Stamp pipeline_status_updated_at so Kanban columns can sort
+        # freshly-moved cards to the top.
+        pipeline_patch = {
+            "in_pipeline": True,
+            "pipeline_status": stage,
+            "updated_at": now,
+            "pipeline_status_updated_at": now,
+        }
         # web_form_contacts: just flip flags
         r = await db.web_form_contacts.update_one(
             {"id": contact_id},
-            {"$set": {"in_pipeline": True, "pipeline_status": stage, "updated_at": now}},
+            {"$set": pipeline_patch},
         )
         if r.matched_count:
             return "web_form_contacts"
@@ -3559,6 +3635,7 @@ async def _move_one_contact(contact_id: str, target: str, pipeline_status: Optio
         legacy.update({
             "in_pipeline": True,
             "pipeline_status": stage,
+            "pipeline_status_updated_at": now,
             "promoted_from_legacy": True,
             "source": legacy.get("source") or "legacy_general_enquiry",
             "updated_at": now,
