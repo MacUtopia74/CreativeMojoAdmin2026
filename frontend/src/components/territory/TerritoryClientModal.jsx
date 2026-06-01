@@ -2,7 +2,7 @@
 // mirror the schema in territory_plus_routes.py. The same modal is used
 // for both freshly-added clients (no ``initial``) and edits.
 import { useEffect, useState } from "react";
-import { X, Loader2, Trash2 } from "lucide-react";
+import { X, Loader2, Trash2, Plus, UserPlus } from "lucide-react";
 import api from "@/lib/api";
 
 const FIELDS = [
@@ -21,8 +21,13 @@ const FIELDS = [
 export default function TerritoryClientModal({ initial, onClose, onSaved, onDeleted }) {
   const [form, setForm] = useState(() => {
     const empty = Object.fromEntries(FIELDS.map((f) => [f.key, ""]));
-    if (!initial) return { ...empty, notes: "" };
-    return { ...empty, ...Object.fromEntries(Object.entries(initial).map(([k, v]) => [k, v ?? ""])), notes: initial.notes || "" };
+    if (!initial) return { ...empty, notes: "", contacts: [] };
+    return {
+      ...empty,
+      ...Object.fromEntries(Object.entries(initial).map(([k, v]) => [k, v ?? ""])),
+      notes: initial.notes || "",
+      contacts: Array.isArray(initial.contacts) ? initial.contacts : [],
+    };
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -32,6 +37,23 @@ export default function TerritoryClientModal({ initial, onClose, onSaved, onDele
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
+  const updateContact = (i, k, v) => {
+    setForm((f) => {
+      const next = [...(f.contacts || [])];
+      next[i] = { ...next[i], [k]: v };
+      return { ...f, contacts: next };
+    });
+  };
+  const addContact = () => {
+    setForm((f) => ({
+      ...f,
+      contacts: [...(f.contacts || []), { name: "", role: "", phone: "", email: "", notes: "" }],
+    }));
+  };
+  const removeContact = (i) => {
+    setForm((f) => ({ ...f, contacts: (f.contacts || []).filter((_, idx) => idx !== i) }));
+  };
+
   const save = async (e) => {
     e?.preventDefault?.();
     setErr("");
@@ -39,9 +61,23 @@ export default function TerritoryClientModal({ initial, onClose, onSaved, onDele
     setBusy(true);
     try {
       // Strip empty strings so the backend doesn't store "" instead of null.
-      const body = Object.fromEntries(
-        Object.entries(form).map(([k, v]) => [k, typeof v === "string" ? (v.trim() || null) : v])
+      const cleaned = Object.fromEntries(
+        Object.entries(form).map(([k, v]) => {
+          if (k === "contacts") return [k, v];
+          return [k, typeof v === "string" ? (v.trim() || null) : v];
+        })
       );
+      // Drop fully-empty contact rows so we don't litter the DB.
+      cleaned.contacts = (form.contacts || []).filter((c) =>
+        (c.name || c.role || c.phone || c.email || c.notes || "").trim()
+      ).map((c) => ({
+        name: (c.name || "").trim() || null,
+        role: (c.role || "").trim() || null,
+        phone: (c.phone || "").trim() || null,
+        email: (c.email || "").trim() || null,
+        notes: (c.notes || "").trim() || null,
+      }));
+      const body = cleaned;
       let res;
       if (editing) {
         res = await api.patch(`/portal/territory-plus/clients/${initial.id}`, body);
@@ -151,6 +187,90 @@ export default function TerritoryClientModal({ initial, onClose, onSaved, onDele
               data-testid="t-plus-field-notes"
               className="w-full px-3 py-2 text-sm bg-stone-50 border border-stone-300 rounded-lg focus:outline-none focus:border-stone-950"
             />
+          </div>
+
+          {/* Additional contacts — sales lead, deputy manager, activities
+              coordinator, etc. Each row is a mini-card with a delete button. */}
+          <div data-testid="t-plus-contacts-section">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Additional contacts</div>
+                <div className="text-[11px] text-stone-500">Extra people you deal with at this client beyond the main manager.</div>
+              </div>
+              <button
+                type="button"
+                onClick={addContact}
+                data-testid="t-plus-add-contact"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-stone-100 hover:bg-stone-200 text-stone-900 rounded-md border border-stone-300"
+              >
+                <UserPlus className="w-3.5 h-3.5" /> Add contact
+              </button>
+            </div>
+            {(form.contacts || []).length === 0 && (
+              <div className="px-4 py-5 text-center text-[11px] text-stone-500 bg-stone-50 border border-dashed border-stone-300 rounded-lg">
+                No additional contacts yet.
+              </div>
+            )}
+            <div className="space-y-2">
+              {(form.contacts || []).map((c, i) => (
+                <div key={i} className="bg-stone-50 border border-stone-200 rounded-lg p-3" data-testid={`t-plus-contact-row-${i}`}>
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <div className="text-[10px] uppercase tracking-wider font-bold text-stone-500">Contact #{i + 1}</div>
+                    <button
+                      type="button"
+                      onClick={() => removeContact(i)}
+                      data-testid={`t-plus-remove-contact-${i}`}
+                      className="p-1 text-stone-500 hover:text-red-700 hover:bg-red-50 rounded"
+                      aria-label="Remove contact"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      value={c.name || ""}
+                      onChange={(e) => updateContact(i, "name", e.target.value)}
+                      placeholder="Name"
+                      data-testid={`t-plus-contact-name-${i}`}
+                      className="px-2.5 py-1.5 text-sm bg-white border border-stone-300 rounded focus:outline-none focus:border-stone-950"
+                    />
+                    <input
+                      type="text"
+                      value={c.role || ""}
+                      onChange={(e) => updateContact(i, "role", e.target.value)}
+                      placeholder="Role (e.g. Deputy Manager)"
+                      data-testid={`t-plus-contact-role-${i}`}
+                      className="px-2.5 py-1.5 text-sm bg-white border border-stone-300 rounded focus:outline-none focus:border-stone-950"
+                    />
+                    <input
+                      type="text"
+                      value={c.phone || ""}
+                      onChange={(e) => updateContact(i, "phone", e.target.value)}
+                      placeholder="Phone"
+                      data-testid={`t-plus-contact-phone-${i}`}
+                      className="px-2.5 py-1.5 text-sm bg-white border border-stone-300 rounded focus:outline-none focus:border-stone-950"
+                    />
+                    <input
+                      type="text"
+                      value={c.email || ""}
+                      onChange={(e) => updateContact(i, "email", e.target.value)}
+                      placeholder="Email"
+                      data-testid={`t-plus-contact-email-${i}`}
+                      className="px-2.5 py-1.5 text-sm bg-white border border-stone-300 rounded focus:outline-none focus:border-stone-950"
+                    />
+                  </div>
+                  <textarea
+                    value={c.notes || ""}
+                    onChange={(e) => updateContact(i, "notes", e.target.value)}
+                    placeholder="Notes about this contact (optional)"
+                    rows={2}
+                    data-testid={`t-plus-contact-notes-${i}`}
+                    className="mt-2 w-full px-2.5 py-1.5 text-sm bg-white border border-stone-300 rounded focus:outline-none focus:border-stone-950"
+                  />
+                </div>
+              ))}
+            </div>
           </div>
         </form>
 

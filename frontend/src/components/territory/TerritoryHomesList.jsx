@@ -49,6 +49,16 @@ function HomeRow({ home, idx, isOpen, onToggle, onZoom, isMyClient, onMarkClient
           </div>
           <div className="text-xs text-stone-600 truncate">{home.postalAddressTownCity || home.postcode_district} · {services || "Care home"}</div>
         </div>
+        {plus && isMyClient && onUnmarkClient && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onUnmarkClient(home); }}
+            data-testid={`home-unmark-quick-${idx + 1}`}
+            title="Unmark as My Client"
+            className="shrink-0 p-1.5 rounded-full bg-white border border-stone-300 hover:border-red-500 hover:bg-red-50 text-stone-600 hover:text-red-700"
+          >
+            <Star className="w-3.5 h-3.5 fill-current text-[#dddd16]" />
+          </button>
+        )}
         {/* Bed-count pill — replaces the prior CQC rating lozenge */}
         {beds > 0 && (
           <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-md whitespace-nowrap bg-stone-100 text-stone-800 border border-stone-200">

@@ -43,7 +43,17 @@ CLIENT_SOURCES = {"custom", "cqc", "scotland"}
 PERMITTED_FIELDS = {
     "name", "address", "phone", "website", "provider", "manager", "email",
     "latest_inspection", "cqc_rating", "notes", "postcode", "lat", "lng",
+    "contacts",
 }
+
+
+class Contact(BaseModel):
+    """Optional secondary contact attached to a client."""
+    name: Optional[str] = Field(None, max_length=200)
+    role: Optional[str] = Field(None, max_length=120)
+    phone: Optional[str] = Field(None, max_length=80)
+    email: Optional[str] = Field(None, max_length=200)
+    notes: Optional[str] = Field(None, max_length=1000)
 
 
 class ClientIn(BaseModel):
@@ -61,6 +71,8 @@ class ClientIn(BaseModel):
     postcode: Optional[str] = Field(None, max_length=20)
     lat: Optional[float] = None
     lng: Optional[float] = None
+    # Up to ~20 additional contacts (deputy managers, sales contacts, etc.).
+    contacts: Optional[List[Contact]] = None
 
 
 class MarkHomeIn(BaseModel):
@@ -191,11 +203,74 @@ def attach(api: APIRouter, db, require_role):
             "postcode": (body.postcode or "").upper().strip() or None,
             "lat": lat,
             "lng": lng,
+            "contacts": [c.model_dump() for c in (body.contacts or [])],
             "created_at": now,
             "updated_at": now,
         }
         await db.franchisee_clients.insert_one(doc)
         return _shape(doc)
+
+    # NOTE: mark-home routes MUST be declared BEFORE the parameterized
+    # ``/clients/{client_id}`` routes — otherwise FastAPI matches DELETE
+    # /clients/mark-home against the parameterised path and treats
+    # "mark-home" as a client_id (404).
+    @api.post("/portal/territory-plus/clients/mark-home")
+    async def mark_home(
+        body: MarkHomeIn,
+        user: dict = Depends(require_role("franchisee")),
+    ):
+        """Flag a CQC / Scotland regulated home as 'My Client'.
+        Idempotent — if the link already exists, returns it unchanged.
+        """
+        allowed, fr = await _has_access(db, user)
+        _gate(user, allowed)
+        if body.source not in {"cqc", "scotland"}:
+            raise HTTPException(400, "source must be 'cqc' or 'scotland'")
+        existing = await db.franchisee_clients.find_one(
+            {"franchisee_id": fr["id"], "source": body.source, "home_id": body.home_id},
+            {"_id": 0},
+        )
+        if existing:
+            return _shape(existing)
+        now = _now()
+        doc = {
+            "id": str(uuid.uuid4()),
+            "franchisee_id": fr["id"],
+            "source": body.source,
+            "home_id": body.home_id,
+            "name": (body.name or "").strip() or "—",
+            "address": body.address,
+            "phone": body.phone,
+            "website": body.website,
+            "provider": body.provider,
+            "manager": body.manager,
+            "email": None,
+            "latest_inspection": None,
+            "cqc_rating": None,
+            "notes": body.notes,
+            "postcode": (body.postcode or "").upper().strip() or None,
+            "lat": body.lat,
+            "lng": body.lng,
+            "contacts": [],
+            "created_at": now,
+            "updated_at": now,
+        }
+        await db.franchisee_clients.insert_one(doc)
+        return _shape(doc)
+
+    @api.delete("/portal/territory-plus/clients/mark-home")
+    async def unmark_home(
+        body: MarkHomeIn,
+        user: dict = Depends(require_role("franchisee")),
+    ):
+        allowed, fr = await _has_access(db, user)
+        _gate(user, allowed)
+        r = await db.franchisee_clients.delete_one({
+            "franchisee_id": fr["id"],
+            "source": body.source,
+            "home_id": body.home_id,
+        })
+        return {"ok": True, "deleted": r.deleted_count}
 
     @api.patch("/portal/territory-plus/clients/{client_id}")
     async def update_client(
@@ -244,62 +319,5 @@ def attach(api: APIRouter, db, require_role):
         if r.deleted_count == 0:
             raise HTTPException(404, "Client not found")
         return {"ok": True}
-
-    @api.post("/portal/territory-plus/clients/mark-home")
-    async def mark_home(
-        body: MarkHomeIn,
-        user: dict = Depends(require_role("franchisee")),
-    ):
-        """Flag a CQC / Scotland regulated home as 'My Client'.
-        Idempotent — if the link already exists, returns it unchanged.
-        """
-        allowed, fr = await _has_access(db, user)
-        _gate(user, allowed)
-        if body.source not in {"cqc", "scotland"}:
-            raise HTTPException(400, "source must be 'cqc' or 'scotland'")
-        existing = await db.franchisee_clients.find_one(
-            {"franchisee_id": fr["id"], "source": body.source, "home_id": body.home_id},
-            {"_id": 0},
-        )
-        if existing:
-            return _shape(existing)
-        now = _now()
-        doc = {
-            "id": str(uuid.uuid4()),
-            "franchisee_id": fr["id"],
-            "source": body.source,
-            "home_id": body.home_id,
-            "name": (body.name or "").strip() or "—",
-            "address": body.address,
-            "phone": body.phone,
-            "website": body.website,
-            "provider": body.provider,
-            "manager": body.manager,
-            "email": None,
-            "latest_inspection": None,
-            "cqc_rating": None,
-            "notes": body.notes,
-            "postcode": (body.postcode or "").upper().strip() or None,
-            "lat": body.lat,
-            "lng": body.lng,
-            "created_at": now,
-            "updated_at": now,
-        }
-        await db.franchisee_clients.insert_one(doc)
-        return _shape(doc)
-
-    @api.delete("/portal/territory-plus/clients/mark-home")
-    async def unmark_home(
-        body: MarkHomeIn,
-        user: dict = Depends(require_role("franchisee")),
-    ):
-        allowed, fr = await _has_access(db, user)
-        _gate(user, allowed)
-        r = await db.franchisee_clients.delete_one({
-            "franchisee_id": fr["id"],
-            "source": body.source,
-            "home_id": body.home_id,
-        })
-        return {"ok": True, "deleted": r.deleted_count}
 
     return api

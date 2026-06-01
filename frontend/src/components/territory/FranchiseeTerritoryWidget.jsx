@@ -156,8 +156,10 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
     [myClients],
   );
 
-  // Provider buckets — drive the "Care groups" filter buttons. Only
-  // groups with 2+ homes get a button (no point filtering to one).
+  // Provider buckets — drive the "Care groups" filter buttons. Show
+  // every provider with one or more homes (top 12 sorted by count).
+  // Even when no group has multiples, exposing all of them lets the
+  // franchisee click any single home's care group as a filter.
   const providers = useMemo(() => {
     if (!plusOn) return [];
     const counts = new Map();
@@ -167,8 +169,7 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
       counts.set(name, (counts.get(name) || 0) + 1);
     });
     return [...counts.entries()]
-      .filter(([, count]) => count >= 2)
-      .sort((a, b) => b[1] - a[1])
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
       .slice(0, 12)
       .map(([name, count]) => ({ name, count }));
   }, [homes, plusOn]);
