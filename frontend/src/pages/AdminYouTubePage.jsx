@@ -9,6 +9,7 @@ import {
   GraduationCap, Users, EyeOff, ExternalLink, ShieldCheck, ShieldOff, KeyRound,
 } from "lucide-react";
 import api from "@/lib/api";
+import { bustThumb } from "@/lib/youtubeThumb";
 
 const CATEGORY_LABELS = { training: "Training Videos", meetings: "Franchisee Meetings" };
 
@@ -249,7 +250,7 @@ export default function AdminYouTubePage() {
           <div className="divide-y divide-stone-100">
             {items.map((p) => (
               <div key={p.id} className="px-5 py-4 flex items-center gap-4" data-testid={`yt-row-${p.id}`}>
-                <img src={p.thumbnail_url} alt={p.title} className="w-28 h-16 rounded object-cover bg-stone-100 shrink-0" />
+                <img src={bustThumb(p.thumbnail_url, p.last_synced_at)} alt={p.title} className="w-28 h-16 rounded object-cover bg-stone-100 shrink-0" />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 min-w-0">
                     <div className="font-display text-base font-bold text-stone-950 truncate">{p.title}</div>

@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { ArrowLeft, ExternalLink, Loader2, AlertCircle, PlayCircle, Clock } from "lucide-react";
 import api from "@/lib/api";
+import { bustThumb } from "@/lib/youtubeThumb";
 
 // Convert ISO 8601 duration (PT1H2M3S) to a friendly "1:02:03" or "2:03".
 function fmtDuration(iso) {
@@ -108,7 +109,7 @@ export default function PortalPlaylistPage() {
                 >
                   <div className="relative w-24 aspect-video bg-stone-100 rounded overflow-hidden shrink-0">
                     {v.thumbnail_url
-                      ? <img src={v.thumbnail_url} alt={v.title} className="w-full h-full object-cover" />
+                      ? <img src={bustThumb(v.thumbnail_url, playlist.last_synced_at)} alt={v.title} className="w-full h-full object-cover" />
                       : <div className="w-full h-full flex items-center justify-center text-stone-400"><PlayCircle className="w-5 h-5" /></div>}
                     {v.duration_iso && (
                       <span className="absolute bottom-0.5 right-0.5 bg-stone-950/85 text-white text-[9px] font-bold px-1 py-0.5 rounded inline-flex items-center gap-0.5">

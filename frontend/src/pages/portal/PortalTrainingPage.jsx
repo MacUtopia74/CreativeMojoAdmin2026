@@ -15,6 +15,7 @@ import {
   LayoutGrid, List,
 } from "lucide-react";
 import api from "@/lib/api";
+import { bustThumb } from "@/lib/youtubeThumb";
 
 function GridCard({ playlist }) {
   return (
@@ -25,7 +26,7 @@ function GridCard({ playlist }) {
     >
       <div className="aspect-video bg-stone-100 relative">
         {playlist.thumbnail_url ? (
-          <img src={playlist.thumbnail_url} alt={playlist.title}
+          <img src={bustThumb(playlist.thumbnail_url, playlist.last_synced_at)} alt={playlist.title}
                className="w-full h-full object-cover" />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-stone-400">
@@ -58,7 +59,7 @@ function ListRow({ playlist }) {
     >
       <div className="w-40 sm:w-56 aspect-video bg-stone-100 relative shrink-0">
         {playlist.thumbnail_url ? (
-          <img src={playlist.thumbnail_url} alt={playlist.title}
+          <img src={bustThumb(playlist.thumbnail_url, playlist.last_synced_at)} alt={playlist.title}
                className="w-full h-full object-cover" />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-stone-400">
