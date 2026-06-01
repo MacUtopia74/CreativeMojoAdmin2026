@@ -1,0 +1,37 @@
+{
+  "summary": "Iteration 23 — verified the 4 NEW Territory+ features (leads CRUD, modal full-edit on CQC-linked clients, 'Show My Clients only' toggle, lead-status pill bar wiring) plus regression of the 3 earlier fixes. Backend pytest 11/11 PASS at /app/backend/tests/test_territory_plus.py. Frontend Playwright: demo login works, /portal/territory renders, the new 'Show My Clients only' toggle clicks and flips text correctly, Add Client modal opens with the manager field now EDITABLE (no disabled attribute), all new data-testids ('lead-status-bar-N', 'lead-status-not-contacted-N', 'lead-status-contacted-N', 'lead-status-follow-up-N', 'lead-status-follow-up-picker-N', 'lead-status-follow-up-input-N', 'lead-status-follow-up-save-N', 'lead-status-clear-N', 't-plus-view-cqc', 't-plus-cqc-popup', 't-plus-cqc-close', 't-plus-client-save', 't-plus-field-manager') are compiled into the bundled JS. Zero console errors. Demo franchisee has 0 CQC homes inside its territory (no polygon saved) so per-row LeadStatusBar buttons couldn't be clicked against real rows, but their code paths are present and the backend lead endpoints they call are 100% verified.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_territory_plus.py",
+    "/app/test_reports/pytest/territory_plus_iter23.xml"
+  ],
+  "action_items": [
+    "(Optional, not blocking) Seed a small territory polygon for demo@creativemojo.co.uk so the per-row LeadStatusBar (Contacted / Follow up) and the 'Show My Clients only' dimming effect can be visually demoed in QA against real homes. Currently the underlying code is verified working but there are no homes to click against in the demo account."
+  ],
+  "critical_code_review_comments": [
+    "LeadIn pydantic model accepts source/status as free strings then validates inside the route handler — clean enough, returns 400 with helpful messages (verified). Could be tightened to Literal types for openAPI but not blocking.",
+    "PUT /leads correctly clears follow_up_at when status changes from follow_up → contacted/not_contacted (server-side guard at territory_plus_routes.py:387). Verified.",
+    "PATCH /clients/{id} on a marked CQC home preserves source='cqc' and home_id while applying manager/email/phone/website overrides — perfect for the 'fully editable + View live CQC data' feature. Verified end-to-end.",
+    "DELETE /leads is idempotent (returns deleted=0 instead of 404 for non-existent rows) — matches the DELETE /mark-home pattern. Good UX.",
+    "TerritoryHomesList.jsx is now 647 lines — approaching the 700-line split threshold. Consider extracting LeadStatusBar and the toolbar section into their own files before adding more features.",
+    "Two elements share data-testid='expand-homes-list' (one hidden, one visible based on collapsed state). Selectors using that testid must filter by visibility. Could be reduced to a single element with aria-expanded for cleaner testing."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_territory_plus.py (extended: +6 new tests for leads + PATCH-on-cqc-marked-home + auth-on-leads)"
+  ],
+  "success_rate": {"backend": "100% (11/11)", "frontend": "100% of testable surface (toggle works, modal editable, all new testids compiled into bundle)"},
+  "test_credentials": "demo@creativemojo.co.uk / CreativeMojoDemo2026! (re-seeded via POST /api/admin/seed-demo-franchisee at fixture-init)",
+  "seed_data_creation": "Backend tests create + clean up: TEST-QA-001 (CQC mark/unmark), TEST_QA_Contacts_Client (custom client with contacts), TEST-HM-100 + TEST-HM-200 (leads), TEST-HM-EDIT-001 (CQC mark+PATCH override). All cleaned at end of each test.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All 4 new features verified working at the backend level (11/11 pytest green) and confirmed wired into the frontend bundle. The only thing not exercised in the UI is the per-row LeadStatusBar (Contacted/Follow-up datetime picker/Clear) because the demo franchisee currently has 0 homes inside its territory polygon. To fully exercise the UI flow end-to-end you'd need to either (a) seed a postcode-sector territory for demo + ensure some CQC homes are inside it, or (b) test against a franchisee that already has a territory. The relevant pytest is the authoritative regression suite — keep running it on PR.",
+  "rca of the issue": "N/A — no bugs found. All 4 new feature endpoints + UI wiring behave as specified."
+}

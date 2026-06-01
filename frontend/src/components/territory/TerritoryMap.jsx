@@ -54,6 +54,10 @@ export default function TerritoryMap({
   providerFilter = null,    // optional string — only show markers whose
                             //   ``providerName`` matches (case-insensitive
                             //   exact); ``null`` = show everything.
+  dimNonClients = false,    // when true (My Clients Only mode), non-client
+                            //   numbered markers are rendered at low opacity
+                            //   so they read as background context while the
+                            //   gold client markers pop.
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -416,9 +420,13 @@ export default function TerritoryMap({
       const el = document.createElement("div");
       el.className = "cm-home-marker";
       el.textContent = String(i + 1);
+      // When the "My clients only" filter is engaged, drop non-client
+      // markers to low opacity (~0.3) and slightly smaller so they read
+      // as background context. Client markers stay full strength.
+      const dimmed = dimNonClients && !yourClient;
       el.style.cssText = yourClient
         ? "background:#dddd16;color:#0c0a09;font-size:11px;font-weight:800;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #0c0a09;box-shadow:0 0 0 2px rgba(221,221,22,0.45),0 1px 3px rgba(0,0,0,.4);cursor:pointer;font-family:Inter,system-ui,sans-serif;"
-        : "background:#14532D;color:#fff;font-size:11px;font-weight:700;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);cursor:pointer;font-family:Inter,system-ui,sans-serif;";
+        : `background:#14532D;color:#fff;font-size:11px;font-weight:700;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);cursor:pointer;font-family:Inter,system-ui,sans-serif;opacity:${dimmed ? 0.3 : 1};`;
       const marker = new mapboxgl.Marker(el)
         .setLngLat([home.longitude, home.latitude])
         .setPopup(new mapboxgl.Popup({ offset: 16, closeButton: false }).setHTML(
@@ -437,7 +445,7 @@ export default function TerritoryMap({
       homeMarkersRef.current.forEach((m) => m.remove());
       homeMarkersRef.current = [];
     };
-  }, [homes, ready, onMarkerClick, clientHomeKeys, providerFilter]);
+  }, [homes, ready, onMarkerClick, clientHomeKeys, providerFilter, dimNonClients]);
 
   // ----------------- custom client markers (Territory+ "my clients") -----
   // Drawn separately from regulated homes — gold ★ markers, no number,

@@ -91,6 +91,27 @@ class MarkHomeIn(BaseModel):
     notes: Optional[str] = None
 
 
+LEAD_STATUSES = {"not_contacted", "contacted", "follow_up"}
+
+
+class LeadIn(BaseModel):
+    """Sales-flow status for a regulated home that ISN'T (yet) a My Client.
+
+    Purely a personal CRM bookmark for the franchisee — never auto-promotes
+    a home to a "My Client". One row per (franchisee_id, source, home_id).
+    """
+    source: str  # cqc | scotland
+    home_id: str
+    status: str  # not_contacted | contacted | follow_up
+    follow_up_at: Optional[str] = Field(None, max_length=64)  # ISO 8601
+    notes: Optional[str] = Field(None, max_length=1000)
+
+
+class LeadDeleteIn(BaseModel):
+    source: str
+    home_id: str
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -319,5 +340,72 @@ def attach(api: APIRouter, db, require_role):
         if r.deleted_count == 0:
             raise HTTPException(404, "Client not found")
         return {"ok": True}
+
+    # -------------------- Sales-flow leads --------------------
+    # Lightweight per-franchisee CRM bookmark for regulated homes that
+    # haven't been promoted to "My Client". Three states:
+    #   • not_contacted (default; reset = delete row)
+    #   • contacted
+    #   • follow_up    (with optional ``follow_up_at`` datetime)
+    # Never modifies franchisee_clients — purely additive metadata.
+
+    @api.get("/portal/territory-plus/leads")
+    async def list_leads(user: dict = Depends(require_role("franchisee"))):
+        allowed, fr = await _has_access(db, user)
+        _gate(user, allowed)
+        out: list = []
+        async for doc in db.franchisee_home_leads.find(
+            {"franchisee_id": fr["id"]}, {"_id": 0},
+        ):
+            out.append(doc)
+        return {"items": out, "count": len(out)}
+
+    @api.put("/portal/territory-plus/leads")
+    async def upsert_lead(
+        body: LeadIn,
+        user: dict = Depends(require_role("franchisee")),
+    ):
+        allowed, fr = await _has_access(db, user)
+        _gate(user, allowed)
+        if body.source not in {"cqc", "scotland"}:
+            raise HTTPException(400, "source must be 'cqc' or 'scotland'")
+        if body.status not in LEAD_STATUSES:
+            raise HTTPException(
+                400, f"status must be one of: {sorted(LEAD_STATUSES)}",
+            )
+        now = _now()
+        key = {
+            "franchisee_id": fr["id"],
+            "source": body.source,
+            "home_id": body.home_id,
+        }
+        existing = await db.franchisee_home_leads.find_one(key, {"_id": 0})
+        doc = {
+            **key,
+            "id": (existing or {}).get("id") or str(uuid.uuid4()),
+            "status": body.status,
+            "follow_up_at": body.follow_up_at if body.status == "follow_up" else None,
+            "notes": body.notes,
+            "created_at": (existing or {}).get("created_at") or now,
+            "updated_at": now,
+        }
+        await db.franchisee_home_leads.update_one(
+            key, {"$set": doc}, upsert=True,
+        )
+        return doc
+
+    @api.delete("/portal/territory-plus/leads")
+    async def delete_lead(
+        body: LeadDeleteIn,
+        user: dict = Depends(require_role("franchisee")),
+    ):
+        allowed, fr = await _has_access(db, user)
+        _gate(user, allowed)
+        r = await db.franchisee_home_leads.delete_one({
+            "franchisee_id": fr["id"],
+            "source": body.source,
+            "home_id": body.home_id,
+        })
+        return {"ok": True, "deleted": r.deleted_count}
 
     return api

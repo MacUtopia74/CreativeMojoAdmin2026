@@ -6,7 +6,7 @@
 // row pans the map to the marker. Designed for read-only consumption by the
 // franchisee themselves.
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, MapPin, Phone, Mail, Globe, ExternalLink, User, Calendar, Building2, Star, BedDouble, List as ListIcon, Plus, Route, Edit3 } from "lucide-react";
+import { ChevronDown, ChevronRight, MapPin, Phone, Mail, Globe, ExternalLink, User, Calendar, Building2, Star, BedDouble, List as ListIcon, Plus, Route, Edit3, Circle, CheckCircle2, Clock, X } from "lucide-react";
 
 function formatDateGB(iso) {
   if (!iso) return null;
@@ -14,7 +14,7 @@ function formatDateGB(iso) {
   catch { return iso; }
 }
 
-function HomeRow({ home, idx, isOpen, onToggle, onZoom, isMyClient, onMarkClient, onUnmarkClient, plus }) {
+function HomeRow({ home, idx, isOpen, onToggle, onZoom, isMyClient, onMarkClient, onUnmarkClient, plus, lead, onSetLeadStatus, dimmed }) {
   const address = home.fullAddress
     || [home.postalAddressLine1, home.postalAddressLine2, home.postalAddressTownCity, home.postalAddressCounty, home.postalCode].filter(Boolean).join(", ");
   const services = (home.gacServiceTypes || []).map((s) => s.name).filter(Boolean).join(" · ");
@@ -27,7 +27,7 @@ function HomeRow({ home, idx, isOpen, onToggle, onZoom, isMyClient, onMarkClient
 
   return (
     <div
-      className={`border-b border-stone-200 last:border-b-0 ${isMyClient ? "bg-[#fcfbd8]" : ""}`}
+      className={`border-b border-stone-200 last:border-b-0 ${isMyClient ? "bg-[#fcfbd8]" : ""} ${dimmed ? "opacity-40" : ""}`}
       data-testid={`home-row-${idx + 1}`}
     >
       <button
@@ -44,6 +44,17 @@ function HomeRow({ home, idx, isOpen, onToggle, onZoom, isMyClient, onMarkClient
             {isMyClient && (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest rounded bg-[#dddd16] text-stone-950 border border-stone-950">
                 <Star className="w-2.5 h-2.5 fill-current" /> My Client
+              </span>
+            )}
+            {/* Sales-flow status badge — only for non-clients */}
+            {plus && !isMyClient && lead?.status === "contacted" && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest rounded bg-emerald-100 text-emerald-800 border border-emerald-300">
+                <CheckCircle2 className="w-2.5 h-2.5" /> Contacted
+              </span>
+            )}
+            {plus && !isMyClient && lead?.status === "follow_up" && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest rounded bg-blue-100 text-blue-800 border border-blue-300">
+                <Clock className="w-2.5 h-2.5" /> Follow up
               </span>
             )}
           </div>
@@ -100,6 +111,10 @@ function HomeRow({ home, idx, isOpen, onToggle, onZoom, isMyClient, onMarkClient
             </div>
           )}
           <div className="sm:col-span-2 flex items-center gap-2 pt-2 mt-1 border-t border-stone-200 flex-wrap">
+            {/* Sales-flow status pills — only for non-client rows */}
+            {plus && !isMyClient && onSetLeadStatus && (
+              <LeadStatusBar idx={idx} lead={lead} onSet={onSetLeadStatus} home={home} />
+            )}
             {home.locationURL && (
               <a href={home.locationURL} target="_blank" rel="noreferrer" data-testid={`home-cqc-link-${idx + 1}`}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider border border-stone-300 hover:bg-white rounded-md text-stone-900">
@@ -159,6 +174,135 @@ function Detail({ icon: Icon, label, children }) {
   );
 }
 
+// Three-state sales-flow status bar used on non-client rows.
+// Not contacted → Contacted → Follow up.
+// "Follow up" opens an inline datetime popover so the franchisee can set
+// a reminder. Status is purely UI/UX — never auto-promotes to My Client.
+function LeadStatusBar({ idx, lead, onSet, home }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [when, setWhen] = useState(() => {
+    if (lead?.follow_up_at) {
+      try { return lead.follow_up_at.slice(0, 16); } catch { return ""; }
+    }
+    return "";
+  });
+  const status = lead?.status || "not_contacted";
+  const isNC = status === "not_contacted";
+  const isC  = status === "contacted";
+  const isF  = status === "follow_up";
+
+  const setStatus = (next, follow_up_at) => onSet?.(home, next, follow_up_at);
+
+  // Compute follow-up urgency badge.
+  let urgency = null;
+  if (isF && lead?.follow_up_at) {
+    const dt = new Date(lead.follow_up_at);
+    if (!Number.isNaN(dt.getTime())) {
+      const days = Math.round((dt.getTime() - Date.now()) / 86400000);
+      if (days < 0) urgency = { text: `Overdue · ${Math.abs(days)}d`, cls: "bg-red-100 text-red-800 border-red-300" };
+      else if (days === 0) urgency = { text: "Due today", cls: "bg-amber-100 text-amber-900 border-amber-300" };
+      else if (days <= 3) urgency = { text: `Due in ${days}d`, cls: "bg-amber-50 text-amber-900 border-amber-200" };
+      else urgency = { text: `Due ${dt.toLocaleDateString("en-GB")}`, cls: "bg-blue-50 text-blue-800 border-blue-200" };
+    }
+  }
+
+  const handleFollowUpClick = () => {
+    if (isF && !pickerOpen) { setPickerOpen(true); return; }
+    setPickerOpen(true);
+  };
+
+  const saveFollowUp = () => {
+    if (!when) return;
+    // Convert datetime-local "YYYY-MM-DDTHH:mm" → ISO with seconds
+    const iso = new Date(when).toISOString();
+    setStatus("follow_up", iso);
+    setPickerOpen(false);
+  };
+
+  const clearStatus = () => {
+    setStatus("not_contacted", null);
+    setPickerOpen(false);
+  };
+
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap mr-auto" data-testid={`lead-status-bar-${idx + 1}`}>
+      <span className="text-[10px] uppercase tracking-wider font-bold text-stone-500 mr-1">Status:</span>
+      <button
+        onClick={() => setStatus("not_contacted", null)}
+        data-testid={`lead-status-not-contacted-${idx + 1}`}
+        className={`inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md border transition-colors ${
+          isNC ? "bg-red-600 text-white border-red-700" : "bg-white border-stone-300 text-stone-700 hover:border-red-400 hover:bg-red-50"
+        }`}
+      >
+        <Circle className={`w-3 h-3 ${isNC ? "fill-current" : ""}`} /> Not contacted
+      </button>
+      <button
+        onClick={() => setStatus("contacted", null)}
+        data-testid={`lead-status-contacted-${idx + 1}`}
+        className={`inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md border transition-colors ${
+          isC ? "bg-emerald-600 text-white border-emerald-700" : "bg-white border-stone-300 text-stone-700 hover:border-emerald-400 hover:bg-emerald-50"
+        }`}
+      >
+        <CheckCircle2 className="w-3 h-3" /> Contacted
+      </button>
+      <div className="relative">
+        <button
+          onClick={handleFollowUpClick}
+          data-testid={`lead-status-follow-up-${idx + 1}`}
+          className={`inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md border transition-colors ${
+            isF ? "bg-blue-600 text-white border-blue-700" : "bg-white border-stone-300 text-stone-700 hover:border-blue-400 hover:bg-blue-50"
+          }`}
+        >
+          <Clock className="w-3 h-3" /> Follow up
+        </button>
+        {pickerOpen && (
+          <div className="absolute left-0 top-full mt-1 z-20 bg-white border border-stone-300 rounded-lg shadow-xl p-3 w-72" data-testid={`lead-status-follow-up-picker-${idx + 1}`}>
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-[10px] uppercase tracking-wider font-bold text-stone-600">Remind me on</div>
+              <button onClick={() => setPickerOpen(false)} className="p-0.5 text-stone-500 hover:text-stone-900">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <input
+              type="datetime-local"
+              value={when}
+              onChange={(e) => setWhen(e.target.value)}
+              data-testid={`lead-status-follow-up-input-${idx + 1}`}
+              className="w-full px-2 py-1.5 text-sm bg-stone-50 border border-stone-300 rounded focus:outline-none focus:border-stone-950"
+            />
+            <div className="flex items-center justify-end gap-2 mt-2">
+              <button onClick={() => setPickerOpen(false)} className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-stone-700 hover:bg-stone-100 rounded">Cancel</button>
+              <button
+                onClick={saveFollowUp}
+                disabled={!when}
+                data-testid={`lead-status-follow-up-save-${idx + 1}`}
+                className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded disabled:opacity-50"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+      {urgency && !pickerOpen && (
+        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded border ${urgency.cls}`}>
+          {urgency.text}
+        </span>
+      )}
+      {!isNC && (
+        <button
+          onClick={clearStatus}
+          data-testid={`lead-status-clear-${idx + 1}`}
+          title="Reset status"
+          className="p-1 text-stone-400 hover:text-stone-900 hover:bg-stone-100 rounded"
+        >
+          <X className="w-3 h-3" />
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function TerritoryHomesList({
   homes = [],
   onZoomHome,
@@ -180,6 +324,12 @@ export default function TerritoryHomesList({
   providers = [],           // [{ name, count }] — for the filter buttons
   providerFilter = null,
   onProviderFilter = null,  // (providerName | null) — toggle
+  // Sales-flow leads -------------------------------------------------------
+  leadsByKey = null,        // Map "${source}:${home_id}" → lead doc
+  onSetLeadStatus = null,   // (home, status, follow_up_at) — upsert lead
+  // My Clients filter ------------------------------------------------------
+  myClientsOnly = false,
+  onMyClientsOnlyChange = null,
 }) {
   const [internalOpen, setInternalOpen] = useState(null);
   const open = openIndex ?? internalOpen;
@@ -199,16 +349,31 @@ export default function TerritoryHomesList({
     if (providerFilter) {
       base = base.filter((h) => (h.providerName || "").toLowerCase() === providerFilter.toLowerCase());
     }
-    if (!q.trim()) return base;
-    const needle = q.toLowerCase().trim();
-    return base.filter((h) =>
-      (h.name || "").toLowerCase().includes(needle)
-      || (h.fullAddress || h.postalAddressTownCity || "").toLowerCase().includes(needle)
-      || (h.postalCode || "").toLowerCase().includes(needle)
-      || (h.registrationManagerName || "").toLowerCase().includes(needle)
-      || (h.providerName || "").toLowerCase().includes(needle),
-    );
-  }, [homes, q, providerFilter]);
+    if (q.trim()) {
+      const needle = q.toLowerCase().trim();
+      base = base.filter((h) =>
+        (h.name || "").toLowerCase().includes(needle)
+        || (h.fullAddress || h.postalAddressTownCity || "").toLowerCase().includes(needle)
+        || (h.postalCode || "").toLowerCase().includes(needle)
+        || (h.registrationManagerName || "").toLowerCase().includes(needle)
+        || (h.providerName || "").toLowerCase().includes(needle),
+      );
+    }
+    // In "My clients only" mode push the client rows to the top of the list
+    // so dimmed non-clients sit below — the user reads their clients first.
+    if (myClientsOnly && clientHomeKeys) {
+      const isMine = (h) => {
+        const key = h.id || h.locationId || "";
+        return clientHomeKeys.has(`cqc:${key}`) || clientHomeKeys.has(`scotland:${key}`);
+      };
+      base = [...base].sort((a, b) => {
+        const am = isMine(a) ? 0 : 1;
+        const bm = isMine(b) ? 0 : 1;
+        return am - bm;
+      });
+    }
+    return base;
+  }, [homes, q, providerFilter, myClientsOnly, clientHomeKeys]);
 
   // Treat custom clients + regulated homes as a single pool when deciding
   // whether to render the panel at all. Even with zero CQC homes, a
@@ -294,6 +459,18 @@ export default function TerritoryHomesList({
               <Route className="w-3.5 h-3.5" /> Plan a route
               <span className="ml-1 px-1.5 py-0.5 rounded bg-stone-200 text-stone-700 text-[9px] font-black">Soon</span>
             </button>
+            <button
+              onClick={() => onMyClientsOnlyChange?.(!myClientsOnly)}
+              data-testid="t-plus-my-clients-only"
+              className={`inline-flex items-center gap-1.5 px-3 py-2 text-[10px] font-bold uppercase tracking-wider rounded-md border transition-colors ${
+                myClientsOnly
+                  ? "bg-[#dddd16] text-stone-950 border-stone-950"
+                  : "bg-white border-stone-300 text-stone-700 hover:bg-stone-50 hover:border-stone-500"
+              }`}
+            >
+              <Star className={`w-3.5 h-3.5 ${myClientsOnly ? "fill-current" : ""}`} />
+              {myClientsOnly ? "Showing My Clients only" : "Show My Clients only"}
+            </button>
           </div>
           {providers.length > 0 && (
             <div className="flex items-center gap-1.5 flex-wrap" data-testid="t-plus-provider-filters">
@@ -337,10 +514,32 @@ export default function TerritoryHomesList({
         ))}
         {filtered.map((h, i) => {
           const realIdx = homes.indexOf(h);
+          const homeKey = h.id || h.locationId || "";
           const isMine = !!(clientHomeKeys && (
-            clientHomeKeys.has(`cqc:${h.id || h.locationId || ""}`) ||
-            clientHomeKeys.has(`scotland:${h.id || h.locationId || ""}`)
+            clientHomeKeys.has(`cqc:${homeKey}`) ||
+            clientHomeKeys.has(`scotland:${homeKey}`)
           ));
+          if (myClientsOnly && !isMine) {
+            // In My-Clients-only mode: still render non-clients but dim them
+            // hard so the franchisee can see context without distraction.
+            return (
+              <HomeRow key={h.locationId || h._id || i} home={h} idx={realIdx}
+                isOpen={false}
+                onToggle={() => setOpen(realIdx)}
+                onZoom={onZoomHome}
+                isMyClient={false}
+                onMarkClient={onMarkHomeClient}
+                onUnmarkClient={null}
+                plus={plus}
+                lead={null}
+                onSetLeadStatus={null}
+                dimmed
+              />
+            );
+          }
+          const leadKey = `cqc:${homeKey}`;
+          const altKey = `scotland:${homeKey}`;
+          const lead = leadsByKey ? (leadsByKey.get(leadKey) || leadsByKey.get(altKey) || null) : null;
           return (
             <HomeRow key={h.locationId || h._id || i} home={h} idx={realIdx}
               isOpen={open === realIdx}
@@ -350,6 +549,8 @@ export default function TerritoryHomesList({
               onMarkClient={onMarkHomeClient}
               onUnmarkClient={onUnmarkHomeClient}
               plus={plus}
+              lead={lead}
+              onSetLeadStatus={onSetLeadStatus}
             />
           );
         })}

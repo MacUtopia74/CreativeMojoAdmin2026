@@ -44,6 +44,10 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
   const [myClients, setMyClients] = useState([]);
   const [editingClient, setEditingClient] = useState(null); // {} = "new", obj = edit
   const [providerFilter, setProviderFilter] = useState(null);
+  const [myClientsOnly, setMyClientsOnly] = useState(false);
+  // Sales-flow leads (per-franchisee personal CRM bookmark per home).
+  // Keyed by "${source}:${home_id}" for O(1) lookup from list/map.
+  const [leads, setLeads] = useState([]);
 
   useEffect(() => {
     try { localStorage.setItem("cm.portal.basemap", basemap); } catch {/* noop */}
@@ -62,8 +66,12 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
         const { data } = await api.get("/portal/territory-plus/access");
         setPlusAccess(data);
         if (data?.allowed) {
-          const { data: clients } = await api.get("/portal/territory-plus/clients");
-          setMyClients(clients.items || []);
+          const [clientsRes, leadsRes] = await Promise.all([
+            api.get("/portal/territory-plus/clients"),
+            api.get("/portal/territory-plus/leads"),
+          ]);
+          setMyClients(clientsRes.data.items || []);
+          setLeads(leadsRes.data.items || []);
         }
       } catch (e) {
         setPlusAccess({ allowed: false });
@@ -75,6 +83,33 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
     try {
       const { data } = await api.get("/portal/territory-plus/clients");
       setMyClients(data.items || []);
+    } catch (e) { /* noop */ }
+  };
+
+  const reloadLeads = async () => {
+    try {
+      const { data } = await api.get("/portal/territory-plus/leads");
+      setLeads(data.items || []);
+    } catch (e) { /* noop */ }
+  };
+
+  const handleSetLeadStatus = async (home, status, follow_up_at) => {
+    try {
+      const homeKey = home.id || home.locationId;
+      if (!homeKey) return;
+      const isScotland = String(home.source || "").includes("scot");
+      const source = isScotland ? "scotland" : "cqc";
+      if (status === "not_contacted") {
+        await api.delete("/portal/territory-plus/leads", {
+          data: { source, home_id: homeKey },
+        });
+      } else {
+        await api.put("/portal/territory-plus/leads", {
+          source, home_id: homeKey, status,
+          follow_up_at: follow_up_at || null,
+        });
+      }
+      await reloadLeads();
     } catch (e) { /* noop */ }
   };
 
@@ -155,6 +190,24 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
     () => myClients.filter((c) => c.source === "custom"),
     [myClients],
   );
+
+  // Map "${source}:${home_id}" → lead doc for O(1) lookup from rows.
+  const leadsByKey = useMemo(() => {
+    const m = new Map();
+    leads.forEach((l) => { if (l.source && l.home_id) m.set(`${l.source}:${l.home_id}`, l); });
+    return m;
+  }, [leads]);
+
+  // Lookup of regulated home docs keyed by their id — used to feed the
+  // modal's "View live CQC data" popup when editing a marked client.
+  const homeById = useMemo(() => {
+    const m = new Map();
+    homes.forEach((h) => {
+      const k = h.id || h.locationId;
+      if (k) m.set(k, h);
+    });
+    return m;
+  }, [homes]);
 
   // Provider buckets — drive the "Care groups" filter buttons. Show
   // every provider with one or more homes (top 12 sorted by count).
@@ -304,6 +357,7 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
             customClients={plusOn ? customClients : []}
             onCustomClientClick={plusOn ? (c) => setEditingClient(c) : null}
             providerFilter={plusOn ? providerFilter : null}
+            dimNonClients={plusOn && myClientsOnly}
           />
         ) : (
           <div className="text-sm text-stone-500 bg-stone-50 border border-dashed border-stone-300 rounded-xl px-4 py-6 text-center">
@@ -330,12 +384,19 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
           providers={providers}
           providerFilter={providerFilter}
           onProviderFilter={setProviderFilter}
+          leadsByKey={leadsByKey}
+          onSetLeadStatus={handleSetLeadStatus}
+          myClientsOnly={myClientsOnly}
+          onMyClientsOnlyChange={setMyClientsOnly}
         />
       )}
 
       {editingClient && (
         <TerritoryClientModal
           initial={editingClient.__new ? null : editingClient}
+          cqcSnapshot={!editingClient.__new && editingClient.source !== "custom"
+            ? homeById.get(editingClient.home_id) || null
+            : null}
           onClose={() => setEditingClient(null)}
           onSaved={() => { reloadClients(); }}
           onDeleted={() => { reloadClients(); }}

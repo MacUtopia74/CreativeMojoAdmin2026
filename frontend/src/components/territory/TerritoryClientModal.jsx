@@ -1,8 +1,13 @@
 // Edit-or-create modal for a Territory+ "my client" entry. Form fields
 // mirror the schema in territory_plus_routes.py. The same modal is used
 // for both freshly-added clients (no ``initial``) and edits.
+//
+// For CQC/Scotland-linked clients: the franchisee can override ANY field
+// (the doc is a private snapshot, never written back to the public CQC
+// dataset). The "View live CQC data" button opens a side-by-side popup
+// of the current live values so they can compare/reset to source.
 import { useEffect, useState } from "react";
-import { X, Loader2, Trash2, Plus, UserPlus } from "lucide-react";
+import { X, Loader2, Trash2, UserPlus, ExternalLink, Database } from "lucide-react";
 import api from "@/lib/api";
 
 const FIELDS = [
@@ -18,7 +23,7 @@ const FIELDS = [
   { key: "cqc_rating",        label: "CQC rating",        type: "text" },
 ];
 
-export default function TerritoryClientModal({ initial, onClose, onSaved, onDeleted }) {
+export default function TerritoryClientModal({ initial, onClose, onSaved, onDeleted, cqcSnapshot = null }) {
   const [form, setForm] = useState(() => {
     const empty = Object.fromEntries(FIELDS.map((f) => [f.key, ""]));
     if (!initial) return { ...empty, notes: "", contacts: [] };
@@ -31,9 +36,11 @@ export default function TerritoryClientModal({ initial, onClose, onSaved, onDele
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [showCqc, setShowCqc] = useState(false);
 
   const editing = !!initial?.id;
   const isCustom = !initial || initial.source === "custom";
+  const isLinked = !!initial && initial.source !== "custom";
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -140,11 +147,23 @@ export default function TerritoryClientModal({ initial, onClose, onSaved, onDele
         </div>
 
         <form onSubmit={save} className="flex-1 overflow-y-auto px-5 sm:px-6 py-5 space-y-4">
-          {!isCustom && (
-            <div className="px-3 py-2.5 bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-lg">
-              This client is linked to a regulated care home. Editing here only changes
-              your private notes &amp; flags — the home's main record (address, manager,
-              CQC details) is sourced live from CQC / Care Inspectorate Scotland.
+          {isLinked && (
+            <div className="px-3 py-2.5 bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-lg flex items-start gap-3">
+              <div className="flex-1">
+                This client started from <strong>{initial.source === "scotland" ? "Care Inspectorate Scotland" : "CQC"}</strong>.
+                You can edit any field — your changes are private to you and never written
+                back to the public dataset.
+              </div>
+              {cqcSnapshot && (
+                <button
+                  type="button"
+                  onClick={() => setShowCqc(true)}
+                  data-testid="t-plus-view-cqc"
+                  className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-md"
+                >
+                  <Database className="w-3 h-3" /> View live CQC data
+                </button>
+              )}
             </div>
           )}
           {err && (
@@ -158,20 +177,18 @@ export default function TerritoryClientModal({ initial, onClose, onSaved, onDele
                   <textarea
                     value={form[f.key] ?? ""}
                     onChange={(e) => set(f.key, e.target.value)}
-                    disabled={!isCustom && f.key !== "notes"}
                     rows={2}
                     data-testid={`t-plus-field-${f.key}`}
-                    className="w-full px-3 py-2 text-sm bg-stone-50 border border-stone-300 rounded-lg focus:outline-none focus:border-stone-950 disabled:bg-stone-100 disabled:text-stone-500"
+                    className="w-full px-3 py-2 text-sm bg-stone-50 border border-stone-300 rounded-lg focus:outline-none focus:border-stone-950"
                   />
                 ) : (
                   <input
                     type="text"
                     value={form[f.key] ?? ""}
                     onChange={(e) => set(f.key, e.target.value)}
-                    disabled={!isCustom}
                     required={f.required}
                     data-testid={`t-plus-field-${f.key}`}
-                    className="w-full px-3 py-2 text-sm bg-stone-50 border border-stone-300 rounded-lg focus:outline-none focus:border-stone-950 disabled:bg-stone-100 disabled:text-stone-500"
+                    className="w-full px-3 py-2 text-sm bg-stone-50 border border-stone-300 rounded-lg focus:outline-none focus:border-stone-950"
                   />
                 )}
                 {f.hint && <div className="text-[11px] text-stone-500 mt-1">{f.hint}</div>}
@@ -302,6 +319,67 @@ export default function TerritoryClientModal({ initial, onClose, onSaved, onDele
           </div>
         </div>
       </div>
+
+      {showCqc && cqcSnapshot && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-stone-950/60 backdrop-blur-sm"
+          onClick={() => setShowCqc(false)}
+          data-testid="t-plus-cqc-popup"
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-stone-200 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">
+                  Live data from {initial?.source === "scotland" ? "Care Inspectorate Scotland" : "CQC"}
+                </div>
+                <h3 className="font-display text-lg font-black text-stone-950 truncate">{cqcSnapshot.name || "—"}</h3>
+              </div>
+              <button
+                onClick={() => setShowCqc(false)}
+                data-testid="t-plus-cqc-close"
+                className="p-2 -mr-1 text-stone-600 hover:bg-stone-100 rounded-lg shrink-0"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2.5 text-sm">
+              {[
+                ["Name", cqcSnapshot.name],
+                ["Address", cqcSnapshot.fullAddress
+                  || [cqcSnapshot.postalAddressLine1, cqcSnapshot.postalAddressLine2, cqcSnapshot.postalAddressTownCity, cqcSnapshot.postalAddressCounty, cqcSnapshot.postalCode]
+                      .filter(Boolean).join(", ")],
+                ["Postcode", cqcSnapshot.postalCode || cqcSnapshot.postcode],
+                ["Phone", cqcSnapshot.mainPhoneNumber],
+                ["Website", cqcSnapshot.website],
+                ["Provider", cqcSnapshot.providerName],
+                ["Manager", cqcSnapshot.registrationManagerName],
+                ["CQC rating", cqcSnapshot.currentRatings?.overall?.rating],
+                ["Latest inspection", cqcSnapshot.lastInspection?.date || cqcSnapshot.currentRatings?.overall?.reportDate],
+                ["Number of beds", cqcSnapshot.numberOfBeds],
+              ].map(([label, value]) => (
+                <div key={label} className="grid grid-cols-3 gap-3 py-1.5 border-b border-stone-100 last:border-b-0">
+                  <div className="text-[10px] uppercase tracking-wider font-bold text-stone-500">{label}</div>
+                  <div className="col-span-2 text-stone-900 break-words">
+                    {value || <span className="text-stone-400 italic">Not on file</span>}
+                  </div>
+                </div>
+              ))}
+              {cqcSnapshot.locationURL && (
+                <a href={cqcSnapshot.locationURL} target="_blank" rel="noreferrer"
+                  className="mt-3 inline-flex items-center gap-1.5 px-3 py-2 text-[10px] font-bold uppercase tracking-wider border border-stone-300 hover:bg-stone-50 rounded-md text-stone-900">
+                  <ExternalLink className="w-3 h-3" /> Open on CQC website
+                </a>
+              )}
+            </div>
+            <div className="px-5 py-3 border-t border-stone-200 text-[11px] text-stone-500">
+              This is the unedited public record. Your overrides above are private to you.
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
