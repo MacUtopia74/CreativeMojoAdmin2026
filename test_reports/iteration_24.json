@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration 24 — verified providerName enrichment + Care Groups filter pills + Show-My-Clients-only toggle. Backend pytest: 13/14 pass (one minor data-gap failure). Frontend on Sandra's Devon territory: Care Groups filter pills NOW VISIBLE (12 distinct providers shown, filter narrows rows 25→2). Toggle text correctly flips Show ↔ Showing. Mark-as-client works inline (no modal needed for quick mark).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "GET /api/territory/homes (Sandra's Devon EX15+1,EX15+2,EX15+3 etc.)",
+        "issue": "1 of 25 homes still has providerName=null. Cause: providerId '1-26032324887' (Kelly Farm, registered 2026-02-10) is NOT present in the legacy cqc_locations Excel-imported collection. Legacy import predates this CQC registration, so the join cannot enrich. Other 24/25 enriched correctly (Bole Aller, UK Healthcare, etc. confirmed)."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_territory_plus.py",
+    "/app/test_reports/pytest/territory_plus_iter24.xml"
+  ],
+  "action_items": [
+    "OPTIONAL — Backfill legacy cqc_locations with provider_name for the small set of CQC-live providerIds (~few hundred new registrations) that have no legacy row. Currently ~96% enrichment on Sandra's territory. Coventry territory enrichment looks complete (300+ distinct providers, WCS Care Group=11 homes). Could fall back to providerId or fetch from /api/cqc provider endpoint at sync time.",
+    "INFO — Console hydration warning observed: <button> nested inside <button> at TerritoryHomesList line ~33-64 (home-unmark-quick-N button inside row toggle button). Not blocking but should be refactored (move inner button outside parent button)."
+  ],
+  "critical_code_review_comments": [
+    "Provider enrichment in territory_routes._list_homes is a hot-path lookup. Verified Sandra's 25-home query returns in <1s — acceptable. Recommend caching the providerId→providerName map for the request lifecycle if not already; for Coventry's 2000-home query the bulk lookup is essential (single $in query, OK).",
+    "TerritoryHomesList nests <button> inside <button> (hydration warning). Low priority but should be fixed."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_territory_plus.py (added test_sandra_devon_provider_enrichment, test_coventry_provider_diversity, test_provider_enrichment_via_legacy_join)"
+  ],
+  "success_rate": {"backend": "93% (13/14 pytest)", "frontend": "100% (Care Groups + toggle + filter all working)"},
+  "test_credentials": "Sandra franchisee: sandra@creativemojo.co.uk / Test1234! (confirmed working).",
+  "seed_data_creation": "None — tested against existing prod-like preview data.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Sandra (franchisee_id b2ca2c54-7101-4524-926a-b36ac0e2a70a) has 25 homes across 11 sectors in Devon. Coventry franchisee 6471fc47-76fa-4cd9-99f5-d871e3bcb11d has hundreds of homes. The Care Groups filter pills now show as expected (data-testid prefix 't-plus-provider-btn-'). The 'Show My Clients only' toggle is data-testid 't-plus-my-clients-only'. The 'expand-homes-list' testid is duplicated for mobile and desktop variants — use ':visible' selector when clicking. To find mark-home buttons, first click a row to expand it — the mark button is inside the expanded panel. Iteration 23 regression tests (11) all still pass. Verified test_territory_plus.py end-to-end at 13/14 pass on preview URL.",
+  "rca of the issue": {
+    "bug": "1 home in Sandra's territory still has providerName=null after enrichment.",
+    "reproduction": "GET /api/territory/homes?sectors=<Sandra's 11 sectors> → find home locationId='1-26377895412' (Kelly Farm). It has providerId='1-26032324887' but providerName is null.",
+    "root_cause": "Backend enrichment in _list_homes joins live CQC home (providerId) → legacy cqc_locations (provider_id → provider_name). This provider is a newly-registered CQC location (registrationDate 2026-02-10) and is absent from the legacy Excel-imported cqc_locations collection. Verified via direct mongo query: db.cqc_locations.find_one({provider_id:'1-26032324887'}) returns None.",
+    "mitigation": "(1) Re-import legacy CQC data with a fresher dump that includes recent provider registrations, OR (2) at sync time call CQC /providers/{providerId} endpoint as a fallback when legacy lookup fails, OR (3) extract providerName from the home's existing 'name' field when both live providerId list contains it. Not blocking for MVP — affects <5% of homes."
+  }
+}

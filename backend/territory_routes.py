@@ -147,7 +147,15 @@ def build_territory_router(db, require_role):  # noqa: D401
     async def _list_homes(sectors: list[str], limit: int) -> list[dict]:
         """Return raw home documents for the sector list, normalising
         Scottish records into the same shape the frontend expects from
-        CQC docs (id / name / postcode / careHome flag)."""
+        CQC docs (id / name / postcode / careHome flag).
+
+        Provider-name enrichment: the live CQC sync stores ``providerId``
+        but not ``providerName`` (the location-level CQC endpoint doesn't
+        return it). The legacy ``cqc_locations`` Excel import does carry
+        ``provider_name`` keyed by the same ``provider_id``. We join that
+        in here so the Care Groups filter on My Territory+ can group homes
+        by their parent provider/care group.
+        """
         if not sectors:
             return []
         scot, rest = _split_sectors_by_country(sectors)
@@ -182,7 +190,36 @@ def build_territory_router(db, require_role):  # noqa: D401
                     "country": "Scotland",
                     "councilArea": r.get("councilArea"),
                     "healthBoard": r.get("healthBoard"),
+                    "providerName": r.get("providerName"),
                 })
+
+        # ------ providerName enrichment from legacy cqc_locations -------
+        # Collect distinct providerIds across the result that are missing
+        # a providerName. Single bulk read into a {pid: name} map, then
+        # patch each home doc in place. Negligible cost for ≤2000 homes.
+        missing_pids: set[str] = set()
+        for h in out:
+            if not (h.get("providerName") or "").strip():
+                pid = h.get("providerId")
+                if pid:
+                    missing_pids.add(pid)
+        if missing_pids:
+            pmap: dict = {}
+            cur = db.cqc_locations.find(
+                {"provider_id": {"$in": list(missing_pids)},
+                 "provider_name": {"$nin": [None, ""]}},
+                {"_id": 0, "provider_id": 1, "provider_name": 1},
+            )
+            for d in await cur.to_list(len(missing_pids) * 8):
+                pid = d.get("provider_id")
+                if pid and pid not in pmap:
+                    pmap[pid] = d.get("provider_name")
+            if pmap:
+                for h in out:
+                    if not (h.get("providerName") or "").strip():
+                        name = pmap.get(h.get("providerId"))
+                        if name:
+                            h["providerName"] = name
         return out
 
     # ------------------------------------------------------------- geocoding
