@@ -6,6 +6,7 @@
 import { useState } from "react";
 import { KeyRound, Eye, EyeOff, Loader2, CheckCircle2 } from "lucide-react";
 import api, { formatError } from "@/lib/api";
+import PortalPageHeading from "@/components/portal/PortalPageHeading";
 
 export default function PortalChangePasswordPage() {
   const [current, setCurrent] = useState("");
@@ -38,13 +39,12 @@ export default function PortalChangePasswordPage() {
 
   return (
     <div className="space-y-6" data-testid="portal-change-password-page">
-      <div className="bg-stone-950 text-white rounded-2xl px-5 sm:px-8 py-5 sm:py-7 flex items-center gap-4">
-        <KeyRound className="w-7 h-7 sm:w-8 sm:h-8 text-[#dedd0a] shrink-0" strokeWidth={2.2} />
-        <div>
-          <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-400">Account</div>
-          <h1 className="font-display text-2xl sm:text-3xl font-black tracking-tight">Change password</h1>
-        </div>
-      </div>
+      <PortalPageHeading
+        eyebrow="Account"
+        icon={KeyRound}
+        title="Change password"
+        subtitle="Choose something secure that's easy for you to remember."
+      />
 
       <div className="bg-white border border-stone-200 rounded-2xl p-6 sm:p-8 max-w-xl">
         <p className="text-sm text-stone-600 mb-6 leading-relaxed">

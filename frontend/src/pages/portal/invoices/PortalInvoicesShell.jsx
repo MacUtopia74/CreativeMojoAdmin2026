@@ -11,6 +11,7 @@ import {
   Settings as SettingsIcon,
   Plus,
 } from "lucide-react";
+import PortalPageHeading from "@/components/portal/PortalPageHeading";
 
 const TABS = [
   { to: "/portal/invoices", label: "Invoices", icon: Receipt, end: true, testid: "portal-inv-tab-list" },
@@ -24,6 +25,12 @@ export default function PortalInvoicesShell() {
 
   return (
     <div data-testid="portal-invoices-shell">
+      <PortalPageHeading
+        eyebrow="Your billing"
+        icon={Receipt}
+        title="Invoicing"
+        subtitle="Issue, send, and reconcile your own customer invoices — branded for your franchise."
+      />
       {/* Tabs strip — sits inside PortalShell which already has its own
           sticky header, so this stays inline. */}
       <div className="bg-white border border-stone-200 rounded-2xl px-4 sm:px-6 py-3 mb-5">

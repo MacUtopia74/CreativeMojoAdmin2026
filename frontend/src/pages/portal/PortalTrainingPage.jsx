@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import api from "@/lib/api";
 import { bustThumb } from "@/lib/youtubeThumb";
+import PortalPageHeading from "@/components/portal/PortalPageHeading";
 
 function GridCard({ playlist }) {
   return (
@@ -129,29 +130,26 @@ export default function PortalTrainingPage() {
 
   return (
     <div className="space-y-8" data-testid="portal-training-page">
-      {/* Yellow hero banner — matches the File Vault + Marketing pages. */}
-      <div className="bg-[#dedd0a] rounded-2xl px-5 sm:px-8 py-5 sm:py-7 flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-4 min-w-0">
-          <GraduationCap className="w-7 h-7 sm:w-8 sm:h-8 text-stone-950 shrink-0" strokeWidth={2.2} />
-          <h1 className="font-display text-2xl sm:text-4xl font-black text-stone-950 tracking-tight">
-            Video Hub
-          </h1>
-        </div>
-        {!empty && !loading && (
-          <div className="flex items-center bg-white/70 border border-stone-950/10 rounded-lg p-0.5 shrink-0" data-testid="video-hub-view-toggle">
+      <PortalPageHeading
+        eyebrow="Training & meetings"
+        icon={GraduationCap}
+        title="Video Hub"
+        subtitle="Catch up on the latest training videos and franchisee meeting recordings."
+        actions={!empty && !loading ? (
+          <div className="flex items-center bg-white border border-stone-200 rounded-lg p-0.5" data-testid="video-hub-view-toggle">
             <button onClick={() => setViewMode("list")} data-testid="video-hub-view-list"
               title="List view"
-              className={`px-2.5 py-1.5 rounded-md flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider transition-all ${viewMode === "list" ? "bg-stone-950 text-[#dedd0a] shadow-sm" : "text-stone-700 hover:text-stone-950"}`}>
+              className={`px-2.5 py-1.5 rounded-md flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider transition-all ${viewMode === "list" ? "bg-stone-950 text-white shadow-sm" : "text-stone-600 hover:text-stone-950"}`}>
               <List className="w-3.5 h-3.5" /> List
             </button>
             <button onClick={() => setViewMode("grid")} data-testid="video-hub-view-grid"
               title="Grid view"
-              className={`px-2.5 py-1.5 rounded-md flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider transition-all ${viewMode === "grid" ? "bg-stone-950 text-[#dedd0a] shadow-sm" : "text-stone-700 hover:text-stone-950"}`}>
+              className={`px-2.5 py-1.5 rounded-md flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider transition-all ${viewMode === "grid" ? "bg-stone-950 text-white shadow-sm" : "text-stone-600 hover:text-stone-950"}`}>
               <LayoutGrid className="w-3.5 h-3.5" /> Grid
             </button>
           </div>
-        )}
-      </div>
+        ) : null}
+      />
 
       {loading && (
         <div className="text-center py-16 text-stone-500">

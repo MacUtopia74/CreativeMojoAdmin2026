@@ -11,10 +11,11 @@ import {
   Sparkles, MapPin, Megaphone, Receipt, CalendarClock,
   CheckCircle2, Check, ArrowRight, Package,
 } from "lucide-react";
+import PortalPageHeading from "@/components/portal/PortalPageHeading";
 
 // PRICING — confirmed by Paul:
-//   Invoicing  £7 pm  •  My Territory+ £10 pm  •  Marketing £10 pm  •
-//   Calendar+ £10 pm  •  All four bundle £30 pm (saves £7).
+//   Every bolt-on is £9.95 / month + VAT, bundle of all four is £34.99
+//   / month + VAT (saves £4.81 vs buying them individually).
 // All exclusive of VAT, billed monthly via the franchisee's existing
 // GoCardless mandate (added as a recurring line to their Xero invoice
 // on admin approval).
@@ -23,7 +24,7 @@ const BOLT_ONS = [
     key: "invoicing",
     title: "Invoicing",
     icon: Receipt,
-    price: 7,
+    price: 9.95,
     accent: "#10b981",
     blurb: "Issue, send and reconcile your own customer invoices — linked to your contacts list.",
     features: [
@@ -38,7 +39,7 @@ const BOLT_ONS = [
     key: "territory_plus",
     title: "My Territory+",
     icon: MapPin,
-    price: 10,
+    price: 9.95,
     accent: "#0ea5e9",
     recommended: true,
     blurb: "Claim customers as yours, plot them on the map, and run a light CRM on top.",
@@ -54,22 +55,22 @@ const BOLT_ONS = [
     key: "marketing",
     title: "Marketing",
     icon: Megaphone,
-    price: 10,
+    price: 9.95,
     accent: "#f97316",
     blurb: "Send branded e-shots to your own customers from inside the portal.",
     features: [
       "Build basic e-shots with our drag-in templates",
       "Drop in images, headlines and your own copy",
       "Link to a “Get in touch” reply box on each send",
-      "Or link straight to your Calendar+ booking page",
+      "Or link straight to your Bookings booking page",
       "Auto-co-branded with your franchise details",
     ],
   },
   {
-    key: "bookings", // sidebar "Bookings" page is unlocked by this bolt-on
-    title: "Calendar+",
+    key: "bookings",
+    title: "Bookings",
     icon: CalendarClock,
-    price: 10,
+    price: 9.95,
     accent: "#dedd0a",
     comingSoon: true,
     blurb: "Log and manage bookings inside your own calendar — and let customers self-book.",
@@ -83,9 +84,18 @@ const BOLT_ONS = [
   },
 ];
 
-const BUNDLE_PRICE = 30;
-const INDIVIDUAL_TOTAL = BOLT_ONS.reduce((s, b) => s + b.price, 0); // £37
-const BUNDLE_SAVING = INDIVIDUAL_TOTAL - BUNDLE_PRICE; // £7
+const BUNDLE_PRICE = 34.99;
+const INDIVIDUAL_TOTAL = BOLT_ONS.reduce((s, b) => s + b.price, 0); // £39.80
+const BUNDLE_SAVING = Math.round((INDIVIDUAL_TOTAL - BUNDLE_PRICE) * 100) / 100; // £4.81
+
+// Format a GBP price as "9" + "95p" superscript suffix so the
+// £9.95 reads as a single, large price block (matches the pattern
+// you see on Stripe / OptiSigns pricing pages).
+function splitPrice(value) {
+  const fixed = value.toFixed(2);
+  const [pounds, pence] = fixed.split(".");
+  return { pounds, pence };
+}
 
 export default function PortalSubscriptionsPage() {
   const ctx = useOutletContext() || {};
@@ -108,14 +118,12 @@ export default function PortalSubscriptionsPage() {
 
   return (
     <div className="space-y-8" data-testid="portal-subscriptions-page">
-      {/* Header */}
-      <div className="bg-stone-950 text-white rounded-2xl px-5 sm:px-8 py-5 sm:py-7 flex items-center gap-4">
-        <Sparkles className="w-7 h-7 sm:w-8 sm:h-8 text-[#dedd0a] shrink-0" strokeWidth={2.2} />
-        <div className="flex-1 min-w-0">
-          <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-400">Account</div>
-          <h1 className="font-display text-2xl sm:text-3xl font-black tracking-tight">Subscriptions</h1>
-        </div>
-      </div>
+      <PortalPageHeading
+        eyebrow="Account"
+        icon={Sparkles}
+        title="Subscriptions"
+        subtitle="Add optional bolt-ons to your monthly subscription — billed via your existing GoCardless mandate."
+      />
 
       {/* Intro */}
       <div className="bg-white border border-stone-200 rounded-2xl px-6 py-6 sm:px-8 sm:py-7">
@@ -178,11 +186,16 @@ export default function PortalSubscriptionsPage() {
 
               {/* Price */}
               <div className="px-5 py-6 text-center border-b border-stone-100">
-                <div className="flex items-start justify-center gap-0.5">
-                  <span className="text-2xl font-black text-stone-950 mt-2">£</span>
-                  <span className="font-display text-6xl font-black text-stone-950 leading-none tracking-tight">{b.price}</span>
-                  <span className="text-xl font-black text-stone-600 mt-2">.00</span>
-                </div>
+                {(() => {
+                  const p = splitPrice(b.price);
+                  return (
+                    <div className="flex items-start justify-center gap-0.5">
+                      <span className="text-2xl font-black text-stone-950 mt-2">£</span>
+                      <span className="font-display text-6xl font-black text-stone-950 leading-none tracking-tight">{p.pounds}</span>
+                      <span className="text-xl font-black text-stone-600 mt-2">.{p.pence}</span>
+                    </div>
+                  );
+                })()}
                 <div className="text-xs text-stone-500 mt-2 uppercase tracking-wider font-bold">
                   per month <span className="text-stone-400">+ VAT</span>
                 </div>
@@ -266,14 +279,14 @@ export default function PortalSubscriptionsPage() {
         }`}
       >
         <div className="absolute -top-3 left-6 sm:left-8 px-3 py-1 bg-[#dedd0a] text-stone-950 text-[10px] font-black uppercase tracking-widest rounded-full inline-flex items-center gap-1">
-          <Package className="w-3 h-3" /> Best value · Save £{BUNDLE_SAVING}/mo
+          <Package className="w-3 h-3" /> Best value · Save £{BUNDLE_SAVING.toFixed(2)}/mo
         </div>
 
         <div className="flex-1 min-w-0">
           <h3 className="font-display text-2xl sm:text-3xl font-black tracking-tight">All four bolt-ons</h3>
           <p className="text-stone-300 mt-1.5 text-sm sm:text-base leading-relaxed max-w-2xl">
-            Get the full Creative Mojo toolkit — Invoicing, My Territory+, Marketing, and Calendar+ — bundled together
-            and save £{BUNDLE_SAVING} every month vs buying them individually.
+            Get the full Creative Mojo toolkit — Invoicing, My Territory+, Marketing, and Bookings — bundled together
+            and save £{BUNDLE_SAVING.toFixed(2)} every month vs buying them individually.
           </p>
           <div className="flex flex-wrap gap-2 mt-4">
             {BOLT_ONS.map((b) => {
@@ -292,12 +305,17 @@ export default function PortalSubscriptionsPage() {
 
         <div className="shrink-0 lg:text-right">
           <div className="flex items-baseline gap-2 lg:justify-end">
-            <span className="text-sm font-bold text-stone-400 line-through">£{INDIVIDUAL_TOTAL}</span>
-            <div className="flex items-start gap-0.5">
-              <span className="text-xl font-black mt-1">£</span>
-              <span className="font-display text-5xl sm:text-6xl font-black leading-none tracking-tight">{BUNDLE_PRICE}</span>
-              <span className="text-base font-black text-stone-300 mt-2">.00</span>
-            </div>
+            <span className="text-sm font-bold text-stone-400 line-through">£{INDIVIDUAL_TOTAL.toFixed(2)}</span>
+            {(() => {
+              const p = splitPrice(BUNDLE_PRICE);
+              return (
+                <div className="flex items-start gap-0.5">
+                  <span className="text-xl font-black mt-1">£</span>
+                  <span className="font-display text-5xl sm:text-6xl font-black leading-none tracking-tight">{p.pounds}</span>
+                  <span className="text-base font-black text-stone-300 mt-2">.{p.pence}</span>
+                </div>
+              );
+            })()}
           </div>
           <div className="text-[11px] text-stone-400 mt-1.5 uppercase tracking-wider font-bold lg:text-right">
             per month + VAT
@@ -337,7 +355,7 @@ export default function PortalSubscriptionsPage() {
           <div className="text-right">
             <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Selected total</div>
             <div className="font-display text-3xl font-black tracking-tight text-stone-950" data-testid="subs-total">
-              £{totalMonthly}.00 <span className="text-sm text-stone-500 font-bold">/ month + VAT</span>
+              £{totalMonthly.toFixed(2)} <span className="text-sm text-stone-500 font-bold">/ month + VAT</span>
             </div>
           </div>
           <button

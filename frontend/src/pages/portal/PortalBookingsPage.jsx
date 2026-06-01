@@ -6,17 +6,17 @@
 //   • Send a shareable booking link to customers so they can pick a
 //     date + time for their next class (Calendly-style).
 import { CalendarClock, Sparkles, ArrowRight } from "lucide-react";
+import PortalPageHeading from "@/components/portal/PortalPageHeading";
 
 export default function PortalBookingsPage() {
   return (
     <div className="space-y-8" data-testid="portal-bookings-page">
-      {/* Yellow hero — matches Video Hub + File Vault pages. */}
-      <div className="bg-[#dedd0a] rounded-2xl px-5 sm:px-8 py-5 sm:py-7 flex items-center gap-4">
-        <CalendarClock className="w-7 h-7 sm:w-8 sm:h-8 text-stone-950 shrink-0" strokeWidth={2.2} />
-        <h1 className="font-display text-2xl sm:text-4xl font-black text-stone-950 tracking-tight">
-          Bookings
-        </h1>
-      </div>
+      <PortalPageHeading
+        eyebrow="Your booking system"
+        icon={CalendarClock}
+        title="Bookings"
+        subtitle="A calendar-led booking flow for your customers — coming soon."
+      />
 
       {/* Coming-soon panel */}
       <div className="bg-white border border-stone-200 rounded-2xl px-6 sm:px-10 py-12 sm:py-16 text-center">

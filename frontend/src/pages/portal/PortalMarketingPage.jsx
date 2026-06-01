@@ -7,16 +7,17 @@
 // the franchisee can see the page exists and the admin can demo the
 // nav item.
 import { Megaphone, Sparkles } from "lucide-react";
+import PortalPageHeading from "@/components/portal/PortalPageHeading";
 
 export default function PortalMarketingPage() {
   return (
     <div className="space-y-5" data-testid="portal-marketing-page">
-      <div className="bg-[#dddd16] rounded-2xl px-5 sm:px-8 py-5 sm:py-7 flex items-center gap-4">
-        <Megaphone className="w-7 h-7 sm:w-8 sm:h-8 text-stone-950 shrink-0" strokeWidth={2.2} />
-        <h1 className="font-display text-2xl sm:text-4xl font-black text-stone-950 tracking-tight">
-          Marketing
-        </h1>
-      </div>
+      <PortalPageHeading
+        eyebrow="Marketing toolkit"
+        icon={Megaphone}
+        title="Marketing"
+        subtitle="Pre-designed campaigns and assets, branded for your franchise."
+      />
       <div className="bg-white border border-stone-200 rounded-2xl px-6 py-10 sm:py-14 text-center">
         <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-stone-100 mb-4">
           <Sparkles className="w-7 h-7 text-stone-700" />

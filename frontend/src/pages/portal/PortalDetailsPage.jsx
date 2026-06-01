@@ -10,9 +10,10 @@ import { useOutletContext } from "react-router-dom";
 import {
   Mail, Phone, Globe, MapPin, Calendar, Clock, Smartphone,
   User as UserIcon, FileText, FolderOpen,
-  ShieldCheck, ShieldAlert,
+  ShieldCheck, ShieldAlert, Home,
 } from "lucide-react";
 import FranchiseeFilesPanel from "@/components/files/FranchiseeFilesPanel";
+import PortalPageHeading from "@/components/portal/PortalPageHeading";
 
 function yearsBetween(iso) {
   if (!iso) return null;
@@ -70,6 +71,12 @@ export default function PortalDetailsPage() {
 
   return (
     <div className="space-y-6" data-testid="portal-details">
+      <PortalPageHeading
+        eyebrow="Welcome back"
+        icon={Home}
+        title="My Franchise"
+        subtitle="Your franchise details, key dates, and private document vault — all in one place."
+      />
       {/* Hero — moved from the retired Home page. */}
       <section
         className="bg-white border border-stone-200 rounded-2xl px-4 sm:px-8 py-5 sm:py-7"
