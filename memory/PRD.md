@@ -1,6 +1,14 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## My Territory+ bug-fix pass — verified for redeploy (Jun 01 2026)
+- **Three production bugs verified fixed on preview**, regression suite added at `/app/backend/tests/test_territory_plus.py` (5/5 PASS):
+   1. **Unmark client (CQC/Scotland regulated home)**: `DELETE /api/portal/territory-plus/clients/mark-home` was returning 404 in prod because FastAPI was matching the literal `mark-home` as a `client_id` against the parameterized `DELETE /clients/{client_id}` route. Fixed by declaring the mark-home routes BEFORE the parameterized ones in `territory_plus_routes.py:217-273`. Comment at lines 213-216 documents why ordering matters.
+   2. **Additional contacts on Add-Client modal**: `TerritoryClientModal.jsx` (lines 192-274) now exposes an "Additional contacts" section with name/role/phone/email/notes per row + "Add contact" button. Backend whitelists `contacts` field in `PERMITTED_FIELDS` and validates each row via a Pydantic `Contact` model (`territory_plus_routes.py:43-56`). Empty rows stripped client-side before POST.
+   3. **Care groups filter buttons**: `FranchiseeTerritoryWidget.jsx` (lines 163-175) computes top-12 providers with home counts; `TerritoryHomesList.jsx` (lines 298-329) renders them as click-to-filter pills with a Clear shortcut. Conditional on `plus=true` + at least one provider with a name.
+- **Action item for user**: **REDEPLOY** so production picks up these fixes. Once live, mark a few CQC homes as 'My Client' on Sandra's territory to validate the unmark + provider filter end-to-end (demo account needs a territory polygon for those pills to be visible).
+
+
 ## YouTube OAuth — Unlisted/Private playlist sync (May 31 2026)
 - **Problem solved**: the standard `YOUTUBE_API_KEY` only returns Public playlists. Creative Mojo Ltd has 5 internal training/meeting playlists set to Unlisted on YouTube (Mojo Grow Meetings, Zoom Chats, Project Videos, Technique Training, Dementia Training) which were therefore missing from the portal.
 - **Solution**: added Google OAuth 2.0 flow (scope `youtube.readonly`) so the backend can call the YouTube Data API on behalf of the channel owner using `mine=true`, surfacing Public + Unlisted + Private playlists.
