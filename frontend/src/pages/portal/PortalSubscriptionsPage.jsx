@@ -14,17 +14,18 @@ import {
 import PortalPageHeading from "@/components/portal/PortalPageHeading";
 
 // PRICING — confirmed by Paul:
-//   Every bolt-on is £9.95 / month + VAT, bundle of all four is £34.99
-//   / month + VAT (saves £4.81 vs buying them individually).
-// All exclusive of VAT, billed monthly via the franchisee's existing
-// GoCardless mandate (added as a recurring line to their Xero invoice
-// on admin approval).
+//   Every bolt-on is £10 / month INC VAT. Two automatic bundle tiers
+//   kick in when the franchisee selects multiple:
+//     • Any 3 bolt-ons  →  £25 / month inc VAT  (saves £5)
+//     • All 4 bolt-ons  →  £35 / month inc VAT  (saves £5)
+// Billed monthly via the franchisee's existing GoCardless mandate
+// (added as recurring lines to their Xero invoice on admin approval).
 const BOLT_ONS = [
   {
     key: "invoicing",
     title: "Invoicing",
     icon: Receipt,
-    price: 9.95,
+    price: 10,
     accent: "#10b981",
     blurb: "Issue, send and reconcile your own customer invoices — linked to your contacts list.",
     features: [
@@ -39,7 +40,7 @@ const BOLT_ONS = [
     key: "territory_plus",
     title: "My Territory+",
     icon: MapPin,
-    price: 9.95,
+    price: 10,
     accent: "#0ea5e9",
     recommended: true,
     blurb: "Claim customers as yours, plot them on the map, and run a light CRM on top.",
@@ -55,7 +56,7 @@ const BOLT_ONS = [
     key: "marketing",
     title: "Marketing",
     icon: Megaphone,
-    price: 9.95,
+    price: 10,
     accent: "#f97316",
     blurb: "Send branded e-shots to your own customers from inside the portal.",
     features: [
@@ -70,7 +71,7 @@ const BOLT_ONS = [
     key: "bookings",
     title: "Bookings",
     icon: CalendarClock,
-    price: 9.95,
+    price: 10,
     accent: "#dedd0a",
     comingSoon: true,
     blurb: "Log and manage bookings inside your own calendar — and let customers self-book.",
@@ -84,18 +85,16 @@ const BOLT_ONS = [
   },
 ];
 
-const BUNDLE_PRICE = 34.99;
-const INDIVIDUAL_TOTAL = BOLT_ONS.reduce((s, b) => s + b.price, 0); // £39.80
-const BUNDLE_SAVING = Math.round((INDIVIDUAL_TOTAL - BUNDLE_PRICE) * 100) / 100; // £4.81
-
-// Format a GBP price as "9" + "95p" superscript suffix so the
-// £9.95 reads as a single, large price block (matches the pattern
-// you see on Stripe / OptiSigns pricing pages).
-function splitPrice(value) {
-  const fixed = value.toFixed(2);
-  const [pounds, pence] = fixed.split(".");
-  return { pounds, pence };
-}
+// Tiered bundle pricing — automatically applied based on how many
+// bolt-ons the franchisee ticks. Index = count selected.
+const BUNDLE_PRICES = {
+  0: 0,
+  1: 10,
+  2: 20,  // no bundle discount yet
+  3: 25,  // "Pick any 3" bundle — saves £5
+  4: 35,  // "All four" bundle — saves £5
+};
+const SINGLE_PRICE = 10;
 
 export default function PortalSubscriptionsPage() {
   const ctx = useOutletContext() || {};
@@ -103,7 +102,6 @@ export default function PortalSubscriptionsPage() {
   const modules = profile?.profile?.portal_modules || {};
   // Visual-only selection state. Resets on each visit; not persisted.
   const [selected, setSelected] = useState(() => new Set());
-  const [bundleSelected, setBundleSelected] = useState(false);
 
   const toggle = (key) =>
     setSelected((prev) => {
@@ -112,9 +110,12 @@ export default function PortalSubscriptionsPage() {
       return next;
     });
 
-  const totalMonthly = bundleSelected
-    ? BUNDLE_PRICE
-    : BOLT_ONS.filter((b) => selected.has(b.key)).reduce((s, b) => s + b.price, 0);
+  const selectedCount = selected.size;
+  const totalMonthly = BUNDLE_PRICES[selectedCount] || 0;
+  // Saving = what they'd pay at the single-price rate (£10 each)
+  // minus what the bundle tier actually charges. Only meaningful for
+  // counts >= 3 (where the bundle discount actually kicks in).
+  const savingThisTier = Math.max(0, selectedCount * SINGLE_PRICE - totalMonthly);
 
   return (
     <div className="space-y-8" data-testid="portal-subscriptions-page">
@@ -131,17 +132,24 @@ export default function PortalSubscriptionsPage() {
           Supercharge your franchise with bolt-ons
         </h2>
         <p className="text-stone-600 mt-2 text-sm sm:text-base leading-relaxed max-w-3xl">
-          Add any of the optional modules below to your monthly Creative Mojo subscription. Each bolt-on is billed
-          monthly via your existing GoCardless mandate and shows up as a separate line on your Xero invoice — cancel any
-          time, no minimum term. All prices exclude VAT.
+          Add any of the optional modules below to your monthly Creative Mojo subscription. Each bolt-on is just £10 a
+          month — pick any three for £25 or grab all four for £35. Billed via your existing GoCardless mandate and
+          appears as a separate line on your Xero invoice. Cancel any time, no minimum term. All prices include VAT.
         </p>
+        {/* Bundle ladder — shows the franchisee the tier discounts at a glance. */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-5" data-testid="subs-bundle-ladder">
+          <TierBadge label="1 bolt-on"    price="£10" active={selectedCount === 1} />
+          <TierBadge label="2 bolt-ons"   price="£20" active={selectedCount === 2} />
+          <TierBadge label="Any 3 (save £5)" price="£25" active={selectedCount === 3} highlight />
+          <TierBadge label="All 4 (save £5)" price="£35" active={selectedCount === 4} highlight />
+        </div>
       </div>
 
       {/* Pricing cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5" data-testid="bolt-ons-grid">
         {BOLT_ONS.map((b) => {
           const active = !!modules[b.key];
-          const isSelected = selected.has(b.key) || bundleSelected;
+          const isSelected = selected.has(b.key);
           const Icon = b.icon;
           return (
             <div
@@ -186,18 +194,12 @@ export default function PortalSubscriptionsPage() {
 
               {/* Price */}
               <div className="px-5 py-6 text-center border-b border-stone-100">
-                {(() => {
-                  const p = splitPrice(b.price);
-                  return (
-                    <div className="flex items-start justify-center gap-0.5">
-                      <span className="text-2xl font-black text-stone-950 mt-2">£</span>
-                      <span className="font-display text-6xl font-black text-stone-950 leading-none tracking-tight">{p.pounds}</span>
-                      <span className="text-xl font-black text-stone-600 mt-2">.{p.pence}</span>
-                    </div>
-                  );
-                })()}
+                <div className="flex items-start justify-center gap-0.5">
+                  <span className="text-2xl font-black text-stone-950 mt-2">£</span>
+                  <span className="font-display text-6xl font-black text-stone-950 leading-none tracking-tight">{b.price}</span>
+                </div>
                 <div className="text-xs text-stone-500 mt-2 uppercase tracking-wider font-bold">
-                  per month <span className="text-stone-400">+ VAT</span>
+                  per month <span className="text-stone-400">inc VAT</span>
                 </div>
                 <div className="mt-3 text-[11px] text-stone-500 leading-relaxed">{b.blurb}</div>
               </div>
@@ -225,8 +227,6 @@ export default function PortalSubscriptionsPage() {
                   className={`flex items-center gap-2.5 px-3 py-2.5 border rounded-lg cursor-pointer transition-colors text-sm font-medium ${
                     active
                       ? "bg-emerald-50 border-emerald-200 text-emerald-900 cursor-not-allowed"
-                      : bundleSelected
-                      ? "bg-stone-100 border-stone-200 text-stone-500 cursor-not-allowed"
                       : isSelected
                       ? "bg-stone-950 text-white border-stone-950"
                       : "bg-stone-50 border-stone-200 text-stone-700 hover:bg-stone-100"
@@ -235,14 +235,13 @@ export default function PortalSubscriptionsPage() {
                   <input
                     type="checkbox"
                     checked={active || isSelected}
-                    disabled={active || bundleSelected}
+                    disabled={active}
                     onChange={() => toggle(b.key)}
                     data-testid={`bolt-on-check-${b.key}`}
                     className="w-4 h-4 rounded accent-stone-950"
                   />
                   <span className="select-none">
                     {active ? "Included in your plan"
-                      : bundleSelected ? "In bundle"
                       : isSelected ? "Selected"
                       : "Select"}
                   </span>
@@ -269,32 +268,48 @@ export default function PortalSubscriptionsPage() {
         })}
       </div>
 
-      {/* Bundle deal */}
+      {/* Dynamic pricing summary — bundle discounts kick in automatically
+          as soon as the franchisee ticks 3 or 4 bolt-ons. */}
       <div
         data-testid="bolt-on-bundle"
-        className={`relative rounded-2xl p-6 sm:p-8 flex flex-col lg:flex-row items-start lg:items-center gap-6 transition-all ${
-          bundleSelected
-            ? "bg-stone-950 text-white border-2 border-[#dedd0a] shadow-xl"
-            : "bg-gradient-to-br from-stone-950 to-stone-800 text-white border-2 border-stone-800"
-        }`}
+        className="relative rounded-2xl p-6 sm:p-8 flex flex-col lg:flex-row items-start lg:items-center gap-6 bg-gradient-to-br from-stone-950 to-stone-800 text-white border-2 border-stone-800"
       >
-        <div className="absolute -top-3 left-6 sm:left-8 px-3 py-1 bg-[#dedd0a] text-stone-950 text-[10px] font-black uppercase tracking-widest rounded-full inline-flex items-center gap-1">
-          <Package className="w-3 h-3" /> Best value · Save £{BUNDLE_SAVING.toFixed(2)}/mo
-        </div>
+        {selectedCount >= 3 && (
+          <div className="absolute -top-3 left-6 sm:left-8 px-3 py-1 bg-[#dedd0a] text-stone-950 text-[10px] font-black uppercase tracking-widest rounded-full inline-flex items-center gap-1">
+            <Package className="w-3 h-3" /> Bundle applied · Save £{savingThisTier}/mo
+          </div>
+        )}
 
         <div className="flex-1 min-w-0">
-          <h3 className="font-display text-2xl sm:text-3xl font-black tracking-tight">All four bolt-ons</h3>
+          <h3 className="font-display text-2xl sm:text-3xl font-black tracking-tight">
+            {selectedCount === 0 ? "Build your bundle" :
+              selectedCount === 4 ? "All four bolt-ons unlocked" :
+              selectedCount === 3 ? "3-bolt-on bundle unlocked" :
+              `${selectedCount} bolt-on${selectedCount > 1 ? "s" : ""} selected`}
+          </h3>
           <p className="text-stone-300 mt-1.5 text-sm sm:text-base leading-relaxed max-w-2xl">
-            Get the full Creative Mojo toolkit — Invoicing, My Territory+, Marketing, and Bookings — bundled together
-            and save £{BUNDLE_SAVING.toFixed(2)} every month vs buying them individually.
+            {selectedCount === 0
+              ? "Tick any of the bolt-ons above. Pick any three for £25 a month or grab all four for £35 — discounts apply automatically."
+              : selectedCount === 1
+              ? "Add two more bolt-ons to unlock our £25 bundle (any 3) or all four for £35 — discounts apply automatically."
+              : selectedCount === 2
+              ? "Add one more to unlock the 3-bolt-on bundle at £25 a month — save £5."
+              : selectedCount === 3
+              ? "Nice — add the fourth bolt-on for just £10 more and we'll lock in the £35 all-four bundle."
+              : "You've selected the full Creative Mojo toolkit at the best price we offer."}
           </p>
           <div className="flex flex-wrap gap-2 mt-4">
             {BOLT_ONS.map((b) => {
               const Icon = b.icon;
+              const on = selected.has(b.key) || !!modules[b.key];
               return (
                 <span
                   key={b.key}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white/10 border border-white/15 rounded-full text-[11px] font-bold uppercase tracking-wider"
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 border rounded-full text-[11px] font-bold uppercase tracking-wider ${
+                    on
+                      ? "bg-[#dedd0a] border-[#dedd0a] text-stone-950"
+                      : "bg-white/10 border-white/15 text-white/70"
+                  }`}
                 >
                   <Icon className="w-3 h-3" /> {b.title}
                 </span>
@@ -305,43 +320,17 @@ export default function PortalSubscriptionsPage() {
 
         <div className="shrink-0 lg:text-right">
           <div className="flex items-baseline gap-2 lg:justify-end">
-            <span className="text-sm font-bold text-stone-400 line-through">£{INDIVIDUAL_TOTAL.toFixed(2)}</span>
-            {(() => {
-              const p = splitPrice(BUNDLE_PRICE);
-              return (
-                <div className="flex items-start gap-0.5">
-                  <span className="text-xl font-black mt-1">£</span>
-                  <span className="font-display text-5xl sm:text-6xl font-black leading-none tracking-tight">{p.pounds}</span>
-                  <span className="text-base font-black text-stone-300 mt-2">.{p.pence}</span>
-                </div>
-              );
-            })()}
+            {savingThisTier > 0 && (
+              <span className="text-sm font-bold text-stone-400 line-through">£{selectedCount * SINGLE_PRICE}</span>
+            )}
+            <div className="flex items-start gap-0.5">
+              <span className="text-xl font-black mt-1">£</span>
+              <span className="font-display text-5xl sm:text-6xl font-black leading-none tracking-tight">{totalMonthly}</span>
+            </div>
           </div>
           <div className="text-[11px] text-stone-400 mt-1.5 uppercase tracking-wider font-bold lg:text-right">
-            per month + VAT
+            per month inc VAT
           </div>
-
-          <label
-            className={`mt-4 flex items-center gap-2.5 px-4 py-3 border rounded-lg cursor-pointer transition-colors text-sm font-medium ${
-              bundleSelected
-                ? "bg-[#dedd0a] text-stone-950 border-[#dedd0a]"
-                : "bg-white/10 text-white border-white/20 hover:bg-white/15"
-            }`}
-          >
-            <input
-              type="checkbox"
-              checked={bundleSelected}
-              onChange={() => {
-                setBundleSelected((v) => !v);
-                if (!bundleSelected) setSelected(new Set());
-              }}
-              data-testid="bolt-on-bundle-check"
-              className="w-4 h-4 rounded accent-stone-950"
-            />
-            <span className="select-none">
-              {bundleSelected ? "Bundle selected" : "Select the full bundle"}
-            </span>
-          </label>
         </div>
       </div>
 
@@ -355,7 +344,7 @@ export default function PortalSubscriptionsPage() {
           <div className="text-right">
             <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Selected total</div>
             <div className="font-display text-3xl font-black tracking-tight text-stone-950" data-testid="subs-total">
-              £{totalMonthly.toFixed(2)} <span className="text-sm text-stone-500 font-bold">/ month + VAT</span>
+              £{totalMonthly} <span className="text-sm text-stone-500 font-bold">/ month inc VAT</span>
             </div>
           </div>
           <button
@@ -368,6 +357,26 @@ export default function PortalSubscriptionsPage() {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Small tier-badge for the bundle ladder. Glows when its row matches
+// the franchisee's current selection count.
+function TierBadge({ label, price, active, highlight }) {
+  return (
+    <div
+      data-testid={`tier-badge-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+      className={`px-3 py-2 rounded-lg border text-center transition-all ${
+        active
+          ? "bg-stone-950 text-white border-stone-950 shadow-md"
+          : highlight
+          ? "bg-[#dedd0a]/15 border-[#dedd0a]/60 text-stone-800"
+          : "bg-stone-50 border-stone-200 text-stone-700"
+      }`}
+    >
+      <div className="font-display text-lg font-black leading-none">{price}</div>
+      <div className={`text-[10px] uppercase tracking-wider font-bold mt-1 ${active ? "text-stone-300" : "text-stone-500"}`}>{label}</div>
     </div>
   );
 }
