@@ -453,6 +453,14 @@ function EventModal({ event, defaults, onClose, onSaved, onDelete }) {
   const [location, setLocation] = useState(event?.location || "");
   const [meetingUrl, setMeetingUrl] = useState(event?.meeting_url || "");
   const [showInPortal, setShowInPortal] = useState(!!event?.show_in_portal);
+  // Audience scope — "all" (default, visible to every franchisee) or
+  // "selected" (only the franchisees in selectedFranchiseeIds see it).
+  const initialIds = Array.isArray(event?.portal_franchisee_ids)
+    ? event.portal_franchisee_ids : [];
+  const [audienceMode, setAudienceMode] = useState(initialIds.length ? "selected" : "all");
+  const [selectedFranchiseeIds, setSelectedFranchiseeIds] = useState(initialIds);
+  const [franchiseesList, setFranchiseesList] = useState([]);
+  const [franchiseesLoading, setFranchiseesLoading] = useState(false);
   const [allDay, setAllDay] = useState(!!event?.all_day);
   const [start, setStart] = useState(event?.start ? event.start.slice(0, 16) : (defaults?.start || todayLocal()));
   const [end, setEnd] = useState(event?.end ? event.end.slice(0, 16) : (defaults?.end || todayLocal(60)));
@@ -481,6 +489,35 @@ function EventModal({ event, defaults, onClose, onSaved, onDelete }) {
     setStart(newStart);
   };
 
+  // Lazy-fetch the franchisee list the first time the admin switches
+  // into the "selected franchisees only" mode. Cached for the modal's
+  // lifetime so the picker is snappy.
+  useEffect(() => {
+    if (audienceMode !== "selected" || franchiseesList.length || franchiseesLoading) return;
+    setFranchiseesLoading(true);
+    api.get("/franchisees", { params: { lifecycle: "active", limit: 1000 } })
+      .then(({ data }) => {
+        const rows = Array.isArray(data) ? data : (data?.items || []);
+        // Keep this list compact — only id + display name + organisation.
+        const slim = rows.map((f) => ({
+          id: f.id,
+          name: f.full_name || [f.first_name, f.last_name].filter(Boolean).join(" ") || f.organisation || f.email || f.mojo_email || "—",
+          organisation: f.organisation || "",
+          franchise_number: f.franchise_number || "",
+        }));
+        slim.sort((a, b) => (a.organisation || a.name || "").localeCompare(b.organisation || b.name || ""));
+        setFranchiseesList(slim);
+      })
+      .catch(() => { /* fall through — picker will show "Couldn't load" hint */ })
+      .finally(() => setFranchiseesLoading(false));
+  }, [audienceMode, franchiseesList.length, franchiseesLoading]);
+
+  const toggleFranchiseeId = (id) => {
+    setSelectedFranchiseeIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
   const save = async () => {
     setErr("");
     if (!title.trim()) { setErr("Title is required."); return; }
@@ -500,12 +537,18 @@ function EventModal({ event, defaults, onClose, onSaved, onDelete }) {
     }
     setSaving(true);
     try {
+      // Audience scope — empty list when "show in portal" is off OR
+      // when "all" is selected. The backend treats null/empty as "all
+      // franchisees" (backwards-compatible with existing events).
+      const portalIds = (showInPortal && audienceMode === "selected")
+        ? selectedFranchiseeIds : [];
       const body = {
         title: title.trim(),
         description: description || null,
         location: location || null,
         meeting_url: meetingUrl ? meetingUrl.trim() : null,
         show_in_portal: showInPortal,
+        portal_franchisee_ids: portalIds,
         all_day: allDay,
         start: allDay ? start.slice(0, 10) : new Date(start).toISOString(),
         end: allDay ? end.slice(0, 10) : new Date(end).toISOString(),
@@ -591,11 +634,103 @@ function EventModal({ event, defaults, onClose, onSaved, onDelete }) {
               </div>
               <div className="text-[11px] text-stone-600 mt-0.5">
                 {showInPortal
-                  ? "This event will appear in every franchisee's Events panel — including the meeting link if you've added one."
+                  ? "This event will appear in the franchisee portal — see the audience options below."
                   : "Admin-only — won't appear on the franchisee portal."}
               </div>
             </div>
           </label>
+
+          {/* Audience scope — only shown once "show in portal" is on. */}
+          {showInPortal && (
+            <div className="ml-3 pl-4 border-l-2 border-emerald-200 space-y-3" data-testid="cal-portal-audience">
+              <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Who can see this on the portal?</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <label className={`flex items-start gap-2.5 p-3 border rounded-lg cursor-pointer transition text-sm ${audienceMode === "all" ? "border-stone-950 bg-stone-50 ring-1 ring-stone-950" : "border-stone-200 hover:border-stone-300 bg-white"}`}>
+                  <input
+                    type="radio"
+                    name="cal-audience"
+                    checked={audienceMode === "all"}
+                    onChange={() => setAudienceMode("all")}
+                    data-testid="cal-audience-all"
+                    className="mt-0.5 accent-stone-950"
+                  />
+                  <div>
+                    <div className="font-bold text-stone-950">All franchisees</div>
+                    <div className="text-[11px] text-stone-600 mt-0.5">Default. Visible to every franchisee with portal access.</div>
+                  </div>
+                </label>
+                <label className={`flex items-start gap-2.5 p-3 border rounded-lg cursor-pointer transition text-sm ${audienceMode === "selected" ? "border-stone-950 bg-stone-50 ring-1 ring-stone-950" : "border-stone-200 hover:border-stone-300 bg-white"}`}>
+                  <input
+                    type="radio"
+                    name="cal-audience"
+                    checked={audienceMode === "selected"}
+                    onChange={() => setAudienceMode("selected")}
+                    data-testid="cal-audience-selected"
+                    className="mt-0.5 accent-stone-950"
+                  />
+                  <div>
+                    <div className="font-bold text-stone-950">Selected franchisees only</div>
+                    <div className="text-[11px] text-stone-600 mt-0.5">Tick the franchisees who should see this event.</div>
+                  </div>
+                </label>
+              </div>
+
+              {audienceMode === "selected" && (
+                <div className="bg-white border border-stone-200 rounded-lg" data-testid="cal-franchisee-picker">
+                  <div className="px-3 py-2 border-b border-stone-100 flex items-center justify-between gap-2">
+                    <div className="text-[11px] font-bold text-stone-700">
+                      {selectedFranchiseeIds.length === 0
+                        ? "No franchisees selected yet"
+                        : `${selectedFranchiseeIds.length} selected`}
+                    </div>
+                    {selectedFranchiseeIds.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedFranchiseeIds([])}
+                        className="text-[11px] text-stone-500 hover:text-stone-900 underline"
+                        data-testid="cal-franchisee-clear"
+                      >
+                        Clear all
+                      </button>
+                    )}
+                  </div>
+                  {franchiseesLoading ? (
+                    <div className="px-3 py-6 text-center text-stone-500 text-xs"><Loader2 className="w-4 h-4 animate-spin inline" /> Loading franchisees…</div>
+                  ) : franchiseesList.length === 0 ? (
+                    <div className="px-3 py-6 text-center text-stone-500 text-xs">Couldn't load franchisees. Save anyway — defaults to all.</div>
+                  ) : (
+                    <div className="max-h-56 overflow-y-auto divide-y divide-stone-100">
+                      {franchiseesList.map((f) => {
+                        const checked = selectedFranchiseeIds.includes(f.id);
+                        return (
+                          <label
+                            key={f.id}
+                            className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer text-sm hover:bg-stone-50 ${checked ? "bg-emerald-50/60" : ""}`}
+                            data-testid={`cal-franchisee-opt-${f.id}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleFranchiseeId(f.id)}
+                              className="accent-emerald-600"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="text-stone-950 font-medium truncate">{f.organisation || f.name}</div>
+                              <div className="text-[11px] text-stone-500 truncate">
+                                {f.franchise_number ? `#${f.franchise_number}` : ""}
+                                {f.franchise_number && f.organisation ? " · " : ""}
+                                {f.organisation ? f.name : ""}
+                              </div>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
           <div>
             <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-1">Description (optional)</label>
             <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} data-testid="cal-description"

@@ -36,7 +36,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, List
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -87,6 +87,11 @@ class EventIn(BaseModel):
     all_day: bool = False
     meeting_url: Optional[str] = None  # e.g. MS Teams join URL
     show_in_portal: bool = False  # surfaces event on the franchisee portal
+    # Optional audience restriction. Empty / None = visible to every
+    # franchisee (matches the existing "all" behaviour). A list of
+    # franchisee IDs = only those franchisees see the event on their
+    # portal. Admins always see every event regardless.
+    portal_franchisee_ids: Optional[List[str]] = None
 
 
 def _shape_event(e: dict) -> dict:
@@ -94,6 +99,10 @@ def _shape_event(e: dict) -> dict:
     start = e.get("start") or {}
     end = e.get("end") or {}
     shared = (e.get("extendedProperties") or {}).get("shared", {})
+    # portal_franchisee_ids round-trips through Google as a CSV string
+    # (Google's extendedProperties only accept string values).
+    raw_ids = shared.get("portal_franchisee_ids") or ""
+    franchisee_ids = [s for s in (x.strip() for x in raw_ids.split(",")) if s]
     return {
         "id": e.get("id"),
         "title": e.get("summary") or "(no title)",
@@ -107,6 +116,7 @@ def _shape_event(e: dict) -> dict:
         # extended-properties (the API only accepts string values there).
         # Anything truthy except "0" / "false" / "" is treated as on.
         "show_in_portal": str(shared.get("show_in_portal") or "").lower() in ("1", "true", "yes"),
+        "portal_franchisee_ids": franchisee_ids,
         "html_link": e.get("htmlLink"),
         "creator_email": (e.get("creator") or {}).get("email"),
         "status": e.get("status"),
@@ -274,7 +284,7 @@ def attach(api, db, require_role, get_current_user=None):
         async def list_portal_events(
             days_ahead: int = Query(60, ge=1, le=365),
             days_back: int = Query(0, ge=0, le=30),
-            _: dict = Depends(get_current_user),
+            user: dict = Depends(get_current_user),
         ):
             try:
                 _env_or_raise()
@@ -328,7 +338,23 @@ def attach(api, db, require_role, get_current_user=None):
                     "Google Calendar API error on portal-events: %s", exc,
                 )
                 return {"events": [], "count": 0, "connected": False}
-            events = [_shape_event(e) for e in res.get("items", [])]
+            # Per-franchisee audience filter. Admins see everything;
+            # franchisees only see events that are either (a) untargeted
+            # (visible to all) or (b) explicitly targeted at them.
+            role = (user or {}).get("role")
+            my_fid = (user or {}).get("franchisee_id")
+            events: list = []
+            for raw in res.get("items", []):
+                shaped = _shape_event(raw)
+                ids = shaped.get("portal_franchisee_ids") or []
+                if role == "admin":
+                    events.append(shaped)
+                elif not ids:
+                    # Untargeted event → everyone sees it.
+                    events.append(shaped)
+                elif my_fid and my_fid in ids:
+                    events.append(shaped)
+                # else: targeted event that doesn't include this user — skip
             return {"events": events, "count": len(events), "connected": True}
 
     # ---------------------------------------------------------- create
@@ -348,12 +374,18 @@ def attach(api, db, require_role, get_current_user=None):
         else:
             ev["start"] = {"dateTime": body.start, "timeZone": "Europe/London"}
             ev["end"] = {"dateTime": body.end, "timeZone": "Europe/London"}
-        if body.meeting_url or body.show_in_portal:
+        if body.meeting_url or body.show_in_portal or body.portal_franchisee_ids:
             shared: dict = {}
             if body.meeting_url:
                 shared["meeting_url"] = body.meeting_url
             if body.show_in_portal:
                 shared["show_in_portal"] = "1"
+            # Audience scope — comma-joined IDs into a single shared
+            # string. Empty / null means "all franchisees" (no key set).
+            if body.portal_franchisee_ids:
+                clean = [fid.strip() for fid in body.portal_franchisee_ids if fid and fid.strip()]
+                if clean:
+                    shared["portal_franchisee_ids"] = ",".join(clean)
             ev["extendedProperties"] = {"shared": shared}
         if body.meeting_url:
             # Also tack it onto the description so it survives even if the
@@ -407,8 +439,27 @@ def attach(api, db, require_role, get_current_user=None):
                 shared["show_in_portal"] = "1"
             else:
                 shared.pop("show_in_portal", None)
+                # Also clear any audience restriction — it has no meaning
+                # once the event no longer surfaces on the portal.
+                shared.pop("portal_franchisee_ids", None)
                 # An empty shared dict + Google's strict schema → just
                 # remove the wrapper too if nothing's left.
+                if not shared:
+                    current["extendedProperties"].pop("shared", None)
+                if not current.get("extendedProperties"):
+                    current.pop("extendedProperties", None)
+        if "portal_franchisee_ids" in body:
+            # Audience update — accepts an explicit list (scope to those
+            # franchisees), an empty list / None (visible to all
+            # franchisees again). Only respected when show_in_portal is
+            # still on after this patch.
+            ids = body.get("portal_franchisee_ids") or []
+            clean = [str(fid).strip() for fid in ids if str(fid).strip()] if isinstance(ids, list) else []
+            shared = current.setdefault("extendedProperties", {}).setdefault("shared", {})
+            if clean:
+                shared["portal_franchisee_ids"] = ",".join(clean)
+            else:
+                shared.pop("portal_franchisee_ids", None)
                 if not shared:
                     current["extendedProperties"].pop("shared", None)
                 if not current.get("extendedProperties"):
