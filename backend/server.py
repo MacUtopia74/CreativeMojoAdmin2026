@@ -1416,6 +1416,13 @@ async def admin_seed_demo_franchisee(
     }}
 
     now = datetime.now(timezone.utc).isoformat()
+    # Copy Sandra's profile photo onto the demo franchisee so the portal
+    # demo page shows a real headshot (rather than an empty avatar).
+    # Sandra is the canonical "happy franchisee" for demo purposes.
+    sandra = await db.franchisees.find_one(
+        {"mojo_email": "sandra@creativemojo.co.uk"},
+        {"_id": 0, "photo_url": 1, "photos": 1},
+    ) or {}
     demo_franchisee = {
         "first_name": "Creative Mojo",
         "last_name": "Demo",
@@ -1438,6 +1445,12 @@ async def admin_seed_demo_franchisee(
         "tags": ["Demo"],
         "updated_at": now,
     }
+    # Only carry over photo fields when Sandra actually has one set — we
+    # never want to wipe an admin-uploaded demo photo on re-seed.
+    if sandra.get("photo_url"):
+        demo_franchisee["photo_url"] = sandra["photo_url"]
+    if sandra.get("photos"):
+        demo_franchisee["photos"] = sandra["photos"]
 
     # Upsert franchisee — match by mojo_email so re-running rewrites the same row.
     existing = await db.franchisees.find_one(
