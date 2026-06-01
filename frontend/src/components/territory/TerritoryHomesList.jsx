@@ -30,9 +30,12 @@ function HomeRow({ home, idx, isOpen, onToggle, onZoom, isMyClient, onMarkClient
       className={`border-b border-stone-200 last:border-b-0 ${isMyClient ? "bg-[#fcfbd8]" : ""} ${dimmed ? "opacity-40" : ""}`}
       data-testid={`home-row-${idx + 1}`}
     >
-      <button
+      <div
         onClick={onToggle}
-        className={`w-full flex items-center gap-3 px-3 py-3 text-left group transition-colors ${isOpen ? "" : "hover:bg-stone-50"}`}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); } }}
+        role="button"
+        tabIndex={0}
+        className={`w-full flex items-center gap-3 px-3 py-3 text-left group transition-colors cursor-pointer ${isOpen ? "" : "hover:bg-stone-50"}`}
         style={isOpen ? { backgroundColor: "#f6f6cd" } : undefined}
       >
         <span className={`w-7 h-7 rounded-full text-xs font-bold flex items-center justify-center tabular-nums shrink-0 ${isMyClient ? "bg-[#dddd16] text-stone-950 border border-stone-950" : "bg-stone-950 text-white"}`}>
@@ -83,7 +86,7 @@ function HomeRow({ home, idx, isOpen, onToggle, onZoom, isMyClient, onMarkClient
         }`} aria-label={isOpen ? "Collapse details" : "Show details"}>
           {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
         </span>
-      </button>
+      </div>
       {isOpen && (
         <div className="px-3 pb-4 pt-1 grid sm:grid-cols-2 gap-x-6 gap-y-2 text-sm bg-stone-50" data-testid={`home-detail-${idx + 1}`}>
           <Detail icon={MapPin} label="Address">{address || "—"}</Detail>
@@ -573,9 +576,12 @@ function CustomClientRow({ client, onEdit, onZoom }) {
   const webHref = client.website ? (client.website.startsWith("http") ? client.website : `https://${client.website}`) : null;
   return (
     <div className="border-b border-stone-200 last:border-b-0 bg-[#fcfbd8]" data-testid={`client-row-${client.id}`}>
-      <button
+      <div
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center gap-3 px-3 py-3 text-left group"
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen((o) => !o); } }}
+        role="button"
+        tabIndex={0}
+        className="w-full flex items-center gap-3 px-3 py-3 text-left group cursor-pointer"
       >
         <span className="w-7 h-7 rounded-full bg-[#dddd16] text-stone-950 border border-stone-950 text-[14px] font-black flex items-center justify-center shrink-0">★</span>
         <div className="flex-1 min-w-0">
@@ -601,7 +607,7 @@ function CustomClientRow({ client, onEdit, onZoom }) {
         }`}>
           {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
         </span>
-      </button>
+      </div>
       {open && (
         <div className="px-3 pb-4 pt-1 grid sm:grid-cols-2 gap-x-6 gap-y-2 text-sm bg-white/70">
           <Detail icon={MapPin} label="Address">{client.address || client.postcode || "—"}</Detail>
