@@ -461,6 +461,7 @@ function EventModal({ event, defaults, onClose, onSaved, onDelete }) {
   const [selectedFranchiseeIds, setSelectedFranchiseeIds] = useState(initialIds);
   const [franchiseesList, setFranchiseesList] = useState([]);
   const [franchiseesLoading, setFranchiseesLoading] = useState(false);
+  const [franchiseeSearch, setFranchiseeSearch] = useState("");
   const [allDay, setAllDay] = useState(!!event?.all_day);
   const [start, setStart] = useState(event?.start ? event.start.slice(0, 16) : (defaults?.start || todayLocal()));
   const [end, setEnd] = useState(event?.end ? event.end.slice(0, 16) : (defaults?.end || todayLocal(60)));
@@ -507,8 +508,18 @@ function EventModal({ event, defaults, onClose, onSaved, onDelete }) {
             name: f.full_name || [f.first_name, f.last_name].filter(Boolean).join(" ") || f.organisation || f.email || f.mojo_email || "—",
             organisation: f.organisation || "",
             franchise_number: f.franchise_number || "",
+            email: f.mojo_email || f.email || "",
+            // Flag demo franchisees so the picker can badge them — they're
+            // popular test targets but easy to miss in a long A-Z list.
+            is_demo: Array.isArray(f.tags) && f.tags.some((t) => String(t).toLowerCase() === "demo"),
           }));
-        slim.sort((a, b) => (a.organisation || a.name || "").localeCompare(b.organisation || b.name || ""));
+        // Pin demo franchisees to the top of the list so they're always
+        // one click away from the admin's eye-line.
+        slim.sort((a, b) => {
+          if (a.is_demo && !b.is_demo) return -1;
+          if (b.is_demo && !a.is_demo) return 1;
+          return (a.organisation || a.name || "").localeCompare(b.organisation || b.name || "");
+        });
         setFranchiseesList(slim);
       })
       .catch(() => { /* fall through — picker will show "Couldn't load" hint */ })
@@ -697,39 +708,69 @@ function EventModal({ event, defaults, onClose, onSaved, onDelete }) {
                       </button>
                     )}
                   </div>
+                  {/* Search bar — filters by organisation, name, franchise number, or email. */}
+                  {franchiseesList.length > 0 && (
+                    <div className="px-3 py-2 border-b border-stone-100">
+                      <input
+                        type="search"
+                        value={franchiseeSearch}
+                        onChange={(e) => setFranchiseeSearch(e.target.value)}
+                        placeholder="Search by organisation, name, #, or email…"
+                        data-testid="cal-franchisee-search"
+                        className="w-full px-2.5 py-1.5 text-xs border border-stone-300 rounded focus:outline-none focus:border-stone-950"
+                      />
+                    </div>
+                  )}
                   {franchiseesLoading ? (
                     <div className="px-3 py-6 text-center text-stone-500 text-xs"><Loader2 className="w-4 h-4 animate-spin inline" /> Loading franchisees…</div>
                   ) : franchiseesList.length === 0 ? (
                     <div className="px-3 py-6 text-center text-stone-500 text-xs">Couldn't load franchisees. Save anyway — defaults to all.</div>
-                  ) : (
-                    <div className="max-h-56 overflow-y-auto divide-y divide-stone-100">
-                      {franchiseesList.map((f) => {
-                        const checked = selectedFranchiseeIds.includes(f.id);
-                        return (
-                          <label
-                            key={f.id}
-                            className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer text-sm hover:bg-stone-50 ${checked ? "bg-emerald-50/60" : ""}`}
-                            data-testid={`cal-franchisee-opt-${f.id}`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => toggleFranchiseeId(f.id)}
-                              className="accent-emerald-600"
-                            />
-                            <div className="flex-1 min-w-0">
-                              <div className="text-stone-950 font-medium truncate">{f.organisation || f.name}</div>
-                              <div className="text-[11px] text-stone-500 truncate">
-                                {f.franchise_number ? `#${f.franchise_number}` : ""}
-                                {f.franchise_number && f.organisation ? " · " : ""}
-                                {f.organisation ? f.name : ""}
+                  ) : (() => {
+                    const q = franchiseeSearch.trim().toLowerCase();
+                    const filtered = q ? franchiseesList.filter((f) =>
+                      (f.organisation || "").toLowerCase().includes(q)
+                      || (f.name || "").toLowerCase().includes(q)
+                      || (f.franchise_number || "").toLowerCase().includes(q)
+                      || (f.email || "").toLowerCase().includes(q)
+                    ) : franchiseesList;
+                    if (filtered.length === 0) {
+                      return <div className="px-3 py-6 text-center text-stone-500 text-xs">No franchisees match "{franchiseeSearch}".</div>;
+                    }
+                    return (
+                      <div className="max-h-56 overflow-y-auto divide-y divide-stone-100">
+                        {filtered.map((f) => {
+                          const checked = selectedFranchiseeIds.includes(f.id);
+                          return (
+                            <label
+                              key={f.id}
+                              className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer text-sm hover:bg-stone-50 ${checked ? "bg-emerald-50/60" : ""}`}
+                              data-testid={`cal-franchisee-opt-${f.id}`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleFranchiseeId(f.id)}
+                                className="accent-emerald-600"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <div className="text-stone-950 font-medium truncate flex items-center gap-1.5">
+                                  <span className="truncate">{f.organisation || f.name}</span>
+                                  {f.is_demo && (
+                                    <span className="shrink-0 text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded bg-[#dedd0a] text-stone-950">Demo</span>
+                                  )}
+                                </div>
+                                <div className="text-[11px] text-stone-500 truncate">
+                                  {f.franchise_number ? `#${f.franchise_number}` : ""}
+                                  {f.franchise_number && f.organisation ? " · " : ""}
+                                  {f.organisation ? f.name : ""}
+                                </div>
                               </div>
-                            </div>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  )}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>
