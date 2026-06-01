@@ -202,20 +202,51 @@ export default function FranchiseeFilesPanel({ franchisee, canUpload = true, loc
         )}
       </div>
 
-      {/* Breadcrumb (hidden in search mode) */}
+      {/* Breadcrumb (hidden in search mode) — pill buttons so it's clear
+          each segment is a clickable shortcut back up the tree. */}
       {!search && (
-        <div className="flex items-center gap-1.5 text-sm text-stone-600 flex-wrap" data-testid="franchisee-files-breadcrumb">
-          <button onClick={() => setPrefix("")} className="hover:underline font-bold text-stone-900">{breadcrumbHome}</button>
-          {segs.map((s, i) => {
-            const upto = segs.slice(0, i + 1).join("/") + "/";
+        <nav
+          aria-label="Folder path"
+          data-testid="franchisee-files-breadcrumb"
+          className="flex items-center gap-2 flex-wrap bg-stone-50 border border-stone-200 rounded-2xl px-3 py-2.5"
+        >
+          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-500 px-1 hidden sm:inline">Folder</span>
+          {(() => {
+            const pillBase = "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-stone-950";
+            const pillInactive = "bg-white border-stone-300 text-stone-700 hover:bg-stone-100 hover:border-stone-950 hover:text-stone-950";
+            const pillActive = "bg-stone-950 border-stone-950 text-white cursor-default";
+            const atRoot = segs.length === 0;
             return (
-              <span key={i} className="flex items-center gap-1.5">
-                <ChevronRight className="w-3.5 h-3.5 text-stone-400" />
-                <button onClick={() => setPrefix(upto)} className="hover:underline">{prettyFolderName(s)}</button>
-              </span>
+              <>
+                <button
+                  type="button"
+                  onClick={() => atRoot ? null : setPrefix("")}
+                  aria-current={atRoot ? "page" : undefined}
+                  className={`${pillBase} ${atRoot ? pillActive : pillInactive}`}
+                >
+                  <Folder className="w-3.5 h-3.5" /> {breadcrumbHome}
+                </button>
+                {segs.map((s, i) => {
+                  const upto = segs.slice(0, i + 1).join("/") + "/";
+                  const isLast = i === segs.length - 1;
+                  return (
+                    <span key={i} className="flex items-center gap-2">
+                      <ChevronRight className="w-4 h-4 text-stone-400" />
+                      <button
+                        type="button"
+                        onClick={() => isLast ? null : setPrefix(upto)}
+                        aria-current={isLast ? "page" : undefined}
+                        className={`${pillBase} ${isLast ? pillActive : pillInactive}`}
+                      >
+                        {prettyFolderName(s)}
+                      </button>
+                    </span>
+                  );
+                })}
+              </>
             );
-          })}
-        </div>
+          })()}
+        </nav>
       )}
 
       {/* Loading / errors */}

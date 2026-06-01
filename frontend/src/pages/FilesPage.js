@@ -79,24 +79,49 @@ function ScopeBadge({ scope }) {
 
 function Breadcrumb({ prefix, onJump }) {
   const segs = useMemo(() => prefix.split("/").filter(Boolean), [prefix]);
+  // Each segment is rendered as a clickable pill so it's obvious you can
+  // tap any level to jump back. Active (last) segment is filled dark to
+  // anchor the user's location, prior segments are outlined and hover to
+  // a brand-green tint.
+  const pillBase =
+    "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#14532D]";
+  const pillInactive = "bg-white border-stone-300 text-stone-700 hover:bg-[#14532D]/5 hover:border-[#14532D] hover:text-[#14532D]";
+  const pillActive = "bg-stone-950 border-stone-950 text-white cursor-default";
+  const atRoot = segs.length === 0;
   return (
-    <div className="flex items-center gap-2 flex-wrap" data-testid="files-breadcrumb">
-      <Folder className="w-4 h-4 text-[#14532D] shrink-0" />
-      <button onClick={() => onJump("")} className="font-display text-xl text-stone-950 hover:underline">
+    <nav
+      aria-label="Folder path"
+      data-testid="files-breadcrumb"
+      className="flex items-center gap-2 flex-wrap bg-stone-50 border border-stone-200 rounded-2xl px-3 py-2.5"
+    >
+      <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-500 px-1 hidden sm:inline">Folder</span>
+      <button
+        type="button"
+        onClick={() => atRoot ? null : onJump("")}
+        aria-current={atRoot ? "page" : undefined}
+        className={`${pillBase} ${atRoot ? pillActive : pillInactive}`}
+      >
+        <Folder className="w-4 h-4" />
         All Files
       </button>
       {segs.map((seg, i) => {
         const upto = segs.slice(0, i + 1).join("/") + "/";
+        const isLast = i === segs.length - 1;
         return (
           <span key={i} className="flex items-center gap-2">
             <ChevronRight className="w-4 h-4 text-stone-400" />
-            <button onClick={() => onJump(upto)} className="font-display text-xl text-stone-700 hover:text-stone-950 hover:underline">
+            <button
+              type="button"
+              onClick={() => isLast ? null : onJump(upto)}
+              aria-current={isLast ? "page" : undefined}
+              className={`${pillBase} ${isLast ? pillActive : pillInactive}`}
+            >
               {prettyFolderName(seg)}
             </button>
           </span>
         );
       })}
-    </div>
+    </nav>
   );
 }
 
