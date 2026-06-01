@@ -43,6 +43,17 @@ export default function TerritoryMap({
   basemap = "light",        // "light" | "streets" — toggleable basemap. Streets
                             //   shows full road network + labels; light is the
                             //   minimalist default that keeps the territory pop.
+  clientHomeKeys = null,    // optional Set of `${source}:${home_id}` strings —
+                            //   when present, any matching ``home`` marker is
+                            //   skinned in My Territory+ gold instead of green
+                            //   to signal "this regulated home is My Client".
+  customClients = [],       // optional: [{id, name, lat, lng, ...}] — custom
+                            //   clients added by the franchisee. Plotted with
+                            //   a gold ★ marker, distinct from numbered homes.
+  onCustomClientClick = null, // (client) — typically opens the client edit modal
+  providerFilter = null,    // optional string — only show markers whose
+                            //   ``providerName`` matches (case-insensitive
+                            //   exact); ``null`` = show everything.
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -395,10 +406,19 @@ export default function TerritoryMap({
     if (!homes.length) return;
     homes.forEach((home, i) => {
       if (home.latitude == null || home.longitude == null) return;
+      // Provider filter — when set, hide markers that don't match.
+      if (providerFilter && (home.providerName || "").toLowerCase() !== providerFilter.toLowerCase()) return;
+      // Is THIS home flagged as "My Client"? Keyed by source:home_id so
+      // we can light it up in My Territory+ gold instead of green.
+      const yourClient = clientHomeKeys
+        && (clientHomeKeys.has(`cqc:${home.id || home.locationId || ""}`)
+            || clientHomeKeys.has(`scotland:${home.id || home.locationId || ""}`));
       const el = document.createElement("div");
       el.className = "cm-home-marker";
       el.textContent = String(i + 1);
-      el.style.cssText = "background:#14532D;color:#fff;font-size:11px;font-weight:700;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);cursor:pointer;font-family:Inter,system-ui,sans-serif;";
+      el.style.cssText = yourClient
+        ? "background:#dddd16;color:#0c0a09;font-size:11px;font-weight:800;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #0c0a09;box-shadow:0 0 0 2px rgba(221,221,22,0.45),0 1px 3px rgba(0,0,0,.4);cursor:pointer;font-family:Inter,system-ui,sans-serif;"
+        : "background:#14532D;color:#fff;font-size:11px;font-weight:700;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);cursor:pointer;font-family:Inter,system-ui,sans-serif;";
       const marker = new mapboxgl.Marker(el)
         .setLngLat([home.longitude, home.latitude])
         .setPopup(new mapboxgl.Popup({ offset: 16, closeButton: false }).setHTML(
@@ -417,7 +437,42 @@ export default function TerritoryMap({
       homeMarkersRef.current.forEach((m) => m.remove());
       homeMarkersRef.current = [];
     };
-  }, [homes, ready, onMarkerClick]);
+  }, [homes, ready, onMarkerClick, clientHomeKeys, providerFilter]);
+
+  // ----------------- custom client markers (Territory+ "my clients") -----
+  // Drawn separately from regulated homes — gold ★ markers, no number,
+  // sit ABOVE the numbered home pins via a larger size so they stand out.
+  const customClientsRef = useRef([]);
+  useEffect(() => {
+    if (!ready || !mapRef.current) return;
+    customClientsRef.current.forEach((m) => m.remove());
+    customClientsRef.current = [];
+    if (!customClients.length) return;
+    customClients.forEach((c) => {
+      if (c.lat == null || c.lng == null) return;
+      const el = document.createElement("div");
+      el.className = "cm-client-marker";
+      el.innerHTML = "★";
+      el.style.cssText = "background:#dddd16;color:#0c0a09;font-size:14px;font-weight:900;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #0c0a09;box-shadow:0 0 0 2px rgba(221,221,22,0.4),0 2px 4px rgba(0,0,0,.4);cursor:pointer;line-height:1;";
+      const m = new mapboxgl.Marker(el)
+        .setLngLat([c.lng, c.lat])
+        .setPopup(new mapboxgl.Popup({ offset: 18, closeButton: false }).setHTML(
+          `<div style="font-family:Inter,system-ui;font-size:12px;line-height:1.35">
+            <strong>★ ${(c.name || "").replace(/</g, "&lt;")}</strong><br/>
+            <span style="color:#57534e">My client${c.provider ? ` · ${(c.provider || "").replace(/</g, "&lt;")}` : ""}</span>
+          </div>`,
+        ))
+        .addTo(mapRef.current);
+      if (onCustomClientClick) {
+        el.addEventListener("click", () => onCustomClientClick(c));
+      }
+      customClientsRef.current.push(m);
+    });
+    return () => {
+      customClientsRef.current.forEach((m) => m.remove());
+      customClientsRef.current = [];
+    };
+  }, [customClients, ready, onCustomClientClick]);
 
   // ----------------- highlight the active home marker -----------------
   // When the user opens a row in the homes list below the map, we re-skin the

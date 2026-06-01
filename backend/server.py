@@ -3936,6 +3936,8 @@ announcements_routes.attach(api, db, require_role)
 
 import youtube_routes  # noqa: E402
 youtube_routes.attach(api, db, require_role)
+import territory_plus_routes  # noqa: E402
+territory_plus_routes.attach(api, db, require_role)
 
 # Phase 2 — WooCommerce live sync (Stage A: read-only orders + product mirror)
 import woocommerce_integration  # noqa: E402

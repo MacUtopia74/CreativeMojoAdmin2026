@@ -8,10 +8,11 @@
 //
 // Also exposes a "Check a postcode" input — type any UK postcode and we
 // tell them whether it sits inside their territory.
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import api from "@/lib/api";
 import TerritoryMap from "@/components/territory/TerritoryMap";
 import TerritoryHomesList from "@/components/territory/TerritoryHomesList";
+import TerritoryClientModal from "@/components/territory/TerritoryClientModal";
 import {
   Loader2, Map as MapIcon, Search, CheckCircle2, XCircle, AlertCircle,
   Route,
@@ -30,18 +31,46 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
   const [check, setCheck] = useState("");
   const [checkResult, setCheckResult] = useState(null);
   const [checking, setChecking] = useState(false);
-  // The lat/lng we drop a "you-pinned-this" marker for (any postcode the
-  // franchisee just typed — colour depends on whether it's inside).
   const [pinnedPostcode, setPinnedPostcode] = useState(null);
-  // Basemap preference — "light" hides roads (default, clearer territory),
-  // "streets" turns on the full road network + labels. Persisted per-user.
   const [basemap, setBasemap] = useState(() => {
     try { return localStorage.getItem("cm.portal.basemap") || "light"; }
     catch { return "light"; }
   });
+  // Territory+ state -------------------------------------------------------
+  // ``plusAccess`` is null until we've checked /portal/territory-plus/access.
+  // ``myClients`` is the franchisee's private client list (both custom and
+  // mark-home links). ``providerFilter`` filters home rows + map markers.
+  const [plusAccess, setPlusAccess] = useState(null);
+  const [myClients, setMyClients] = useState([]);
+  const [editingClient, setEditingClient] = useState(null); // {} = "new", obj = edit
+  const [providerFilter, setProviderFilter] = useState(null);
+
   useEffect(() => {
     try { localStorage.setItem("cm.portal.basemap", basemap); } catch {/* noop */}
   }, [basemap]);
+
+  // Probe access once on mount — silent failure → no Territory+ UI.
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await api.get("/portal/territory-plus/access");
+        setPlusAccess(data);
+        if (data?.allowed) {
+          const { data: clients } = await api.get("/portal/territory-plus/clients");
+          setMyClients(clients.items || []);
+        }
+      } catch (e) {
+        setPlusAccess({ allowed: false });
+      }
+    })();
+  }, []);
+
+  const reloadClients = async () => {
+    try {
+      const { data } = await api.get("/portal/territory-plus/clients");
+      setMyClients(data.items || []);
+    } catch (e) { /* noop */ }
+  };
 
   useEffect(() => {
     (async () => {
@@ -103,6 +132,41 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
     } finally { setChecking(false); }
   };
 
+  const hasTerritory = (summary?.sectors || []).length > 0;
+  const plusOn = !!plusAccess?.allowed;
+
+  // Set of "source:home_id" keys for quick lookup when drawing markers
+  // and rendering rows. Custom clients (no home_id) are tracked separately.
+  const clientHomeKeys = useMemo(() => {
+    const s = new Set();
+    myClients.forEach((c) => {
+      if (c.source !== "custom" && c.home_id) s.add(`${c.source}:${c.home_id}`);
+    });
+    return s;
+  }, [myClients]);
+
+  const customClients = useMemo(
+    () => myClients.filter((c) => c.source === "custom"),
+    [myClients],
+  );
+
+  // Provider buckets — drive the "Care groups" filter buttons. Only
+  // groups with 2+ homes get a button (no point filtering to one).
+  const providers = useMemo(() => {
+    if (!plusOn) return [];
+    const counts = new Map();
+    homes.forEach((h) => {
+      const name = (h.providerName || "").trim();
+      if (!name) return;
+      counts.set(name, (counts.get(name) || 0) + 1);
+    });
+    return [...counts.entries()]
+      .filter(([, count]) => count >= 2)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 12)
+      .map(([name, count]) => ({ name, count }));
+  }, [homes, plusOn]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[200px] bg-white border border-stone-200 rounded-2xl">
@@ -118,7 +182,43 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
     );
   }
 
-  const hasTerritory = (summary?.sectors || []).length > 0;
+  const handleMarkHomeClient = async (home) => {
+    try {
+      const sourceKey = home.id || home.locationId;
+      if (!sourceKey) return;
+      const isScotland = String(home.source || home.locationId || "").startsWith("scot:")
+        || String(home.providerName || "").toLowerCase().includes("scotland");
+      const source = home.source === "scotland" || isScotland ? "scotland" : "cqc";
+      await api.post("/portal/territory-plus/clients/mark-home", {
+        source,
+        home_id: sourceKey,
+        name: home.name,
+        address: home.fullAddress
+          || [home.postalAddressLine1, home.postalAddressTownCity, home.postcode || home.postalCode]
+              .filter(Boolean).join(", "),
+        phone: home.mainPhoneNumber,
+        website: home.website,
+        provider: home.providerName,
+        manager: home.registrationManagerName,
+        postcode: home.postcode || home.postalCode,
+        lat: home.latitude,
+        lng: home.longitude,
+      });
+      await reloadClients();
+    } catch (e) { /* noop */ }
+  };
+
+  const handleUnmarkHomeClient = async (home) => {
+    try {
+      const homeKey = home.id || home.locationId;
+      const source = clientHomeKeys.has(`scotland:${homeKey}`) ? "scotland" : "cqc";
+      await api.delete("/portal/territory-plus/clients/mark-home", {
+        data: { source, home_id: homeKey },
+      });
+      await reloadClients();
+    } catch (e) { /* noop */ }
+  };
+
   return (
     <div className="space-y-4" data-testid="portal-territory">
       <div className="bg-white border border-stone-200 rounded-2xl p-6 space-y-4">
@@ -183,19 +283,20 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
             activeHomeIndex={openHome}
             onMarkerClick={(i) => {
               setOpenHome(i);
-              // Auto-expand the homes list so the click is never a no-op,
-              // then wait for the row to mount before scrolling to it.
               setHomesListExpanded(true);
               const scrollToRow = () => {
                 const row = document.querySelector(`[data-testid="home-row-${i + 1}"]`);
                 if (row) row.scrollIntoView({ behavior: "smooth", block: "center" });
               };
-              // rAF x2 ensures the list has rendered after the state flip.
               requestAnimationFrame(() => requestAnimationFrame(scrollToRow));
             }}
             flyTo={flyTo}
             pinnedPostcode={pinnedPostcode}
             basemap={basemap}
+            clientHomeKeys={plusOn ? clientHomeKeys : null}
+            customClients={plusOn ? customClients : []}
+            onCustomClientClick={plusOn ? (c) => setEditingClient(c) : null}
+            providerFilter={plusOn ? providerFilter : null}
           />
         ) : (
           <div className="text-sm text-stone-500 bg-stone-50 border border-dashed border-stone-300 rounded-xl px-4 py-6 text-center">
@@ -204,7 +305,7 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
         )}
       </div>
 
-      {hasTerritory && (
+      {(hasTerritory || plusOn) && (
         <TerritoryHomesList
           homes={homes}
           openIndex={openHome}
@@ -212,6 +313,25 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
           expanded={homesListExpanded}
           onExpandedChange={setHomesListExpanded}
           onZoomHome={(h) => setFlyTo({ lat: h.latitude, lng: h.longitude, _t: Date.now() })}
+          plus={plusOn}
+          clientHomeKeys={clientHomeKeys}
+          customClients={customClients}
+          onMarkHomeClient={handleMarkHomeClient}
+          onUnmarkHomeClient={handleUnmarkHomeClient}
+          onAddClient={() => setEditingClient({ __new: true })}
+          onEditClient={(c) => setEditingClient(c)}
+          providers={providers}
+          providerFilter={providerFilter}
+          onProviderFilter={setProviderFilter}
+        />
+      )}
+
+      {editingClient && (
+        <TerritoryClientModal
+          initial={editingClient.__new ? null : editingClient}
+          onClose={() => setEditingClient(null)}
+          onSaved={() => { reloadClients(); }}
+          onDeleted={() => { reloadClients(); }}
         />
       )}
     </div>
