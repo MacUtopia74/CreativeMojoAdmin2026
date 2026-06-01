@@ -495,16 +495,19 @@ function EventModal({ event, defaults, onClose, onSaved, onDelete }) {
   useEffect(() => {
     if (audienceMode !== "selected" || franchiseesList.length || franchiseesLoading) return;
     setFranchiseesLoading(true);
-    api.get("/franchisees", { params: { lifecycle: "active", limit: 1000 } })
+    api.get("/franchisees", { params: { limit: 500, sort_by: "organisation", sort_dir: 1 } })
       .then(({ data }) => {
         const rows = Array.isArray(data) ? data : (data?.items || []);
         // Keep this list compact — only id + display name + organisation.
-        const slim = rows.map((f) => ({
-          id: f.id,
-          name: f.full_name || [f.first_name, f.last_name].filter(Boolean).join(" ") || f.organisation || f.email || f.mojo_email || "—",
-          organisation: f.organisation || "",
-          franchise_number: f.franchise_number || "",
-        }));
+        // Drop ex-franchisees so the picker only offers live audiences.
+        const slim = rows
+          .filter((f) => (f.lifecycle_status || "active") !== "ex_franchisee")
+          .map((f) => ({
+            id: f.id,
+            name: f.full_name || [f.first_name, f.last_name].filter(Boolean).join(" ") || f.organisation || f.email || f.mojo_email || "—",
+            organisation: f.organisation || "",
+            franchise_number: f.franchise_number || "",
+          }));
         slim.sort((a, b) => (a.organisation || a.name || "").localeCompare(b.organisation || b.name || ""));
         setFranchiseesList(slim);
       })
