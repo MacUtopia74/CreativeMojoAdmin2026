@@ -1,6 +1,17 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## My Territory+ feature pass: My Clients filter · Sales flow · Editable CQC overrides (Jun 01 2026)
+- **"Show My Clients only" toggle** (FranchiseeTerritoryWidget + TerritoryHomesList + TerritoryMap). New toolbar button (`t-plus-my-clients-only`). When ON: client rows pushed to top, non-client rows rendered at 40% opacity in the list; on the map, non-client numbered markers drop to 30% opacity so the gold client markers pop. Default OFF.
+- **Sales-flow lead status bar** on every non-client row (LeadStatusBar component in TerritoryHomesList). 3 states: Not Contacted (red, default) / Contacted (green) / Follow Up (blue + datetime-local picker popover). Follow-up rows show an urgency chip — "Overdue · Xd" red, "Due today" amber, "Due in Nd" amber/blue. **Never auto-promotes** a home to My Client — purely a personal CRM bookmark. New backend collection `franchisee_home_leads` (one row per franchisee × home, upsert semantics) with endpoints:
+  - `GET    /api/portal/territory-plus/leads`
+  - `PUT    /api/portal/territory-plus/leads` body `{source, home_id, status, follow_up_at?}`
+  - `DELETE /api/portal/territory-plus/leads` body `{source, home_id}` (idempotent — used as "reset to Not Contacted")
+- **CQC-linked clients fully editable**: removed the `disabled` lock from every field in TerritoryClientModal — franchisees can now override `manager`, `email`, `phone`, `website`, `address`, `latest_inspection`, `cqc_rating`, `provider`, etc. on a CQC/Scotland-marked client. Overrides are private to the franchisee — they never write back to the public CQC dataset.
+- **"View live CQC data" popup**: amber banner inside the edit modal exposes a button (`t-plus-view-cqc`) that opens a side popup (`t-plus-cqc-popup`) showing the unedited live CQC fields side-by-side: Name / Address / Postcode / Phone / Website / Provider / Manager / CQC rating / Latest inspection / Beds + a "Open on CQC website" link. Sourced from the homes list already loaded by the widget (`homeById` memo) — no extra API call.
+- **Tests**: backend pytest 11/11 PASS (`/app/backend/tests/test_territory_plus.py`). All new `data-testid`s compiled into the frontend bundle (verified by testing agent iteration_23). User needs to **redeploy** for production. Demo account has 0 homes-in-territory so per-row buttons can't be clicked against real rows — Sandra's live account (which has a real polygon) will exercise everything end-to-end.
+
+
 ## My Territory+ bug-fix pass — verified for redeploy (Jun 01 2026)
 - **Three production bugs verified fixed on preview**, regression suite added at `/app/backend/tests/test_territory_plus.py` (5/5 PASS):
    1. **Unmark client (CQC/Scotland regulated home)**: `DELETE /api/portal/territory-plus/clients/mark-home` was returning 404 in prod because FastAPI was matching the literal `mark-home` as a `client_id` against the parameterized `DELETE /clients/{client_id}` route. Fixed by declaring the mark-home routes BEFORE the parameterized ones in `territory_plus_routes.py:217-273`. Comment at lines 213-216 documents why ordering matters.
