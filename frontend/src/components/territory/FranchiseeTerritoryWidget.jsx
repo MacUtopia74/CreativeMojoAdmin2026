@@ -18,7 +18,7 @@ import {
   Route,
 } from "lucide-react";
 
-export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 560 }) {
+export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 560, forceBasic = false }) {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -50,7 +50,13 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
   }, [basemap]);
 
   // Probe access once on mount — silent failure → no Territory+ UI.
+  // ``forceBasic`` short-circuits the probe so the demo can show the
+  // vanilla "My Territory" view side-by-side with "My Territory+".
   useEffect(() => {
+    if (forceBasic) {
+      setPlusAccess({ allowed: false, is_demo: false });
+      return;
+    }
     (async () => {
       try {
         const { data } = await api.get("/portal/territory-plus/access");
@@ -63,7 +69,7 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
         setPlusAccess({ allowed: false });
       }
     })();
-  }, []);
+  }, [forceBasic]);
 
   const reloadClients = async () => {
     try {

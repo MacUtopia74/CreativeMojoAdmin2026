@@ -41,19 +41,40 @@ const FONT_SCALES = {
 //   • territory_plus  → label becomes "My Territory+"
 //   • marketing       → adds "Marketing" item
 //   • invoicing       → adds "Invoicing" item
-function buildTabs({ modules }) {
+function buildTabs({ modules, isDemo }) {
   const sections = [];
   // ---- Section 1: identity, territory, marketing, invoicing ----
   const s1 = [
     { to: "/portal/details", label: "My Franchise", icon: UserIcon, end: true, testid: "portal-nav-profile" },
   ];
   if (modules.map !== false) {
-    s1.push({
-      to: "/portal/territory",
-      label: modules.territory_plus ? "My Territory+" : "My Territory",
-      icon: MapPin,
-      testid: "portal-nav-territory",
-    });
+    if (isDemo) {
+      // Demo account — render BOTH nav entries side-by-side so the user
+      // can flip between vanilla and the upgraded view to demonstrate
+      // what the bolt-on adds. The "basic" route forces the widget out
+      // of Territory+ mode regardless of the demo's portal_modules flag.
+      s1.push({
+        to: "/portal/territory/basic",
+        label: "My Territory",
+        icon: MapPin,
+        end: true,
+        testid: "portal-nav-territory",
+      });
+      s1.push({
+        to: "/portal/territory",
+        label: "My Territory+",
+        icon: MapPin,
+        end: true,
+        testid: "portal-nav-territory-plus",
+      });
+    } else {
+      s1.push({
+        to: "/portal/territory",
+        label: modules.territory_plus ? "My Territory+" : "My Territory",
+        icon: MapPin,
+        testid: "portal-nav-territory",
+      });
+    }
   }
   // Bookings — placeholder for now, ships behind a "coming soon" page.
   // Available to all franchisees so they can register interest.
@@ -114,7 +135,12 @@ export default function PortalShell() {
   }, [fontScale]);
 
   const modules = profile?.profile?.portal_modules || {};
-  const sections = buildTabs({ modules });
+  // Demo accounts get extra side-by-side nav entries (e.g. "My Territory"
+  // AND "My Territory+") so the user can show off the upgrade to
+  // prospective franchisees.
+  const tags = profile?.profile?.tags || [];
+  const isDemo = tags.some((t) => String(t).trim().toLowerCase() === "demo");
+  const sections = buildTabs({ modules, isDemo });
 
   // Account dropdown — auto-opens if the user is currently on any
   // /portal/account/* route (so a fresh navigate doesn't hide the

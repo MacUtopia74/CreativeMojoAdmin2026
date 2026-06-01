@@ -83,6 +83,7 @@ export default function App() {
               <Route index element={<PortalDetailsPage />} />
               <Route path="details" element={<PortalDetailsPage />} />
               <Route path="territory" element={<PortalTerritoryPage />} />
+              <Route path="territory/basic" element={<PortalTerritoryPage forceBasic={true} />} />
               <Route path="events" element={<PortalEventsPage />} />
               <Route path="marketing" element={<PortalMarketingPage />} />
               <Route path="training" element={<PortalTrainingPage />} />

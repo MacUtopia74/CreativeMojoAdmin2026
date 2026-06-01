@@ -1765,6 +1765,7 @@ async def portal_me(user: dict = Depends(require_role("franchisee"))):
         "photo_url", "photos", "territory_postcodes", "territory_geojson",
         "territory_sectors", "territory_home_count",
         "portal_modules",  # Phase 5 — admin-controlled feature toggles
+        "tags",  # Used client-side to detect demo accounts (extra demo-only nav entries)
     }
     profile = {k: f.get(k) for k in keep if k in f}
     # Backfill default portal_modules so the frontend never has to guess.
