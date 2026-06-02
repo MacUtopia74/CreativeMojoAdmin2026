@@ -292,6 +292,19 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
     } catch (e) { /* noop */ }
   };
 
+  // Map of "${source}:${home_id}" → franchisee_clients doc for marked
+  // regulated homes — lets a marker click jump straight to the edit
+  // modal instead of just expanding the row in the list below.
+  const clientByHomeKey = useMemo(() => {
+    const m = new Map();
+    myClients.forEach((c) => {
+      if (c.source !== "custom" && c.home_id) {
+        m.set(`${c.source}:${c.home_id}`, c);
+      }
+    });
+    return m;
+  }, [myClients]);
+
   // Map element — reused in both layouts so the existing marker/flyTo
   // logic stays in one place. ``height`` is sized to match the My Clients
   // panel (header + ~10 rows + pagination footer) so the two columns line
@@ -322,6 +335,15 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
       clientHomeKeys={plusOn ? clientHomeKeys : null}
       customClients={plusOn ? customClients : []}
       onCustomClientClick={plusOn ? (c) => setEditingClient(c) : null}
+      onClientMarkerClick={plusOn ? (home) => {
+        // Clicked a gold ★ marker — find the matching franchisee_clients
+        // doc and open the edit modal. The marker won't render as gold
+        // unless this doc exists, so the lookup should always hit.
+        const key = `cqc:${home.id || home.locationId || ""}`;
+        const altKey = `scotland:${home.id || home.locationId || ""}`;
+        const client = clientByHomeKey.get(key) || clientByHomeKey.get(altKey);
+        if (client) setEditingClient(client);
+      } : null}
       providerFilter={plusOn ? providerFilter : null}
       dimNonClients={plusOn && myClientsOnly}
     />

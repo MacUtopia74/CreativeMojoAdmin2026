@@ -51,6 +51,10 @@ export default function TerritoryMap({
                             //   clients added by the franchisee. Plotted with
                             //   a gold ★ marker, distinct from numbered homes.
   onCustomClientClick = null, // (client) — typically opens the client edit modal
+  onClientMarkerClick = null, // (home) — clicked a CQC home that's flagged as
+                              //   My Client; parent typically finds the
+                              //   matching franchisee_clients doc and opens
+                              //   the edit modal.
   providerFilter = null,    // optional string — only show markers whose
                             //   ``providerName`` matches (case-insensitive
                             //   exact); ``null`` = show everything.
@@ -444,7 +448,16 @@ export default function TerritoryMap({
         ))
         .addTo(mapRef.current);
       if (onMarkerClick) {
-        el.addEventListener("click", () => onMarkerClick(i, home));
+        el.addEventListener("click", () => {
+          // For marked-as-mine homes: delegate to onClientMarkerClick if
+          // provided so the parent can open the edit modal. Falls back
+          // to the row-expansion behaviour for non-clients.
+          if (yourClient && typeof onClientMarkerClick === "function") {
+            onClientMarkerClick(home);
+          } else {
+            onMarkerClick(i, home);
+          }
+        });
       }
       homeMarkersRef.current.push(marker);
     });
@@ -452,7 +465,7 @@ export default function TerritoryMap({
       homeMarkersRef.current.forEach((m) => m && m.remove());
       homeMarkersRef.current = [];
     };
-  }, [homes, ready, onMarkerClick, clientHomeKeys, providerFilter, dimNonClients]);
+  }, [homes, ready, onMarkerClick, onClientMarkerClick, clientHomeKeys, providerFilter, dimNonClients]);
 
   // ----------------- custom client markers (Territory+ "my clients") -----
   // Drawn separately from regulated homes — gold ★ markers, no number,
