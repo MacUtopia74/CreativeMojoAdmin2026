@@ -48,6 +48,8 @@ import PortalMarketingPage from "@/pages/portal/PortalMarketingPage";
 import PortalTrainingPage from "@/pages/portal/PortalTrainingPage";
 import PortalPlaylistPage from "@/pages/portal/PortalPlaylistPage";
 import PortalBookingsPage from "@/pages/portal/PortalBookingsPage";
+import PortalShapeOrdersPage from "@/pages/portal/PortalShapeOrdersPage";
+import AdminShapeOrdersPage from "@/pages/AdminShapeOrdersPage";
 import PortalChangePasswordPage from "@/pages/portal/PortalChangePasswordPage";
 import PortalSubscriptionsPage from "@/pages/portal/PortalSubscriptionsPage";
 import AdminYouTubePage from "@/pages/AdminYouTubePage";
@@ -89,6 +91,7 @@ export default function App() {
               <Route path="training" element={<PortalTrainingPage />} />
               <Route path="training/:playlistId" element={<PortalPlaylistPage />} />
               <Route path="bookings" element={<PortalBookingsPage />} />
+              <Route path="shape-orders" element={<PortalShapeOrdersPage />} />
               <Route path="account/password" element={<PortalChangePasswordPage />} />
               <Route path="account/subscriptions" element={<PortalSubscriptionsPage />} />
               <Route path="files" element={<PortalFilesPage />} />
@@ -145,6 +148,7 @@ export default function App() {
               <Route path="/orders/:orderId" element={<OrderDetailPage />} />
               <Route path="/find-class" element={<FindClassAdminPage />} />
               <Route path="/admin/users" element={<AdminUsersPage />} />
+              <Route path="/admin/shape-orders" element={<AdminShapeOrdersPage />} />
               <Route path="/admin/password-resets" element={<AdminUsersPage />} />
               <Route path="/admin/xero" element={<XeroSettingsPage />} />
             </Route>

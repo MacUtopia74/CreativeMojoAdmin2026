@@ -19,7 +19,7 @@ import Logo from "@/components/Logo";
 import {
   User as UserIcon, MapPin, CalendarDays, FolderOpen, Receipt,
   LogOut, Type, Loader2, AlertCircle, Megaphone, GraduationCap,
-  CalendarClock, KeyRound, Sparkles, UserCog, ChevronDown,
+  CalendarClock, KeyRound, Sparkles, UserCog, ChevronDown, ShoppingBag,
   Menu, X,
 } from "lucide-react";
 
@@ -79,6 +79,9 @@ function buildTabs({ modules, isDemo }) {
   // Bookings — placeholder for now, ships behind a "coming soon" page.
   // Available to all franchisees so they can register interest.
   s1.push({ to: "/portal/bookings", label: "Bookings", icon: CalendarClock, testid: "portal-nav-bookings" });
+  if (modules.shape_orders === true) {
+    s1.push({ to: "/portal/shape-orders", label: "Shape Orders", icon: ShoppingBag, testid: "portal-nav-shape-orders" });
+  }
   if (modules.marketing === true) {
     s1.push({ to: "/portal/marketing", label: "Marketing", icon: Megaphone, testid: "portal-nav-marketing" });
   }

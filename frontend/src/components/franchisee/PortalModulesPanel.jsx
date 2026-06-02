@@ -12,7 +12,7 @@
 import { useState } from "react";
 import api from "@/lib/api";
 import { toast } from "sonner";
-import { Map as MapIcon, Calendar, Folder, FileText, Loader2, Sparkles, Megaphone } from "lucide-react";
+import { Map as MapIcon, Calendar, Folder, FileText, Loader2, Sparkles, Megaphone, ShoppingBag } from "lucide-react";
 
 const STANDARD_MODULES = [
   { key: "map",       label: "Territory Map", icon: MapIcon,  description: "View their assigned postcode sectors and homes count." },
@@ -20,12 +20,13 @@ const STANDARD_MODULES = [
   { key: "files",     label: "File Vault",    icon: Folder,   description: "Brand assets, marketing materials, ops docs." },
 ];
 
-// "Plus" add-ons — subscription-gated extras that unlock paid features.
+// Plus add-ons — subscription-gated extras that unlock paid features.
 const PLUS_MODULES = [
   { key: "territory_plus", label: "My Territory+", icon: MapIcon,   description: "Upgrades Territory page — plot contacts, marketing leads, area analytics. Adds the “+” suffix to the menu item." },
   { key: "marketing",      label: "Marketing",     icon: Megaphone, description: "Social-post templates, local marketing kits, campaign tools." },
   { key: "invoicing",      label: "Invoicing",     icon: FileText,  description: "Personal invoicing tool with client manager and Xero export." },
   { key: "bookings",       label: "Bookings",      icon: Calendar,  description: "Client-booking manager — recurring sessions, attendance and franchisee diary." },
+  { key: "shape_orders",   label: "Shape Orders",  icon: ShoppingBag, description: "Order Die-Cut Shape sets straight from HQ — replaces the WooCommerce shop checkout." },
 ];
 
 export default function PortalModulesPanel({ franchisee, onChanged }) {
@@ -40,6 +41,7 @@ export default function PortalModulesPanel({ franchisee, onChanged }) {
     marketing:      initial.marketing      === true,  // default OFF (plus)
     invoicing:      initial.invoicing      === true,  // default OFF (plus)
     bookings:       initial.bookings       === true,  // default OFF (plus)
+    shape_orders:   initial.shape_orders   === true,  // default OFF (plus)
   });
   const [savingKey, setSavingKey] = useState(null);
 

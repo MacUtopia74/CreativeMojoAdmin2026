@@ -69,7 +69,7 @@ ADMIN_NAV_KEYS = {
     "find-class", "cqc-definitions", "scotland-definitions",
     "invoices", "banking",
     "admin-users", "admin-email-templates", "admin-youtube",
-    "admin-announcements", "admin-xero", "form-intake",
+    "admin-announcements", "admin-xero", "admin-shape-orders", "form-intake",
 }
 
 
@@ -1355,7 +1355,7 @@ async def franchisee_portal_modules(
     if f is None:
         raise HTTPException(404, detail="Franchisee not found")
     current = f.get("portal_modules") or {}
-    allowed = {"map", "calendar", "files", "territory_plus", "marketing", "invoicing", "bookings"}
+    allowed = {"map", "calendar", "files", "territory_plus", "marketing", "invoicing", "bookings", "shape_orders"}
     next_modules = {
         "map":            bool(current.get("map",            True)),
         "calendar":       bool(current.get("calendar",       True)),
@@ -1364,6 +1364,7 @@ async def franchisee_portal_modules(
         "marketing":      bool(current.get("marketing",      False)),
         "invoicing":      bool(current.get("invoicing",      False)),
         "bookings":       bool(current.get("bookings",       False)),
+        "shape_orders":   bool(current.get("shape_orders",   False)),
     }
     for key, val in (body or {}).items():
         if key in allowed:
@@ -1412,6 +1413,7 @@ async def admin_seed_demo_franchisee(
         "marketing":      True,
         "invoicing":      True,
         "bookings":       True,
+        "shape_orders":   True,
     }
     modules = {**default_modules, **{
         k: bool(v) for k, v in modules_override.items()
@@ -1786,6 +1788,7 @@ async def portal_me(user: dict = Depends(require_role("franchisee"))):
         "marketing":      bool(existing_mods.get("marketing",      False)),
         "invoicing":      bool(existing_mods.get("invoicing",      False)),
         "bookings":       bool(existing_mods.get("bookings",       False)),
+        "shape_orders":   bool(existing_mods.get("shape_orders",   False)),
     }
     # Fallback: if Airtable didn't carry over a start_date, derive it
     # from the earliest known contract, then `date_added`.
@@ -1835,7 +1838,7 @@ async def portal_subscription_request(
     """
     addon = (body or {}).get("addon") or ""
     action = (body or {}).get("action") or ""
-    allowed_addons = {"territory_plus", "marketing", "invoicing", "bookings"}
+    allowed_addons = {"territory_plus", "marketing", "invoicing", "bookings", "shape_orders"}
     allowed_actions = {"enable", "cancel"}
     if addon not in allowed_addons or action not in allowed_actions:
         raise HTTPException(400, detail="Invalid addon or action")
@@ -3946,6 +3949,9 @@ territory_plus_routes.attach(api, db, require_role)
 
 import portal_marketing_routes  # noqa: E402
 portal_marketing_routes.attach(api, db, require_role)
+
+import shape_orders_routes  # noqa: E402
+shape_orders_routes.attach(api, db, require_role)
 
 # Phase 2 — WooCommerce live sync (Stage A: read-only orders + product mirror)
 import woocommerce_integration  # noqa: E402

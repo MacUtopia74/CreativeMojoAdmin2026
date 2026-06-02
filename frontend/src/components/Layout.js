@@ -106,6 +106,7 @@ const SIDEBAR = [
         kind: "subgroup", key: "settings", label: "Settings", icon: Cog,
         children: [
           { kind: "item", to: "/admin/users", label: "Users", icon: KeyRound, testid: "nav-admin-users", permKey: "admin-users" },
+          { kind: "item", to: "/admin/shape-orders", label: "Shape Order Catalogue", icon: ShoppingBag, testid: "nav-admin-shape-orders", permKey: "admin-shape-orders" },
           { kind: "item", to: "/admin/email-templates", label: "Email Templates", icon: Mail, testid: "nav-admin-email-templates", permKey: "admin-email-templates" },
           { kind: "item", to: "/admin/youtube", label: "YouTube Playlists", icon: Youtube, testid: "nav-admin-youtube", permKey: "admin-youtube" },
           { kind: "item", to: "/admin/xero", label: "Xero", icon: Calculator, testid: "nav-admin-xero", permKey: "admin-xero" },
@@ -135,6 +136,7 @@ export const ADMIN_NAV_KEYS = [
   { key: "invoices",         label: "Sandra's Invoices",    paths: ["/invoices"] },
   { key: "banking",          label: "Banking",              paths: ["/banking"] },
   { key: "admin-users",      label: "Users",                paths: ["/admin/users", "/admin/password-resets"] },
+  { key: "admin-shape-orders", label: "Shape Order Catalogue", paths: ["/admin/shape-orders"] },
   { key: "admin-email-templates", label: "Email Templates",  paths: ["/admin/email-templates"] },
   { key: "admin-youtube",    label: "YouTube Playlists",    paths: ["/admin/youtube"] },
   { key: "admin-announcements", label: "HQ Updates",       paths: ["/admin/announcements"] },
