@@ -97,16 +97,16 @@ export default function MyClientsPanel({
 
   return (
     <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden h-full w-full flex flex-col" data-testid="my-clients-panel">
-      <div className="px-4 py-3 border-b border-stone-200 flex items-center justify-between gap-3 flex-wrap" style={{ backgroundColor: "#eeee84" }}>
-        <div className="flex items-center gap-3 min-w-0">
+      <div className="px-4 py-3 border-b border-stone-200 flex items-center justify-between gap-3" style={{ backgroundColor: "#eeee84" }}>
+        <div className="flex items-center gap-3 min-w-0 flex-1">
           <span className="w-9 h-9 rounded-full bg-stone-950 text-[#dedd0a] flex items-center justify-center shrink-0">
             <Users className="w-4 h-4" />
           </span>
-          <div className="min-w-0">
-            <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-900/70">
+          <div className="min-w-0 flex-1">
+            <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-900/70 truncate">
               My Clients
             </div>
-            <div className="text-sm text-stone-900 mt-0.5">
+            <div className="text-sm text-stone-900 mt-0.5 truncate">
               <strong>{clients.length}</strong> client{clients.length === 1 ? "" : "s"}
               <span className="text-stone-900/60"> · click any row to view details</span>
             </div>

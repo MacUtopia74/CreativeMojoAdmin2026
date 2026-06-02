@@ -396,15 +396,15 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
           {/* RIGHT COLUMN — Map. Width follows the inverse of clientsFocus. */}
           <div className={`flex ${clientsFocus ? "lg:col-span-2" : "lg:col-span-3"}`}>
             <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden h-full w-full flex flex-col">
-              <div className="px-4 py-3 border-b border-stone-200 flex items-center justify-between gap-3 flex-wrap" style={{ backgroundColor: "#eeee84" }}>
-                <div className="flex items-center gap-2 min-w-0">
+              <div className="px-4 py-3 border-b border-stone-200 flex items-center justify-between gap-3" style={{ backgroundColor: "#eeee84" }}>
+                <div className="flex items-center gap-2 min-w-0 flex-1">
                   <span className="w-9 h-9 rounded-full bg-stone-950 text-[#dedd0a] flex items-center justify-center shrink-0">
                     <MapIcon className="w-4 h-4" />
                   </span>
-                  <div className="min-w-0">
-                    <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-950/70">My Territory</div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-950/70 truncate">My Territory</div>
                     {hasTerritory && (
-                      <div className="text-sm text-stone-950 mt-0.5">
+                      <div className="text-sm text-stone-950 mt-0.5 truncate">
                         <strong>{homes.length}</strong> homes · <strong>{summary.sectors.length}</strong> sectors
                         {homesLoading && <Loader2 className="inline-block w-3 h-3 ml-1 animate-spin text-stone-600" />}
                       </div>

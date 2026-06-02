@@ -385,15 +385,15 @@ export default function TerritoryHomesList({
   return (
     <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden h-full w-full flex flex-col" data-testid="territory-homes-list">
       <div className="px-4 py-3 border-b border-stone-200 flex items-center justify-between gap-3 flex-wrap" style={{ backgroundColor: "#eeee84" }}>
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
           <span className="w-9 h-9 rounded-full bg-stone-950 text-[#dedd0a] flex items-center justify-center shrink-0">
             <ListIcon className="w-4 h-4" />
           </span>
-          <div className="min-w-0">
-            <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-950/70">
+          <div className="min-w-0 flex-1">
+            <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-950/70 truncate">
               {plus ? "Homes in My Territory · From CQC Database" : "Homes in your territory"}
             </div>
-            <div className="text-sm text-stone-950 mt-0.5">
+            <div className="text-sm text-stone-950 mt-0.5 truncate">
               <strong>{filtered.length}</strong>
               {filtered.length !== homes.length && <span className="text-stone-950/60"> of {homes.length}</span>} homes
               <span className="text-stone-950/60"> · click any row to expand</span>

@@ -29,16 +29,16 @@ export default function TerritoryCareGroupsCard({
 
   return (
     <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden h-full w-full flex flex-col" data-testid="care-groups-card">
-      <div className="px-5 py-4 border-b border-stone-200 flex items-center justify-between gap-3 flex-wrap" style={{ backgroundColor: "#eeee84" }}>
-        <div className="flex items-center gap-3 min-w-0">
+      <div className="px-5 py-4 border-b border-stone-200 flex items-center justify-between gap-3" style={{ backgroundColor: "#eeee84" }}>
+        <div className="flex items-center gap-3 min-w-0 flex-1">
           <span className="w-9 h-9 rounded-full bg-stone-950 text-[#dedd0a] flex items-center justify-center shrink-0">
             <Building2 className="w-4 h-4" />
           </span>
-          <div className="min-w-0">
-            <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-900/70">
+          <div className="min-w-0 flex-1">
+            <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-900/70 truncate">
               Care groups in your territory
             </div>
-            <div className="text-sm text-stone-900 mt-0.5">
+            <div className="text-sm text-stone-900 mt-0.5 truncate">
               <strong>{providers.length}</strong> distinct group{providers.length === 1 ? "" : "s"} across <strong>{totalHomes}</strong> home{totalHomes === 1 ? "" : "s"}
               {remainingCount > 0 && <span className="text-stone-900/60"> · {remainingCount} with no group on file</span>}
               <span className="text-stone-900/60"> · click a row to filter</span>
