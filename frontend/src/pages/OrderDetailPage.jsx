@@ -82,8 +82,10 @@ export default function OrderDetailPage() {
 
   // Resolve the address we should show as the delivery address:
   //   1. Local Woo shipping object if it has a real address line
-  //   2. Otherwise — DELIVERY/STREET address from the linked Xero contact
-  //   3. Fall back to the local shipping company-only stub
+  //   2. DELIVERY/STREET address from the linked Xero contact
+  //   3. Local billing object (this is what the "Create Order" modal
+  //      populates — so admins see what they just typed)
+  //   4. Fall back to the local shipping company-only stub
   const deliveryAddress = useMemo(() => {
     const local = order?.shipping;
     if (local && (local.address_1 || local.city || local.postcode)) {
@@ -108,8 +110,12 @@ export default function OrderDetailPage() {
         _source: "xero",
       };
     }
+    const billing = order?.billing;
+    if (billing && (billing.address_1 || billing.city || billing.postcode)) {
+      return { ...billing, _source: "billing" };
+    }
     return local || null;
-  }, [order?.shipping, order?.customer_label, xeroContact]);
+  }, [order?.shipping, order?.billing, order?.customer_label, xeroContact]);
 
   const orderTotal = useMemo(() => {
     const lineSum = lineItems.reduce(
@@ -438,9 +444,14 @@ export default function OrderDetailPage() {
                 <CheckCircle2 className="w-3 h-3" /> Pulled from Xero
               </div>
             )}
+            {deliveryAddress?._source === "billing" && (
+              <div className="mt-2 text-[10px] uppercase tracking-wider font-bold text-amber-700 inline-flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" /> Entered manually — push to Xero from “Change Customer” to keep records in sync.
+              </div>
+            )}
           </Card>
 
-          {(order.billing?.address_1 || order.billing?.city) && (
+          {(order.billing?.address_1 || order.billing?.city) && deliveryAddress?._source !== "billing" && (
             <Card title="Billing Address">
               <AddressBlock addr={order.billing} />
             </Card>

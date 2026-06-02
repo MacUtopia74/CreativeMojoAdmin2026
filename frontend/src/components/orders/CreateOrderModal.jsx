@@ -65,7 +65,17 @@ export default function CreateOrderModal({ open, onClose, onCreated }) {
         shipping_total: parseFloat(shipping || 0),
         line_items: [],
       });
-      // If we have a Xero contact selected, link the order to it.
+
+      // ─── Xero sync ───────────────────────────────────────────────
+      // Three branches:
+      //  1. User picked an existing Xero contact in the picker → just
+      //     link it to the order (legacy behaviour).
+      //  2. No picker selection but the form has enough detail to push
+      //     to Xero → create a Xero contact with name + email + phone +
+      //     address, then link the order to it.
+      //  3. Otherwise → leave the order unlinked; the Reconcile flow
+      //     will pick it up later.
+      let linkedXeroId = xeroContactId;
       if (xeroContactId) {
         try {
           await api.post(`/orders/${data.id}/link-xero-contact`, {
@@ -74,7 +84,38 @@ export default function CreateOrderModal({ open, onClose, onCreated }) {
             email: email.trim() || undefined,
           });
         } catch (_) { /* non-fatal */ }
+      } else if (email.trim() || phone.trim() || address1.trim()) {
+        // Create a fresh Xero contact carrying every field the user
+        // typed — keeps the Order Detail page and Xero in lock-step.
+        try {
+          const { data: contact } = await api.post("/xero/contacts/create", {
+            name: customer.trim(),
+            email: email.trim() || undefined,
+            phone: phone.trim() || undefined,
+            first_name: firstName.trim() || undefined,
+            last_name: lastName.trim() || undefined,
+            address_1: address1.trim() || undefined,
+            address_2: address2.trim() || undefined,
+            city: city.trim() || undefined,
+            postcode: postcode.trim() || undefined,
+            country: country.trim() || undefined,
+          });
+          if (contact?.contact_id) {
+            linkedXeroId = contact.contact_id;
+            await api.post(`/orders/${data.id}/link-xero-contact`, {
+              xero_contact_id: contact.contact_id,
+              name: customer.trim(),
+              email: email.trim() || undefined,
+            });
+          }
+        } catch (e) {
+          // Don't block — order is already saved locally. Surface a
+          // soft warning so the user knows Xero needs attention.
+          // eslint-disable-next-line no-console
+          console.warn("Xero contact sync skipped:", e?.response?.data?.detail || e?.message);
+        }
       }
+
       reset();
       onCreated && onCreated(data.id);
     } catch (e) {

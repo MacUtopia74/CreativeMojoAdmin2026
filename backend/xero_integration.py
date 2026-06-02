@@ -601,7 +601,8 @@ def attach(api, db, require_role):
     ):
         """Create a brand new Contact in Xero (and cache it locally).
 
-        Body: ``{name, email, first_name?, last_name?, phone?}``.
+        Body: ``{name, email, first_name?, last_name?, phone?,
+        address_1?, address_2?, city?, postcode?, country?, region?}``.
         Returns the new contact id so the caller can immediately link
         it onto an order."""
         name = (body or {}).get("name", "").strip()
@@ -609,12 +610,35 @@ def attach(api, db, require_role):
             raise HTTPException(400, "Name is required")
         email = (body or {}).get("email", "").strip() or None
         phone = (body or {}).get("phone", "").strip() or None
+        # Build an Addresses payload if any address field is filled in
+        # — Xero rejects "empty" Address records that have only a type,
+        # so we only attach when at least one component is present.
+        addr_parts = {
+            "AddressLine1": (body.get("address_1") or "").strip(),
+            "AddressLine2": (body.get("address_2") or "").strip(),
+            "City":         (body.get("city") or "").strip(),
+            "Region":       (body.get("region") or body.get("state") or "").strip(),
+            "PostalCode":   (body.get("postcode") or "").strip(),
+            "Country":      (body.get("country") or "").strip(),
+        }
+        addr_parts = {k: v for k, v in addr_parts.items() if v}
+        addresses_payload: list[dict] = []
+        if addr_parts:
+            # Send the same address as both STREET and POBOX so it shows
+            # up under "Postal" AND "Delivery" inside Xero. This matches
+            # how Xero's own contact form behaves when the user only
+            # enters one address.
+            addresses_payload = [
+                {"AddressType": "STREET", **addr_parts},
+                {"AddressType": "POBOX", **addr_parts},
+            ]
         payload = {"Contacts": [{
             "Name": name,
             **({"EmailAddress": email} if email else {}),
             **({"FirstName": body.get("first_name")} if body.get("first_name") else {}),
             **({"LastName": body.get("last_name")} if body.get("last_name") else {}),
             **({"Phones": [{"PhoneType": "DEFAULT", "PhoneNumber": phone}]} if phone else {}),
+            **({"Addresses": addresses_payload} if addresses_payload else {}),
         }]}
         resp = await _xero_post(db, "/Contacts", payload)
         contacts = resp.get("Contacts") or []
