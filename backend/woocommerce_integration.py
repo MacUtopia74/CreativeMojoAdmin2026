@@ -87,6 +87,17 @@ async def _iter_paginated(path: str, params: dict | None = None, per_page: int =
                 break
 
 
+async def _woo_get(path: str, params: dict | None = None) -> dict:
+    """One-shot GET against the Woo REST API, returns the parsed JSON
+    body. Used for single-resource fetches (e.g. refreshing one product
+    image) where pagination would be overkill."""
+    async with _client() as http:
+        r = await http.get(f"{API_PREFIX}{path}", params=dict(params or {}))
+        if r.status_code != 200:
+            raise RuntimeError(f"Woo {path} returned {r.status_code}: {r.text[:300]}")
+        return r.json()
+
+
 def _derive_status_fields(woo: dict) -> dict:
     """Extract the canonical fields our admin UI needs from a raw Woo order.
     Keeps the full Woo payload too so we can render anything else later."""
@@ -219,6 +230,13 @@ async def sync_products(db) -> dict:
                     "regular_price": raw.get("regular_price"),
                     "stock_status": raw.get("stock_status"),
                     "attributes": raw.get("attributes") or [],
+                    "permalink": raw.get("permalink"),
+                    # Cache the primary image URL so the Shape Order
+                    # catalogue + card grid don't need to round-trip
+                    # Woo to render thumbnails. The full ``images``
+                    # array is also kept for picker previews.
+                    "image_url": ((raw.get("images") or [{}])[0].get("src")) if raw.get("images") else None,
+                    "images": raw.get("images") or [],
                     "is_variation": False,
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 }

@@ -8,7 +8,7 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   ShoppingBag, Plus, Trash2, Search, Loader2, ArrowUp, ArrowDown,
-  X as XIcon, ImageOff, AlertCircle, CheckCircle2,
+  X as XIcon, ImageOff, AlertCircle, CheckCircle2, RefreshCw,
 } from "lucide-react";
 import api from "@/lib/api";
 
@@ -17,6 +17,8 @@ export default function AdminShapeOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
+
+  const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -28,6 +30,18 @@ export default function AdminShapeOrdersPage() {
     } finally { setLoading(false); }
   }, []);
   useEffect(() => { load(); }, [load]);
+
+  const refreshImages = async () => {
+    if (!window.confirm("Refresh every catalogue card's image from Woo? Takes ~10 seconds.")) return;
+    setRefreshing(true); setError("");
+    try {
+      const { data } = await api.post("/admin/shape-orders/products/refresh-all-images");
+      await load();
+      window.alert(`Updated ${data.updated} card${data.updated === 1 ? "" : "s"}${data.errors?.length ? ` (${data.errors.length} failed)` : ""}.`);
+    } catch (e) {
+      setError(e?.response?.data?.detail || "Image refresh failed.");
+    } finally { setRefreshing(false); }
+  };
 
   const reorder = async (idx, delta) => {
     const next = [...items];
@@ -74,6 +88,15 @@ export default function AdminShapeOrdersPage() {
           <h1 className="font-display text-xl text-stone-950">Shape Order Catalogue</h1>
           <span className="text-xs text-stone-500">{items.length} product{items.length === 1 ? "" : "s"}</span>
         </div>
+        <button
+          onClick={refreshImages}
+          disabled={refreshing}
+          data-testid="shape-catalogue-refresh-images"
+          className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold uppercase tracking-wider border border-stone-300 hover:bg-stone-50 text-stone-700 rounded-lg disabled:opacity-50"
+        >
+          {refreshing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+          Refresh images
+        </button>
         <button
           onClick={() => setPickerOpen(true)}
           data-testid="shape-catalogue-add"

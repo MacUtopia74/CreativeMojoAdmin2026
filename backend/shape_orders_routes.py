@@ -118,6 +118,21 @@ def attach(api, db, require_role):
             raise HTTPException(404, detail="No Woo product with that id in the mirror.")
         image = (woo_prod.get("image_url")
                  or ((woo_prod.get("images") or [{}])[0].get("src") if woo_prod.get("images") else ""))
+        # If the mirror was synced before image_url was a tracked field
+        # (most existing rows in production), fetch it live now so the
+        # catalogue card never lands without a photo.
+        if not image:
+            try:
+                from woocommerce_integration import _woo_get  # noqa: E402
+                raw = await _woo_get(f"/products/{woo_id}")
+                image = (raw.get("images") or [{}])[0].get("src") if raw.get("images") else ""
+                if image:
+                    await db.woo_products.update_one(
+                        {"woo_id": woo_id},
+                        {"$set": {"image_url": image, "images": raw.get("images") or []}},
+                    )
+            except Exception:  # noqa: BLE001
+                pass
         # Sort to the bottom by default.
         last = await db.shape_order_products.find_one(
             {}, {"_id": 0, "sort_order": 1}, sort=[("sort_order", -1)],
@@ -160,6 +175,57 @@ def attach(api, db, require_role):
             raise HTTPException(404, detail="Product not on the list.")
         doc = await db.shape_order_products.find_one({"woo_id": woo_id}, {"_id": 0})
         return doc
+
+    @api.post("/admin/shape-orders/products/{woo_id}/refresh-image")
+    async def admin_refresh_image(woo_id: int, _: dict = Depends(require_role("admin"))):
+        """Pull the latest image for one product directly from Woo
+        (bypasses the full product sync — handy when admin notices a
+        catalogue card is missing an image)."""
+        from woocommerce_integration import _woo_get  # noqa: E402
+        try:
+            raw = await _woo_get(f"/products/{woo_id}")
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(502, detail=f"Couldn't reach Woo: {exc}") from exc
+        image = (raw.get("images") or [{}])[0].get("src") if raw.get("images") else None
+        if not image:
+            raise HTTPException(404, detail="Woo returned no image for that product.")
+        # Refresh both the curated catalogue row and the woo_products
+        # mirror so the next sync doesn't blow it away.
+        await db.shape_order_products.update_one(
+            {"woo_id": woo_id},
+            {"$set": {"image_url": image, "updated_at": _now_iso()}},
+        )
+        await db.woo_products.update_one(
+            {"woo_id": woo_id},
+            {"$set": {"image_url": image, "images": raw.get("images") or []}},
+        )
+        return {"ok": True, "image_url": image}
+
+    @api.post("/admin/shape-orders/products/refresh-all-images")
+    async def admin_refresh_all_images(_: dict = Depends(require_role("admin"))):
+        """Bulk-refresh images on every curated catalogue product. Used
+        once after deploy to backfill the image_url for the existing
+        rows in production."""
+        from woocommerce_integration import _woo_get  # noqa: E402
+        updated = 0
+        errors: list[str] = []
+        async for p in db.shape_order_products.find({}, {"_id": 0, "woo_id": 1, "name": 1}):
+            try:
+                raw = await _woo_get(f"/products/{p['woo_id']}")
+                image = (raw.get("images") or [{}])[0].get("src") if raw.get("images") else None
+                if image:
+                    await db.shape_order_products.update_one(
+                        {"woo_id": p["woo_id"]},
+                        {"$set": {"image_url": image, "updated_at": _now_iso()}},
+                    )
+                    await db.woo_products.update_one(
+                        {"woo_id": p["woo_id"]},
+                        {"$set": {"image_url": image, "images": raw.get("images") or []}},
+                    )
+                    updated += 1
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"{p.get('name')}: {exc}")
+        return {"ok": True, "updated": updated, "errors": errors}
 
     @api.delete("/admin/shape-orders/products/{woo_id}")
     async def admin_delete_product(woo_id: int, _: dict = Depends(require_role("admin"))):
