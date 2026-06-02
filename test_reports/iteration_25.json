@@ -1,0 +1,40 @@
+{
+  "summary": "Iteration 25 — Tested Users page rename + dual panels + Modules modal, Make Ex-Licensee label, and manual order creation with billing address. All 7 backend tests passed and all critical UI scenarios verified. Found and FIXED one bug: franchisee detail page crashed for franchisees whose 'tags' field is stored as a string (Brisbane / Worldwide Licencee), which also blocked the 'Make Ex-Licensee' label from rendering.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "FranchiseeDetailPage.js (lines 497-498)",
+        "issue": "Page threw TypeError 'f.tags.some is not a function' for any franchisee whose tags field is stored as a string (not array) in Mongo. Brisbane (id 9b4992aa-89b2-4f0b-aa5d-b1fa95833068, Worldwide Licencee) reproduces it. Side-effect: the 'Make Ex-Licensee' label never rendered because the JSX block crashed before reaching the button. FIXED by reusing the already-normalised `tags` array variable (defined at line 475) instead of the raw `f.tags`.",
+        "selector": "FranchiseeDetailPage deactivate-button block",
+        "priority": "HIGH (now FIXED by testing agent)"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter25_users_orders.py",
+    "/app/test_reports/pytest/iter25_results.xml"
+  ],
+  "action_items": [
+    "Review the small frontend fix applied at /app/frontend/src/pages/FranchiseeDetailPage.js (lines 497-498) — replaced raw f.tags with the safer normalised `tags` array variable.",
+    "Optional cleanup: backend could normalise franchisee.tags to always be an array at write/read time, to prevent similar bugs elsewhere (e.g., FranchiseesListPage filtering, search by tag)."
+  ],
+  "critical_code_review_comments": [
+    "Franchisee tags are inconsistently stored as either string or array in Mongo. The /api/franchisees response also returns the raw value. Consider normalising at the API boundary (Pydantic validator or response shaping) to avoid every consumer having to defensively coerce.",
+    "CreateOrderModal Customer Name uses XeroContactPicker without a data-testid on its internal input; tests had to fall back to the wrapper testid + querying the inner input. Adding `data-testid='create-order-customer-name'` on the inner input would improve testability.",
+    "POST /api/orders accepts arbitrary fields and creates a draft even when product line items are absent — fine for UX but the resulting draft #9178 shown in screenshot has no line items and £0.00 total; consider client-side validation requiring at least one line item before submit."
+  ],
+  "updated_files": [
+    "/app/frontend/src/pages/FranchiseeDetailPage.js",
+    "/app/backend/tests/test_iter25_users_orders.py"
+  ],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "100% (all required testids and behaviours verified after fix)"},
+  "test_credentials": "admin@creativemojo.co.uk / CreativeMojo2026!  ;  demo@creativemojo.co.uk / CreativeMojoDemo2026!",
+  "seed_data_creation": "Created 5 draft orders during UI testing — all cleaned up via DELETE /api/orders/{id}. No franchisee tags were added.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Worldwide Licencee franchisee for UI testing: id=9b4992aa-89b2-4f0b-aa5d-b1fa95833068 (Alison King / Creative Mojo Brisbane). Its `tags` field is stored as the string 'Worldwide Licencee' (NOT an array) — be careful if writing any code that calls Array methods on franchisee.tags. Demo franchisee detail page works fine (tags array). The CreateOrderModal customer-name input lives inside XeroContactPicker (wrapper testid `create-order-customer-picker`). All 8 billing-address inputs use the testids documented in the request and are working.",
+  "rca_of_the_issue": "RCA — Make Ex-Licensee label not appearing: FranchiseeDetailPage.js line 498 read `(f.tags || []).some(...)`. For Alison King (Worldwide Licencee), Mongo stored tags as a scalar string 'Worldwide Licencee', so `(f.tags || [])` evaluated to that string and `.some` is undefined for strings. The exception was caught by React's error boundary and rendered a blank/partial detail page — including suppressing the deactivate button. Fix: reuse the `tags` array (already normalised on line 475: `Array.isArray(f.tags) ? f.tags : f.tags ? [f.tags] : []`) for both the isEx and isLicensee checks. Verified: Brisbane page now shows 'Make Ex-Licensee'; demo franchisee shows 'Make Ex-Franchisee'."
+}

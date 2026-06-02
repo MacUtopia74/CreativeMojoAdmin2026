@@ -494,8 +494,8 @@ export default function FranchiseeDetailPage() {
         <div className="flex items-center gap-2">
           {!editing && (
             (() => {
-              const isEx = (f.lifecycle_status === "ex_franchisee") || (f.tags || []).includes("EX-Franchisee");
-              const isLicensee = (f.tags || []).some((t) => /licencee|licensee/i.test(t));
+              const isEx = (f.lifecycle_status === "ex_franchisee") || tags.includes("EX-Franchisee");
+              const isLicensee = tags.some((t) => /licencee|licensee/i.test(t));
               const deactivateLabel = isLicensee ? "Make Ex-Licensee" : "Make Ex-Franchisee";
               return isEx ? (
                 <button onClick={() => toggleLifecycle("active")} disabled={lifecycleBusy} data-testid="reactivate-franchisee"
