@@ -227,14 +227,19 @@ def build_resend_router(db, require_role):
         elif isinstance(headers, dict):
             send_id = headers.get("X-CM-Send-Id") or headers.get("x-cm-send-id")
 
-        match: Optional[dict] = None
-        if send_id:
-            match = await db.email_sends.find_one({"id": send_id}, {"_id": 0, "id": 1})
-        if not match and resend_id:
-            match = await db.email_sends.find_one({"resend_id": resend_id}, {"_id": 0, "id": 1})
-        if not match:
-            # Not one of ours — ack quickly so Resend doesn't retry.
-            return {"ok": True, "matched": False}
+        # Resend echoes the per-send "tags" back on every event — that's
+        # how we route this event to the right consumer (announcement /
+        # marketing-campaign / standalone reply).
+        tags = data.get("tags") or []
+        tag_map: dict = {}
+        if isinstance(tags, list):
+            for t in tags:
+                if isinstance(t, dict) and t.get("name"):
+                    tag_map[str(t["name"]).lower()] = t.get("value")
+        elif isinstance(tags, dict):
+            tag_map = {str(k).lower(): v for k, v in tags.items()}
+        campaign_id = tag_map.get("campaign_id")
+        recipient_send_id = tag_map.get("recipient_send_id") or send_id
 
         # Strip the "email." prefix Resend uses on every event name so the
         # UI labels are short ("delivered", "opened", "clicked", …).
@@ -245,6 +250,27 @@ def build_resend_router(db, require_role):
             event["link"] = (data.get("click") or {}).get("link") or data.get("link")
         if short_type in ("bounced", "complained", "delivery_delayed"):
             event["reason"] = data.get("reason") or (data.get("bounce") or {}).get("reason")
+
+        # Marketing-campaign events go to their own collection.
+        if campaign_id:
+            try:
+                from portal_marketing_routes import apply_event as _apply_marketing_event
+                applied = await _apply_marketing_event(
+                    db, campaign_id, recipient_send_id, resend_id, short_type, event,
+                )
+                if applied:
+                    return {"ok": True, "matched": True, "event": short_type, "kind": "marketing"}
+            except Exception:  # noqa: BLE001
+                logger.exception("Marketing webhook fan-out failed")
+
+        match: Optional[dict] = None
+        if send_id:
+            match = await db.email_sends.find_one({"id": send_id}, {"_id": 0, "id": 1})
+        if not match and resend_id:
+            match = await db.email_sends.find_one({"resend_id": resend_id}, {"_id": 0, "id": 1})
+        if not match:
+            # Not one of ours — ack quickly so Resend doesn't retry.
+            return {"ok": True, "matched": False}
 
         await db.email_sends.update_one(
             {"id": match["id"]},

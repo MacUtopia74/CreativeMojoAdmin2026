@@ -1,0 +1,39 @@
+{
+  "summary": "Iter26 — Franchisee portal Marketing endpoints + UI tested end-to-end. All 15 backend tests pass (access gating, recipients listing, preview HTML signature, image upload not tested via UI but endpoint exists, test-send accepts Resend status codes, full campaign validation matrix (title/intro/recipients/5-cap/smuggled client_id), campaign create→list rollups→Resend webhook open event→cross-franchisee 404→delete). Resend webhook is signed (RESEND_WEBHOOK_SECRET is set in env, contrary to request note); test signs Svix payload manually and webhook returns 200 and opens_count goes 0→1. Frontend tested: login (2-step), /portal/marketing renders, compose modal opens with every required data-testid (title/intro/image-upload/link-url/link-label/bookings-toggle/recipient-search/recipients-count/test-send/send-btn), live preview iframe renders signature 'Sent by Sandra Caldeira-Dunkerley · Creative Mojo North & West Devon', recipient cap at 5 verified visually (clicking 6th keeps count at 5/5, shows 'Maximum 5 recipients per send').",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter26_portal_marketing.py",
+    "/app/test_reports/pytest/iter26_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Reset Sandra portal_modules.marketing=false and bookings module per original request — test fixtures already deleted franchisee_clients and marketing_campaigns prefixed with TEST_iter26_. The Sandra module flags remain enabled as the request says they were toggled on for this test.",
+    "Update agent-to-agent note: RESEND_WEBHOOK_SECRET IS configured in /app/backend/.env, so webhook posts MUST be Svix-signed (this test signs them manually with HMAC-SHA256)."
+  ],
+  "critical_code_review_comments": [
+    "portal_marketing_routes.py: max-5 recipients enforced server-side and matches UI cap — good. Cross-franchisee detail endpoint returns 404 (verified). DELETE is hard-delete as documented.",
+    "resend_routes.py: webhook signature verification is enforced when RESEND_WEBHOOK_SECRET present (correct), but the iter25/26 request note incorrectly stated this secret was empty.",
+    "MarketingComposeModal.jsx renders preview as <iframe srcDoc=...> with correct data-testid; preview is debounced and may briefly show 'Rendering…' placeholder before iframe mounts — fine.",
+    "Recipient-cap UI prevents 6th selection and renders 'Maximum 5 recipients per send' error tied to data-testid='marketing-error' — matches spec exactly."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter26_portal_marketing.py"
+  ],
+  "success_rate": {
+    "backend": "100% (15/15)",
+    "frontend": "100% (compose modal, recipient cap, preview, all testids)"
+  },
+  "test_credentials": "Used Sandra (sandra@creativemojo.co.uk / Test1234!) for primary tests, Demo (demo@creativemojo.co.uk / CreativeMojoDemo2026!) for cross-franchisee 404 check.",
+  "seed_data_creation": "Per-test fixture creates a TEST_iter26_-prefixed franchisee_client (primary + 2 secondaries) and tears it down. UI cap test creates+deletes TEST_iter26UI_cap client (primary + 5 secondaries). One TEST_iter26_Campaign was created and deleted within the lifecycle test. Verified DB has zero residual TEST_iter26_ docs.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend test pattern is /app/backend/tests/test_iter*.py with pytest + cookie session login. Resend webhook requires Svix signature (HMAC-SHA256 over '{msg_id}.{timestamp}.{body}', base64, prefixed 'v1,'). Portal login is two-step: input[type=email] → Continue button → input[type=password] → Enter. To bypass UI for data setup, use page.evaluate fetch with credentials:'include' against the same origin.",
+  "rca of the issue": "N/A — no failing functionality."
+}
