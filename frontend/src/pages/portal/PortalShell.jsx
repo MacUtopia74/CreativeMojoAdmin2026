@@ -79,9 +79,6 @@ function buildTabs({ modules, isDemo }) {
   // Bookings — placeholder for now, ships behind a "coming soon" page.
   // Available to all franchisees so they can register interest.
   s1.push({ to: "/portal/bookings", label: "Bookings", icon: CalendarClock, testid: "portal-nav-bookings" });
-  if (modules.shape_orders === true) {
-    s1.push({ to: "/portal/shape-orders", label: "Shape Orders", icon: ShoppingBag, testid: "portal-nav-shape-orders" });
-  }
   if (modules.marketing === true) {
     s1.push({ to: "/portal/marketing", label: "Marketing", icon: Megaphone, testid: "portal-nav-marketing" });
   }
@@ -100,12 +97,20 @@ function buildTabs({ modules, isDemo }) {
   const s3 = [];
   if (modules.files !== false) s3.push({ to: "/portal/files", label: "File Vault", icon: FolderOpen, testid: "portal-nav-files" });
   sections.push(s3);
-  // ---- Section 4: account (always last) — change password, subscriptions, sign out
-  const s4 = [
+  // ---- Section 4: HQ shop (Shape Orders) — sits in its own band
+  // between File Vault and Account so it visually reads as a
+  // "stores / supplies" area rather than a portal feature.
+  const s4 = [];
+  if (modules.shape_orders === true) {
+    s4.push({ to: "/portal/shape-orders", label: "Shape Orders", icon: ShoppingBag, testid: "portal-nav-shape-orders" });
+  }
+  sections.push(s4);
+  // ---- Section 5: account (always last) — change password, subscriptions, sign out
+  const s5 = [
     { to: "/portal/account/password", label: "Change password", icon: KeyRound, testid: "portal-nav-password" },
     { to: "/portal/account/subscriptions", label: "Subscriptions", icon: Sparkles, testid: "portal-nav-subscriptions" },
   ];
-  sections.push(s4);
+  sections.push(s5);
   return sections.filter((s) => s.length);
 }
 
