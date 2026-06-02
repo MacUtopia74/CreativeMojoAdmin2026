@@ -1083,16 +1083,59 @@ def build_territory_router(db, require_role):  # noqa: D401
             count = await homes_coll.count_documents(
                 {**base_filter, "postcode_sector": {"$in": sectors}},
             )
-        # Centre = their HQ postcode if available
+        # Centre = their HQ postcode if available (exact full postcode,
+        # falls back to any postcode in the same sector if we can't resolve
+        # the precise one — then warm the cache via postcodes.io).
         centre = None
         if f.get("postcode"):
-            _, sec, _ = parse_postcode(f["postcode"])
-            if sec:
-                pc_doc = await db.postcodes_cache.find_one(
-                    {"sector": sec, "latitude": {"$ne": None}}, {"_id": 0},
+            norm_full, sec, _ = parse_postcode(f["postcode"])
+            if norm_full:
+                exact = await db.postcodes_cache.find_one(
+                    {"_id": norm_full, "latitude": {"$ne": None}},
+                    {"_id": 0, "latitude": 1, "longitude": 1},
                 )
-                if pc_doc:
-                    centre = {"lat": pc_doc["latitude"], "lng": pc_doc["longitude"]}
+                if not exact:
+                    # Fetch from postcodes.io and warm the cache so subsequent
+                    # loads are instant.
+                    try:
+                        async with httpx.AsyncClient(timeout=6.0) as client:
+                            r = await client.get(
+                                f"https://api.postcodes.io/postcodes/{norm_full.replace(' ', '%20')}",
+                            )
+                            if r.status_code == 200:
+                                res = r.json().get("result") or {}
+                                if res.get("latitude") is not None:
+                                    exact = {
+                                        "latitude": res.get("latitude"),
+                                        "longitude": res.get("longitude"),
+                                    }
+                                    await db.postcodes_cache.update_one(
+                                        {"_id": norm_full},
+                                        {"$set": {
+                                            "_id": norm_full,
+                                            "postcode": norm_full,
+                                            "sector": sec,
+                                            "latitude": res.get("latitude"),
+                                            "longitude": res.get("longitude"),
+                                            "admin_district": res.get("admin_district"),
+                                            "region": res.get("region"),
+                                            "country": res.get("country"),
+                                            "cached_at": datetime.now(timezone.utc),
+                                        }},
+                                        upsert=True,
+                                    )
+                    except Exception:
+                        pass
+                if exact:
+                    centre = {"lat": exact["latitude"], "lng": exact["longitude"]}
+                elif sec:
+                    # Last-resort fallback — sector centroid.
+                    pc_doc = await db.postcodes_cache.find_one(
+                        {"sector": sec, "latitude": {"$ne": None}},
+                        {"_id": 0, "latitude": 1, "longitude": 1},
+                    )
+                    if pc_doc:
+                        centre = {"lat": pc_doc["latitude"], "lng": pc_doc["longitude"]}
         return {
             "franchisee": f,
             "sectors": sectors,

@@ -388,15 +388,35 @@ export default function TerritoryMap({
   }, [sectors, selected, ready, interactive, styleVersion]);
 
   // ----------------- HQ marker -----------------
+  // Renders the franchisee's home postcode as a small "Me" pill so it's
+  // visually distinct from numbered home markers and gold ★ client pins.
   useEffect(() => {
     if (!ready || !mapRef.current) return;
     if (centreMarkerRef.current) { centreMarkerRef.current.remove(); centreMarkerRef.current = null; }
     if (centre && centre.lat != null && centre.lng != null) {
       const el = document.createElement("div");
-      el.style.cssText = "width:28px;height:28px;border-radius:50%;background:#EF4444;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4);";
-      const marker = new mapboxgl.Marker(el)
+      el.className = "cm-me-marker";
+      el.textContent = "Me";
+      el.style.cssText = [
+        "display:inline-flex",
+        "align-items:center",
+        "justify-content:center",
+        "padding:3px 8px",
+        "border-radius:9999px",
+        "background:#0F172A",
+        "color:#FFFFFF",
+        "font:600 11px/1 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif",
+        "letter-spacing:0.02em",
+        "border:2px solid #FFFFFF",
+        "box-shadow:0 2px 6px rgba(0,0,0,.35)",
+        "cursor:pointer",
+        "white-space:nowrap",
+        "z-index:9999",
+        "position:relative",
+      ].join(";");
+      const marker = new mapboxgl.Marker({ element: el, anchor: "center" })
         .setLngLat([centre.lng, centre.lat])
-        .setPopup(centreLabel ? new mapboxgl.Popup({ offset: 18 }).setText(centreLabel) : undefined)
+        .setPopup(centreLabel ? new mapboxgl.Popup({ offset: 14 }).setText(centreLabel) : undefined)
         .addTo(mapRef.current);
       centreMarkerRef.current = marker;
       if (interactive) {
