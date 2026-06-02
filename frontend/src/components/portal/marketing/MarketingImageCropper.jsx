@@ -47,7 +47,20 @@ export default function MarketingImageCropper({ open, file, onCancel, onDone }) 
 
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-[80] bg-stone-950/60 backdrop-blur-sm flex items-center justify-center p-6" data-testid="marketing-crop-modal">
+    <div
+      className="fixed inset-0 z-[80] bg-stone-950/60 backdrop-blur-sm flex items-center justify-center p-6"
+      data-testid="marketing-crop-modal"
+      // Block every event from bubbling up to the compose modal's
+      // backdrop (which would treat a release-outside-the-card as
+      // "close the composer"). React-image-crop fires synthetic
+      // pointer / mouse events while the user drags a handle — without
+      // this guard the cropper's mouseup would close the whole modal.
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onMouseUp={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+      onPointerUp={(e) => e.stopPropagation()}
+    >
       <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full overflow-hidden flex flex-col max-h-[92vh]">
         <div className="px-5 py-3 border-b border-stone-200 flex items-center justify-between">
           <div className="flex items-center gap-2">
