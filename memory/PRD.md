@@ -1,6 +1,16 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## My Territory+ — side-by-side panel layout (Jun 02 2026)
+- Rearranged the two collapsible panels below the map into a **2-column responsive grid** (per user-supplied layout sketch):
+  - **Left column (`lg:col-span-2`, ~66%)**: My Clients & Homes in My Territory.
+  - **Right column (`lg:col-span-1`, ~33%)**: Care Groups in your Territory.
+- Both panels remain independently collapsible — yellow `#dedd0a` collapsed CTAs sit side-by-side at full width on desktop, expanded states share the same row real estate.
+- **Mobile (`<lg`)**: panels stack vertically full-width so the narrow Care Groups column doesn't get squeezed unreadably on phones.
+- Care Groups grid column only renders when there are care groups to show (`plusOn && providers.length > 0`) so the Homes panel reflows to full width when there's no breakdown to display.
+- Verified on Sandra's portal — both yellow EXPAND bars now sit on a single row beneath the map.
+
+
 ## My Territory+ — collapsible brand-yellow panel headers (Jun 02 2026)
 - **Care Groups card is now collapsible**, defaulting to closed (matches the homes-list pattern). Click the yellow CTA to expand, click the small dark chevron to collapse again.
 - **Both panel headers** ("Care groups in your territory" + "My Clients & Homes in My Territory") now use the site-wide brand yellow `#dedd0a` background — same colour as the Subscriptions, Invoicing, Playlists CTAs across the rest of the portal. Dark icon circle on the left, dark-text title, "EXPAND ▾" pill on the right.

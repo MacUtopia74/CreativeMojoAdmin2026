@@ -374,39 +374,44 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
         )}
       </div>
 
-      {plusOn && providers.length > 0 && (
-        <TerritoryCareGroupsCard
-          providers={providers}
-          totalHomes={providersTotalHomes}
-          totalAllHomes={homes.length}
-          activeProvider={providerFilter}
-          onSelectProvider={setProviderFilter}
-        />
-      )}
-
       {(hasTerritory || plusOn) && (
-        <TerritoryHomesList
-          homes={homes}
-          openIndex={openHome}
-          onOpenChange={setOpenHome}
-          expanded={homesListExpanded}
-          onExpandedChange={setHomesListExpanded}
-          onZoomHome={(h) => setFlyTo({ lat: h.latitude, lng: h.longitude, _t: Date.now() })}
-          plus={plusOn}
-          clientHomeKeys={clientHomeKeys}
-          customClients={customClients}
-          onMarkHomeClient={handleMarkHomeClient}
-          onUnmarkHomeClient={handleUnmarkHomeClient}
-          onAddClient={() => setEditingClient({ __new: true })}
-          onEditClient={(c) => setEditingClient(c)}
-          providers={topProviders}
-          providerFilter={providerFilter}
-          onProviderFilter={setProviderFilter}
-          leadsByKey={leadsByKey}
-          onSetLeadStatus={handleSetLeadStatus}
-          myClientsOnly={myClientsOnly}
-          onMyClientsOnlyChange={setMyClientsOnly}
-        />
+        <div className={`grid grid-cols-1 gap-4 ${plusOn && providers.length > 0 ? "lg:grid-cols-3" : ""}`}>
+          <div className={plusOn && providers.length > 0 ? "lg:col-span-2" : ""}>
+            <TerritoryHomesList
+              homes={homes}
+              openIndex={openHome}
+              onOpenChange={setOpenHome}
+              expanded={homesListExpanded}
+              onExpandedChange={setHomesListExpanded}
+              onZoomHome={(h) => setFlyTo({ lat: h.latitude, lng: h.longitude, _t: Date.now() })}
+              plus={plusOn}
+              clientHomeKeys={clientHomeKeys}
+              customClients={customClients}
+              onMarkHomeClient={handleMarkHomeClient}
+              onUnmarkHomeClient={handleUnmarkHomeClient}
+              onAddClient={() => setEditingClient({ __new: true })}
+              onEditClient={(c) => setEditingClient(c)}
+              providers={topProviders}
+              providerFilter={providerFilter}
+              onProviderFilter={setProviderFilter}
+              leadsByKey={leadsByKey}
+              onSetLeadStatus={handleSetLeadStatus}
+              myClientsOnly={myClientsOnly}
+              onMyClientsOnlyChange={setMyClientsOnly}
+            />
+          </div>
+          {plusOn && providers.length > 0 && (
+            <div className="lg:col-span-1">
+              <TerritoryCareGroupsCard
+                providers={providers}
+                totalHomes={providersTotalHomes}
+                totalAllHomes={homes.length}
+                activeProvider={providerFilter}
+                onSelectProvider={setProviderFilter}
+              />
+            </div>
+          )}
+        </div>
       )}
 
       {editingClient && (
