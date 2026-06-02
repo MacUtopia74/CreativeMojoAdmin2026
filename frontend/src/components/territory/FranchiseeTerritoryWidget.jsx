@@ -14,11 +14,10 @@ import TerritoryMap from "@/components/territory/TerritoryMap";
 import TerritoryHomesList from "@/components/territory/TerritoryHomesList";
 import TerritoryClientModal from "@/components/territory/TerritoryClientModal";
 import TerritoryCareGroupsCard from "@/components/territory/TerritoryCareGroupsCard";
-import TerritoryActionCard from "@/components/territory/TerritoryActionCard";
 import MyClientsPanel from "@/components/territory/MyClientsPanel";
 import {
   Loader2, Map as MapIcon, Search, CheckCircle2, XCircle, AlertCircle,
-  Route, Eye, Maximize2, Minimize2,
+  Route, Maximize2, Minimize2,
 } from "lucide-react";
 
 export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 560, forceBasic = false }) {
@@ -375,38 +374,20 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
         {postcodeBanner}
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-stretch">
-          {/* LEFT COLUMN — action cards + My Clients table.
+          {/* LEFT COLUMN — My Clients table only.
               Width flips between col-span-2 (balanced) and col-span-3
               (clients-focused) via the maximize toggle in either panel. */}
-          <div className={`space-y-3 flex flex-col ${clientsFocus ? "lg:col-span-3" : "lg:col-span-2"}`}>
-            <div className="grid grid-cols-2 gap-3">
-              <TerritoryActionCard
-                icon={Eye}
-                title="My Clients Only"
-                subtitle={myClientsOnly ? "Filter ON" : "Filter map view"}
-                active={myClientsOnly}
-                onClick={() => setMyClientsOnly((v) => !v)}
-                testid="t-plus-show-my-clients-card"
-              />
-              <TerritoryActionCard
-                icon={Route}
-                title="Plan A Route"
-                subtitle="Optimise visits"
-                soon
-                onClick={() => {}}
-                testid="t-plus-plan-route-card"
-              />
-            </div>
-            <div className="flex-1">
-              <MyClientsPanel
-                clients={myClients}
-                homeById={homeById}
-                onAddClient={() => setEditingClient({ __new: true })}
-                onEditClient={(c) => setEditingClient(c)}
-                expanded={clientsFocus}
-                onExpandedChange={setClientsFocus}
-              />
-            </div>
+          <div className={`flex flex-col ${clientsFocus ? "lg:col-span-3" : "lg:col-span-2"}`}>
+            <MyClientsPanel
+              clients={myClients}
+              homeById={homeById}
+              onAddClient={() => setEditingClient({ __new: true })}
+              onEditClient={(c) => setEditingClient(c)}
+              expanded={clientsFocus}
+              onExpandedChange={setClientsFocus}
+              myClientsOnly={myClientsOnly}
+              onMyClientsOnlyChange={setMyClientsOnly}
+            />
           </div>
 
           {/* RIGHT COLUMN — Map. Width follows the inverse of clientsFocus. */}

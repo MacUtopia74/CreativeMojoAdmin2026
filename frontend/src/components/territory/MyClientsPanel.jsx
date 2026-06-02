@@ -17,7 +17,7 @@
 import { useMemo, useState } from "react";
 import {
   Users, Plus, ChevronDown, ChevronRight, Search, Star, BedDouble,
-  Maximize2, Minimize2,
+  Maximize2, Minimize2, Eye,
 } from "lucide-react";
 
 const PAGE_SIZE = 10;
@@ -45,6 +45,8 @@ export default function MyClientsPanel({
   onEditClient,
   expanded = false,           // optional — for the column-width toggle
   onExpandedChange = null,    // (next) => void
+  myClientsOnly = false,      // map-filter toggle (lives in this header now)
+  onMyClientsOnlyChange = null,
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [q, setQ] = useState("");
@@ -112,6 +114,22 @@ export default function MyClientsPanel({
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {onMyClientsOnlyChange && (
+            <button
+              onClick={() => onMyClientsOnlyChange(!myClientsOnly)}
+              data-testid="my-clients-only-pill"
+              title="Hide non-client markers on the map"
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md border transition-colors ${
+                myClientsOnly
+                  ? "bg-stone-950 text-[#dedd0a] border-stone-950"
+                  : "bg-white border-stone-950/40 text-stone-950 hover:bg-stone-100"
+              }`}
+            >
+              <Eye className="w-3 h-3" />
+              <span className="hidden sm:inline">My Clients Only</span>
+              <span className="sm:hidden">Only Mine</span>
+            </button>
+          )}
           {onExpandedChange && (
             <button
               onClick={() => onExpandedChange(!expanded)}
