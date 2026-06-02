@@ -1,6 +1,15 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## My Territory+ — wide-mode row reflow + expandable column headers (Jun 02 2026)
+- **Wide mode row layout** added to `MyClientsPanel` — when `expanded={true}` each client row reflows to use the extra horizontal space:
+  - **Narrow column (default)**: rows stack vertically — name, postcode+town+manager meta line, then TYPE/BEDS/CUSTOM chips below.
+  - **Wide column (expanded)**: rows lay out horizontally — Star · Name+meta · Location · Type chip · Beds chip · Chevron — with a small column-header strip above to label what each section is.
+- **Conditional column-header strip** (`my-clients-column-headers` test-id) appears only in wide mode, hidden by `md:hidden` on small viewports to prevent overflow.
+- All visible content per row scales smoothly between modes — no horizontal scroll, the wider panel actually gets more useful info per row.
+- DOM-verified: clicking either width-toggle flips the `lg:col-span-3`/`lg:col-span-2` classes on the two column wrappers AND the row layout swaps simultaneously.
+
+
 ## My Territory+ — stacked My-Clients rows + column-width toggle (Jun 02 2026)
 - **My Clients panel rebuilt with stacked rows** (not a table). Each client now displays on its own vertical card-style row: star + name on the top line, postcode · town · manager below, and a compact chip row showing TYPE and BEDS (and a "CUSTOM" badge for non-CQC clients). Reads cleanly in the narrow column without horizontal scroll/squashing.
 - **Sort dropdown** replaces per-column sort headers (which made no sense on stacked rows). Options: Name A→Z / Name Z→A / Location / Type / Beds high→low / low→high.

@@ -164,7 +164,23 @@ export default function MyClientsPanel({
             </button>
           </div>
 
-          {/* Stacked list — no table, reads cleanly in narrow column */}
+          {/* Optional column header strip — only when wide (expanded) so
+              the spread-out row fields are scannable. Hidden in narrow
+              mode where rows stack vertically. */}
+          {expanded && filtered.length > 0 && (
+            <div className="hidden md:flex items-center gap-3 px-4 py-2 bg-stone-50 border-b border-stone-200 text-[10px] uppercase tracking-wider font-bold text-stone-500" data-testid="my-clients-column-headers">
+              <span className="w-7" />
+              <span className="flex-[2] min-w-0">Client name</span>
+              <span className="flex-1 min-w-0">Location</span>
+              <span className="hidden lg:block w-28">Type</span>
+              <span className="hidden lg:block w-20 text-right">Beds</span>
+              <span className="w-4" />
+            </div>
+          )}
+
+          {/* Stacked list — no table, reads cleanly in narrow column.
+              Switches to a horizontal spread when ``expanded`` so the
+              extra width carries the location/type/beds inline. */}
           {filtered.length === 0 ? (
             <div className="px-4 py-10 text-center text-sm text-stone-500 flex-1 flex flex-col items-center justify-center gap-2">
               <Users className="w-8 h-8 text-stone-300" />
@@ -179,40 +195,75 @@ export default function MyClientsPanel({
                   onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onEditClient?.(c); } }}
                   role="button"
                   tabIndex={0}
-                  className="px-4 py-3 hover:bg-stone-50 cursor-pointer group flex items-start gap-3"
+                  className="px-4 py-3 hover:bg-stone-50 cursor-pointer group flex items-center gap-3"
                   data-testid={`my-clients-row-${c.id}`}
                 >
-                  <span className="shrink-0 mt-0.5 w-7 h-7 rounded-full bg-[#dedd0a] text-stone-950 border border-stone-950 flex items-center justify-center">
+                  <span className="shrink-0 w-7 h-7 rounded-full bg-[#dedd0a] text-stone-950 border border-stone-950 flex items-center justify-center">
                     <Star className="w-3.5 h-3.5 fill-current" />
                   </span>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="font-semibold text-stone-950 text-sm leading-snug break-words">
-                        {c.name}
+                  {expanded ? (
+                    // ---- Expanded (wide) layout: spread across the row ----
+                    <>
+                      <div className="min-w-0 flex-[2]">
+                        <div className="font-semibold text-stone-950 text-sm leading-snug truncate">{c.name}</div>
+                        <div className="text-[11px] text-stone-600 mt-0.5 truncate">
+                          {c.postcode ? <span className="font-mono">{c.postcode}</span> : null}
+                          {c.manager && <span>{c.postcode ? " · " : ""}{c.manager}</span>}
+                        </div>
                       </div>
-                      <ChevronRight className="w-4 h-4 mt-0.5 shrink-0 text-stone-400 group-hover:text-stone-950 group-hover:translate-x-0.5 transition-transform" />
-                    </div>
-                    <div className="text-[11px] text-stone-600 mt-1 flex flex-wrap gap-x-2 gap-y-1 items-center">
-                      {c.postcode && <span className="font-mono">{c.postcode}</span>}
-                      {c._location && <span>· {c._location}</span>}
-                      {c.manager && <span>· {c.manager}</span>}
-                    </div>
-                    <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
-                      <span className="inline-flex px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded bg-stone-100 text-stone-700 border border-stone-200">
-                        {c._type}
-                      </span>
-                      {c._beds != null && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded bg-stone-100 text-stone-700 border border-stone-200">
-                          <BedDouble className="w-2.5 h-2.5" /> {c._beds} beds
+                      <div className="hidden md:block flex-1 min-w-0 text-sm text-stone-700 truncate">
+                        {c._location || "—"}
+                      </div>
+                      <div className="hidden lg:flex shrink-0 w-28">
+                        <span className="inline-flex px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded bg-stone-100 text-stone-700 border border-stone-200">
+                          {c._type}
                         </span>
-                      )}
+                      </div>
+                      <div className="hidden lg:flex shrink-0 w-20 justify-end">
+                        {c._beds != null && (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded bg-stone-100 text-stone-700 border border-stone-200">
+                            <BedDouble className="w-3 h-3" /> {c._beds}
+                          </span>
+                        )}
+                      </div>
                       {c.source === "custom" && (
-                        <span className="inline-flex px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded bg-stone-950 text-[#dedd0a]">
+                        <span className="hidden md:inline-flex shrink-0 px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded bg-stone-950 text-[#dedd0a]">
                           Custom
                         </span>
                       )}
-                    </div>
-                  </div>
+                      <ChevronRight className="w-4 h-4 shrink-0 text-stone-400 group-hover:text-stone-950 group-hover:translate-x-0.5 transition-transform" />
+                    </>
+                  ) : (
+                    // ---- Narrow layout: stacked rows ----
+                    <>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="font-semibold text-stone-950 text-sm leading-snug break-words">{c.name}</div>
+                          <ChevronRight className="w-4 h-4 mt-0.5 shrink-0 text-stone-400 group-hover:text-stone-950 group-hover:translate-x-0.5 transition-transform" />
+                        </div>
+                        <div className="text-[11px] text-stone-600 mt-1 flex flex-wrap gap-x-2 gap-y-1 items-center">
+                          {c.postcode && <span className="font-mono">{c.postcode}</span>}
+                          {c._location && <span>· {c._location}</span>}
+                          {c.manager && <span>· {c.manager}</span>}
+                        </div>
+                        <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+                          <span className="inline-flex px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded bg-stone-100 text-stone-700 border border-stone-200">
+                            {c._type}
+                          </span>
+                          {c._beds != null && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded bg-stone-100 text-stone-700 border border-stone-200">
+                              <BedDouble className="w-2.5 h-2.5" /> {c._beds} beds
+                            </span>
+                          )}
+                          {c.source === "custom" && (
+                            <span className="inline-flex px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded bg-stone-950 text-[#dedd0a]">
+                              Custom
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
