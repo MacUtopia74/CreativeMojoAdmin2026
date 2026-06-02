@@ -1354,7 +1354,7 @@ async def franchisee_portal_modules(
     if f is None:
         raise HTTPException(404, detail="Franchisee not found")
     current = f.get("portal_modules") or {}
-    allowed = {"map", "calendar", "files", "territory_plus", "marketing", "invoicing"}
+    allowed = {"map", "calendar", "files", "territory_plus", "marketing", "invoicing", "bookings"}
     next_modules = {
         "map":            bool(current.get("map",            True)),
         "calendar":       bool(current.get("calendar",       True)),
@@ -1362,6 +1362,7 @@ async def franchisee_portal_modules(
         "territory_plus": bool(current.get("territory_plus", False)),
         "marketing":      bool(current.get("marketing",      False)),
         "invoicing":      bool(current.get("invoicing",      False)),
+        "bookings":       bool(current.get("bookings",       False)),
     }
     for key, val in (body or {}).items():
         if key in allowed:
@@ -1409,6 +1410,7 @@ async def admin_seed_demo_franchisee(
         "territory_plus": True,
         "marketing":      True,
         "invoicing":      True,
+        "bookings":       True,
     }
     modules = {**default_modules, **{
         k: bool(v) for k, v in modules_override.items()
@@ -1782,6 +1784,7 @@ async def portal_me(user: dict = Depends(require_role("franchisee"))):
         "territory_plus": bool(existing_mods.get("territory_plus", False)),
         "marketing":      bool(existing_mods.get("marketing",      False)),
         "invoicing":      bool(existing_mods.get("invoicing",      False)),
+        "bookings":       bool(existing_mods.get("bookings",       False)),
     }
     # Fallback: if Airtable didn't carry over a start_date, derive it
     # from the earliest known contract, then `date_added`.

@@ -25,6 +25,7 @@ const PLUS_MODULES = [
   { key: "territory_plus", label: "My Territory+", icon: MapIcon,   description: "Upgrades Territory page — plot contacts, marketing leads, area analytics. Adds the “+” suffix to the menu item." },
   { key: "marketing",      label: "Marketing",     icon: Megaphone, description: "Social-post templates, local marketing kits, campaign tools." },
   { key: "invoicing",      label: "Invoicing",     icon: FileText,  description: "Personal invoicing tool with client manager and Xero export." },
+  { key: "bookings",       label: "Bookings",      icon: Calendar,  description: "Client-booking manager — recurring sessions, attendance and franchisee diary." },
 ];
 
 export default function PortalModulesPanel({ franchisee, onChanged }) {
@@ -38,6 +39,7 @@ export default function PortalModulesPanel({ franchisee, onChanged }) {
     territory_plus: initial.territory_plus === true,  // default OFF (plus)
     marketing:      initial.marketing      === true,  // default OFF (plus)
     invoicing:      initial.invoicing      === true,  // default OFF (plus)
+    bookings:       initial.bookings       === true,  // default OFF (plus)
   });
   const [savingKey, setSavingKey] = useState(null);
 

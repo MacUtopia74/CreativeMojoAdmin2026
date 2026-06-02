@@ -495,6 +495,8 @@ export default function FranchiseeDetailPage() {
           {!editing && (
             (() => {
               const isEx = (f.lifecycle_status === "ex_franchisee") || (f.tags || []).includes("EX-Franchisee");
+              const isLicensee = (f.tags || []).some((t) => /licencee|licensee/i.test(t));
+              const deactivateLabel = isLicensee ? "Make Ex-Licensee" : "Make Ex-Franchisee";
               return isEx ? (
                 <button onClick={() => toggleLifecycle("active")} disabled={lifecycleBusy} data-testid="reactivate-franchisee"
                   className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 rounded-lg flex items-center gap-1.5 disabled:opacity-50">
@@ -503,7 +505,7 @@ export default function FranchiseeDetailPage() {
               ) : (
                 <button onClick={() => toggleLifecycle("ex_franchisee")} disabled={lifecycleBusy} data-testid="deactivate-franchisee"
                   className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider border border-stone-300 bg-white text-stone-700 hover:bg-red-50 hover:text-red-700 hover:border-red-200 rounded-lg flex items-center gap-1.5 disabled:opacity-50">
-                  <PowerOff className="w-3.5 h-3.5" /> {lifecycleBusy ? "Working…" : "Make Ex-Franchisee"}
+                  <PowerOff className="w-3.5 h-3.5" /> {lifecycleBusy ? "Working…" : deactivateLabel}
                 </button>
               );
             })()

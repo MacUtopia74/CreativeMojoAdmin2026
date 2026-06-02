@@ -12,7 +12,15 @@ import XeroContactPicker from "@/components/orders/XeroContactPicker";
 
 export default function CreateOrderModal({ open, onClose, onCreated }) {
   const [customer, setCustomer] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [address1, setAddress1] = useState("");
+  const [address2, setAddress2] = useState("");
+  const [city, setCity] = useState("");
+  const [postcode, setPostcode] = useState("");
+  const [country, setCountry] = useState("United Kingdom");
   const [xeroContactId, setXeroContactId] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [shipping, setShipping] = useState("0.00");
@@ -22,7 +30,11 @@ export default function CreateOrderModal({ open, onClose, onCreated }) {
   if (!open) return null;
 
   const reset = () => {
-    setCustomer(""); setEmail(""); setXeroContactId("");
+    setCustomer(""); setFirstName(""); setLastName("");
+    setEmail(""); setPhone("");
+    setAddress1(""); setAddress2(""); setCity(""); setPostcode("");
+    setCountry("United Kingdom");
+    setXeroContactId("");
     setDueDate(""); setShipping("0.00"); setError("");
   };
   const handleClose = () => { reset(); onClose && onClose(); };
@@ -35,6 +47,20 @@ export default function CreateOrderModal({ open, onClose, onCreated }) {
       const { data } = await api.post("/orders", {
         customer_label: customer.trim(),
         customer_email: email.trim() || undefined,
+        customer_phone: phone.trim() || undefined,
+        first_name: firstName.trim() || undefined,
+        last_name: lastName.trim() || undefined,
+        billing: {
+          first_name: firstName.trim() || undefined,
+          last_name: lastName.trim() || undefined,
+          email: email.trim() || undefined,
+          phone: phone.trim() || undefined,
+          address_1: address1.trim() || undefined,
+          address_2: address2.trim() || undefined,
+          city: city.trim() || undefined,
+          postcode: postcode.trim() || undefined,
+          country: country.trim() || undefined,
+        },
         due_date: dueDate || undefined,
         shipping_total: parseFloat(shipping || 0),
         line_items: [],
@@ -62,7 +88,7 @@ export default function CreateOrderModal({ open, onClose, onCreated }) {
       onClick={handleClose}
       className="fixed inset-0 z-[55] bg-stone-950/50 backdrop-blur-sm flex items-center justify-center p-4"
     >
-      <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+      <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[92vh] flex flex-col">
         <div className="px-6 py-4 border-b border-stone-200 flex items-center justify-between">
           <div>
             <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">CRM · ORDERS</div>
@@ -75,7 +101,7 @@ export default function CreateOrderModal({ open, onClose, onCreated }) {
           </button>
         </div>
 
-        <div className="px-6 py-5 space-y-4">
+        <div className="px-6 py-5 space-y-4 overflow-y-auto">
           {error && (
             <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-sm text-rose-800">{error}</div>
           )}
@@ -111,6 +137,91 @@ export default function CreateOrderModal({ open, onClose, onCreated }) {
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">First name</label>
+              <input
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                data-testid="create-order-first-name"
+                className="w-full px-3 py-2 border border-stone-300 rounded-lg text-sm focus:outline-none focus:border-stone-900"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">Last name</label>
+              <input
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                data-testid="create-order-last-name"
+                className="w-full px-3 py-2 border border-stone-300 rounded-lg text-sm focus:outline-none focus:border-stone-900"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">Phone</label>
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              data-testid="create-order-phone"
+              placeholder="e.g. 01392 123456"
+              className="w-full px-3 py-2 border border-stone-300 rounded-lg text-sm focus:outline-none focus:border-stone-900"
+            />
+          </div>
+          <div className="border-t border-stone-200 pt-4">
+            <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-2">
+              Billing address (optional)
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">Address line 1</label>
+                <input
+                  value={address1}
+                  onChange={(e) => setAddress1(e.target.value)}
+                  data-testid="create-order-address-1"
+                  className="w-full px-3 py-2 border border-stone-300 rounded-lg text-sm focus:outline-none focus:border-stone-900"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">Address line 2</label>
+                <input
+                  value={address2}
+                  onChange={(e) => setAddress2(e.target.value)}
+                  data-testid="create-order-address-2"
+                  className="w-full px-3 py-2 border border-stone-300 rounded-lg text-sm focus:outline-none focus:border-stone-900"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">Town / city</label>
+                  <input
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    data-testid="create-order-city"
+                    className="w-full px-3 py-2 border border-stone-300 rounded-lg text-sm focus:outline-none focus:border-stone-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">Postcode</label>
+                  <input
+                    value={postcode}
+                    onChange={(e) => setPostcode(e.target.value.toUpperCase())}
+                    data-testid="create-order-postcode"
+                    className="w-full px-3 py-2 border border-stone-300 rounded-lg text-sm font-mono uppercase focus:outline-none focus:border-stone-900"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">Country</label>
+                <input
+                  value={country}
+                  onChange={(e) => setCountry(e.target.value)}
+                  data-testid="create-order-country"
+                  className="w-full px-3 py-2 border border-stone-300 rounded-lg text-sm focus:outline-none focus:border-stone-900"
+                />
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3 border-t border-stone-200 pt-4">
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">Due date (optional)</label>
               <input

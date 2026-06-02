@@ -435,17 +435,38 @@ def attach(api, db, require_role):
         shipping_total = float(body.get("shipping_total") or 0)
         order_total = shipping_total + sum(float(li["total"]) for li in line_items)
         now = datetime.now(timezone.utc).isoformat()
+        # Customer contact details — captured optionally on manual creation so
+        # admin doesn't have to bounce to Xero before posting an order.
+        billing_in = body.get("billing") or {}
+        customer_label = (body.get("customer_label") or "").strip() or "New Customer"
+        customer_email = body.get("customer_email")
+        customer_phone = body.get("customer_phone") or billing_in.get("phone")
+        first_name = (body.get("first_name") or "").strip() or None
+        last_name = (body.get("last_name") or "").strip() or None
+        billing = {
+            "company":    customer_label,
+            "email":      customer_email,
+            "phone":      customer_phone,
+            "first_name": first_name or billing_in.get("first_name"),
+            "last_name":  last_name or billing_in.get("last_name"),
+            "address_1":  billing_in.get("address_1") or body.get("address_1"),
+            "address_2":  billing_in.get("address_2") or body.get("address_2"),
+            "city":       billing_in.get("city") or body.get("city"),
+            "postcode":   billing_in.get("postcode") or body.get("postcode"),
+            "country":    billing_in.get("country") or body.get("country"),
+        }
+        # Strip Nones so the doc stays tidy and the AddressBlock empty-state
+        # heuristic still fires for actually-empty addresses.
+        billing = {k: v for k, v in billing.items() if v not in (None, "")}
         doc = {
             "id": oid,
             "display_order_id": next_display,
             "woo_id": None,
             "woo_number": None,
-            "customer_label": (body.get("customer_label") or "").strip() or "New Customer",
-            "customer_email": body.get("customer_email"),
-            "billing": {
-                "company": body.get("customer_label"),
-                "email": body.get("customer_email"),
-            },
+            "customer_label": customer_label,
+            "customer_email": customer_email,
+            "customer_phone": customer_phone,
+            "billing": billing,
             "shipping": {},
             "date_created": now,
             "date_modified": now,
