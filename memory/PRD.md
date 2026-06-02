@@ -1,6 +1,13 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## My Territory+ layout polish — proportions + defaults (Jun 02 2026)
+- **Swapped top-row column widths** to match wireframe — My Clients column trimmed from `col-span-3` → `col-span-2` (40%); Map expanded from `col-span-2` → `col-span-3` (60%). Sandra's full Devon territory now visible without zooming.
+- **Action cards shorter + narrower** — removed `h-full` stretch, reduced padding to `px-3 py-2.5`, icon circle to 36px, subtitle text to 11px. Removed the trailing ChevronRight arrow that was crowding the layout. They now sit cleanly within the My Clients column width.
+- **Both bottom panels default to EXPANDED** — `homesListExpanded` and `TerritoryCareGroupsCard.expanded` both initialise to `true` so the franchisee lands on a fully-revealed page (no clicking required to see the data).
+- **Removed Care Groups lozenge row** from the CQC Homes toolbar (~40 lines) — the dedicated Care Groups panel on the right now exclusively drives the `providerFilter` state, so the duplicate filter UI is gone. CQC Homes panel is cleaner — just heading + search + rows.
+
+
 ## My Territory+ layout restructure per user wireframe (Jun 02 2026)
 - **2-row × 2-col responsive grid** (lg:grid-cols-5) below the page heading:
   - **Top row** (col-span-3 left, col-span-2 right):

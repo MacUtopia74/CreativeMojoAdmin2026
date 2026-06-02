@@ -29,7 +29,7 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
   const [homes, setHomes] = useState([]);
   const [homesLoading, setHomesLoading] = useState(false);
   const [openHome, setOpenHome] = useState(null);
-  const [homesListExpanded, setHomesListExpanded] = useState(false);
+  const [homesListExpanded, setHomesListExpanded] = useState(true);
   const [flyTo, setFlyTo] = useState(null);
   const [check, setCheck] = useState("");
   const [checkResult, setCheckResult] = useState(null);
@@ -371,13 +371,13 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
         {postcodeBanner}
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-stretch">
-          {/* LEFT COLUMN — action cards + My Clients table */}
-          <div className="lg:col-span-3 space-y-4 flex flex-col">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* LEFT COLUMN — action cards + My Clients table (narrower) */}
+          <div className="lg:col-span-2 space-y-3 flex flex-col">
+            <div className="grid grid-cols-2 gap-3">
               <TerritoryActionCard
                 icon={Eye}
-                title="Show My Clients Only"
-                subtitle={myClientsOnly ? "Map filter active — tap to clear" : "Filter map view"}
+                title="My Clients Only"
+                subtitle={myClientsOnly ? "Filter ON" : "Filter map view"}
                 active={myClientsOnly}
                 onClick={() => setMyClientsOnly((v) => !v)}
                 testid="t-plus-show-my-clients-card"
@@ -385,7 +385,7 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
               <TerritoryActionCard
                 icon={Route}
                 title="Plan A Route"
-                subtitle="Optimise your visits"
+                subtitle="Optimise visits"
                 soon
                 onClick={() => {}}
                 testid="t-plus-plan-route-card"
@@ -401,8 +401,8 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
             </div>
           </div>
 
-          {/* RIGHT COLUMN — Map */}
-          <div className="lg:col-span-2 flex">
+          {/* RIGHT COLUMN — Map (wider) */}
+          <div className="lg:col-span-3 flex">
             <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden h-full w-full flex flex-col">
               <div className="px-4 py-3 border-b border-stone-200 flex items-center justify-between gap-3 flex-wrap" style={{ backgroundColor: "#eeee84" }}>
                 <div className="flex items-center gap-2 min-w-0">

@@ -432,42 +432,9 @@ export default function TerritoryHomesList({
           className="px-3 py-2 ios-no-zoom bg-white border border-stone-950/20 rounded-lg w-full sm:w-72 focus:outline-none focus:ring-2 focus:ring-stone-950/20 focus:border-stone-950/50" />
       </div>
 
-      {/* Territory+ toolbar — provider filter pills only.
-          The Add Client / Plan Route / Show My Clients Only CTAs live
-          in dedicated action cards at the top of My Territory+. */}
-      {plus && providers.length > 0 && (
-        <div className="px-4 py-3 border-b border-stone-200 bg-white" data-testid="territory-plus-toolbar">
-          <div className="flex items-center gap-1.5 flex-wrap" data-testid="t-plus-provider-filters">
-            <span className="text-[10px] uppercase tracking-wider font-bold text-stone-500 mr-1">Care groups:</span>
-            {providers.map((p) => {
-              const active = providerFilter === p.name;
-              return (
-                <button
-                  key={p.name}
-                  onClick={() => onProviderFilter?.(active ? null : p.name)}
-                  data-testid={`t-plus-provider-btn-${p.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
-                  className={`inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md border transition-colors ${
-                    active
-                      ? "bg-stone-950 text-white border-stone-950"
-                      : "bg-white border-stone-300 text-stone-700 hover:bg-stone-100 hover:border-stone-500"
-                  }`}
-                >
-                  {p.name} <span className={`px-1.5 py-0.5 rounded text-[9px] ${active ? "bg-white/20 text-white" : "bg-stone-100 text-stone-600"}`}>{p.count}</span>
-                </button>
-              );
-            })}
-            {providerFilter && (
-              <button
-                onClick={() => onProviderFilter?.(null)}
-                data-testid="t-plus-provider-clear"
-                className="text-[10px] font-bold uppercase tracking-wider text-stone-500 hover:text-stone-900 underline ml-1"
-              >
-                Clear
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      {/* Care-group filter pills removed in favour of the dedicated
+          "Care Groups in Your Territory" panel on the right of My
+          Territory+ which drives the same providerFilter state. */}
 
       <div className="max-h-[520px] overflow-y-auto">
         {filtered.map((h, i) => {

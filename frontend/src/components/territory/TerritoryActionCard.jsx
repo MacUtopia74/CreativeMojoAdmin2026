@@ -6,7 +6,8 @@
 // ``soon`` renders a "Soon" pill on the right to signal a coming-soon
 // feature — the card stays clickable so the parent can show a tooltip
 // or no-op silently.
-import { ChevronRight } from "lucide-react";
+// (no extra imports needed beyond what's used below)
+
 
 export default function TerritoryActionCard({
   icon: Icon,
@@ -22,23 +23,22 @@ export default function TerritoryActionCard({
     <button
       onClick={onClick}
       data-testid={testid}
-      className={`w-full h-full flex items-center gap-3 px-4 py-4 sm:px-5 sm:py-5 rounded-2xl border transition-all text-left group ${bg}`}
+      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl border transition-all text-left group ${bg}`}
     >
-      <span className={`shrink-0 w-11 h-11 rounded-full flex items-center justify-center ${
+      <span className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${
         active ? "bg-stone-950 text-[#dedd0a]" : "bg-stone-100 text-stone-900 group-hover:bg-stone-200"
       }`}>
-        {Icon && <Icon className="w-5 h-5" />}
+        {Icon && <Icon className="w-4 h-4" />}
       </span>
       <div className="flex-1 min-w-0">
-        <div className="text-[10px] uppercase tracking-[0.25em] font-black text-stone-950 truncate flex items-center gap-2">
+        <div className="text-[10px] uppercase tracking-[0.2em] font-black text-stone-950 truncate flex items-center gap-1.5">
           {title}
           {soon && (
             <span className="px-1.5 py-0.5 rounded bg-stone-200 text-stone-700 text-[8px] font-black">SOON</span>
           )}
         </div>
-        <div className="text-xs text-stone-600 mt-0.5 truncate">{subtitle}</div>
+        <div className="text-[11px] text-stone-600 mt-0.5 truncate">{subtitle}</div>
       </div>
-      <ChevronRight className={`w-4 h-4 shrink-0 transition-transform ${active ? "text-stone-950" : "text-stone-400 group-hover:translate-x-0.5"}`} />
     </button>
   );
 }

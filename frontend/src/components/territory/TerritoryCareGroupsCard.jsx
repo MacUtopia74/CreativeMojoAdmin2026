@@ -17,7 +17,7 @@ export default function TerritoryCareGroupsCard({
   activeProvider = null, // current filter (highlight matching row)
   onSelectProvider = null, // (name | null) — toggles the filter
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const [showAll, setShowAll] = useState(false);
   // Default to the top 8 — feels scannable, still gives clear signal of
   // dominance. Expandable for the curious.
