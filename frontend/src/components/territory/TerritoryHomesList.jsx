@@ -377,32 +377,9 @@ export default function TerritoryHomesList({
   }
 
   if (!listExpanded) {
-    // Collapsed — soft brand yellow (50% tint of #dedd0a) CTA matching
-    // the site-wide collapsible panel pattern. Click anywhere to expand.
-    return (
-      <button
-        onClick={() => setListExpanded(true)}
-        data-testid="expand-homes-list"
-        className="w-full h-full flex items-center justify-between gap-3 bg-[#eeee84] hover:bg-[#e8e773] text-stone-950 rounded-2xl px-5 py-4 transition-all group"
-      >
-        <span className="flex items-center gap-3 min-w-0">
-          <span className="w-9 h-9 rounded-full bg-stone-950 text-[#dedd0a] flex items-center justify-center shrink-0">
-            <ListIcon className="w-4 h-4" />
-          </span>
-          <span className="text-left min-w-0">
-            <span className="block text-[10px] uppercase tracking-[0.3em] font-bold text-stone-950/70">
-              {plus ? "Homes in My Territory · From CQC Database" : "Homes in your territory"}
-            </span>
-            <span className="block text-sm font-semibold truncate text-stone-950">
-              Expand to show list of {homes.length} home{homes.length === 1 ? "" : "s"}
-            </span>
-          </span>
-        </span>
-        <span className="shrink-0 text-[10px] uppercase tracking-wider font-bold bg-stone-950 text-[#dedd0a] group-hover:bg-stone-800 px-3 py-1.5 rounded-full flex items-center gap-1.5">
-          Expand <ChevronDown className="w-3.5 h-3.5" />
-        </span>
-      </button>
-    );
+    // listExpanded is hard-pinned to true (always-expanded panel) but
+    // we keep the state plumbing in case we want a future preference
+    // toggle. Falling through to the expanded render below.
   }
 
   return (
@@ -423,10 +400,6 @@ export default function TerritoryHomesList({
             </div>
           </div>
         </div>
-        <button onClick={() => setListExpanded(false)} data-testid="collapse-homes-list"
-          className="touch-target shrink-0 w-7 h-7 rounded-full border border-stone-950 bg-stone-950 text-[#dedd0a] hover:bg-stone-800 flex items-center justify-center" aria-label="Hide list">
-          <ChevronDown className="w-3.5 h-3.5 rotate-180" />
-        </button>
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name, town, postcode, manager…"
           data-testid="homes-search"
           className="px-3 py-2 ios-no-zoom bg-white border border-stone-950/20 rounded-lg w-full sm:w-72 focus:outline-none focus:ring-2 focus:ring-stone-950/20 focus:border-stone-950/50" />

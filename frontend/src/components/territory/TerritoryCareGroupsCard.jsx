@@ -4,9 +4,9 @@
 // franchisee's territory so they can spot wholesale-target
 // opportunities at a glance without scrolling the home list.
 //
-// Collapsible — defaults to closed (matches the homes-list pattern)
-// so the dashboard stays scannable. Header uses the site-wide brand
-// yellow #dedd0a.
+// Always-expanded card (no collapse chevron — kept consistent with the
+// other panels on the My Territory+ page after the user simplified the
+// header treatments).
 import { useMemo, useState } from "react";
 import { Building2, ChevronDown } from "lucide-react";
 
@@ -17,7 +17,6 @@ export default function TerritoryCareGroupsCard({
   activeProvider = null, // current filter (highlight matching row)
   onSelectProvider = null, // (name | null) — toggles the filter
 }) {
-  const [expanded, setExpanded] = useState(true);
   const [showAll, setShowAll] = useState(false);
   // Default to the top 8 — feels scannable, still gives clear signal of
   // dominance. Expandable for the curious.
@@ -25,39 +24,8 @@ export default function TerritoryCareGroupsCard({
 
   if (!providers.length) return null;
 
-  // Bar widths scaled against the largest count so the leader feels
-  // dominant. Falls back to 4% so single-home groups still render a
-  // small chip.
   const maxCount = providers[0]?.count || 1;
   const remainingCount = Math.max(0, totalAllHomes - totalHomes);
-
-  // Collapsed — yellow brand CTA matching the homes-list pattern.
-  if (!expanded) {
-    return (
-      <button
-        onClick={() => setExpanded(true)}
-        data-testid="expand-care-groups"
-        className="w-full h-full flex items-center justify-between gap-3 bg-[#eeee84] hover:bg-[#e8e773] text-stone-950 rounded-2xl px-5 py-4 transition-all group"
-      >
-        <span className="flex items-center gap-3 min-w-0">
-          <span className="w-9 h-9 rounded-full bg-stone-950 text-[#dedd0a] flex items-center justify-center shrink-0">
-            <Building2 className="w-4 h-4" />
-          </span>
-          <span className="text-left min-w-0">
-            <span className="block text-[10px] uppercase tracking-[0.3em] font-bold text-stone-950/70">
-              Care groups in your territory
-            </span>
-            <span className="block text-sm font-semibold truncate text-stone-950">
-              Expand to see {providers.length} care group{providers.length === 1 ? "" : "s"} across {totalHomes} home{totalHomes === 1 ? "" : "s"}
-            </span>
-          </span>
-        </span>
-        <span className="shrink-0 text-[10px] uppercase tracking-wider font-bold bg-stone-950 text-[#dedd0a] group-hover:bg-stone-800 px-3 py-1.5 rounded-full flex items-center gap-1.5">
-          Expand <ChevronDown className="w-3.5 h-3.5" />
-        </span>
-      </button>
-    );
-  }
 
   return (
     <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden h-full w-full flex flex-col" data-testid="care-groups-card">
@@ -77,25 +45,15 @@ export default function TerritoryCareGroupsCard({
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {activeProvider && (
-            <button
-              onClick={() => onSelectProvider?.(null)}
-              data-testid="care-groups-clear"
-              className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-stone-950/10 hover:bg-stone-950/20 text-stone-950 rounded-md"
-            >
-              Clear filter
-            </button>
-          )}
+        {activeProvider && (
           <button
-            onClick={() => setExpanded(false)}
-            data-testid="collapse-care-groups"
-            className="w-7 h-7 rounded-full border border-stone-950 bg-stone-950 text-[#dedd0a] hover:bg-stone-800 flex items-center justify-center"
-            aria-label="Hide care groups"
+            onClick={() => onSelectProvider?.(null)}
+            data-testid="care-groups-clear"
+            className="shrink-0 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-stone-950/10 hover:bg-stone-950/20 text-stone-950 rounded-md"
           >
-            <ChevronDown className="w-3.5 h-3.5 rotate-180" />
+            Clear filter
           </button>
-        </div>
+        )}
       </div>
 
       <div className="px-5 py-4 space-y-1 flex-1 overflow-y-auto">

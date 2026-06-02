@@ -16,7 +16,7 @@
 // proportions. The button lives in the panel header.
 import { useMemo, useState } from "react";
 import {
-  Users, Plus, ChevronDown, ChevronRight, Search, Star, BedDouble,
+  Users, Plus, ChevronRight, Search, Star, BedDouble,
   Maximize2, Minimize2, Eye,
 } from "lucide-react";
 
@@ -48,7 +48,6 @@ export default function MyClientsPanel({
   myClientsOnly = false,      // map-filter toggle (lives in this header now)
   onMyClientsOnlyChange = null,
 }) {
-  const [collapsed, setCollapsed] = useState(false);
   const [q, setQ] = useState("");
   const [sortValue, setSortValue] = useState("name-asc");
   const [page, setPage] = useState(0);
@@ -141,21 +140,11 @@ export default function MyClientsPanel({
               {expanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
             </button>
           )}
-          <button
-            onClick={() => setCollapsed((c) => !c)}
-            data-testid="my-clients-toggle"
-            className="touch-target w-7 h-7 rounded-full border border-stone-950 bg-stone-950 text-[#dedd0a] hover:bg-stone-800 flex items-center justify-center"
-            aria-label={collapsed ? "Expand" : "Collapse"}
-          >
-            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${collapsed ? "" : "rotate-180"}`} />
-          </button>
         </div>
       </div>
 
-      {!collapsed && (
-        <>
-          {/* Search + sort + add */}
-          <div className="px-4 py-3 border-b border-stone-200 flex items-center gap-2 flex-wrap">
+      {/* Search + sort + add */}
+      <div className="px-4 py-3 border-b border-stone-200 flex items-center gap-2 flex-wrap">
             <div className="relative flex-1 min-w-[160px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-400 pointer-events-none" />
               <input
@@ -309,8 +298,6 @@ export default function MyClientsPanel({
               </div>
             </div>
           )}
-        </>
-      )}
     </div>
   );
 }

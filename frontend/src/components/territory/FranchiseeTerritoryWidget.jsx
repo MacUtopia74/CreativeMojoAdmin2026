@@ -293,14 +293,17 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
   };
 
   // Map element — reused in both layouts so the existing marker/flyTo
-  // logic stays in one place.
+  // logic stays in one place. ``height`` is sized to match the My Clients
+  // panel (header + ~10 rows + pagination footer) so the two columns line
+  // up at the bottom; ``rounded-none`` because the wrapper panel already
+  // provides the rounded corners.
   const mapEl = hasTerritory ? (
     <TerritoryMap
       sectors={sectors}
       selected={summary.sectors}
       centre={summary.centre}
       centreLabel={summary.franchisee?.organisation || summary.franchisee?.postcode || ""}
-      height={plusOn ? 620 : mapHeight}
+      height={plusOn ? 760 : mapHeight}
       interactive={false}
       homes={homes}
       activeHomeIndex={openHome}
