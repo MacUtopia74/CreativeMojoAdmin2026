@@ -1,46 +1,79 @@
 // Marketing compose modal — two-pane editor (left) / live preview
 // (right). Mirrors the HQ Updates ComposeModal but scoped to the
-// franchisee's own Territory+ clients and capped at 5 recipients.
+// franchisee's own Territory+ clients and capped at 5 recipients
+// per send. Now supports:
+//   • Multi-panel sections — each panel = {intro, image, link}
+//     joined in the email by the brand-yellow horizontal divider.
+//   • Rich-text intro on each panel (bold + centre via tiny toolbar).
+//   • "Save draft" — persists the in-progress campaign so the user
+//     can come back and finish later. Loaded drafts re-open here
+//     pre-filled with their stored panels/recipients.
 import { useEffect, useState, useMemo, useCallback } from "react";
 import {
   X, Send, Loader2, Search, CheckCircle2, AlertCircle, Image as ImageIcon,
-  Trash2, Link as LinkIcon, Calendar, Megaphone, RefreshCw,
+  Trash2, Link as LinkIcon, Calendar, Megaphone, RefreshCw, Plus, FileText,
 } from "lucide-react";
 import api from "@/lib/api";
 import MarketingImageCropper from "@/components/portal/marketing/MarketingImageCropper";
+import MarketingIntroEditor from "@/components/portal/marketing/MarketingIntroEditor";
 
 const MAX_RECIPIENTS = 5;
+const MAX_PANELS = 8;
 
-export default function MarketingComposeModal({ open, access, onClose, onSent }) {
+const emptyPanel = () => ({
+  intro: "",
+  image_url: "",
+  image_key: "",
+  link_url: "",
+  link_label: "Find out more",
+});
+
+export default function MarketingComposeModal({ open, access, draft, onClose, onSent, onDraftSaved }) {
+  const [draftId, setDraftId] = useState(null);
   const [title, setTitle] = useState("");
-  const [intro, setIntro] = useState("");
-  const [imageUrl, setImageUrl] = useState("");
-  const [imageKey, setImageKey] = useState("");
-  const [linkUrl, setLinkUrl] = useState("");
-  const [linkLabel, setLinkLabel] = useState("Find out more");
+  const [panels, setPanels] = useState([emptyPanel()]);
   const [includeBookings, setIncludeBookings] = useState(false);
 
   const [recipients, setRecipients] = useState([]);
   const [recipientSearch, setRecipientSearch] = useState("");
-  const [selectedKeys, setSelectedKeys] = useState(new Set()); // "client_id:contact_index"
+  const [selectedKeys, setSelectedKeys] = useState(new Set());
   const [recipientsLoading, setRecipientsLoading] = useState(false);
 
   const [previewHtml, setPreviewHtml] = useState("");
   const [cropOpen, setCropOpen] = useState(false);
+  const [cropPanelIdx, setCropPanelIdx] = useState(null);
   const [rawImageFile, setRawImageFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
   const [testing, setTesting] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
 
-  // Reset when modal opens
+  // Reset / hydrate whenever the modal opens or a different draft is loaded.
   useEffect(() => {
     if (!open) return;
-    setTitle(""); setIntro("");
-    setImageUrl(""); setImageKey("");
-    setLinkUrl(""); setLinkLabel("Find out more");
-    setIncludeBookings(false);
+    if (draft) {
+      setDraftId(draft.id);
+      setTitle(draft.title || "");
+      const dp = Array.isArray(draft.panels) && draft.panels.length
+        ? draft.panels.map((p) => ({ ...emptyPanel(), ...p }))
+        : [{
+            ...emptyPanel(),
+            intro: draft.intro || "",
+            image_url: draft.image_url || "",
+            image_key: draft.image_key || "",
+            link_url: draft.link_url || "",
+            link_label: draft.link_label || "Find out more",
+          }];
+      setPanels(dp);
+      setIncludeBookings(!!draft.include_bookings_link);
+    } else {
+      setDraftId(null);
+      setTitle("");
+      setPanels([emptyPanel()]);
+      setIncludeBookings(false);
+    }
     setRecipientSearch(""); setSelectedKeys(new Set());
     setPreviewHtml(""); setError(""); setInfo("");
     setRecipientsLoading(true);
@@ -48,18 +81,16 @@ export default function MarketingComposeModal({ open, access, onClose, onSent })
       .then(({ data }) => setRecipients(data.items || []))
       .catch(() => setRecipients([]))
       .finally(() => setRecipientsLoading(false));
-  }, [open]);
+  }, [open, draft]);
 
-  // Live preview render (debounced)
+  // Live preview render (debounced).
   useEffect(() => {
     if (!open) return;
     const t = setTimeout(async () => {
       try {
         const { data } = await api.post("/portal/marketing/preview-html", {
-          title, intro,
-          image_url: imageUrl,
-          link_url: linkUrl,
-          link_label: linkLabel,
+          title,
+          panels,
           bookings_url: includeBookings && access?.bookings_enabled
             ? `${window.location.origin}/portal/bookings` : "",
           sample_first_name: "Sandra",
@@ -68,7 +99,7 @@ export default function MarketingComposeModal({ open, access, onClose, onSent })
       } catch { /* swallow — preview is best-effort */ }
     }, 300);
     return () => clearTimeout(t);
-  }, [open, title, intro, imageUrl, linkUrl, linkLabel, includeBookings, access?.bookings_enabled]);
+  }, [open, title, panels, includeBookings, access?.bookings_enabled]);
 
   const filteredRecipients = useMemo(() => {
     const needle = recipientSearch.trim().toLowerCase();
@@ -99,21 +130,31 @@ export default function MarketingComposeModal({ open, access, onClose, onSent })
     });
   };
 
-  const selectedRecipients = useMemo(() => {
-    return recipients.filter((r) => selectedKeys.has(`${r.client_id}:${r.contact_index}`));
-  }, [recipients, selectedKeys]);
+  const selectedRecipients = useMemo(
+    () => recipients.filter((r) => selectedKeys.has(`${r.client_id}:${r.contact_index}`)),
+    [recipients, selectedKeys],
+  );
 
-  // ----- image crop pipeline -----
-  const onPickImage = (e) => {
+  // --- panels: update / add / remove ---
+  const updatePanel = (idx, patch) =>
+    setPanels((arr) => arr.map((p, i) => (i === idx ? { ...p, ...patch } : p)));
+  const addPanel = () => setPanels((arr) => arr.length >= MAX_PANELS ? arr : [...arr, emptyPanel()]);
+  const removePanel = (idx) =>
+    setPanels((arr) => (arr.length <= 1 ? arr : arr.filter((_, i) => i !== idx)));
+
+  // --- image crop pipeline ---
+  const onPickImage = (idx, e) => {
     const f = e.target.files?.[0];
     if (!f) return;
+    setCropPanelIdx(idx);
     setRawImageFile(f);
     setCropOpen(true);
-    e.target.value = ""; // allow re-picking same file
+    e.target.value = "";
   };
   const onCropDone = async (croppedBlob) => {
     setCropOpen(false);
-    if (!croppedBlob) return;
+    const idx = cropPanelIdx;
+    if (!croppedBlob || idx === null) return;
     setUploading(true); setError("");
     try {
       const fd = new FormData();
@@ -121,27 +162,47 @@ export default function MarketingComposeModal({ open, access, onClose, onSent })
       const { data } = await api.post("/portal/marketing/upload-image", fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      setImageUrl(data.image_url);
-      setImageKey(data.key);
+      updatePanel(idx, { image_url: data.image_url, image_key: data.key });
     } catch (e) {
       setError(e?.response?.data?.detail || "Image upload failed");
     } finally { setUploading(false); }
   };
 
-  // ----- send + test -----
-  const buildBody = () => ({
+  // --- payload builders ---
+  const baseBody = () => ({
     frontend_origin: typeof window !== "undefined" ? window.location.origin : "",
     title: title.trim(),
-    intro: intro.trim(),
-    image_url: imageUrl || undefined,
-    image_key: imageKey || undefined,
-    link_url: linkUrl.trim() || undefined,
-    link_label: linkLabel.trim() || undefined,
+    panels: panels.map((p) => ({
+      intro: p.intro || "",
+      image_url: p.image_url || "",
+      image_key: p.image_key || "",
+      link_url: p.link_url || "",
+      link_label: p.link_label || "Find out more",
+    })),
     include_bookings_link: includeBookings && access?.bookings_enabled,
+  });
+  const sendBody = () => ({
+    ...baseBody(),
+    draft_id: draftId || undefined,
     recipients: selectedRecipients.map((r) => ({
       client_id: r.client_id, contact_index: r.contact_index,
     })),
   });
+
+  const saveDraft = async () => {
+    setSavingDraft(true); setError(""); setInfo("");
+    try {
+      const { data } = await api.post("/portal/marketing/campaigns/draft", {
+        ...baseBody(),
+        id: draftId || undefined,
+      });
+      setDraftId(data.id);
+      setInfo("Draft saved — you can come back and finish later.");
+      onDraftSaved?.();
+    } catch (e) {
+      setError(e?.response?.data?.detail || "Couldn't save draft.");
+    } finally { setSavingDraft(false); }
+  };
 
   const send = async () => {
     if (selectedRecipients.length === 0) {
@@ -154,7 +215,7 @@ export default function MarketingComposeModal({ open, access, onClose, onSent })
     if (!ok) return;
     setSending(true); setError(""); setInfo("");
     try {
-      const { data } = await api.post("/portal/marketing/campaigns", buildBody());
+      const { data } = await api.post("/portal/marketing/campaigns", sendBody());
       setInfo(`Sent to ${data.succeeded} recipient(s).`);
       onSent?.();
     } catch (e) {
@@ -166,7 +227,7 @@ export default function MarketingComposeModal({ open, access, onClose, onSent })
     setTesting(true); setError(""); setInfo("");
     try {
       const { data } = await api.post("/portal/marketing/test-send", {
-        ...buildBody(),
+        ...baseBody(),
         sample_first_name: "Sandra",
       });
       setInfo(`Test email sent to ${data.to}.`);
@@ -175,7 +236,11 @@ export default function MarketingComposeModal({ open, access, onClose, onSent })
     } finally { setTesting(false); }
   };
 
-  const canSend = title.trim() && intro.trim() && selectedRecipients.length > 0 && !sending;
+  const hasAnyContent = panels.some(
+    (p) => (p.intro || "").trim() || (p.image_url || "").trim() || (p.link_url || "").trim()
+  );
+  const canSend = title.trim() && hasAnyContent && selectedRecipients.length > 0 && !sending;
+  const canSaveDraft = (title.trim() || hasAnyContent) && !savingDraft;
 
   if (!open) return null;
 
@@ -189,11 +254,10 @@ export default function MarketingComposeModal({ open, access, onClose, onSent })
         className="bg-white w-full max-w-[1400px] rounded-2xl border border-stone-200 shadow-2xl my-auto flex flex-col max-h-[95vh]"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="px-6 py-4 border-b border-stone-200 flex items-start justify-between gap-4">
           <div>
             <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 flex items-center gap-1.5">
-              <Megaphone className="w-3 h-3" /> Send Campaign
+              <Megaphone className="w-3 h-3" /> {draftId ? "Edit Draft" : "Send Campaign"}
             </div>
             <h2 className="font-display text-2xl font-black text-stone-950 mt-1">Compose Campaign</h2>
           </div>
@@ -221,77 +285,31 @@ export default function MarketingComposeModal({ open, access, onClose, onSent })
                 />
               </Field>
 
-              <Field label="Intro text" required>
-                <textarea
-                  value={intro}
-                  onChange={(e) => setIntro(e.target.value)}
-                  data-testid="marketing-intro"
-                  rows={4}
-                  className="w-full px-3 py-2.5 border border-stone-300 rounded-xl text-sm focus:outline-none focus:border-stone-950 resize-none"
-                  placeholder="Hi! We're running…"
-                />
-              </Field>
-
-              {/* Image panel */}
-              <div>
-                <label className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1.5 flex items-center justify-between">
-                  <span><ImageIcon className="w-3 h-3 inline mr-1" /> Image (optional)</span>
-                  {imageUrl && (
-                    <button
-                      onClick={() => { setImageUrl(""); setImageKey(""); }}
-                      data-testid="marketing-image-remove"
-                      className="text-stone-400 hover:text-red-600 text-[10px] inline-flex items-center gap-1"
-                    >
-                      <Trash2 className="w-3 h-3" /> Remove
-                    </button>
-                  )}
-                </label>
-                {imageUrl ? (
-                  <div className="border border-stone-300 rounded-xl overflow-hidden bg-stone-100">
-                    <img src={imageUrl} alt="" className="w-full h-auto" data-testid="marketing-image-preview" />
-                  </div>
-                ) : (
-                  <label
-                    className="flex flex-col items-center justify-center px-4 py-8 border-2 border-dashed border-stone-300 rounded-xl cursor-pointer hover:bg-stone-50 text-stone-500"
-                    data-testid="marketing-image-upload"
-                  >
-                    {uploading ? (
-                      <Loader2 className="w-5 h-5 animate-spin text-stone-400" />
-                    ) : (
-                      <>
-                        <ImageIcon className="w-7 h-7 mb-2 text-stone-400" />
-                        <span className="text-sm font-medium">Upload &amp; crop an image</span>
-                        <span className="text-[11px] mt-1">Free-form crop · max 12 MB · JPG / PNG / WebP</span>
-                      </>
-                    )}
-                    <input type="file" accept="image/*" onChange={onPickImage} className="hidden" />
-                  </label>
-                )}
-              </div>
-
-              {/* Link + label */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Field label="Link URL (optional)">
-                  <div className="relative">
-                    <LinkIcon className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
-                    <input
-                      type="url"
-                      value={linkUrl}
-                      onChange={(e) => setLinkUrl(e.target.value)}
-                      data-testid="marketing-link-url"
-                      placeholder="https://…"
-                      className="w-full pl-9 pr-3 py-2.5 border border-stone-300 rounded-xl text-sm focus:outline-none focus:border-stone-950"
-                    />
-                  </div>
-                </Field>
-                <Field label="Button label">
-                  <input
-                    value={linkLabel}
-                    onChange={(e) => setLinkLabel(e.target.value)}
-                    data-testid="marketing-link-label"
-                    className="w-full px-3 py-2.5 border border-stone-300 rounded-xl text-sm focus:outline-none focus:border-stone-950"
+              {/* Repeatable content sections */}
+              <div className="space-y-4">
+                {panels.map((panel, idx) => (
+                  <PanelEditor
+                    key={idx}
+                    idx={idx}
+                    panel={panel}
+                    canRemove={panels.length > 1}
+                    onChange={(patch) => updatePanel(idx, patch)}
+                    onRemove={() => removePanel(idx)}
+                    onPickImage={(e) => onPickImage(idx, e)}
+                    onClearImage={() => updatePanel(idx, { image_url: "", image_key: "" })}
+                    uploading={uploading}
                   />
-                </Field>
+                ))}
+                {panels.length < MAX_PANELS && (
+                  <button
+                    type="button"
+                    onClick={addPanel}
+                    data-testid="marketing-add-section"
+                    className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 text-xs font-bold uppercase tracking-wider border-2 border-dashed border-stone-300 text-stone-600 hover:bg-stone-50 rounded-xl"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add another section
+                  </button>
+                )}
               </div>
 
               {/* Bookings link */}
@@ -350,12 +368,8 @@ export default function MarketingComposeModal({ open, access, onClose, onSent })
                         data-testid={`marketing-recipient-${r.client_id}-${r.contact_index}`}
                         className={`w-full px-3 py-2 text-left flex items-center gap-3 hover:bg-stone-50 ${checked ? "bg-emerald-50" : ""}`}
                       >
-                        <input
-                          type="checkbox"
-                          readOnly
-                          checked={checked}
-                          className="w-4 h-4 rounded border-stone-300 text-stone-900 focus:ring-stone-900 pointer-events-none"
-                        />
+                        <input type="checkbox" readOnly checked={checked}
+                          className="w-4 h-4 rounded border-stone-300 text-stone-900 focus:ring-stone-900 pointer-events-none" />
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-medium text-stone-900 truncate">
                             {r.name} <span className="text-stone-400 font-normal">· {r.role}</span>
@@ -374,7 +388,7 @@ export default function MarketingComposeModal({ open, access, onClose, onSent })
             {/* RIGHT — preview */}
             <div className="bg-stone-50 px-6 py-5 flex flex-col gap-3">
               <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-700 flex items-center gap-1.5">
-                <Eye3 /> Live Preview
+                <EyeIcon /> Live Preview
                 <span className="text-stone-400 font-normal normal-case tracking-normal ml-auto">Rendered as recipients will see it</span>
               </div>
               <div className="flex-1 bg-white border border-stone-200 rounded-xl overflow-hidden min-h-[420px]">
@@ -411,8 +425,18 @@ export default function MarketingComposeModal({ open, access, onClose, onSent })
           </div>
           <button
             type="button"
+            onClick={saveDraft}
+            disabled={!canSaveDraft}
+            data-testid="marketing-save-draft"
+            className="px-4 py-2 text-xs font-bold uppercase tracking-wider border border-stone-300 hover:bg-stone-50 text-stone-700 rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+          >
+            {savingDraft ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
+            Save draft
+          </button>
+          <button
+            type="button"
             onClick={sendTest}
-            disabled={testing || !title.trim() || !intro.trim()}
+            disabled={testing || !title.trim() || !hasAnyContent}
             data-testid="marketing-test-send"
             className="px-4 py-2 text-xs font-bold uppercase tracking-wider border border-stone-300 hover:bg-stone-50 text-stone-700 rounded-lg flex items-center gap-1.5 disabled:opacity-50"
           >
@@ -442,6 +466,99 @@ export default function MarketingComposeModal({ open, access, onClose, onSent })
   );
 }
 
+function PanelEditor({ idx, panel, canRemove, onChange, onRemove, onPickImage, onClearImage, uploading }) {
+  return (
+    <div className="border border-stone-200 rounded-xl p-4 bg-white relative" data-testid={`marketing-panel-${idx}`}>
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-600">
+          Section {idx + 1}
+        </div>
+        {canRemove && (
+          <button
+            type="button"
+            onClick={onRemove}
+            data-testid={`marketing-panel-remove-${idx}`}
+            className="text-stone-400 hover:text-red-600 inline-flex items-center gap-1 text-[10px] uppercase tracking-wider font-bold"
+          >
+            <Trash2 className="w-3 h-3" /> Remove
+          </button>
+        )}
+      </div>
+
+      <Field label="Intro text" required={idx === 0}>
+        <MarketingIntroEditor
+          value={panel.intro}
+          onChange={(html) => onChange({ intro: html })}
+          placeholder={idx === 0 ? "Hi! We're running…" : "Add more details, an offer, a follow-up note…"}
+          testid={`marketing-intro-${idx}`}
+        />
+      </Field>
+
+      {/* Image */}
+      <div className="mt-3">
+        <label className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1.5 flex items-center justify-between">
+          <span><ImageIcon className="w-3 h-3 inline mr-1" /> Image (optional)</span>
+          {panel.image_url && (
+            <button
+              onClick={onClearImage}
+              data-testid={`marketing-image-remove-${idx}`}
+              className="text-stone-400 hover:text-red-600 text-[10px] inline-flex items-center gap-1"
+            >
+              <Trash2 className="w-3 h-3" /> Remove
+            </button>
+          )}
+        </label>
+        {panel.image_url ? (
+          <div className="border border-stone-300 rounded-xl overflow-hidden bg-stone-100">
+            <img src={panel.image_url} alt="" className="w-full h-auto" data-testid={`marketing-image-preview-${idx}`} />
+          </div>
+        ) : (
+          <label
+            className="flex flex-col items-center justify-center px-4 py-6 border-2 border-dashed border-stone-300 rounded-xl cursor-pointer hover:bg-stone-50 text-stone-500"
+            data-testid={`marketing-image-upload-${idx}`}
+          >
+            {uploading ? (
+              <Loader2 className="w-5 h-5 animate-spin text-stone-400" />
+            ) : (
+              <>
+                <ImageIcon className="w-6 h-6 mb-1.5 text-stone-400" />
+                <span className="text-sm font-medium">Upload &amp; crop an image</span>
+                <span className="text-[11px] mt-0.5">Free-form crop · max 12 MB · JPG / PNG / WebP</span>
+              </>
+            )}
+            <input type="file" accept="image/*" onChange={onPickImage} className="hidden" />
+          </label>
+        )}
+      </div>
+
+      {/* Link */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+        <Field label="Link URL (optional)">
+          <div className="relative">
+            <LinkIcon className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+            <input
+              type="url"
+              value={panel.link_url}
+              onChange={(e) => onChange({ link_url: e.target.value })}
+              data-testid={`marketing-link-url-${idx}`}
+              placeholder="https://…"
+              className="w-full pl-9 pr-3 py-2.5 border border-stone-300 rounded-xl text-sm focus:outline-none focus:border-stone-950"
+            />
+          </div>
+        </Field>
+        <Field label="Button label">
+          <input
+            value={panel.link_label}
+            onChange={(e) => onChange({ link_label: e.target.value })}
+            data-testid={`marketing-link-label-${idx}`}
+            className="w-full px-3 py-2.5 border border-stone-300 rounded-xl text-sm focus:outline-none focus:border-stone-950"
+          />
+        </Field>
+      </div>
+    </div>
+  );
+}
+
 function Field({ label, required, children }) {
   return (
     <div>
@@ -453,9 +570,7 @@ function Field({ label, required, children }) {
   );
 }
 
-// Inline eye icon stub — avoids dragging the lucide Eye into the import
-// list when the rest of the icons live above.
-function Eye3() {
+function EyeIcon() {
   return (
     <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" />

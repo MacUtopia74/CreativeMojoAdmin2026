@@ -93,42 +93,149 @@ async def _check_access(db, user: dict) -> dict:
 
 
 # ---------------------------------------------------------------- HTML builder
-def _build_html(campaign: dict, first_name: str = "{{first_name}}") -> str:
-    """Branded HTML email. Single image panel (optional), one big CTA
-    button (URL link or auto Bookings link), centred layout.
+def _sanitise_intro_html(raw: str) -> str:
+    """Strict allowlist sanitiser for the intro field. The composer
+    saves HTML so a franchisee can bold/centre selected text, but we
+    can't trust the payload — script tags, iframes, event handlers,
+    style attributes etc would let a hostile draft inject arbitrary
+    CSS/JS into every recipient's inbox. So we keep only ``<b>``,
+    ``<strong>``, ``<i>``, ``<em>``, ``<u>``, ``<br>`` and ``<div>``/
+    ``<p>`` with a single style attr restricted to ``text-align: …``.
+
+    Plain text (the common case) passes straight through with newline
+    → ``<br/>`` so it still looks right in the email.
     """
-    intro_html = (campaign.get("intro") or "").replace("\n", "<br/>")
-    image_url = (campaign.get("image_url") or "").strip()
-    link_url = (campaign.get("link_url") or "").strip()
-    link_label = (campaign.get("link_label") or "Find out more").strip() or "Find out more"
+    if not raw:
+        return ""
+    # Plain text fallback — no angle brackets at all
+    if "<" not in raw and ">" not in raw:
+        return raw.replace("\n", "<br/>")
+    try:
+        from html.parser import HTMLParser
+        ALLOWED_TAGS = {
+            "b", "strong", "i", "em", "u", "br", "div", "p", "span",
+        }
+        # Only keep ``text-align`` from style attributes, and only
+        # if the value is one of left/right/center/justify.
+        import re as _re
+        STYLE_RX = _re.compile(r"text-align\s*:\s*(left|right|center|justify)", _re.I)
+
+        out_parts: list[str] = []
+
+        class Cleaner(HTMLParser):
+            def handle_starttag(self, tag, attrs):
+                t = tag.lower()
+                if t not in ALLOWED_TAGS:
+                    return
+                kept: list[str] = []
+                for k, v in attrs:
+                    if k.lower() == "style" and v:
+                        m = STYLE_RX.search(v)
+                        if m:
+                            kept.append(f'style="text-align:{m.group(1).lower()}"')
+                attr_str = (" " + " ".join(kept)) if kept else ""
+                out_parts.append(f"<{t}{attr_str}>")
+            def handle_endtag(self, tag):
+                t = tag.lower()
+                if t in ALLOWED_TAGS and t != "br":
+                    out_parts.append(f"</{t}>")
+            def handle_startendtag(self, tag, attrs):
+                t = tag.lower()
+                if t == "br":
+                    out_parts.append("<br/>")
+            def handle_data(self, data):
+                # html.escape so the literal text can't reintroduce
+                # tags via entities.
+                from html import escape as _esc
+                out_parts.append(_esc(data))
+
+        cleaner = Cleaner()
+        cleaner.feed(raw)
+        return "".join(out_parts)
+    except Exception:
+        # If anything goes wrong, fall back to fully escaped text — the
+        # email still goes out, just without formatting.
+        from html import escape as _esc
+        return _esc(raw).replace("\n", "<br/>")
+
+
+def _build_panel_html(panel: dict) -> str:
+    """Render a single content panel — intro text + image + link
+    button. Empty subsections are skipped. Each panel is later
+    separated by the brand-yellow divider."""
+    intro_html = _sanitise_intro_html((panel.get("intro") or ""))
+    image_url = (panel.get("image_url") or "").strip()
+    link_url = (panel.get("link_url") or "").strip()
+    link_label = (panel.get("link_label") or "Find out more").strip() or "Find out more"
+
+    blocks: list[str] = []
+    if intro_html:
+        blocks.append(
+            f'<tr><td style="padding:14px 30px 18px;font-size:15px;line-height:1.6;color:#1a1a1a;">{intro_html}</td></tr>'
+        )
+    if image_url:
+        blocks.append(
+            '<tr><td align="center" style="padding:0 30px 16px 30px;">'
+            f'<img src="{image_url}" alt="" width="540" '
+            'style="max-width:100%;height:auto;border-radius:8px;display:block;margin:0 auto;" />'
+            '</td></tr>'
+        )
+    if link_url:
+        blocks.append(
+            f'<tr><td align="center" style="padding:6px 30px 18px 30px;">'
+            f'<a href="{link_url}" style="display:inline-block;background:#dddd16;color:#1a1a1a;'
+            'font-weight:700;text-decoration:none;padding:13px 32px;border-radius:4px;'
+            f'font-size:13px;letter-spacing:0.5px;margin:4px;">{link_label.upper()} &rsaquo;</a>'
+            '</td></tr>'
+        )
+    return "".join(blocks)
+
+
+def _build_html(campaign: dict, first_name: str = "{{first_name}}") -> str:
+    """Branded HTML email. Supports a multi-panel composition: every
+    panel = ``{intro, image_url, link_url, link_label}`` and is
+    separated by the brand-yellow horizontal divider. The classic
+    single-panel campaign is rendered as a one-element panel list.
+    """
+    panels = campaign.get("panels")
+    if not panels:
+        # Legacy single-panel data — synthesise a one-entry array.
+        panels = [{
+            "intro":      campaign.get("intro"),
+            "image_url":  campaign.get("image_url"),
+            "link_url":   campaign.get("link_url"),
+            "link_label": campaign.get("link_label") or "Find out more",
+        }]
+
     bookings_url = (campaign.get("bookings_url") or "").strip()
     franchisee_name = (campaign.get("franchisee_name") or "Creative Mojo").strip()
     franchisee_org = (campaign.get("franchisee_organisation") or "Creative Mojo").strip()
-
-    img_block = (
-        f'<tr><td align="center" style="padding:0 30px 16px 30px;">'
-        f'<img src="{image_url}" alt="" width="540" '
-        'style="max-width:100%;height:auto;border-radius:8px;display:block;margin:0 auto;" />'
+    divider = (
+        '<tr><td style="padding:0 30px 18px 30px;">'
+        '<div style="height:0;border-top:1px solid #dddd16;margin:0;"></div>'
         '</td></tr>'
-    ) if image_url else ""
+    )
 
-    buttons: list[str] = []
-    if link_url:
-        buttons.append(
-            f'<a href="{link_url}" style="display:inline-block;background:#dddd16;color:#1a1a1a;'
-            'font-weight:700;text-decoration:none;padding:13px 32px;border-radius:4px;'
-            f'font-size:13px;letter-spacing:0.5px;margin:8px;">{link_label.upper()} &rsaquo;</a>'
-        )
+    panel_html: list[str] = []
+    for i, p in enumerate(panels):
+        rendered = _build_panel_html(p or {})
+        if not rendered:
+            continue
+        if panel_html:
+            # Yellow divider between panels (mirrors HQ Updates)
+            panel_html.append(divider)
+        panel_html.append(rendered)
+    body_panels = "".join(panel_html)
+
+    bookings_block = ""
     if bookings_url:
-        buttons.append(
+        bookings_block = (
+            f'<tr><td align="center" style="padding:6px 30px 28px 30px;">'
             f'<a href="{bookings_url}" style="display:inline-block;background:#1a1a1a;color:#dddd16;'
             'font-weight:700;text-decoration:none;padding:13px 32px;border-radius:4px;'
             'font-size:13px;letter-spacing:0.5px;margin:8px;">BOOK A SESSION &rsaquo;</a>'
+            '</td></tr>'
         )
-    button_block = (
-        f'<tr><td align="center" style="padding:6px 30px 28px 30px;">{"".join(buttons)}</td></tr>'
-        if buttons else ""
-    )
 
     return f"""<!doctype html>
 <html><body style="margin:0;background:#f7f7f4;font-family:Helvetica,Arial,sans-serif;">
@@ -145,15 +252,11 @@ def _build_html(campaign: dict, first_name: str = "{{first_name}}") -> str:
           {campaign.get('title','')}
         </div>
       </td></tr>
-      <tr><td style="padding:14px 30px 18px;font-size:15px;line-height:1.6;color:#1a1a1a;">
+      <tr><td style="padding:14px 30px 6px;font-size:15px;line-height:1.6;color:#1a1a1a;">
         <div>Hi <strong>{first_name}</strong>,</div>
-        <div style="margin-top:10px;">{intro_html}</div>
       </td></tr>
-      <tr><td style="padding:0 30px 18px 30px;">
-        <div style="height:0;border-top:1px solid #dddd16;margin:0;"></div>
-      </td></tr>
-      {img_block}
-      {button_block}
+      {body_panels}
+      {bookings_block}
       <tr><td style="padding:24px 30px;font-size:11px;color:#999999;line-height:1.5;text-align:center;border-top:1px solid #eaeaea;">
         Sent by <strong>{franchisee_name}</strong> &middot; {franchisee_org}<br/>
         You're receiving this because you're a client of Creative Mojo. Reply to this email if you'd like to be removed.
@@ -162,6 +265,55 @@ def _build_html(campaign: dict, first_name: str = "{{first_name}}") -> str:
   </td></tr>
 </table>
 </body></html>"""
+
+
+def _validate_panels(body: dict, require_content: bool = True) -> tuple[list[dict], Optional[str]]:
+    """Normalise an incoming campaign body into a list of panels.
+
+    Accepts either:
+      • ``body["panels"]`` — the new multi-section composer shape, OR
+      • a legacy top-level ``intro / image_url / link_url / link_label`` —
+        which we synthesise into a single-panel array so older clients
+        and HTTP scripts keep working.
+
+    Caps panels at a sane upper bound and strips out empty entries.
+    When ``require_content`` is True (used for send), requires that at
+    least one panel has visible content (text, image, or link).
+
+    Returns ``(panels, error_detail)``.
+    """
+    raw_panels = body.get("panels")
+    panels: list[dict] = []
+    if isinstance(raw_panels, list) and raw_panels:
+        for p in raw_panels[:8]:  # hard-cap at 8 sections — UX/anti-abuse
+            if not isinstance(p, dict):
+                continue
+            cleaned = {
+                "intro":      (p.get("intro") or "").strip(),
+                "image_url":  (p.get("image_url") or "").strip(),
+                "image_key":  (p.get("image_key") or "").strip(),
+                "link_url":   (p.get("link_url") or "").strip(),
+                "link_label": (p.get("link_label") or "").strip() or "Find out more",
+            }
+            # Skip totally-empty panels — the user probably added one
+            # and forgot to fill it.
+            if cleaned["intro"] or cleaned["image_url"] or cleaned["link_url"]:
+                panels.append(cleaned)
+    else:
+        # Legacy shape → one-element array.
+        legacy = {
+            "intro":      (body.get("intro") or "").strip(),
+            "image_url":  (body.get("image_url") or "").strip(),
+            "image_key":  (body.get("image_key") or "").strip(),
+            "link_url":   (body.get("link_url") or "").strip(),
+            "link_label": (body.get("link_label") or "").strip() or "Find out more",
+        }
+        if legacy["intro"] or legacy["image_url"] or legacy["link_url"]:
+            panels.append(legacy)
+
+    if require_content and not panels:
+        return [], "Add some content to at least one panel before sending."
+    return panels, None
 
 
 # ---------------------------------------------------------------- attach
@@ -254,6 +406,7 @@ def attach(api, db, require_role):
     # ---- image upload + crop (the frontend has already cropped to a Blob)
     @api.post("/portal/marketing/upload-image")
     async def upload_image(
+        request: Request,
         file: UploadFile = File(...),
         user: dict = Depends(require_role("franchisee")),
     ):
@@ -302,12 +455,12 @@ def attach(api, db, require_role):
             "created_by": "marketing",
             "hits": 0,
         })
-        # Return both an image URL (for the email; the share-redirect
-        # serves the full-res image — Gmail/Outlook follow the 302 and
-        # cache the result, so recipients see the full image not a
-        # thumbnail) and the share key so the composer can swap to a
-        # presigned URL later if needed.
-        base = (os.environ.get("FRONTEND_URL") or "").rstrip("/")
+        # Always mint an ABSOLUTE URL — falling back to FRONTEND_URL
+        # only when no request origin is available. The previous build
+        # relied solely on ``FRONTEND_URL`` and so produced a relative
+        # URL on production where that env var was unset, breaking the
+        # in-iframe live preview AND the actual email rendering.
+        base = _frontend_base(request, "")
         return {
             "key": key,
             "image_url": f"{base}/api/files/share/{token}",
@@ -321,6 +474,9 @@ def attach(api, db, require_role):
         fr = await _check_access(db, user)
         campaign = {
             "title": (body.get("title") or "").strip() or "(no subject yet)",
+            "panels": body.get("panels"),
+            # Backwards-compat fallback for callers still on the
+            # single-panel shape (test-send, older drafts).
             "intro": body.get("intro") or "",
             "image_url": body.get("image_url") or "",
             "link_url": body.get("link_url") or "",
@@ -349,6 +505,7 @@ def attach(api, db, require_role):
         to = (body.get("to") or from_email).strip()
         campaign = {
             "title": title,
+            "panels": body.get("panels"),
             "intro": body.get("intro") or "",
             "image_url": body.get("image_url") or "",
             "link_url": body.get("link_url") or "",
@@ -384,9 +541,12 @@ def attach(api, db, require_role):
         title = (body.get("title") or "").strip()
         if not title:
             raise HTTPException(400, detail="Subject line is required.")
-        intro = (body.get("intro") or "").strip()
-        if not intro:
-            raise HTTPException(400, detail="Intro text is required.")
+        # Either ``panels`` (new multi-section composer) or legacy
+        # ``intro`` (old single-block draft) — at least one panel with
+        # text or media is required.
+        panels_in, _panel_err = _validate_panels(body)
+        if _panel_err:
+            raise HTTPException(400, detail=_panel_err)
         recipients_in = body.get("recipients") or []
         if not recipients_in:
             raise HTTPException(400, detail="Pick at least one recipient.")
@@ -447,15 +607,30 @@ def attach(api, db, require_role):
         )
 
         campaign_id = str(uuid.uuid4())
+        # Support promoting an existing draft → use its id and delete
+        # the draft after a successful send so we don't end up with
+        # both a draft and a sent copy.
+        draft_id = (body.get("draft_id") or "").strip() or None
+        if draft_id:
+            existing = await db.marketing_campaigns.find_one(
+                {"id": draft_id, "franchisee_id": fr["id"]}, {"_id": 0, "status": 1},
+            )
+            if existing and (existing.get("status") or "draft") == "draft":
+                campaign_id = draft_id
+        # Legacy single-panel mirror so /campaigns/{id} viewers and
+        # reports built before this migration still render.
+        first_panel = (panels_in[0] if panels_in else {}) or {}
         campaign_doc = {
             "id": campaign_id,
             "franchisee_id": fr["id"],
+            "status": "sent",
             "title": title,
-            "intro": intro,
-            "image_url": body.get("image_url") or "",
-            "image_key": body.get("image_key") or "",
-            "link_url": body.get("link_url") or "",
-            "link_label": body.get("link_label") or "Find out more",
+            "panels": panels_in,
+            "intro": first_panel.get("intro") or "",
+            "image_url": first_panel.get("image_url") or "",
+            "image_key": first_panel.get("image_key") or "",
+            "link_url": first_panel.get("link_url") or "",
+            "link_label": first_panel.get("link_label") or "Find out more",
             "bookings_url": bookings_url,
             "include_bookings_link": bool(body.get("include_bookings_link")),
             "from_email": from_email,
@@ -532,8 +707,66 @@ def attach(api, db, require_role):
             "errors": failures[:10],
         }
         campaign_doc["sent_at"] = _now_iso()
-        await db.marketing_campaigns.insert_one(campaign_doc)
+        # ``replace_one upsert=True`` so promoting a draft overwrites the
+        # existing doc instead of inserting a duplicate. New sends still
+        # land via insert (no doc matches the campaign_id yet).
+        await db.marketing_campaigns.replace_one(
+            {"id": campaign_id, "franchisee_id": fr["id"]},
+            campaign_doc, upsert=True,
+        )
         return {"ok": succeeded > 0, "campaign_id": campaign_id, **campaign_doc["delivery"]}
+
+    # ---- save / update a draft (no Resend send, no recipient validation)
+    @api.post("/portal/marketing/campaigns/draft")
+    async def save_draft(body: dict, user: dict = Depends(require_role("franchisee"))):
+        fr = await _check_access(db, user)
+        title = (body.get("title") or "").strip()
+        panels_in, _err = _validate_panels(body, require_content=False)
+        # Drafts have softer validation — we only require *something*
+        # the user can identify later (either a title or some panel
+        # content).
+        if not title and not any(
+            (p.get("intro") or "").strip() or (p.get("image_url") or "").strip() or (p.get("link_url") or "").strip()
+            for p in (panels_in or [])
+        ):
+            raise HTTPException(400, detail="Add a subject line or some content before saving.")
+        first_panel = (panels_in[0] if panels_in else {}) or {}
+        # If updating an existing draft, keep its id; otherwise mint a new one.
+        draft_id = (body.get("id") or "").strip() or str(uuid.uuid4())
+        now = _now_iso()
+        # Don't blow away an existing draft's created_at on each save.
+        existing = await db.marketing_campaigns.find_one(
+            {"id": draft_id, "franchisee_id": fr["id"]}, {"_id": 0, "created_at": 1, "status": 1},
+        )
+        if existing and (existing.get("status") or "draft") != "draft":
+            raise HTTPException(400, detail="That campaign has already been sent and can't be edited.")
+        created_at = (existing or {}).get("created_at") or now
+        draft_doc = {
+            "id": draft_id,
+            "franchisee_id": fr["id"],
+            "status": "draft",
+            "title": title,
+            "panels": panels_in or [],
+            "intro": first_panel.get("intro") or "",
+            "image_url": first_panel.get("image_url") or "",
+            "image_key": first_panel.get("image_key") or "",
+            "link_url": first_panel.get("link_url") or "",
+            "link_label": first_panel.get("link_label") or "Find out more",
+            "include_bookings_link": bool(body.get("include_bookings_link")),
+            "franchisee_name": f"{fr.get('first_name','')} {fr.get('last_name','')}".strip()
+                               or fr.get("organisation") or "Creative Mojo",
+            "franchisee_organisation": fr.get("organisation") or "Creative Mojo",
+            "created_at": created_at,
+            "updated_at": now,
+            "created_by": user.get("email"),
+            "recipients": [],   # drafts hold no recipients yet
+            "delivery": {"status": "draft", "succeeded": 0, "failed": 0, "errors": []},
+        }
+        await db.marketing_campaigns.replace_one(
+            {"id": draft_id, "franchisee_id": fr["id"]},
+            draft_doc, upsert=True,
+        )
+        return {"ok": True, "id": draft_id, "status": "draft"}
 
     # ---- list past campaigns
     @api.get("/portal/marketing/campaigns")

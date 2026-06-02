@@ -8,10 +8,10 @@
 //
 // History list shows past campaigns with delivery + open/click stats
 // rolled up from the Resend webhook events stored on each campaign.
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
-  Megaphone, Send, Loader2, AlertCircle, Plus, X, CheckCircle2,
-  Search, Trash2, Eye, Mail, Sparkles, RefreshCw, Calendar,
+  Megaphone, Loader2, AlertCircle, Plus, Mail, Sparkles, RefreshCw,
+  Eye, Calendar, FileText, Pencil, Trash2,
 } from "lucide-react";
 import api from "@/lib/api";
 import PortalPageHeading from "@/components/portal/PortalPageHeading";
@@ -29,10 +29,11 @@ function fmtDate(iso) {
 }
 
 export default function PortalMarketingPage() {
-  const [access, setAccess] = useState(null);   // {allowed, from_email, bookings_enabled, ...}
+  const [access, setAccess] = useState(null);
   const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [composeOpen, setComposeOpen] = useState(false);
+  const [editingDraft, setEditingDraft] = useState(null);   // draft doc OR null for new
   const [reportId, setReportId] = useState(null);
 
   const loadAccess = useCallback(async () => {
@@ -56,6 +57,21 @@ export default function PortalMarketingPage() {
 
   useEffect(() => { loadAccess(); }, [loadAccess]);
   useEffect(() => { if (access?.allowed) loadCampaigns(); }, [access?.allowed, loadCampaigns]);
+
+  const openCompose = (draft = null) => {
+    setEditingDraft(draft);
+    setComposeOpen(true);
+  };
+
+  const deleteCampaign = async (c) => {
+    if (!window.confirm(`Delete ${c.status === "draft" ? "draft" : "campaign"} "${c.title || "(untitled)"}"?`)) return;
+    try {
+      await api.delete(`/portal/marketing/campaigns/${c.id}`);
+      loadCampaigns();
+    } catch (e) {
+      window.alert(e?.response?.data?.detail || "Couldn't delete.");
+    }
+  };
 
   if (!access) {
     return (
@@ -96,7 +112,7 @@ export default function PortalMarketingPage() {
         subtitle="Send branded e-shots to your Territory+ clients. Max 5 recipients per send."
         actions={
           <button
-            onClick={() => setComposeOpen(true)}
+            onClick={() => openCompose(null)}
             data-testid="marketing-compose-btn"
             className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 hover:bg-stone-800 text-[#dddd16] rounded-lg"
           >
@@ -110,67 +126,121 @@ export default function PortalMarketingPage() {
         Sent from <strong className="mx-1">{access.from_email}</strong> · Capped at <strong>5</strong> recipients per send to keep your emails out of spam folders.
       </div>
 
-      {/* Campaign history */}
-      <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden">
-        <div className="px-5 py-3 border-b border-stone-200 flex items-center justify-between">
-          <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-700 flex items-center gap-1.5">
-            <Mail className="w-3 h-3" /> Past campaigns
-          </div>
-          <button
-            onClick={loadCampaigns}
-            title="Reload"
-            className="p-1.5 border border-stone-200 rounded-md hover:bg-stone-50"
-            data-testid="marketing-reload"
-          >
-            <RefreshCw className="w-3.5 h-3.5 text-stone-600" />
-          </button>
-        </div>
-        {loading ? (
-          <div className="flex items-center justify-center min-h-[160px] text-stone-500">
-            <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading…
-          </div>
-        ) : campaigns.length === 0 ? (
-          <div className="px-6 py-10 text-center text-sm text-stone-500">
-            No campaigns yet. Click <strong>New Campaign</strong> to send your first marketing e-shot.
-          </div>
-        ) : (
-          <ul className="divide-y divide-stone-100" data-testid="marketing-campaign-list">
-            {campaigns.map((c) => (
-              <li key={c.id} className="px-5 py-3 flex items-center gap-4 flex-wrap" data-testid={`marketing-campaign-${c.id}`}>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold text-stone-900 truncate">{c.title}</span>
-                    <DeliveryPill status={c.delivery?.status} />
-                  </div>
-                  <div className="text-xs text-stone-500 mt-1 flex items-center gap-3 flex-wrap">
-                    <span className="inline-flex items-center gap-1">
-                      <Calendar className="w-3 h-3" /> {fmtDate(c.sent_at || c.created_at)}
-                    </span>
-                    <span>· {c.recipient_count} recipient{c.recipient_count === 1 ? "" : "s"}</span>
-                    <span>· <strong className="text-emerald-700">{c.opens_count || 0}</strong> opens</span>
-                    {(c.clicks_count || 0) > 0 && (
-                      <span>· <strong className="text-blue-700">{c.clicks_count}</strong> clicks</span>
-                    )}
+      {/* Drafts (if any) */}
+      {(() => {
+        const drafts = campaigns.filter((c) => (c.status || "sent") === "draft");
+        const sent = campaigns.filter((c) => (c.status || "sent") !== "draft");
+        return (
+          <>
+            {drafts.length > 0 && (
+              <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden">
+                <div className="px-5 py-3 border-b border-stone-200 flex items-center justify-between">
+                  <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-700 flex items-center gap-1.5">
+                    <FileText className="w-3 h-3" /> Drafts ({drafts.length})
                   </div>
                 </div>
+                <ul className="divide-y divide-stone-100" data-testid="marketing-draft-list">
+                  {drafts.map((c) => (
+                    <li key={c.id} className="px-5 py-3 flex items-center gap-4 flex-wrap" data-testid={`marketing-draft-${c.id}`}>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-stone-900 truncate">{c.title || "(untitled draft)"}</span>
+                          <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-stone-100 text-stone-700 border border-stone-300">
+                            Draft
+                          </span>
+                        </div>
+                        <div className="text-xs text-stone-500 mt-1 flex items-center gap-3 flex-wrap">
+                          <span className="inline-flex items-center gap-1">
+                            <Calendar className="w-3 h-3" /> Saved {fmtDate(c.updated_at || c.created_at)}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => openCompose(c)}
+                        data-testid={`marketing-draft-edit-${c.id}`}
+                        className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider border border-stone-300 hover:bg-stone-50 text-stone-700 rounded-lg flex items-center gap-1.5"
+                      >
+                        <Pencil className="w-3.5 h-3.5" /> Edit
+                      </button>
+                      <button
+                        onClick={() => deleteCampaign(c)}
+                        data-testid={`marketing-draft-delete-${c.id}`}
+                        className="text-stone-400 hover:text-red-600 p-2"
+                        title="Delete draft"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden">
+              <div className="px-5 py-3 border-b border-stone-200 flex items-center justify-between">
+                <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-700 flex items-center gap-1.5">
+                  <Mail className="w-3 h-3" /> Past campaigns ({sent.length})
+                </div>
                 <button
-                  onClick={() => setReportId(c.id)}
-                  data-testid={`marketing-campaign-report-${c.id}`}
-                  className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider border border-stone-300 hover:bg-stone-50 text-stone-700 rounded-lg flex items-center gap-1.5"
+                  onClick={loadCampaigns}
+                  title="Reload"
+                  className="p-1.5 border border-stone-200 rounded-md hover:bg-stone-50"
+                  data-testid="marketing-reload"
                 >
-                  <Eye className="w-3.5 h-3.5" /> Report
+                  <RefreshCw className="w-3.5 h-3.5 text-stone-600" />
                 </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+              </div>
+              {loading ? (
+                <div className="flex items-center justify-center min-h-[160px] text-stone-500">
+                  <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading…
+                </div>
+              ) : sent.length === 0 ? (
+                <div className="px-6 py-10 text-center text-sm text-stone-500">
+                  No campaigns sent yet. Click <strong>New Campaign</strong> to send your first marketing e-shot.
+                </div>
+              ) : (
+                <ul className="divide-y divide-stone-100" data-testid="marketing-campaign-list">
+                  {sent.map((c) => (
+                    <li key={c.id} className="px-5 py-3 flex items-center gap-4 flex-wrap" data-testid={`marketing-campaign-${c.id}`}>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-stone-900 truncate">{c.title}</span>
+                          <DeliveryPill status={c.delivery?.status} />
+                        </div>
+                        <div className="text-xs text-stone-500 mt-1 flex items-center gap-3 flex-wrap">
+                          <span className="inline-flex items-center gap-1">
+                            <Calendar className="w-3 h-3" /> {fmtDate(c.sent_at || c.created_at)}
+                          </span>
+                          <span>· {c.recipient_count} recipient{c.recipient_count === 1 ? "" : "s"}</span>
+                          <span>· <strong className="text-emerald-700">{c.opens_count || 0}</strong> opens</span>
+                          {(c.clicks_count || 0) > 0 && (
+                            <span>· <strong className="text-blue-700">{c.clicks_count}</strong> clicks</span>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setReportId(c.id)}
+                        data-testid={`marketing-campaign-report-${c.id}`}
+                        className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider border border-stone-300 hover:bg-stone-50 text-stone-700 rounded-lg flex items-center gap-1.5"
+                      >
+                        <Eye className="w-3.5 h-3.5" /> Report
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </>
+        );
+      })()}
 
       <MarketingComposeModal
         open={composeOpen}
         access={access}
-        onClose={() => setComposeOpen(false)}
-        onSent={() => { setComposeOpen(false); loadCampaigns(); }}
+        draft={editingDraft}
+        onClose={() => { setComposeOpen(false); setEditingDraft(null); }}
+        onDraftSaved={() => { loadCampaigns(); }}
+        onSent={() => { setComposeOpen(false); setEditingDraft(null); loadCampaigns(); }}
       />
 
       <MarketingCampaignReport
