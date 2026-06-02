@@ -1,6 +1,12 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## Portal visual tuning — pastel panels + brand-yellow heading underline (Jun 02 2026)
+- **Panel background dialled back from #dedd0a → #eeee84 (50% tint)** on both Territory+ panels — was too punchy, now reads softer & more harmonious on the eyes. Active hover state `#e8e773`.
+- **Equal-height grid**: both Territory+ panel columns use `h-full w-full flex` so collapsed CTAs and expanded states always match row height regardless of content length. Grid container uses `items-stretch`.
+- **Brand-yellow page-heading underline** added globally via `PortalPageHeading.jsx` — a 4-pixel `#dedd0a` line now sits beneath every portal page heading (eyebrow + title + subtitle group). Applies automatically to every page that already uses the shared heading component: My Franchise · My Territory · My Territory+ · Bookings · Marketing · Invoicing · Calendar · Video Hub · HQ Updates · File Vault · Subscriptions · Account sub-pages.
+
+
 ## My Territory+ — side-by-side panel layout (Jun 02 2026)
 - Rearranged the two collapsible panels below the map into a **2-column responsive grid** (per user-supplied layout sketch):
   - **Left column (`lg:col-span-2`, ~66%)**: My Clients & Homes in My Territory.

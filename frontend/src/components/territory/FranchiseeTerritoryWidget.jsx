@@ -375,8 +375,8 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
       </div>
 
       {(hasTerritory || plusOn) && (
-        <div className={`grid grid-cols-1 gap-4 ${plusOn && providers.length > 0 ? "lg:grid-cols-3" : ""}`}>
-          <div className={plusOn && providers.length > 0 ? "lg:col-span-2" : ""}>
+        <div className={`grid grid-cols-1 gap-4 ${plusOn && providers.length > 0 ? "lg:grid-cols-3" : ""} items-stretch`}>
+          <div className={`flex ${plusOn && providers.length > 0 ? "lg:col-span-2" : ""}`}>
             <TerritoryHomesList
               homes={homes}
               openIndex={openHome}
@@ -401,7 +401,7 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
             />
           </div>
           {plusOn && providers.length > 0 && (
-            <div className="lg:col-span-1">
+            <div className="lg:col-span-1 flex">
               <TerritoryCareGroupsCard
                 providers={providers}
                 totalHomes={providersTotalHomes}

@@ -16,7 +16,7 @@ export default function PortalPageHeading({
   eyebrow, icon: Icon, title, subtitle, actions, testid,
 }) {
   return (
-    <div className="mb-6" data-testid={testid || "portal-page-heading"}>
+    <div className="mb-6 pb-5 border-b-4 border-[#dedd0a]" data-testid={testid || "portal-page-heading"}>
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div className="min-w-0">
           {eyebrow && (

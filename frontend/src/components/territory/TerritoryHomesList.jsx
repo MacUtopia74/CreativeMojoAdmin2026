@@ -390,13 +390,13 @@ export default function TerritoryHomesList({
   }
 
   if (!listExpanded) {
-    // Collapsed — yellow brand-coloured CTA matching the site-wide
-    // collapsible panel pattern (#dedd0a). Click anywhere to expand.
+    // Collapsed — soft brand yellow (50% tint of #dedd0a) CTA matching
+    // the site-wide collapsible panel pattern. Click anywhere to expand.
     return (
       <button
         onClick={() => setListExpanded(true)}
         data-testid="expand-homes-list"
-        className="w-full flex items-center justify-between gap-3 bg-[#dedd0a] hover:brightness-95 text-stone-950 rounded-2xl px-5 py-4 transition-all group"
+        className="w-full h-full flex items-center justify-between gap-3 bg-[#eeee84] hover:bg-[#e8e773] text-stone-950 rounded-2xl px-5 py-4 transition-all group"
       >
         <span className="flex items-center gap-3 min-w-0">
           <span className="w-9 h-9 rounded-full bg-stone-950 text-[#dedd0a] flex items-center justify-center shrink-0">
@@ -421,8 +421,8 @@ export default function TerritoryHomesList({
   }
 
   return (
-    <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid="territory-homes-list">
-      <div className="px-4 py-3 border-b border-stone-200 flex items-center justify-between gap-3 flex-wrap" style={{ backgroundColor: "#dedd0a" }}>
+    <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden h-full w-full flex flex-col" data-testid="territory-homes-list">
+      <div className="px-4 py-3 border-b border-stone-200 flex items-center justify-between gap-3 flex-wrap" style={{ backgroundColor: "#eeee84" }}>
         <div className="flex items-center gap-3 min-w-0">
           <span className="w-9 h-9 rounded-full bg-stone-950 text-[#dedd0a] flex items-center justify-center shrink-0">
             <ListIcon className="w-4 h-4" />
