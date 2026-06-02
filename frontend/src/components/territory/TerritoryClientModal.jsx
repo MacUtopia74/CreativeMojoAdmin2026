@@ -9,6 +9,7 @@
 import { useEffect, useState } from "react";
 import { X, Loader2, Trash2, UserPlus, ExternalLink, Database } from "lucide-react";
 import api from "@/lib/api";
+import MiniClientMap from "@/components/territory/MiniClientMap";
 
 const FIELDS = [
   { key: "name",              label: "Name *",            type: "text", required: true },
@@ -131,12 +132,12 @@ export default function TerritoryClientModal({ initial, onClose, onSaved, onDele
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-stretch justify-end p-0 sm:p-4 bg-stone-950/40"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-stone-950/60 backdrop-blur-sm"
       onClick={onClose}
       data-testid="t-plus-client-modal"
     >
       <div
-        className="bg-white sm:rounded-2xl shadow-2xl w-full sm:max-w-xl h-full sm:max-h-[92vh] overflow-hidden flex flex-col transition-transform"
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-5 sm:px-6 py-4 border-b border-stone-200 flex items-center justify-between gap-3">
@@ -154,6 +155,22 @@ export default function TerritoryClientModal({ initial, onClose, onSaved, onDele
         </div>
 
         <form onSubmit={save} className="flex-1 overflow-y-auto px-5 sm:px-6 py-5 space-y-4">
+          {editing && (() => {
+            // Resolve coords for the embedded map. Marked CQC clients
+            // pick up live coords from the snapshot; custom clients
+            // carry their own lat/lng. Falls back gracefully if neither
+            // is available (renders a "no location" placeholder).
+            const lat = cqcSnapshot?.latitude ?? initial?.lat ?? null;
+            const lng = cqcSnapshot?.longitude ?? initial?.lng ?? null;
+            return (
+              <MiniClientMap
+                lat={lat}
+                lng={lng}
+                label={form.name}
+                postcode={form.postcode || cqcSnapshot?.postalCode || ""}
+              />
+            );
+          })()}
           {isLinked && (
             <div className="px-3 py-2.5 bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-lg flex items-start gap-3">
               <div className="flex-1">
