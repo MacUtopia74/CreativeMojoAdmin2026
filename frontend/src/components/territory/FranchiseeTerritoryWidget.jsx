@@ -240,6 +240,19 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
     [providers],
   );
 
+  // Map of "${source}:${home_id}" → franchisee_clients doc for marked
+  // regulated homes — lets a marker click jump straight to the edit
+  // modal instead of just expanding the row in the list below.
+  const clientByHomeKey = useMemo(() => {
+    const m = new Map();
+    myClients.forEach((c) => {
+      if (c.source !== "custom" && c.home_id) {
+        m.set(`${c.source}:${c.home_id}`, c);
+      }
+    });
+    return m;
+  }, [myClients]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[200px] bg-white border border-stone-200 rounded-2xl">
@@ -291,19 +304,6 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
       await reloadClients();
     } catch (e) { /* noop */ }
   };
-
-  // Map of "${source}:${home_id}" → franchisee_clients doc for marked
-  // regulated homes — lets a marker click jump straight to the edit
-  // modal instead of just expanding the row in the list below.
-  const clientByHomeKey = useMemo(() => {
-    const m = new Map();
-    myClients.forEach((c) => {
-      if (c.source !== "custom" && c.home_id) {
-        m.set(`${c.source}:${c.home_id}`, c);
-      }
-    });
-    return m;
-  }, [myClients]);
 
   // Map element — reused in both layouts so the existing marker/flyTo
   // logic stays in one place. ``height`` is sized to match the My Clients
