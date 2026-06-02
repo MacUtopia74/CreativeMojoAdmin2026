@@ -15,7 +15,7 @@ import {
   Search, Loader2, Target, Save, Trash2, MapPin, Plus, RotateCcw,
   Users, AlertCircle, CheckCircle2, Pencil, ChevronRight, ArrowLeft,
   ClipboardPaste, Layers, Eye, EyeOff, ChevronDown, ChevronUp,
-  Share2, Copy, Link as LinkIcon, FolderOpen,
+  Share2, Copy, Link as LinkIcon, FolderOpen, History,
 } from "lucide-react";
 
 const TARGET_HOMES = 150;
@@ -43,6 +43,23 @@ export default function TerritoryBuilderPage() {
   const [saving, setSaving] = useState(false);
   const [franchisee, setFranchisee] = useState(null);
   const [territorySavedAt, setTerritorySavedAt] = useState(null);
+  // ── Save toast + history (rollback safety) ─────────────────────────
+  // `saveToast` shows an explicit success/failure banner immediately
+  // after a save click — the OLD UI just updated a tiny timestamp pill
+  // which was too easy to miss, leading to silent "did it save?"
+  // confusion. `history` holds the last 50 snapshots from
+  // `territory_history` so the admin can compare AND restore.
+  const [saveToast, setSaveToast] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [rollingBack, setRollingBack] = useState(null);
+  // Auto-dismiss successful save toast after 6s; keep failure toast
+  // sticky until the admin acknowledges it.
+  useEffect(() => {
+    if (!saveToast?.ok) return;
+    const t = setTimeout(() => setSaveToast(null), 6000);
+    return () => clearTimeout(t);
+  }, [saveToast]);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [pastePreview, setPastePreview] = useState(null);
@@ -143,11 +160,47 @@ export default function TerritoryBuilderPage() {
             console.error("[TerritoryBuilder] Postcode lookup failed", e);
           }
         }
+        reloadHistory();
       } catch (e) {
         console.error("[TerritoryBuilder] Failed to load franchisee territory", franchiseeId, e);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [franchiseeId]);
+
+  const reloadHistory = async () => {
+    if (!franchiseeId) return;
+    try {
+      const { data } = await api.get(`/franchisees/${franchiseeId}/territory/history`);
+      setHistory(data.items || []);
+    } catch (e) {
+      // Audit log is best-effort UI — never block on it.
+      console.debug("[TerritoryBuilder] history fetch failed", e);
+    }
+  };
+
+  const rollbackTo = async (snap) => {
+    if (!franchiseeId || !snap?.id) return;
+    const confirmMsg = `Roll back to ${new Date(snap.changed_at).toLocaleString()}?\n\nThis restores ${snap.previous_sectors?.length || 0} sector(s) (was ${snap.new_sectors?.length || 0}).\nThe rollback is itself recorded — you can undo it.`;
+    if (!window.confirm(confirmMsg)) return;
+    setRollingBack(snap.id);
+    try {
+      const { data } = await api.post(`/franchisees/${franchiseeId}/territory/rollback/${snap.id}`);
+      // Sync local UI to the restored state.
+      setSelected(data.sectors);
+      setTerritorySavedAt(new Date().toISOString());
+      setFranchisee((cur) => cur ? { ...cur, territory_sectors: data.sectors, territory_home_count: data.home_count } : cur);
+      setSaveToast({
+        ok: true,
+        message: `Rolled back to ${data.sectors.length} sector${data.sectors.length === 1 ? "" : "s"} · ${data.home_count} home${data.home_count === 1 ? "" : "s"}`,
+      });
+      reloadHistory();
+    } catch (e) {
+      setSaveToast({ ok: false, message: `Rollback failed · ${e?.response?.data?.detail || e.message}` });
+    } finally {
+      setRollingBack(null);
+    }
+  };
 
   // Hydrate an existing plan
   useEffect(() => {
@@ -274,6 +327,16 @@ export default function TerritoryBuilderPage() {
         const { data } = await api.put(`/franchisees/${franchiseeId}/territory`, { sectors: selected });
         setTerritorySavedAt(new Date().toISOString());
         setFranchisee((cur) => cur ? { ...cur, territory_sectors: data.sectors, territory_home_count: data.home_count } : cur);
+        // Loud, persistent toast so a successful save is unmissable —
+        // and so the count reported by the server is the count we
+        // display (catches the "I clicked save but the count looks
+        // wrong" class of bugs immediately).
+        setSaveToast({
+          ok: true,
+          message: `Territory saved · ${data.sectors.length} sector${data.sectors.length === 1 ? "" : "s"} · ${data.home_count} home${data.home_count === 1 ? "" : "s"}`,
+        });
+        // Re-pull the history list so the new snapshot appears.
+        reloadHistory();
       } else {
         const body = {
           contact_id: contactId,
@@ -295,7 +358,9 @@ export default function TerritoryBuilderPage() {
         reloadAllPlans();
       }
     } catch (e) {
-      setErr(e?.response?.data?.detail || "Could not save");
+      const msg = e?.response?.data?.detail || e?.message || "Could not save";
+      setErr(msg);
+      setSaveToast({ ok: false, message: `Save failed · ${msg}` });
     } finally { setSaving(false); }
   };
 
@@ -734,6 +799,75 @@ export default function TerritoryBuilderPage() {
             {franchiseeId && territorySavedAt && (
               <div className="mt-3 px-3 py-2 text-[11px] bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg flex items-center gap-1.5">
                 <CheckCircle2 className="w-3.5 h-3.5" /> Locked · {new Date(territorySavedAt).toLocaleString()}
+              </div>
+            )}
+
+            {/* Save toast — explicit success/failure feedback right next
+                to the Lock button. Auto-dismisses on success after 6s. */}
+            {saveToast && (
+              <div
+                data-testid="territory-save-toast"
+                className={`mt-2 px-3 py-2 text-xs rounded-lg flex items-start gap-2 ${
+                  saveToast.ok
+                    ? "bg-emerald-100 border border-emerald-300 text-emerald-900"
+                    : "bg-red-100 border border-red-300 text-red-900"
+                }`}
+              >
+                {saveToast.ok ? <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" /> : <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />}
+                <div className="flex-1 font-semibold">{saveToast.message}</div>
+                <button onClick={() => setSaveToast(null)} className="text-current opacity-70 hover:opacity-100" aria-label="Dismiss">×</button>
+              </div>
+            )}
+
+            {/* Audit / Rollback history — every save snapshots into
+                territory_history, so an accidental save is one click away
+                from being undone. Compact, expandable, scoped to this
+                franchisee. */}
+            {franchiseeId && (
+              <div className="mt-3 border border-stone-200 rounded-lg overflow-hidden" data-testid="territory-history">
+                <button
+                  onClick={() => { setHistoryOpen((v) => !v); if (!historyOpen) reloadHistory(); }}
+                  className="w-full px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-stone-700 bg-stone-50 hover:bg-stone-100 flex items-center justify-between gap-2"
+                  data-testid="territory-history-toggle"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <History className="w-3.5 h-3.5" />
+                    Save history {history.length > 0 && <span className="text-stone-500">({history.length})</span>}
+                  </span>
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${historyOpen ? "rotate-180" : ""}`} />
+                </button>
+                {historyOpen && (
+                  <div className="divide-y divide-stone-100 max-h-72 overflow-y-auto">
+                    {history.length === 0 && (
+                      <div className="px-3 py-3 text-[11px] text-stone-500 italic">
+                        No prior saves recorded yet. From now on, every Lock Territory click leaves a recoverable snapshot here.
+                      </div>
+                    )}
+                    {history.map((h) => (
+                      <div key={h.id} className="px-3 py-2 text-[11px]" data-testid={`territory-history-row-${h.id}`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="font-bold text-stone-900">
+                            {new Date(h.changed_at).toLocaleString()}
+                          </div>
+                          <button
+                            onClick={() => rollbackTo(h)}
+                            disabled={rollingBack === h.id}
+                            data-testid={`territory-rollback-${h.id}`}
+                            className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded bg-stone-950 text-[#dddd16] hover:bg-stone-800 disabled:opacity-50 flex items-center gap-1"
+                          >
+                            <RotateCcw className="w-2.5 h-2.5" /> {rollingBack === h.id ? "…" : "Restore"}
+                          </button>
+                        </div>
+                        <div className="text-stone-600 mt-0.5">
+                          {h.changed_by || "system"} · {(h.previous_sectors?.length ?? 0)} → {(h.new_sectors?.length ?? 0)} sectors
+                          {h.added_count > 0 && <span className="text-emerald-700"> · +{h.added_count}</span>}
+                          {h.removed_count > 0 && <span className="text-red-700"> · −{h.removed_count}</span>}
+                          {h.rollback_from && <span className="ml-1 px-1 py-0.5 rounded bg-stone-200 text-stone-700 font-bold">ROLLBACK</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>

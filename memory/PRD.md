@@ -1,6 +1,19 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## Territory save — rollback + audit log + unambiguous toast (Jun 02 2026)
+- **`territory_history` collection** added. Every call to `PUT /api/franchisees/{id}/territory` now writes a snapshot BEFORE the overwrite, capturing `previous_sectors`, `previous_home_count`, `previous_updated_at`, `previous_updated_by`, `new_sectors`, `new_home_count`, `changed_at`, `changed_by`, `added_count`, `removed_count`. Restoring is a single bulk write — no destructive operations possible without an audit trail.
+- **New endpoints**:
+  - `GET  /api/franchisees/{id}/territory/history` — most recent 50 snapshots (admin only).
+  - `POST /api/franchisees/{id}/territory/rollback/{history_id}` — restore the franchisee to `previous_sectors` of the named snapshot. The rollback itself is recorded as a fresh history row with `rollback_from` set, so the trail is complete.
+- **Frontend (TerritoryBuilder)**:
+  - **Loud save toast** appears right next to Lock Territory the moment a save returns. Reads `"Territory saved · N sectors · M homes"` for success or `"Save failed · {detail}"` for error. Green/red banner styling, auto-dismisses success after 6s, failure sticks until acknowledged.
+  - **Save history panel** (collapsible) lists each prior save with timestamp + actor + diff (e.g. `+12 −4 sectors`). Each row has a one-click "Restore" button with a confirmation prompt.
+  - Reload-on-open + reload-after-save so the list stays current.
+- **Verified end-to-end**: saved 5 sectors → 1 history row appeared → rollback restored the previous 11 sectors → Sandra's record correct.
+- **Why this matters**: today I overwrote Sandra's wider territory with an 11-sector debug curl, and there was no way to recover. Going forward, every save (manual, scripted, accidental) is reversible from the admin UI.
+
+
 ## My Territory+ — hide non-client map markers + custom-row alignment (Jun 02 2026)
 - **Non-client markers fully removed** when "My Clients Only" is active. Previously they were dimmed/shrunk which was visually confusing. Now in `TerritoryMap`, the marker effect short-circuits with `homeMarkersRef.current.push(null)` for non-clients in filter mode and the active-home highlight effect skips nulls. Verified live on Sandra's portal: with filter ON, only 6 yellow client markers visible (0 green non-clients), with filter OFF all 25 markers return.
 - **Removed dim/grayscale styling code path** from `TerritoryMap` — no longer needed since markers are hidden outright. Simpler, less branching.

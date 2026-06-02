@@ -671,6 +671,37 @@ def build_territory_router(db, require_role):  # noqa: D401
             homes_coll = await _homes_collection()
             base_filter = await _homes_filter()
             homes = await homes_coll.count_documents({**base_filter, "postcode_sector": {"$in": seen}})
+
+        # ------- snapshot BEFORE overwriting (rollback safety) -------
+        # Capture the current persisted state so any save (manual,
+        # accidental, or scripted) is reversible. We store the actor +
+        # incoming sectors too so the audit log reads like a diff list.
+        prev = await db.franchisees.find_one(
+            {"id": franchisee_id},
+            {"_id": 0, "territory_sectors": 1, "territory_home_count": 1,
+             "territory_updated_at": 1, "territory_updated_by": 1,
+             "organisation": 1},
+        )
+        if prev:
+            await db.territory_history.insert_one({
+                "id": str(uuid.uuid4()),
+                "franchisee_id": franchisee_id,
+                "organisation": prev.get("organisation"),
+                # State BEFORE this save — what we'd restore to on rollback.
+                "previous_sectors": prev.get("territory_sectors") or [],
+                "previous_home_count": prev.get("territory_home_count"),
+                "previous_updated_at": prev.get("territory_updated_at"),
+                "previous_updated_by": prev.get("territory_updated_by"),
+                # State AFTER this save — what's about to be written.
+                "new_sectors": seen,
+                "new_home_count": homes,
+                "changed_at": datetime.now(timezone.utc),
+                "changed_by": user.get("email"),
+                # Quick diff metrics for the history list UI.
+                "added_count": len(set(seen) - set(prev.get("territory_sectors") or [])),
+                "removed_count": len(set(prev.get("territory_sectors") or []) - set(seen)),
+            })
+
         res = await db.franchisees.update_one(
             {"id": franchisee_id},
             {"$set": {
@@ -683,6 +714,84 @@ def build_territory_router(db, require_role):  # noqa: D401
         if not res.matched_count:
             raise HTTPException(404, detail="Franchisee not found")
         return {"sectors": seen, "home_count": homes}
+
+    # --------------------------- territory rollback (audit + restore)
+    @router.get("/franchisees/{franchisee_id}/territory/history")
+    async def list_territory_history(
+        franchisee_id: str,
+        _user: dict = Depends(require_role("admin")),
+    ):
+        """Most recent saves first. Each snapshot captures both the
+        previous and new sector list so the admin can compare AND roll
+        back to any past state with a single click."""
+        cur = db.territory_history.find(
+            {"franchisee_id": franchisee_id}, {"_id": 0},
+        ).sort("changed_at", -1).limit(50)
+        items = await cur.to_list(50)
+        return {"items": items, "count": len(items)}
+
+    @router.post("/franchisees/{franchisee_id}/territory/rollback/{history_id}")
+    async def rollback_territory(
+        franchisee_id: str,
+        history_id: str,
+        user: dict = Depends(require_role("admin")),
+    ):
+        """Restore the franchisee's territory to the ``previous_sectors``
+        captured by the named history snapshot. The rollback itself is
+        recorded as a fresh history row so the trail stays complete."""
+        snap = await db.territory_history.find_one(
+            {"id": history_id, "franchisee_id": franchisee_id}, {"_id": 0},
+        )
+        if not snap:
+            raise HTTPException(404, detail="History snapshot not found")
+        target_sectors = snap.get("previous_sectors") or []
+
+        # Recalculate home count for the restored sector set so the
+        # franchisee record is consistent rather than relying on the
+        # cached count baked into the snapshot (CQC data may have moved).
+        homes = 0
+        if target_sectors:
+            homes_coll = await _homes_collection()
+            base_filter = await _homes_filter()
+            homes = await homes_coll.count_documents({**base_filter, "postcode_sector": {"$in": target_sectors}})
+
+        # Record the rollback itself as a fresh history entry.
+        prev = await db.franchisees.find_one(
+            {"id": franchisee_id},
+            {"_id": 0, "territory_sectors": 1, "territory_home_count": 1,
+             "territory_updated_at": 1, "territory_updated_by": 1,
+             "organisation": 1},
+        )
+        if prev:
+            await db.territory_history.insert_one({
+                "id": str(uuid.uuid4()),
+                "franchisee_id": franchisee_id,
+                "organisation": prev.get("organisation"),
+                "previous_sectors": prev.get("territory_sectors") or [],
+                "previous_home_count": prev.get("territory_home_count"),
+                "previous_updated_at": prev.get("territory_updated_at"),
+                "previous_updated_by": prev.get("territory_updated_by"),
+                "new_sectors": target_sectors,
+                "new_home_count": homes,
+                "changed_at": datetime.now(timezone.utc),
+                "changed_by": user.get("email"),
+                "rollback_from": history_id,
+                "added_count": len(set(target_sectors) - set(prev.get("territory_sectors") or [])),
+                "removed_count": len(set(prev.get("territory_sectors") or []) - set(target_sectors)),
+            })
+
+        res = await db.franchisees.update_one(
+            {"id": franchisee_id},
+            {"$set": {
+                "territory_sectors": target_sectors,
+                "territory_home_count": homes,
+                "territory_updated_at": datetime.now(timezone.utc),
+                "territory_updated_by": user.get("email"),
+            }},
+        )
+        if not res.matched_count:
+            raise HTTPException(404, detail="Franchisee not found")
+        return {"sectors": target_sectors, "home_count": homes}
 
     @router.get("/franchisees/{franchisee_id}/territory")
     async def get_franchisee_territory(
