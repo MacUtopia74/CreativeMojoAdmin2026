@@ -362,21 +362,8 @@ export default function TerritoryHomesList({
         || (h.providerName || "").toLowerCase().includes(needle),
       );
     }
-    // In "My clients only" mode push the client rows to the top of the list
-    // so dimmed non-clients sit below — the user reads their clients first.
-    if (myClientsOnly && clientHomeKeys) {
-      const isMine = (h) => {
-        const key = h.id || h.locationId || "";
-        return clientHomeKeys.has(`cqc:${key}`) || clientHomeKeys.has(`scotland:${key}`);
-      };
-      base = [...base].sort((a, b) => {
-        const am = isMine(a) ? 0 : 1;
-        const bm = isMine(b) ? 0 : 1;
-        return am - bm;
-      });
-    }
     return base;
-  }, [homes, q, providerFilter, myClientsOnly, clientHomeKeys]);
+  }, [homes, q, providerFilter]);
 
   // Treat custom clients + regulated homes as a single pool when deciding
   // whether to render the panel at all. Even with zero CQC homes, a
@@ -404,12 +391,10 @@ export default function TerritoryHomesList({
           </span>
           <span className="text-left min-w-0">
             <span className="block text-[10px] uppercase tracking-[0.3em] font-bold text-stone-950/70">
-              {plus ? "My Clients & Homes in My Territory" : "Homes in your territory"}
+              {plus ? "Homes in My Territory · From CQC Database" : "Homes in your territory"}
             </span>
             <span className="block text-sm font-semibold truncate text-stone-950">
-              {plus
-                ? `Expand to show list of ${homes.length} home${homes.length === 1 ? "" : "s"}${customClients.length ? ` + ${customClients.length} of my clients` : ""}`
-                : `Expand to show list of ${homes.length} home${homes.length === 1 ? "" : "s"}`}
+              Expand to show list of {homes.length} home{homes.length === 1 ? "" : "s"}
             </span>
           </span>
         </span>
@@ -429,12 +414,11 @@ export default function TerritoryHomesList({
           </span>
           <div className="min-w-0">
             <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-950/70">
-              {plus ? "My Clients & Homes in My Territory" : "Homes in your territory"}
+              {plus ? "Homes in My Territory · From CQC Database" : "Homes in your territory"}
             </div>
             <div className="text-sm text-stone-950 mt-0.5">
               <strong>{filtered.length}</strong>
               {filtered.length !== homes.length && <span className="text-stone-950/60"> of {homes.length}</span>} homes
-              {plus && customClients.length > 0 && <span> · {customClients.length} of my clients</span>}
               <span className="text-stone-950/60"> · click any row to expand</span>
             </div>
           </div>
@@ -448,79 +432,44 @@ export default function TerritoryHomesList({
           className="px-3 py-2 ios-no-zoom bg-white border border-stone-950/20 rounded-lg w-full sm:w-72 focus:outline-none focus:ring-2 focus:ring-stone-950/20 focus:border-stone-950/50" />
       </div>
 
-      {/* Territory+ toolbar — Add client, Plan a route, provider filters. */}
-      {plus && (
-        <div className="px-4 py-3 border-b border-stone-200 space-y-2.5 bg-white" data-testid="territory-plus-toolbar">
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              onClick={() => onAddClient?.()}
-              data-testid="t-plus-add-client"
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-[#dddd16] hover:bg-stone-800 rounded-md"
-            >
-              <Plus className="w-3.5 h-3.5" /> Add my own client
-            </button>
-            <button
-              onClick={(e) => e.preventDefault()}
-              title="Coming soon — Open route in your phone's maps app for turn-by-turn directions."
-              data-testid="t-plus-plan-route"
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-[10px] font-bold uppercase tracking-wider border border-stone-300 text-stone-600 rounded-md cursor-not-allowed bg-stone-100"
-            >
-              <Route className="w-3.5 h-3.5" /> Plan a route
-              <span className="ml-1 px-1.5 py-0.5 rounded bg-stone-200 text-stone-700 text-[9px] font-black">Soon</span>
-            </button>
-            <button
-              onClick={() => onMyClientsOnlyChange?.(!myClientsOnly)}
-              data-testid="t-plus-my-clients-only"
-              className={`inline-flex items-center gap-1.5 px-3 py-2 text-[10px] font-bold uppercase tracking-wider rounded-md border transition-colors ${
-                myClientsOnly
-                  ? "bg-[#dddd16] text-stone-950 border-stone-950"
-                  : "bg-white border-stone-300 text-stone-700 hover:bg-stone-50 hover:border-stone-500"
-              }`}
-            >
-              <Star className={`w-3.5 h-3.5 ${myClientsOnly ? "fill-current" : ""}`} />
-              {myClientsOnly ? "Showing My Clients only" : "Show My Clients only"}
-            </button>
-          </div>
-          {providers.length > 0 && (
-            <div className="flex items-center gap-1.5 flex-wrap" data-testid="t-plus-provider-filters">
-              <span className="text-[10px] uppercase tracking-wider font-bold text-stone-500 mr-1">Care groups:</span>
-              {providers.map((p) => {
-                const active = providerFilter === p.name;
-                return (
-                  <button
-                    key={p.name}
-                    onClick={() => onProviderFilter?.(active ? null : p.name)}
-                    data-testid={`t-plus-provider-btn-${p.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
-                    className={`inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md border transition-colors ${
-                      active
-                        ? "bg-stone-950 text-white border-stone-950"
-                        : "bg-white border-stone-300 text-stone-700 hover:bg-stone-100 hover:border-stone-500"
-                    }`}
-                  >
-                    {p.name} <span className={`px-1.5 py-0.5 rounded text-[9px] ${active ? "bg-white/20 text-white" : "bg-stone-100 text-stone-600"}`}>{p.count}</span>
-                  </button>
-                );
-              })}
-              {providerFilter && (
+      {/* Territory+ toolbar — provider filter pills only.
+          The Add Client / Plan Route / Show My Clients Only CTAs live
+          in dedicated action cards at the top of My Territory+. */}
+      {plus && providers.length > 0 && (
+        <div className="px-4 py-3 border-b border-stone-200 bg-white" data-testid="territory-plus-toolbar">
+          <div className="flex items-center gap-1.5 flex-wrap" data-testid="t-plus-provider-filters">
+            <span className="text-[10px] uppercase tracking-wider font-bold text-stone-500 mr-1">Care groups:</span>
+            {providers.map((p) => {
+              const active = providerFilter === p.name;
+              return (
                 <button
-                  onClick={() => onProviderFilter?.(null)}
-                  data-testid="t-plus-provider-clear"
-                  className="text-[10px] font-bold uppercase tracking-wider text-stone-500 hover:text-stone-900 underline ml-1"
+                  key={p.name}
+                  onClick={() => onProviderFilter?.(active ? null : p.name)}
+                  data-testid={`t-plus-provider-btn-${p.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md border transition-colors ${
+                    active
+                      ? "bg-stone-950 text-white border-stone-950"
+                      : "bg-white border-stone-300 text-stone-700 hover:bg-stone-100 hover:border-stone-500"
+                  }`}
                 >
-                  Clear
+                  {p.name} <span className={`px-1.5 py-0.5 rounded text-[9px] ${active ? "bg-white/20 text-white" : "bg-stone-100 text-stone-600"}`}>{p.count}</span>
                 </button>
-              )}
-            </div>
-          )}
+              );
+            })}
+            {providerFilter && (
+              <button
+                onClick={() => onProviderFilter?.(null)}
+                data-testid="t-plus-provider-clear"
+                className="text-[10px] font-bold uppercase tracking-wider text-stone-500 hover:text-stone-900 underline ml-1"
+              >
+                Clear
+              </button>
+            )}
+          </div>
         </div>
       )}
 
       <div className="max-h-[520px] overflow-y-auto">
-        {/* My custom clients first — they're the franchisee's data, so it
-            feels right that "their stuff" sits above the public CQC list. */}
-        {plus && customClients.map((c) => (
-          <CustomClientRow key={c.id} client={c} onEdit={onEditClient} onZoom={onZoomHome} />
-        ))}
         {filtered.map((h, i) => {
           const realIdx = homes.indexOf(h);
           const homeKey = h.id || h.locationId || "";
@@ -528,24 +477,6 @@ export default function TerritoryHomesList({
             clientHomeKeys.has(`cqc:${homeKey}`) ||
             clientHomeKeys.has(`scotland:${homeKey}`)
           ));
-          if (myClientsOnly && !isMine) {
-            // In My-Clients-only mode: still render non-clients but dim them
-            // hard so the franchisee can see context without distraction.
-            return (
-              <HomeRow key={h.locationId || h._id || i} home={h} idx={realIdx}
-                isOpen={false}
-                onToggle={() => setOpen(realIdx)}
-                onZoom={onZoomHome}
-                isMyClient={false}
-                onMarkClient={onMarkHomeClient}
-                onUnmarkClient={null}
-                plus={plus}
-                lead={null}
-                onSetLeadStatus={null}
-                dimmed
-              />
-            );
-          }
           const leadKey = `cqc:${homeKey}`;
           const altKey = `scotland:${homeKey}`;
           const lead = leadsByKey ? (leadsByKey.get(leadKey) || leadsByKey.get(altKey) || null) : null;
@@ -563,11 +494,11 @@ export default function TerritoryHomesList({
             />
           );
         })}
-        {filtered.length === 0 && plus && customClients.length === 0 && (
+        {filtered.length === 0 && (
           <div className="px-6 py-12 text-center text-stone-500 text-sm">
             {providerFilter
               ? `No homes match the ${providerFilter} filter.`
-              : "No homes here yet. Tap “Add my own client” to plot your first one."}
+              : "No homes in this territory yet."}
           </div>
         )}
       </div>
@@ -575,84 +506,3 @@ export default function TerritoryHomesList({
   );
 }
 
-function CustomClientRow({ client, onEdit, onZoom }) {
-  const [open, setOpen] = useState(false);
-  const emailHref = client.email ? `mailto:${client.email}` : null;
-  const phoneHref = client.phone ? `tel:${String(client.phone).replace(/\s+/g, "")}` : null;
-  const webHref = client.website ? (client.website.startsWith("http") ? client.website : `https://${client.website}`) : null;
-  return (
-    <div className="border-b border-stone-200 last:border-b-0 bg-[#fcfbd8]" data-testid={`client-row-${client.id}`}>
-      <div
-        onClick={() => setOpen((o) => !o)}
-        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen((o) => !o); } }}
-        role="button"
-        tabIndex={0}
-        className="w-full flex items-center gap-3 px-3 py-3 text-left group cursor-pointer"
-      >
-        <span className="w-7 h-7 rounded-full bg-[#dddd16] text-stone-950 border border-stone-950 text-[14px] font-black flex items-center justify-center shrink-0">★</span>
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold text-stone-950 truncate flex items-center gap-1.5">
-            {client.name}
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest rounded bg-stone-950 text-[#dddd16]">
-              My Client
-            </span>
-          </div>
-          <div className="text-xs text-stone-600 truncate">{client.address || client.postcode || "—"}{client.provider ? ` · ${client.provider}` : ""}</div>
-        </div>
-        <button
-          onClick={(e) => { e.stopPropagation(); onEdit?.(client); }}
-          className="shrink-0 text-stone-700 hover:text-stone-950 p-1.5 rounded hover:bg-white/60"
-          data-testid={`client-edit-${client.id}`}
-          aria-label="Edit"
-        >
-          <Edit3 className="w-3.5 h-3.5" />
-        </button>
-        <span className={`shrink-0 w-7 h-7 rounded-full flex items-center justify-center border transition-colors ${
-          open ? "bg-stone-950 text-white border-stone-950"
-               : "bg-white text-stone-700 border-stone-300 group-hover:border-stone-500"
-        }`}>
-          {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-        </span>
-      </div>
-      {open && (
-        <div className="px-3 pb-4 pt-1 grid sm:grid-cols-2 gap-x-6 gap-y-2 text-sm bg-white/70">
-          <Detail icon={MapPin} label="Address">{client.address || client.postcode || "—"}</Detail>
-          <Detail icon={Phone} label="Phone">
-            {phoneHref ? <a href={phoneHref} className="text-stone-900 hover:underline">{client.phone}</a> : <span className="text-stone-400">—</span>}
-          </Detail>
-          <Detail icon={Globe} label="Website">
-            {webHref ? <a href={webHref} target="_blank" rel="noreferrer" className="text-stone-900 hover:underline inline-flex items-center gap-1">{client.website} <ExternalLink className="w-3 h-3" /></a> : <span className="text-stone-400">—</span>}
-          </Detail>
-          <Detail icon={Mail} label="Email">
-            {emailHref ? <a href={emailHref} className="text-stone-900 hover:underline">{client.email}</a> : <span className="text-stone-400">—</span>}
-          </Detail>
-          <Detail icon={Building2} label="Provider">{client.provider || <span className="text-stone-400">—</span>}</Detail>
-          <Detail icon={User} label="Manager">{client.manager || <span className="text-stone-400">—</span>}</Detail>
-          <Detail icon={Calendar} label="Latest inspection">{client.latest_inspection || <span className="text-stone-400">—</span>}</Detail>
-          <Detail icon={Star} label="CQC rating">{client.cqc_rating || <span className="text-stone-400">—</span>}</Detail>
-          {client.notes && (
-            <div className="sm:col-span-2 px-3 py-2 bg-white border border-stone-200 rounded-lg mt-1">
-              <div className="text-[10px] uppercase tracking-wider font-bold text-stone-500 mb-1">Notes</div>
-              <div className="text-sm text-stone-800 whitespace-pre-wrap">{client.notes}</div>
-            </div>
-          )}
-          <div className="sm:col-span-2 flex items-center gap-2 pt-2 mt-1 border-t border-stone-200 flex-wrap">
-            <button onClick={() => onEdit?.(client)} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider border border-stone-300 hover:bg-white rounded-md text-stone-900">
-              <Edit3 className="w-3 h-3" /> Edit details
-            </button>
-            {client.lat != null && client.lng != null && onZoom && (
-              <button onClick={() => onZoom({ ...client, latitude: client.lat, longitude: client.lng })} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider border border-stone-300 hover:bg-white rounded-md text-stone-900">
-                <MapPin className="w-3 h-3" /> Zoom map here
-              </button>
-            )}
-            {emailHref && (
-              <a href={emailHref} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider border border-stone-300 hover:bg-white rounded-md text-stone-900">
-                <Mail className="w-3 h-3" /> Email
-              </a>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}

@@ -14,9 +14,11 @@ import TerritoryMap from "@/components/territory/TerritoryMap";
 import TerritoryHomesList from "@/components/territory/TerritoryHomesList";
 import TerritoryClientModal from "@/components/territory/TerritoryClientModal";
 import TerritoryCareGroupsCard from "@/components/territory/TerritoryCareGroupsCard";
+import TerritoryActionCard from "@/components/territory/TerritoryActionCard";
+import MyClientsPanel from "@/components/territory/MyClientsPanel";
 import {
   Loader2, Map as MapIcon, Search, CheckCircle2, XCircle, AlertCircle,
-  Route,
+  Route, Eye,
 } from "lucide-react";
 
 export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 560, forceBasic = false }) {
@@ -287,6 +289,202 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
     } catch (e) { /* noop */ }
   };
 
+  // Map element — reused in both layouts so the existing marker/flyTo
+  // logic stays in one place.
+  const mapEl = hasTerritory ? (
+    <TerritoryMap
+      sectors={sectors}
+      selected={summary.sectors}
+      centre={summary.centre}
+      centreLabel={summary.franchisee?.organisation || summary.franchisee?.postcode || ""}
+      height={plusOn ? 620 : mapHeight}
+      interactive={false}
+      homes={homes}
+      activeHomeIndex={openHome}
+      onMarkerClick={(i) => {
+        setOpenHome(i);
+        setHomesListExpanded(true);
+        const scrollToRow = () => {
+          const row = document.querySelector(`[data-testid="home-row-${i + 1}"]`);
+          if (row) row.scrollIntoView({ behavior: "smooth", block: "center" });
+        };
+        requestAnimationFrame(() => requestAnimationFrame(scrollToRow));
+      }}
+      flyTo={flyTo}
+      pinnedPostcode={pinnedPostcode}
+      basemap={basemap}
+      clientHomeKeys={plusOn ? clientHomeKeys : null}
+      customClients={plusOn ? customClients : []}
+      onCustomClientClick={plusOn ? (c) => setEditingClient(c) : null}
+      providerFilter={plusOn ? providerFilter : null}
+      dimNonClients={plusOn && myClientsOnly}
+    />
+  ) : (
+    <div className="text-sm text-stone-500 bg-stone-50 border border-dashed border-stone-300 rounded-xl px-4 py-6 text-center">
+      Once HQ saves your territory it'll appear here as a map. You'll also be able to type any UK postcode to check whether it falls inside your area.
+    </div>
+  );
+
+  // Postcode check + roads toggle — shared across both layouts. Lives
+  // in the map card's header strip on the new Territory+ layout, and
+  // inline above the map on the basic layout.
+  const mapControls = hasTerritory && (
+    <div className="flex items-center gap-2 flex-wrap">
+      <button
+        onClick={() => setBasemap((b) => (b === "streets" ? "light" : "streets"))}
+        data-testid="portal-basemap-toggle"
+        title={basemap === "streets" ? "Hide road layer" : "Show road layer"}
+        className={`px-3 py-2 text-xs font-bold uppercase tracking-wider rounded-lg border flex items-center gap-1.5 transition ${basemap === "streets" ? "bg-stone-950 text-white border-stone-950" : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"}`}
+      >
+        <Route className="w-3.5 h-3.5" />
+        {basemap === "streets" ? "Roads on" : "Show roads"}
+      </button>
+      <input value={check} onChange={(e) => setCheck(e.target.value)} data-testid="portal-postcode-check"
+        onKeyDown={(e) => { if (e.key === "Enter") runCheck(); }}
+        placeholder="Check a postcode (e.g. EX12 3AB)"
+        className="px-3 py-2 text-sm bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-400" />
+      <button onClick={runCheck} disabled={checking || !check.trim()} data-testid="portal-postcode-check-go"
+        className="px-3 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-lg disabled:opacity-50 flex items-center gap-1.5">
+        {checking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />} Check
+      </button>
+    </div>
+  );
+
+  const postcodeBanner = checkResult && (
+    <div className={`px-4 py-2.5 rounded-xl flex items-center gap-2 text-sm ${
+      checkResult.error ? "bg-amber-50 border border-amber-300 text-amber-900"
+      : checkResult.ok ? "bg-emerald-50 border border-emerald-300 text-emerald-900"
+      : "bg-stone-100 border border-stone-300 text-stone-800"
+    }`}>
+      {checkResult.error ? <><AlertCircle className="w-4 h-4" /> {checkResult.error}</>
+      : checkResult.ok ? <><CheckCircle2 className="w-4 h-4" /> <strong>{checkResult.sector}</strong> sits inside your territory</>
+      : <><XCircle className="w-4 h-4" /> <strong>{checkResult.sector}</strong> is outside your territory ({checkResult.admin_district})</>}
+    </div>
+  );
+
+  // --------------------------- Territory+ layout ---------------------------
+  // Per wireframe: top row = (action cards + My Clients table) | map.
+  // Bottom row = CQC Homes | Care Groups. Stacks vertically on mobile.
+  if (plusOn) {
+    return (
+      <div className="space-y-4" data-testid="portal-territory">
+        {postcodeBanner}
+
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-stretch">
+          {/* LEFT COLUMN — action cards + My Clients table */}
+          <div className="lg:col-span-3 space-y-4 flex flex-col">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <TerritoryActionCard
+                icon={Eye}
+                title="Show My Clients Only"
+                subtitle={myClientsOnly ? "Map filter active — tap to clear" : "Filter map view"}
+                active={myClientsOnly}
+                onClick={() => setMyClientsOnly((v) => !v)}
+                testid="t-plus-show-my-clients-card"
+              />
+              <TerritoryActionCard
+                icon={Route}
+                title="Plan A Route"
+                subtitle="Optimise your visits"
+                soon
+                onClick={() => {}}
+                testid="t-plus-plan-route-card"
+              />
+            </div>
+            <div className="flex-1">
+              <MyClientsPanel
+                clients={myClients}
+                homeById={homeById}
+                onAddClient={() => setEditingClient({ __new: true })}
+                onEditClient={(c) => setEditingClient(c)}
+              />
+            </div>
+          </div>
+
+          {/* RIGHT COLUMN — Map */}
+          <div className="lg:col-span-2 flex">
+            <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden h-full w-full flex flex-col">
+              <div className="px-4 py-3 border-b border-stone-200 flex items-center justify-between gap-3 flex-wrap" style={{ backgroundColor: "#eeee84" }}>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="w-9 h-9 rounded-full bg-stone-950 text-[#dedd0a] flex items-center justify-center shrink-0">
+                    <MapIcon className="w-4 h-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-950/70">My Territory</div>
+                    {hasTerritory && (
+                      <div className="text-sm text-stone-950 mt-0.5">
+                        <strong>{homes.length}</strong> homes · <strong>{summary.sectors.length}</strong> sectors
+                        {homesLoading && <Loader2 className="inline-block w-3 h-3 ml-1 animate-spin text-stone-600" />}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              {hasTerritory && (
+                <div className="px-3 py-2 border-b border-stone-100 flex items-center gap-2 flex-wrap bg-stone-50">
+                  {mapControls}
+                </div>
+              )}
+              <div className="flex-1">{mapEl}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* BOTTOM ROW — CQC Homes + Care Groups */}
+        <div className={`grid grid-cols-1 gap-4 ${providers.length > 0 ? "lg:grid-cols-5" : ""} items-stretch`}>
+          <div className={`flex ${providers.length > 0 ? "lg:col-span-3" : ""}`}>
+            <TerritoryHomesList
+              homes={homes}
+              openIndex={openHome}
+              onOpenChange={setOpenHome}
+              expanded={homesListExpanded}
+              onExpandedChange={setHomesListExpanded}
+              onZoomHome={(h) => setFlyTo({ lat: h.latitude, lng: h.longitude, _t: Date.now() })}
+              plus={plusOn}
+              clientHomeKeys={clientHomeKeys}
+              customClients={[]}
+              onMarkHomeClient={handleMarkHomeClient}
+              onUnmarkHomeClient={handleUnmarkHomeClient}
+              onAddClient={() => setEditingClient({ __new: true })}
+              onEditClient={(c) => setEditingClient(c)}
+              providers={topProviders}
+              providerFilter={providerFilter}
+              onProviderFilter={setProviderFilter}
+              leadsByKey={leadsByKey}
+              onSetLeadStatus={handleSetLeadStatus}
+              myClientsOnly={false}
+              onMyClientsOnlyChange={() => {}}
+            />
+          </div>
+          {providers.length > 0 && (
+            <div className="lg:col-span-2 flex">
+              <TerritoryCareGroupsCard
+                providers={providers}
+                totalHomes={providersTotalHomes}
+                totalAllHomes={homes.length}
+                activeProvider={providerFilter}
+                onSelectProvider={setProviderFilter}
+              />
+            </div>
+          )}
+        </div>
+
+        {editingClient && (
+          <TerritoryClientModal
+            initial={editingClient.__new ? null : editingClient}
+            cqcSnapshot={!editingClient.__new && editingClient.source !== "custom"
+              ? homeById.get(editingClient.home_id) || null
+              : null}
+            onClose={() => setEditingClient(null)}
+            onSaved={() => { reloadClients(); }}
+            onDeleted={() => { reloadClients(); }}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // --------------------------- Basic layout (legacy) -----------------------
   return (
     <div className="space-y-4" data-testid="portal-territory">
       <div className="bg-white border border-stone-200 rounded-2xl p-6 space-y-4">
@@ -304,125 +502,21 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
               <h2 className="font-display text-2xl text-stone-950">Your territory hasn't been set yet</h2>
             )}
           </div>
-          {hasTerritory && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <button
-                onClick={() => setBasemap((b) => (b === "streets" ? "light" : "streets"))}
-                data-testid="portal-basemap-toggle"
-                title={basemap === "streets" ? "Hide road layer" : "Show road layer"}
-                className={`px-3 py-2 text-xs font-bold uppercase tracking-wider rounded-lg border flex items-center gap-1.5 transition ${basemap === "streets" ? "bg-stone-950 text-white border-stone-950" : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"}`}
-              >
-                <Route className="w-3.5 h-3.5" />
-                {basemap === "streets" ? "Roads on" : "Show roads"}
-              </button>
-              <input value={check} onChange={(e) => setCheck(e.target.value)} data-testid="portal-postcode-check"
-                onKeyDown={(e) => { if (e.key === "Enter") runCheck(); }}
-                placeholder="Check a postcode (e.g. EX12 3AB)"
-                className="px-3 py-2 text-sm bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-400" />
-              <button onClick={runCheck} disabled={checking || !check.trim()} data-testid="portal-postcode-check-go"
-                className="px-3 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-lg disabled:opacity-50 flex items-center gap-1.5">
-                {checking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />} Check
-              </button>
-            </div>
-          )}
+          {mapControls}
         </div>
 
-        {checkResult && (
-          <div className={`px-4 py-2.5 rounded-xl flex items-center gap-2 text-sm ${
-            checkResult.error ? "bg-amber-50 border border-amber-300 text-amber-900"
-            : checkResult.ok ? "bg-emerald-50 border border-emerald-300 text-emerald-900"
-            : "bg-stone-100 border border-stone-300 text-stone-800"
-          }`}>
-            {checkResult.error ? <><AlertCircle className="w-4 h-4" /> {checkResult.error}</>
-            : checkResult.ok ? <><CheckCircle2 className="w-4 h-4" /> <strong>{checkResult.sector}</strong> sits inside your territory</>
-            : <><XCircle className="w-4 h-4" /> <strong>{checkResult.sector}</strong> is outside your territory ({checkResult.admin_district})</>}
-          </div>
-        )}
-
-        {hasTerritory ? (
-          <TerritoryMap
-            sectors={sectors}
-            selected={summary.sectors}
-            centre={summary.centre}
-            centreLabel={summary.franchisee?.organisation || summary.franchisee?.postcode || ""}
-            height={mapHeight}
-            interactive={false}
-            homes={homes}
-            activeHomeIndex={openHome}
-            onMarkerClick={(i) => {
-              setOpenHome(i);
-              setHomesListExpanded(true);
-              const scrollToRow = () => {
-                const row = document.querySelector(`[data-testid="home-row-${i + 1}"]`);
-                if (row) row.scrollIntoView({ behavior: "smooth", block: "center" });
-              };
-              requestAnimationFrame(() => requestAnimationFrame(scrollToRow));
-            }}
-            flyTo={flyTo}
-            pinnedPostcode={pinnedPostcode}
-            basemap={basemap}
-            clientHomeKeys={plusOn ? clientHomeKeys : null}
-            customClients={plusOn ? customClients : []}
-            onCustomClientClick={plusOn ? (c) => setEditingClient(c) : null}
-            providerFilter={plusOn ? providerFilter : null}
-            dimNonClients={plusOn && myClientsOnly}
-          />
-        ) : (
-          <div className="text-sm text-stone-500 bg-stone-50 border border-dashed border-stone-300 rounded-xl px-4 py-6 text-center">
-            Once HQ saves your territory it'll appear here as a map. You'll also be able to type any UK postcode to check whether it falls inside your area.
-          </div>
-        )}
+        {postcodeBanner}
+        {mapEl}
       </div>
 
-      {(hasTerritory || plusOn) && (
-        <div className={`grid grid-cols-1 gap-4 ${plusOn && providers.length > 0 ? "lg:grid-cols-3" : ""} items-stretch`}>
-          <div className={`flex ${plusOn && providers.length > 0 ? "lg:col-span-2" : ""}`}>
-            <TerritoryHomesList
-              homes={homes}
-              openIndex={openHome}
-              onOpenChange={setOpenHome}
-              expanded={homesListExpanded}
-              onExpandedChange={setHomesListExpanded}
-              onZoomHome={(h) => setFlyTo({ lat: h.latitude, lng: h.longitude, _t: Date.now() })}
-              plus={plusOn}
-              clientHomeKeys={clientHomeKeys}
-              customClients={customClients}
-              onMarkHomeClient={handleMarkHomeClient}
-              onUnmarkHomeClient={handleUnmarkHomeClient}
-              onAddClient={() => setEditingClient({ __new: true })}
-              onEditClient={(c) => setEditingClient(c)}
-              providers={topProviders}
-              providerFilter={providerFilter}
-              onProviderFilter={setProviderFilter}
-              leadsByKey={leadsByKey}
-              onSetLeadStatus={handleSetLeadStatus}
-              myClientsOnly={myClientsOnly}
-              onMyClientsOnlyChange={setMyClientsOnly}
-            />
-          </div>
-          {plusOn && providers.length > 0 && (
-            <div className="lg:col-span-1 flex">
-              <TerritoryCareGroupsCard
-                providers={providers}
-                totalHomes={providersTotalHomes}
-                totalAllHomes={homes.length}
-                activeProvider={providerFilter}
-                onSelectProvider={setProviderFilter}
-              />
-            </div>
-          )}
-        </div>
-      )}
-
-      {editingClient && (
-        <TerritoryClientModal
-          initial={editingClient.__new ? null : editingClient}
-          cqcSnapshot={!editingClient.__new && editingClient.source !== "custom"
-            ? homeById.get(editingClient.home_id) || null
-            : null}
-          onClose={() => setEditingClient(null)}
-          onSaved={() => { reloadClients(); }}
-          onDeleted={() => { reloadClients(); }}
+      {hasTerritory && (
+        <TerritoryHomesList
+          homes={homes}
+          openIndex={openHome}
+          onOpenChange={setOpenHome}
+          expanded={homesListExpanded}
+          onExpandedChange={setHomesListExpanded}
+          onZoomHome={(h) => setFlyTo({ lat: h.latitude, lng: h.longitude, _t: Date.now() })}
         />
       )}
     </div>

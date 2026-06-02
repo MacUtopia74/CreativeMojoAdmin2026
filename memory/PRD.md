@@ -1,6 +1,21 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## My Territory+ layout restructure per user wireframe (Jun 02 2026)
+- **2-row × 2-col responsive grid** (lg:grid-cols-5) below the page heading:
+  - **Top row** (col-span-3 left, col-span-2 right):
+    - **Left** — two `TerritoryActionCard`s side-by-side (Show My Clients Only · Plan A Route SOON) stacked on top of a new `MyClientsPanel`.
+    - **Right** — `Map` card with its own brand-yellow header `MY TERRITORY · N homes · M sectors`, inline Show Roads toggle + Check-a-postcode search.
+  - **Bottom row** (col-span-3 left, col-span-2 right):
+    - **Left** — `TerritoryHomesList` (renamed to "Homes in My Territory · From CQC Database"; My Clients sorting + custom-client rows + Add/Plan-Route/Show-My-Clients buttons all removed since they now live in dedicated places).
+    - **Right** — `TerritoryCareGroupsCard`.
+- **New component `MyClientsPanel.jsx`** (~200 lines). Table view of just `franchisee_clients` (custom + marked CQC) with: sortable columns (Client Name, Location, Type, Beds), full-text search, "+ Add Client" CTA, pagination (10/page), collapse chevron, type/beds enrichment from CQC lookup via the existing `homeById` memo. Rows are clickable to open the edit modal.
+- **New component `TerritoryActionCard.jsx`** (~40 lines). Reusable small action CTA with icon circle, title, subtitle, optional "Soon" pill, and an active state that flips the background to `#eeee84` so the Show My Clients Only filter is unmissable when engaged.
+- **TerritoryHomesList simplified**: stripped the My-Clients-only toggle, the Add-Client button, the Plan-a-Route button, custom-client rows, and the dimmed non-client view (the map dim logic stays — driven by the action card now). File trimmed from 650 → 506 lines.
+- **Mobile**: panels stack vertically full-width below `lg` breakpoint.
+- Verified on Sandra's portal: all data-testids present, layout matches the user-supplied wireframe.
+
+
 ## Portal visual tuning — pastel panels + brand-yellow heading underline (Jun 02 2026)
 - **Panel background dialled back from #dedd0a → #eeee84 (50% tint)** on both Territory+ panels — was too punchy, now reads softer & more harmonious on the eyes. Active hover state `#e8e773`.
 - **Equal-height grid**: both Territory+ panel columns use `h-full w-full flex` so collapsed CTAs and expanded states always match row height regardless of content length. Grid container uses `items-stretch`.
