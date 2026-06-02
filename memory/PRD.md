@@ -1,6 +1,14 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## My Territory+ — hide non-client map markers + custom-row alignment (Jun 02 2026)
+- **Non-client markers fully removed** when "My Clients Only" is active. Previously they were dimmed/shrunk which was visually confusing. Now in `TerritoryMap`, the marker effect short-circuits with `homeMarkersRef.current.push(null)` for non-clients in filter mode and the active-home highlight effect skips nulls. Verified live on Sandra's portal: with filter ON, only 6 yellow client markers visible (0 green non-clients), with filter OFF all 25 markers return.
+- **Removed dim/grayscale styling code path** from `TerritoryMap` — no longer needed since markers are hidden outright. Simpler, less branching.
+- **Custom client row alignment fixed** in `MyClientsPanel`:
+  - `_location` no longer falls back to postcode (was duplicating EX151NB in both the meta line and Location column for custom clients). Now Location column is empty when only postcode exists.
+  - Removed the redundant black "Custom" badge from both narrow and wide row layouts — the Type column already shows "Custom" via `_type` fallback. Row now aligns cleanly with the column header strip.
+
+
 ## My Territory+ — wide-mode row reflow + expandable column headers (Jun 02 2026)
 - **Wide mode row layout** added to `MyClientsPanel` — when `expanded={true}` each client row reflows to use the extra horizontal space:
   - **Narrow column (default)**: rows stack vertically — name, postcode+town+manager meta line, then TYPE/BEDS/CUSTOM chips below.

@@ -52,12 +52,15 @@ export default function MyClientsPanel({
   const [page, setPage] = useState(0);
 
   // Build display rows with type/beds enrichment for CQC-linked clients.
+  // ``_location`` deliberately DOES NOT fall back to postcode — postcode
+  // already shows on the meta line and we want the Location column to be
+  // empty (rather than duplicate) when a custom client has no real address.
   const rows = useMemo(() => {
     return clients.map((c) => {
       const linked = c.source !== "custom" && homeById ? homeById.get(c.home_id) : null;
       return {
         ...c,
-        _location: (linked?.postalAddressTownCity || c.address || c.postcode || "").trim(),
+        _location: (linked?.postalAddressTownCity || c.address || "").trim(),
         _type: TYPE_FROM_HOME(linked) || (c.source === "custom" ? "Custom" : "—"),
         _beds: linked?.numberOfBeds ?? null,
       };
@@ -226,11 +229,6 @@ export default function MyClientsPanel({
                           </span>
                         )}
                       </div>
-                      {c.source === "custom" && (
-                        <span className="hidden md:inline-flex shrink-0 px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded bg-stone-950 text-[#dedd0a]">
-                          Custom
-                        </span>
-                      )}
                       <ChevronRight className="w-4 h-4 shrink-0 text-stone-400 group-hover:text-stone-950 group-hover:translate-x-0.5 transition-transform" />
                     </>
                   ) : (
@@ -253,11 +251,6 @@ export default function MyClientsPanel({
                           {c._beds != null && (
                             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded bg-stone-100 text-stone-700 border border-stone-200">
                               <BedDouble className="w-2.5 h-2.5" /> {c._beds} beds
-                            </span>
-                          )}
-                          {c.source === "custom" && (
-                            <span className="inline-flex px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded bg-stone-950 text-[#dedd0a]">
-                              Custom
                             </span>
                           )}
                         </div>

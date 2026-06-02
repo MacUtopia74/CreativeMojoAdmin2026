@@ -405,7 +405,7 @@ export default function TerritoryMap({
   useEffect(() => {
     if (!ready || !mapRef.current) return;
     // Remove previous markers
-    homeMarkersRef.current.forEach((m) => m.remove());
+    homeMarkersRef.current.forEach((m) => m && m.remove());
     homeMarkersRef.current = [];
     if (!homes.length) return;
     homes.forEach((home, i) => {
@@ -417,17 +417,19 @@ export default function TerritoryMap({
       const yourClient = clientHomeKeys
         && (clientHomeKeys.has(`cqc:${home.id || home.locationId || ""}`)
             || clientHomeKeys.has(`scotland:${home.id || home.locationId || ""}`));
+      // "My clients only" filter: drop non-client markers entirely so the
+      // map shows only your own client pins (the user said dimming was
+      // confusing — full hide is clearer).
+      if (dimNonClients && !yourClient) {
+        homeMarkersRef.current.push(null);
+        return;
+      }
       const el = document.createElement("div");
       el.className = "cm-home-marker";
       el.textContent = String(i + 1);
-      // When the "My clients only" filter is engaged, drop non-client
-      // markers to low opacity (~0.22), desaturate, and shrink so they
-      // read clearly as background context. Client markers stay full
-      // strength so they pop.
-      const dimmed = dimNonClients && !yourClient;
       el.style.cssText = yourClient
         ? "background:#dddd16;color:#0c0a09;font-size:11px;font-weight:800;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #0c0a09;box-shadow:0 0 0 2px rgba(221,221,22,0.45),0 1px 3px rgba(0,0,0,.4);cursor:pointer;font-family:Inter,system-ui,sans-serif;"
-        : `background:#14532D;color:#fff;font-size:11px;font-weight:700;width:${dimmed ? 18 : 24}px;height:${dimmed ? 18 : 24}px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);cursor:pointer;font-family:Inter,system-ui,sans-serif;opacity:${dimmed ? 0.22 : 1};filter:${dimmed ? "grayscale(0.85) brightness(1.1)" : "none"};`;
+        : "background:#14532D;color:#fff;font-size:11px;font-weight:700;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);cursor:pointer;font-family:Inter,system-ui,sans-serif;";
       const marker = new mapboxgl.Marker(el)
         .setLngLat([home.longitude, home.latitude])
         .setPopup(new mapboxgl.Popup({ offset: 16, closeButton: false }).setHTML(
@@ -443,7 +445,7 @@ export default function TerritoryMap({
       homeMarkersRef.current.push(marker);
     });
     return () => {
-      homeMarkersRef.current.forEach((m) => m.remove());
+      homeMarkersRef.current.forEach((m) => m && m.remove());
       homeMarkersRef.current = [];
     };
   }, [homes, ready, onMarkerClick, clientHomeKeys, providerFilter, dimNonClients]);
@@ -484,20 +486,20 @@ export default function TerritoryMap({
   }, [customClients, ready, onCustomClientClick]);
 
   // ----------------- highlight the active home marker -----------------
-  // When the user opens a row in the homes list below the map, we re-skin the
-  // matching numbered pin in brand yellow so it's instantly findable on the
-  // map. All other pins revert to the default style — respecting the
-  // current "My clients only" dim state so we don't undo dimming.
+  // When the user opens a row in the homes list below the map, we re-skin
+  // the matching numbered pin in brand yellow so it's instantly findable.
+  // Markers that have been hidden (null) by the My-Clients-only filter
+  // are skipped — they're not on the map at all.
   useEffect(() => {
     if (!homeMarkersRef.current.length) return;
     homeMarkersRef.current.forEach((marker, i) => {
+      if (!marker) return;
       const el = marker.getElement();
       if (!el) return;
       const home = homes[i] || {};
       const homeKey = home.id || home.locationId || "";
       const isClient = clientHomeKeys
         && (clientHomeKeys.has(`cqc:${homeKey}`) || clientHomeKeys.has(`scotland:${homeKey}`));
-      const dimmed = dimNonClients && !isClient;
       const isActive = i === activeHomeIndex;
       if (isActive) {
         el.style.background = "#dddd16";
@@ -508,10 +510,7 @@ export default function TerritoryMap({
         el.style.fontSize = "13px";
         el.style.boxShadow = "0 0 0 3px rgba(221,221,22,0.35), 0 2px 6px rgba(0,0,0,.45)";
         el.style.zIndex = "10";
-        el.style.opacity = "1";
-        el.style.filter = "none";
       } else if (isClient) {
-        // Client: gold styling, never dimmed.
         el.style.background = "#dddd16";
         el.style.color = "#0c0a09";
         el.style.borderColor = "#0c0a09";
@@ -520,23 +519,18 @@ export default function TerritoryMap({
         el.style.fontSize = "11px";
         el.style.boxShadow = "0 0 0 2px rgba(221,221,22,0.45), 0 1px 3px rgba(0,0,0,.4)";
         el.style.zIndex = "";
-        el.style.opacity = "1";
-        el.style.filter = "none";
       } else {
-        // Non-client: default dark green, dimmed when myClientsOnly is on.
         el.style.background = "#14532D";
         el.style.color = "#fff";
         el.style.borderColor = "#fff";
-        el.style.width = dimmed ? "18px" : "24px";
-        el.style.height = dimmed ? "18px" : "24px";
+        el.style.width = "24px";
+        el.style.height = "24px";
         el.style.fontSize = "11px";
         el.style.boxShadow = "0 1px 3px rgba(0,0,0,.4)";
         el.style.zIndex = "";
-        el.style.opacity = dimmed ? "0.22" : "1";
-        el.style.filter = dimmed ? "grayscale(0.85) brightness(1.1)" : "none";
       }
     });
-  }, [activeHomeIndex, homes, ready, clientHomeKeys, dimNonClients]);
+  }, [activeHomeIndex, homes, ready, clientHomeKeys]);
 
   // ----------------- pan-to (used by "Zoom map here" buttons in the list)
   useEffect(() => {
