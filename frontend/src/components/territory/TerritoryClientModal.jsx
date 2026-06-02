@@ -130,8 +130,15 @@ export default function TerritoryClientModal({ initial, onClose, onSaved, onDele
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-stone-950/60 backdrop-blur-sm" data-testid="t-plus-client-modal">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+    <div
+      className="fixed inset-0 z-50 flex items-stretch justify-end p-0 sm:p-4 bg-stone-950/40"
+      onClick={onClose}
+      data-testid="t-plus-client-modal"
+    >
+      <div
+        className="bg-white sm:rounded-2xl shadow-2xl w-full sm:max-w-xl h-full sm:max-h-[92vh] overflow-hidden flex flex-col transition-transform"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="px-5 sm:px-6 py-4 border-b border-stone-200 flex items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">

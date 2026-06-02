@@ -385,7 +385,19 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
               clients={myClients}
               homeById={homeById}
               onAddClient={() => setEditingClient({ __new: true })}
-              onEditClient={(c) => setEditingClient(c)}
+              onEditClient={(c) => {
+                // Fly the map to this client before opening the edit
+                // modal so the franchisee sees where they are while they
+                // edit. Coords for marked CQC clients come from the live
+                // home record; custom clients carry their own lat/lng.
+                const linked = c.source !== "custom" ? homeById.get(c.home_id) : null;
+                const lat = linked?.latitude ?? c.lat;
+                const lng = linked?.longitude ?? c.lng;
+                if (lat != null && lng != null) {
+                  setFlyTo({ lat, lng, _t: Date.now() });
+                }
+                setEditingClient(c);
+              }}
               expanded={clientsFocus}
               onExpandedChange={setClientsFocus}
               myClientsOnly={myClientsOnly}
