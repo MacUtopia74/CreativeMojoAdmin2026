@@ -1,6 +1,13 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## My Territory+ — collapsible brand-yellow panel headers (Jun 02 2026)
+- **Care Groups card is now collapsible**, defaulting to closed (matches the homes-list pattern). Click the yellow CTA to expand, click the small dark chevron to collapse again.
+- **Both panel headers** ("Care groups in your territory" + "My Clients & Homes in My Territory") now use the site-wide brand yellow `#dedd0a` background — same colour as the Subscriptions, Invoicing, Playlists CTAs across the rest of the portal. Dark icon circle on the left, dark-text title, "EXPAND ▾" pill on the right.
+- **Visual consistency**: replaced the previous dark `bg-stone-950` collapsed CTA + `bg-stone-50` expanded header on the homes list — both states now share the brand yellow treatment so the user sees a single coherent visual rhythm. Care groups card mirrors the same pattern.
+- Verified live on Sandra's portal: 21 distinct care groups + 25 homes panels both render correctly with matching styling.
+
+
 ## My Territory+ — Care Groups in your territory breakdown card (Jun 01 2026)
 - **New component**: `TerritoryCareGroupsCard.jsx` (~95 lines). Sits between the map and the homes list on My Territory+. Lists every distinct care group in the franchisee's territory with home counts, a relative-size horizontal bar, and a % share of the total.
 - **Interactive**: each row is a click-to-filter button. Tapping "WCS Care Group · 11 homes · 22%" filters the map markers + homes list to just that group's homes (delegates to the existing `providerFilter` state). Tapping it again — or hitting the "Clear filter" button at the top right — releases the filter.

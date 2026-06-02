@@ -390,29 +390,30 @@ export default function TerritoryHomesList({
   }
 
   if (!listExpanded) {
-    // Collapsed — render a single prominent CTA that doubles as a summary.
+    // Collapsed — yellow brand-coloured CTA matching the site-wide
+    // collapsible panel pattern (#dedd0a). Click anywhere to expand.
     return (
       <button
         onClick={() => setListExpanded(true)}
         data-testid="expand-homes-list"
-        className="w-full flex items-center justify-between gap-3 bg-stone-950 hover:bg-stone-800 text-white rounded-2xl px-5 py-4 transition-colors group"
+        className="w-full flex items-center justify-between gap-3 bg-[#dedd0a] hover:brightness-95 text-stone-950 rounded-2xl px-5 py-4 transition-all group"
       >
         <span className="flex items-center gap-3 min-w-0">
-          <span className="w-9 h-9 rounded-full bg-[#dddd16] text-stone-950 flex items-center justify-center shrink-0">
+          <span className="w-9 h-9 rounded-full bg-stone-950 text-[#dedd0a] flex items-center justify-center shrink-0">
             <ListIcon className="w-4 h-4" />
           </span>
           <span className="text-left min-w-0">
-            <span className="block text-[10px] uppercase tracking-[0.3em] font-bold text-[#dddd16]">
+            <span className="block text-[10px] uppercase tracking-[0.3em] font-bold text-stone-950/70">
               {plus ? "My Clients & Homes in My Territory" : "Homes in your territory"}
             </span>
-            <span className="block text-sm font-semibold truncate">
+            <span className="block text-sm font-semibold truncate text-stone-950">
               {plus
                 ? `Expand to show list of ${homes.length} home${homes.length === 1 ? "" : "s"}${customClients.length ? ` + ${customClients.length} of my clients` : ""}`
                 : `Expand to show list of ${homes.length} home${homes.length === 1 ? "" : "s"}`}
             </span>
           </span>
         </span>
-        <span className="shrink-0 text-[10px] uppercase tracking-wider font-bold bg-white/10 group-hover:bg-white/20 px-3 py-1.5 rounded-full flex items-center gap-1.5">
+        <span className="shrink-0 text-[10px] uppercase tracking-wider font-bold bg-stone-950 text-[#dedd0a] group-hover:bg-stone-800 px-3 py-1.5 rounded-full flex items-center gap-1.5">
           Expand <ChevronDown className="w-3.5 h-3.5" />
         </span>
       </button>
@@ -421,25 +422,30 @@ export default function TerritoryHomesList({
 
   return (
     <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid="territory-homes-list">
-      <div className="px-4 py-3 border-b border-stone-200 flex items-center justify-between gap-3 flex-wrap bg-stone-50">
-        <div className="min-w-0">
-          <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">
-            {plus ? "My Clients & Homes in My Territory" : "Homes in your territory"}
-          </div>
-          <div className="text-sm text-stone-900 mt-0.5">
-            <strong>{filtered.length}</strong>
-            {filtered.length !== homes.length && <span className="text-stone-500"> of {homes.length}</span>} homes
-            {plus && customClients.length > 0 && <span> · {customClients.length} of my clients</span>}
-            <span className="text-stone-500"> · click any row to expand</span>
+      <div className="px-4 py-3 border-b border-stone-200 flex items-center justify-between gap-3 flex-wrap" style={{ backgroundColor: "#dedd0a" }}>
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="w-9 h-9 rounded-full bg-stone-950 text-[#dedd0a] flex items-center justify-center shrink-0">
+            <ListIcon className="w-4 h-4" />
+          </span>
+          <div className="min-w-0">
+            <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-950/70">
+              {plus ? "My Clients & Homes in My Territory" : "Homes in your territory"}
+            </div>
+            <div className="text-sm text-stone-950 mt-0.5">
+              <strong>{filtered.length}</strong>
+              {filtered.length !== homes.length && <span className="text-stone-950/60"> of {homes.length}</span>} homes
+              {plus && customClients.length > 0 && <span> · {customClients.length} of my clients</span>}
+              <span className="text-stone-950/60"> · click any row to expand</span>
+            </div>
           </div>
         </div>
         <button onClick={() => setListExpanded(false)} data-testid="collapse-homes-list"
-          className="touch-target shrink-0 w-7 h-7 rounded-full border border-stone-950 bg-stone-950 text-white hover:bg-stone-800 flex items-center justify-center" aria-label="Hide list">
+          className="touch-target shrink-0 w-7 h-7 rounded-full border border-stone-950 bg-stone-950 text-[#dedd0a] hover:bg-stone-800 flex items-center justify-center" aria-label="Hide list">
           <ChevronDown className="w-3.5 h-3.5 rotate-180" />
         </button>
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name, town, postcode, manager…"
           data-testid="homes-search"
-          className="px-3 py-2 ios-no-zoom bg-white border border-stone-200 rounded-lg w-full sm:w-72 focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-400" />
+          className="px-3 py-2 ios-no-zoom bg-white border border-stone-950/20 rounded-lg w-full sm:w-72 focus:outline-none focus:ring-2 focus:ring-stone-950/20 focus:border-stone-950/50" />
       </div>
 
       {/* Territory+ toolbar — Add client, Plan a route, provider filters. */}
