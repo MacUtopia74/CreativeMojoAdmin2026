@@ -18,7 +18,7 @@ import TerritoryActionCard from "@/components/territory/TerritoryActionCard";
 import MyClientsPanel from "@/components/territory/MyClientsPanel";
 import {
   Loader2, Map as MapIcon, Search, CheckCircle2, XCircle, AlertCircle,
-  Route, Eye,
+  Route, Eye, Maximize2, Minimize2,
 } from "lucide-react";
 
 export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 560, forceBasic = false }) {
@@ -30,6 +30,10 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
   const [homesLoading, setHomesLoading] = useState(false);
   const [openHome, setOpenHome] = useState(null);
   const [homesListExpanded, setHomesListExpanded] = useState(true);
+  // Top-row layout focus toggle. ``false`` = balanced (map dominant 60/40).
+  // ``true`` = clients-focused (60/40 in favour of My Clients, map narrower).
+  // Toggled by the maximize button in either panel header.
+  const [clientsFocus, setClientsFocus] = useState(false);
   const [flyTo, setFlyTo] = useState(null);
   const [check, setCheck] = useState("");
   const [checkResult, setCheckResult] = useState(null);
@@ -371,8 +375,10 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
         {postcodeBanner}
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-stretch">
-          {/* LEFT COLUMN — action cards + My Clients table (narrower) */}
-          <div className="lg:col-span-2 space-y-3 flex flex-col">
+          {/* LEFT COLUMN — action cards + My Clients table.
+              Width flips between col-span-2 (balanced) and col-span-3
+              (clients-focused) via the maximize toggle in either panel. */}
+          <div className={`space-y-3 flex flex-col ${clientsFocus ? "lg:col-span-3" : "lg:col-span-2"}`}>
             <div className="grid grid-cols-2 gap-3">
               <TerritoryActionCard
                 icon={Eye}
@@ -397,12 +403,14 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
                 homeById={homeById}
                 onAddClient={() => setEditingClient({ __new: true })}
                 onEditClient={(c) => setEditingClient(c)}
+                expanded={clientsFocus}
+                onExpandedChange={setClientsFocus}
               />
             </div>
           </div>
 
-          {/* RIGHT COLUMN — Map (wider) */}
-          <div className="lg:col-span-3 flex">
+          {/* RIGHT COLUMN — Map. Width follows the inverse of clientsFocus. */}
+          <div className={`flex ${clientsFocus ? "lg:col-span-2" : "lg:col-span-3"}`}>
             <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden h-full w-full flex flex-col">
               <div className="px-4 py-3 border-b border-stone-200 flex items-center justify-between gap-3 flex-wrap" style={{ backgroundColor: "#eeee84" }}>
                 <div className="flex items-center gap-2 min-w-0">
@@ -419,6 +427,15 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
                     )}
                   </div>
                 </div>
+                <button
+                  onClick={() => setClientsFocus((v) => !v)}
+                  data-testid="t-plus-map-width-toggle"
+                  title={clientsFocus ? "Expand map (narrow My Clients)" : "Narrow map (expand My Clients)"}
+                  className="shrink-0 w-7 h-7 rounded-full border border-stone-950 bg-white text-stone-950 hover:bg-stone-100 flex items-center justify-center"
+                  aria-label={clientsFocus ? "Expand map" : "Shrink map"}
+                >
+                  {clientsFocus ? <Maximize2 className="w-3.5 h-3.5" /> : <Minimize2 className="w-3.5 h-3.5" />}
+                </button>
               </div>
               {hasTerritory && (
                 <div className="px-3 py-2 border-b border-stone-100 flex items-center gap-2 flex-wrap bg-stone-50">

@@ -1,6 +1,14 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## My Territory+ — stacked My-Clients rows + column-width toggle (Jun 02 2026)
+- **My Clients panel rebuilt with stacked rows** (not a table). Each client now displays on its own vertical card-style row: star + name on the top line, postcode · town · manager below, and a compact chip row showing TYPE and BEDS (and a "CUSTOM" badge for non-CQC clients). Reads cleanly in the narrow column without horizontal scroll/squashing.
+- **Sort dropdown** replaces per-column sort headers (which made no sense on stacked rows). Options: Name A→Z / Name Z→A / Location / Type / Beds high→low / low→high.
+- **Compact "Add" button** instead of "Add Client" so the search + sort + add row fits on a single line even in the narrow column.
+- **Column-width toggle**: a small Maximize/Minimize button in the top-right of **both** the My Clients header and the My Territory map header. Toggling either flips the top-row proportions between balanced (Clients 40% · Map 60%) and clients-focused (Clients 60% · Map 40%). State variable: `clientsFocus`. Test-IDs: `my-clients-width-toggle` + `t-plus-map-width-toggle`.
+- Verified live on Sandra's portal: stacked rows render with all 7 clients, both toggles present, panel responds correctly to user width preference.
+
+
 ## My Territory+ layout polish — proportions + defaults (Jun 02 2026)
 - **Swapped top-row column widths** to match wireframe — My Clients column trimmed from `col-span-3` → `col-span-2` (40%); Map expanded from `col-span-2` → `col-span-3` (60%). Sandra's full Devon territory now visible without zooming.
 - **Action cards shorter + narrower** — removed `h-full` stretch, reduced padding to `px-3 py-2.5`, icon circle to 36px, subtitle text to 11px. Removed the trailing ChevronRight arrow that was crowding the layout. They now sit cleanly within the My Clients column width.
