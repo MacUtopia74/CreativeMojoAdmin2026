@@ -426,9 +426,13 @@ export default function TerritoryMap({
       }
       const el = document.createElement("div");
       el.className = "cm-home-marker";
-      el.textContent = String(i + 1);
+      // Marked-as-mine homes render as a gold ★ on the map so they're
+      // visually unmistakable (matches the My Clients panel iconography).
+      // Non-client homes stay as numbered green circles for indexing
+      // against the homes list below.
+      el.textContent = yourClient ? "★" : String(i + 1);
       el.style.cssText = yourClient
-        ? "background:#dddd16;color:#0c0a09;font-size:11px;font-weight:800;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #0c0a09;box-shadow:0 0 0 2px rgba(221,221,22,0.45),0 1px 3px rgba(0,0,0,.4);cursor:pointer;font-family:Inter,system-ui,sans-serif;"
+        ? "background:#dddd16;color:#0c0a09;font-size:16px;font-weight:900;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #0c0a09;box-shadow:0 0 0 3px rgba(221,221,22,0.45),0 1px 3px rgba(0,0,0,.4);cursor:pointer;font-family:Inter,system-ui,sans-serif;line-height:1;"
         : "background:#14532D;color:#fff;font-size:11px;font-weight:700;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);cursor:pointer;font-family:Inter,system-ui,sans-serif;";
       const marker = new mapboxgl.Marker(el)
         .setLngLat([home.longitude, home.latitude])
@@ -514,11 +518,14 @@ export default function TerritoryMap({
         el.style.background = "#dddd16";
         el.style.color = "#0c0a09";
         el.style.borderColor = "#0c0a09";
-        el.style.width = "26px";
-        el.style.height = "26px";
-        el.style.fontSize = "11px";
-        el.style.boxShadow = "0 0 0 2px rgba(221,221,22,0.45), 0 1px 3px rgba(0,0,0,.4)";
+        el.style.width = "28px";
+        el.style.height = "28px";
+        el.style.fontSize = "16px";
+        el.style.boxShadow = "0 0 0 3px rgba(221,221,22,0.45), 0 1px 3px rgba(0,0,0,.4)";
         el.style.zIndex = "";
+        // Re-apply ★ in case the active-state override replaced it
+        // with the row index.
+        el.textContent = "★";
       } else {
         el.style.background = "#14532D";
         el.style.color = "#fff";
@@ -528,6 +535,7 @@ export default function TerritoryMap({
         el.style.fontSize = "11px";
         el.style.boxShadow = "0 1px 3px rgba(0,0,0,.4)";
         el.style.zIndex = "";
+        el.textContent = String(i + 1);
       }
     });
   }, [activeHomeIndex, homes, ready, clientHomeKeys]);
