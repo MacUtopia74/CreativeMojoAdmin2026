@@ -53,14 +53,24 @@ function MandateCell({ franchisee }) {
 
 const SEGMENTS = [
   { key: "active", label: "Active", tag: "Franchisee" },
-  { key: "ex", label: "Ex-Franchisees", tag: "EX-Franchisee" },
+  { key: "ex", label: "Ex-Franchises/Licences", tag: "EX-Franchisee" },
   { key: "licencee", label: "Worldwide Licencees", tag: "Worldwide Licencee" },
+  { key: "other", label: "Other", tag: null },   // Demo / HQ — see isOther()
   { key: "all", label: "All", tag: null },
 ];
 
 function hasTag(franchisee, tag) {
   const tags = franchisee.tags || [];
   return Array.isArray(tags) ? tags.includes(tag) : tags === tag;
+}
+
+// "Other" = internal/training/sandbox accounts that shouldn't be counted
+// against real franchise totals on the Active/Ex/Licencee tabs. Today
+// that's the Demo seat and Sandra's own HQ account. Use a tag-based
+// filter so the admin can tag any future account "Demo" or "HQ" to
+// move it here without a code change.
+function isOther(franchisee) {
+  return hasTag(franchisee, "Demo") || hasTag(franchisee, "HQ");
 }
 
 // Phase 1.5 — GoCardless sync modal. Defaults to DRY-RUN until the operator
@@ -307,10 +317,13 @@ export default function FranchiseesPage() {
       .catch(() => {/* non-fatal */});
   }, []);
 
-  // Segment counts
+  // Segment counts — "Other" accounts (Demo/HQ) are kept out of the
+  // Active/Ex/Licencee totals so the headline numbers reflect real
+  // franchise activity, not sandbox/training seats.
   const counts = useMemo(() => {
-    const c = { active: 0, ex: 0, licencee: 0, all: all.length };
+    const c = { active: 0, ex: 0, licencee: 0, other: 0, all: all.length };
     for (const f of all) {
+      if (isOther(f)) { c.other += 1; continue; }
       if (hasTag(f, "Franchisee")) c.active += 1;
       if (hasTag(f, "EX-Franchisee")) c.ex += 1;
       if (hasTag(f, "Worldwide Licencee")) c.licencee += 1;
@@ -320,7 +333,15 @@ export default function FranchiseesPage() {
 
   const filtered = useMemo(() => {
     const seg = SEGMENTS.find((s) => s.key === segment);
-    let items = seg && seg.tag ? all.filter((f) => hasTag(f, seg.tag)) : [...all];
+    let items;
+    if (seg && seg.key === "other") {
+      items = all.filter(isOther);
+    } else if (seg && seg.tag) {
+      // Strip Other accounts from the tag-based tabs.
+      items = all.filter((f) => hasTag(f, seg.tag) && !isOther(f));
+    } else {
+      items = [...all];
+    }
     if (search) {
       const q = search.toLowerCase();
       items = items.filter((f) =>
@@ -352,7 +373,7 @@ export default function FranchiseesPage() {
       <div className="h-16 border-b border-stone-200 bg-white flex items-center px-8 sticky top-0 z-10" data-testid="topbar">
         <div className="flex items-baseline gap-3 flex-1">
           <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">CRM</div>
-          <h1 className="font-display text-xl text-stone-950">Franchisees</h1>
+          <h1 className="font-display text-xl text-stone-950">Franchises / Licences</h1>
           <span className="text-xs text-stone-500">{filtered.length} of {all.length} records</span>
         </div>
         <div className="flex items-center gap-2">
