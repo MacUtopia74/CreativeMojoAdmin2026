@@ -68,7 +68,8 @@ ADMIN_NAV_KEYS = {
     "contacts", "calendar",
     "find-class", "cqc-definitions", "scotland-definitions",
     "invoices", "banking",
-    "admin-users", "admin-email-templates", "admin-xero", "form-intake",
+    "admin-users", "admin-email-templates", "admin-youtube",
+    "admin-announcements", "admin-xero", "form-intake",
 }
 
 
