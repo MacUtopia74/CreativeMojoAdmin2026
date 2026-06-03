@@ -292,6 +292,30 @@ def _build_xero_invoice_payload(order: dict) -> dict:
 # ---------------------------------------------------------------------------
 # Router wiring
 # ---------------------------------------------------------------------------
+def _zero_value_order(order: dict) -> bool:
+    """Returns True if this order has no priced line items AND a £0
+    total / shipping. Pushing one of these to Xero produces a £0
+    invoice (real bug we hit in early-June 2026 with legacy-imported
+    orders missing their prices), so the export endpoints refuse to
+    send these and surface a clear error to the admin instead.
+    """
+    try:
+        total = float(order.get("total") or 0)
+        ship = float(order.get("shipping_total") or 0)
+    except (TypeError, ValueError):
+        total = 0.0
+        ship = 0.0
+    if total or ship:
+        return False
+    for li in order.get("line_items") or []:
+        try:
+            if float(li.get("subtotal") or 0) or float(li.get("total") or 0) or float(li.get("price") or 0):
+                return False
+        except (TypeError, ValueError):
+            continue
+    return True
+
+
 def attach(api, db, require_role):
     """Mount /api/xero/* on the parent APIRouter."""
 
@@ -821,6 +845,141 @@ def attach(api, db, require_role):
         remaining = await db.woo_orders.count_documents({"xero_contact_id": {"$in": [None, ""]}, "xero_contact_match_status": {"$ne": "skipped"}})
         return {"ok": True, "matched_by_email": matched_email, "matched_by_name": matched_name, "remaining": remaining}
 
+    @api.post("/xero/orders/{order_id}/unlink")
+    async def unlink_xero_invoice(order_id: str, _: dict = Depends(require_role("admin"))):
+        """Forget any existing Xero invoice link on an order so it can
+        be re-pushed (used after backfilling prices on a legacy order
+        whose first Xero export went out as £0). Doesn't touch the
+        actual Xero invoice — admin should void/delete the £0 draft in
+        Xero manually first."""
+        r = await db.woo_orders.update_one(
+            {"id": order_id},
+            {"$unset": {
+                "xero_invoice_id": "", "xero_invoice_number": "",
+                "xero_invoice_status": "", "xero_invoice_url": "",
+                "xero_sent_at": "",
+            }},
+        )
+        if not r.matched_count:
+            raise HTTPException(404, "Order not found")
+        return {"ok": True}
+
+    @api.post("/xero/orders/backfill-prices")
+    async def backfill_legacy_order_prices(body: dict, _: dict = Depends(require_role("admin"))):
+        """Look up prices for line items on legacy-imported orders that
+        came in without them. Matches each line item against the local
+        ``woo_products`` mirror by SKU first, then by name. Updates the
+        line's ``price``/``subtotal``/``total`` and rolls up the order
+        total. Doesn't touch line items that already have a price.
+
+        Body: ``{order_ids?: [str], dry_run?: bool}``. If ``order_ids``
+        is omitted we operate on every order with ``total=0`` AND
+        ``legacy_import=True``. ``dry_run`` returns the proposed
+        changes without writing them.
+        """
+        dry = bool(body.get("dry_run"))
+        order_ids = body.get("order_ids") or None
+
+        q: dict = {"legacy_import": True, "$or": [{"total": 0}, {"total": "0.00"}, {"total": None}]}
+        if order_ids:
+            q = {"id": {"$in": list(order_ids)}}
+
+        # Build a name → price lookup from the Woo mirror once.
+        # Normalisation: lowercase + strip + replace en-dash / em-dash
+        # with plain hyphen + collapse runs of whitespace. The legacy
+        # CSV exporter rewrote unicode dashes to ASCII so the mirror's
+        # ``World Cup 2026 – Group Art Kit`` doesn't match the order's
+        # ``World Cup 2026 - Group Art Kit`` without this step.
+        import re as _re
+        def _norm(s: str) -> str:
+            if not s:
+                return ""
+            s = str(s).replace("\u2013", "-").replace("\u2014", "-")
+            s = _re.sub(r"\s+", " ", s).strip().lower()
+            return s
+
+        product_by_sku: dict[str, dict] = {}
+        product_by_name: dict[str, dict] = {}
+        async for p in db.woo_products.find(
+            {"$or": [{"price": {"$ne": None}}, {"regular_price": {"$ne": None}}]},
+            {"_id": 0, "sku": 1, "name": 1, "price": 1, "regular_price": 1},
+        ):
+            if p.get("sku"):
+                product_by_sku[_norm(p["sku"])] = p
+            if p.get("name"):
+                product_by_name[_norm(p["name"])] = p
+
+        def _price_for(li: dict) -> Optional[float]:
+            sku = _norm(li.get("sku") or "")
+            if sku and sku in product_by_sku:
+                p = product_by_sku[sku]
+            else:
+                name = _norm(li.get("name") or "")
+                if name in product_by_name:
+                    p = product_by_name[name]
+                else:
+                    return None
+            raw = p.get("price") or p.get("regular_price")
+            try:
+                v = float(raw)
+                # Woo "variable" parent products carry the parent's
+                # display price (often 0). Skip £0 results — let the
+                # admin know we couldn't find a price rather than
+                # silently re-marking the order as £0.
+                return v if v > 0 else None
+            except (TypeError, ValueError):
+                return None
+
+        results: list[dict] = []
+        repaired_count = 0
+        async for order in db.woo_orders.find(q, {"_id": 0}):
+            new_items = []
+            total = 0.0
+            touched = False
+            for li in order.get("line_items") or []:
+                qty = int(li.get("quantity") or 1)
+                price = li.get("price")
+                if price in (None, "", 0, "0", "0.00"):
+                    unit = _price_for(li)
+                    if unit is not None:
+                        line_total = round(unit * qty, 2)
+                        new_li = {**li,
+                                  "price": unit,
+                                  "subtotal": f"{line_total:.2f}",
+                                  "total": f"{line_total:.2f}"}
+                        touched = True
+                        total += line_total
+                        new_items.append(new_li)
+                        continue
+                # untouched line — still add to total
+                try:
+                    total += float(li.get("total") or li.get("subtotal") or 0)
+                except (TypeError, ValueError):
+                    pass
+                new_items.append(li)
+            if touched:
+                total += float(order.get("shipping_total") or 0)
+                repaired_count += 1
+                results.append({
+                    "id": order.get("id"),
+                    "display": order.get("display_order_id"),
+                    "old_total": order.get("total"),
+                    "new_total": f"{total:.2f}",
+                    "lines_repaired": sum(1 for a, b in zip(order.get("line_items") or [], new_items)
+                                          if a.get("price") != b.get("price")),
+                })
+                if not dry:
+                    await db.woo_orders.update_one(
+                        {"id": order["id"]},
+                        {"$set": {
+                            "line_items": new_items,
+                            "total": f"{total:.2f}",
+                            "line_items_unavailable": False,
+                            "updated_at": _now().isoformat(),
+                        }},
+                    )
+        return {"ok": True, "dry_run": dry, "repaired": repaired_count, "details": results}
+
     @api.post("/xero/orders/{order_id}/create-invoice")
     async def create_invoice_from_order(
         order_id: str,
@@ -842,6 +1001,12 @@ def attach(api, db, require_role):
                 "xero_invoice_number": order.get("xero_invoice_number"),
                 "xero_invoice_status": order.get("xero_invoice_status"),
             }
+        if _zero_value_order(order):
+            raise HTTPException(
+                400,
+                "This order has no priced line items so it would create a £0 invoice in Xero. "
+                "Run /xero/orders/backfill-prices first (or edit the line items by hand).",
+            )
 
         payload = _build_xero_invoice_payload(order)
         resp = await _xero_post(db, "/Invoices", payload)
@@ -908,6 +1073,14 @@ def attach(api, db, require_role):
                 continue
             if order.get("xero_invoice_id"):
                 results["skipped"] += 1
+                continue
+            if _zero_value_order(order):
+                results["failed"] += 1
+                results["errors"].append({
+                    "id": oid,
+                    "display": order.get("display_order_id"),
+                    "error": "Order is £0 — line items have no prices. Run the price backfill first.",
+                })
                 continue
             try:
                 payload = _build_xero_invoice_payload(order)
