@@ -251,6 +251,21 @@ def attach(api, db, require_role):
             )
         return {"ok": True}
 
+    @api.post("/admin/shape-orders/fix-statuses")
+    async def admin_fix_statuses(_: dict = Depends(require_role("admin"))):
+        """One-shot repair for shape orders that were created before
+        2026-06-03 with ``status="processing"`` instead of ``"active"``.
+        Without this fix those orders only show up under the
+        FRANCHISEE tab on the Orders page — never under ACTIVE.
+        Safe to run multiple times: only updates docs that need it.
+        """
+        r = await db.woo_orders.update_many(
+            {"order_kind": "shape_order",
+             "status": {"$nin": ["active", "completed"]}},
+            {"$set": {"status": "active", "is_draft": False}},
+        )
+        return {"ok": True, "updated": r.modified_count, "matched": r.matched_count}
+
     # ----------------------------------------------------------------
     # Franchisee endpoints
     # ----------------------------------------------------------------
