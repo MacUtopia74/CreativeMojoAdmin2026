@@ -367,7 +367,11 @@ def attach(api, db, require_role):
             "shipping_total": 0.0,
             "total": 0.0,
             "currency": "GBP",
-            "status": "processing",
+            # Internal status must be "active" so the order shows up on
+            # the Orders > ACTIVE tab (the franchisee facing label is
+            # carried separately on ``production_status``).
+            "status": "active",
+            "is_draft": False,
             "payment_status": "Pending",
             "production_status": "Awaiting Assembly",
             "channel_label": "Shape Order",
