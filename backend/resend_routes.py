@@ -29,6 +29,9 @@ from pydantic import BaseModel, EmailStr, Field
 logger = logging.getLogger("creative-mojo-admin.resend")
 
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+# Note: also re-exported in resend_config.py — both surfaces stay in
+# sync because they read from the same env var. Kept here for backward
+# compatibility with code that imported it from this module.
 RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", "paul@creativemojo.co.uk")
 RESEND_FROM_NAME = os.environ.get("RESEND_FROM_NAME", "Creative Mojo")
 RESEND_DEFAULT_REPLY_TO = os.environ.get("RESEND_DEFAULT_REPLY_TO", RESEND_FROM_EMAIL)

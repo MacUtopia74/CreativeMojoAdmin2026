@@ -496,7 +496,7 @@ def attach(api, db, require_role):
         from_email = (fr.get("mojo_email") or "").strip()
         if not from_email:
             raise HTTPException(400, detail="Your Mojo email isn't set — ask HQ to add it on your franchisee record.")
-        from resend_routes import RESEND_API_KEY
+        from resend_config import RESEND_API_KEY
         if not RESEND_API_KEY:
             raise HTTPException(503, detail="Resend not configured")
         import resend as _resend
@@ -643,7 +643,7 @@ def attach(api, db, require_role):
             "delivery": {"status": "pending", "succeeded": 0, "failed": 0, "errors": []},
         }
 
-        from resend_routes import RESEND_API_KEY
+        from resend_config import RESEND_API_KEY
         if not RESEND_API_KEY:
             raise HTTPException(503, detail="Resend not configured")
         import resend as _resend

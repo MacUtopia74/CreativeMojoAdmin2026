@@ -116,7 +116,15 @@ export default function PortalTrainingPage() {
   });
 
   useEffect(() => {
-    try { localStorage.setItem("videoHubViewMode", viewMode); } catch { /* ignore */ }
+    // localStorage can throw in sandboxed / private-browsing contexts —
+    // we don't want a write failure to crash the page, but we DO want
+    // to know about it during dev.
+    try {
+      localStorage.setItem("videoHubViewMode", viewMode);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.debug("videoHubViewMode persist skipped:", e?.message);
+    }
   }, [viewMode]);
 
   useEffect(() => {

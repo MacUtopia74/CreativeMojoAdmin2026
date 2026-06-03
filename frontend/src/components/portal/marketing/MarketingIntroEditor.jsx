@@ -9,18 +9,33 @@
 // <u><br><div><p><span>`` + ``style="text-align:…"``, so nothing
 // dangerous can slip into the recipient's inbox.
 import { useEffect, useRef } from "react";
+import DOMPurify from "dompurify";
 import { Bold, AlignCenter } from "lucide-react";
+
+// Allowlist mirrors the backend ``_sanitise_intro_html`` so what the
+// editor renders matches what the email send pipeline will accept.
+// DOMPurify gives us belt-and-braces XSS protection on the hydration
+// path: if a draft was somehow tampered with in Mongo, this strips
+// any script/iframe/event-handler before it ever reaches the DOM.
+const SANITIZE_CFG = {
+  ALLOWED_TAGS: ["b", "strong", "i", "em", "u", "br", "div", "p", "span"],
+  ALLOWED_ATTR: ["style"],
+  ALLOWED_CSS_PROPERTIES: ["text-align"],
+};
 
 export default function MarketingIntroEditor({ value, onChange, placeholder, testid }) {
   const ref = useRef(null);
 
   // Only sync the incoming `value` into the DOM when it actually
   // differs — otherwise React would clobber the caret on every keystroke.
+  // Hydration runs incoming HTML through DOMPurify so a tampered/legacy
+  // draft can never inject script/iframe content.
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    if (el.innerHTML !== (value || "")) {
-      el.innerHTML = value || "";
+    const clean = value ? DOMPurify.sanitize(value, SANITIZE_CFG) : "";
+    if (el.innerHTML !== clean) {
+      el.innerHTML = clean;
     }
   }, [value]);
 
