@@ -53,6 +53,10 @@ export default function CalendarPage() {
   const [modal, setModal] = useState(null); // null | { event? }
   const [refreshTick, setRefreshTick] = useState(0);
   const [yearlyOpen, setYearlyOpen] = useState(false);
+  // HQ-managed yearly events (CSV-uploaded). Rendered on the admin
+  // grid alongside Google events in the same light-blue swatch the
+  // franchisee portal uses so admins see exactly what franchisees see.
+  const [yearlyEvents, setYearlyEvents] = useState([]);
   // View mode persists across visits so each admin lands back where they left.
   const [view, setView] = useState(() => {
     try { return localStorage.getItem("calendar.view") || "grid"; }
@@ -100,6 +104,12 @@ export default function CalendarPage() {
       const s = await loadStatus();
       if (s?.connected) await loadEvents();
       else setLoading(false);
+      // Yearly events are admin-managed but live in Mongo, so we can
+      // load them regardless of the Google connection state.
+      try {
+        const { data } = await api.get("/admin/calendar/yearly-events");
+        setYearlyEvents(data.items || []);
+      } catch { /* swallow — calendar still works without them */ }
     })();
   }, [refreshTick]);
 
@@ -182,18 +192,36 @@ export default function CalendarPage() {
   // FullCalendar event shape — translates our normalised event list.
   // For all-day events Google returns YYYY-MM-DD which FC handles natively;
   // timed events come back as ISO 8601 with tz offset, also fine.
-  const fcEvents = useMemo(() => events.map((e) => ({
-    id: e.id,
-    title: e.title,
-    start: e.start,
-    end: e.end,
-    allDay: !!e.all_day,
-    extendedProps: e,
-    // Brand-friendly colouring — translucent lime fill, dark green border
-    backgroundColor: "rgba(212, 255, 0, 0.35)",
-    borderColor: "#14532D",
-    textColor: "#14532D",
-  })), [events]);
+  const fcEvents = useMemo(() => {
+    const out = events.map((e) => ({
+      id: e.id,
+      title: e.title,
+      start: e.start,
+      end: e.end,
+      allDay: !!e.all_day,
+      extendedProps: { ...e, _kind: "hq" },
+      // Brand-friendly colouring — translucent lime fill, dark green border
+      backgroundColor: "rgba(212, 255, 0, 0.35)",
+      borderColor: "#14532D",
+      textColor: "#14532D",
+    }));
+    // Yearly events get the same light-blue solid block the franchisee
+    // portal uses (so admins can verify visual parity at a glance).
+    yearlyEvents.forEach((y) => {
+      out.push({
+        id: `yr-${y.id}`,
+        title: y.title,
+        start: y.date_iso,
+        allDay: true,
+        extendedProps: { ...y, _kind: "yearly" },
+        backgroundColor: "#3B82F6",
+        borderColor: "#1D4ED8",
+        textColor: "#FFFFFF",
+        display: "block",
+      });
+    });
+    return out;
+  }, [events, yearlyEvents]);
 
   return (
     <div className="px-8 py-7 max-w-7xl mx-auto" data-testid="calendar-page">
@@ -205,6 +233,13 @@ export default function CalendarPage() {
           <p className="text-sm text-stone-600 mt-1">Live view of the shared Creative Mojo Google Calendar.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Yearly events manager is always available — they live in
+              Mongo and are independent of the Google connection. */}
+          <button onClick={() => setYearlyOpen(true)} data-testid="cal-yearly-events-btn"
+            title="Manage the yearly events that appear on every franchisee portal calendar"
+            className="px-3 py-2 text-xs font-bold uppercase tracking-wider border border-blue-300 bg-blue-50 text-blue-800 hover:bg-blue-100 rounded-lg flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5" /> Yearly events
+          </button>
           {status?.connected && (
             <>
               <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-900" data-testid="cal-connected-pill">
@@ -250,11 +285,6 @@ export default function CalendarPage() {
                 <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
                 {refreshing ? "Refreshing…" : "Refresh"}
               </button>
-              <button onClick={() => setYearlyOpen(true)} data-testid="cal-yearly-events-btn"
-                title="Manage the yearly events that appear on every franchisee portal calendar"
-                className="px-3 py-2 text-xs font-bold uppercase tracking-wider border border-blue-300 bg-blue-50 text-blue-800 hover:bg-blue-100 rounded-lg flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5" /> Yearly events
-              </button>
               <button onClick={() => setModal({ event: null })} data-testid="cal-new-event"
                 className="px-3 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-lg flex items-center gap-1.5">
                 <Plus className="w-3.5 h-3.5" /> New event
@@ -271,19 +301,45 @@ export default function CalendarPage() {
 
       {/* Configured but disconnected */}
       {status?.configured && !status.connected && (
-        <div className="bg-white border border-stone-200 rounded-2xl p-8 text-center max-w-xl mx-auto" data-testid="cal-connect">
-          <CalendarDays className="w-12 h-12 mx-auto text-stone-300" />
-          <h2 className="font-display text-2xl text-stone-950 mt-3">Connect Google Calendar</h2>
-          <p className="text-sm text-stone-600 mt-2">
-            Click below to authorise this admin console to read and write events on{" "}
-            <strong className="text-stone-900">{status.calendar_id || "your shared calendar"}</strong>. You'll be redirected to Google to grant access, then sent back here.
-          </p>
-          <button onClick={connect} data-testid="cal-connect-btn"
-            className="mt-5 px-5 py-3 text-sm font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-[#aaaa11] rounded-lg inline-flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4" /> Connect Google Calendar
-          </button>
-          {err && <div className="mt-3 text-xs text-red-700 bg-red-50 border border-red-200 px-3 py-2 rounded-lg">{err}</div>}
-        </div>
+        <>
+          <div className="bg-white border border-stone-200 rounded-2xl p-8 text-center max-w-xl mx-auto" data-testid="cal-connect">
+            <CalendarDays className="w-12 h-12 mx-auto text-stone-300" />
+            <h2 className="font-display text-2xl text-stone-950 mt-3">Connect Google Calendar</h2>
+            <p className="text-sm text-stone-600 mt-2">
+              Click below to authorise this admin console to read and write events on{" "}
+              <strong className="text-stone-900">{status.calendar_id || "your shared calendar"}</strong>. You'll be redirected to Google to grant access, then sent back here.
+            </p>
+            <button onClick={connect} data-testid="cal-connect-btn"
+              className="mt-5 px-5 py-3 text-sm font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-[#aaaa11] rounded-lg inline-flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4" /> Connect Google Calendar
+            </button>
+            {err && <div className="mt-3 text-xs text-red-700 bg-red-50 border border-red-200 px-3 py-2 rounded-lg">{err}</div>}
+          </div>
+          {/* Even when Google is disconnected we still surface the
+              yearly events on a standalone grid so admins can preview
+              what franchisees will see on their portal calendars. */}
+          {yearlyEvents.length > 0 && (
+            <div className="mt-8 bg-white border border-stone-200 rounded-2xl p-4" data-testid="cal-yearly-only-grid">
+              <div className="flex items-center gap-2 mb-3 text-[11px] text-stone-600">
+                <span className="w-3 h-3 rounded-sm" style={{ background: "#3B82F6" }} />
+                <span>Yearly events ({yearlyEvents.length}) — visible to every franchisee on the portal</span>
+              </div>
+              <FullCalendar
+                plugins={[dayGridPlugin, interactionPlugin]}
+                initialView="dayGridMonth"
+                headerToolbar={{ left: "prev,next today", center: "title", right: "dayGridMonth" }}
+                events={fcEvents}
+                height={680}
+                contentHeight={680}
+                firstDay={1}
+                weekNumbers={false}
+                dayMaxEventRows={4}
+                buttonText={{ today: "Today", month: "Month" }}
+                eventClick={(info) => { info.jsEvent.preventDefault(); setYearlyOpen(true); }}
+              />
+            </div>
+          )}
+        </>
       )}
 
       {/* Connected — events list */}
@@ -297,6 +353,18 @@ export default function CalendarPage() {
             </div>
           ) : view === "grid" ? (
             <div className="bg-white border border-stone-200 rounded-2xl p-4" data-testid="cal-grid">
+              {/* Legend — mirrors the franchisee portal so admins see at
+                  a glance which colours map to which event source. */}
+              <div className="flex items-center gap-4 mb-3 text-[11px] text-stone-600 flex-wrap" data-testid="cal-legend">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-sm" style={{ background: "rgba(212, 255, 0, 0.6)", border: "1px solid #14532D" }} />
+                  Google Calendar events
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-sm" style={{ background: "#3B82F6" }} />
+                  Yearly events
+                </span>
+              </div>
               <FullCalendar
                 ref={fcRef}
                 plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
@@ -318,6 +386,12 @@ export default function CalendarPage() {
                 slotLabelFormat={{ hour: "2-digit", minute: "2-digit", meridiem: false }}
                 eventClick={(info) => {
                   info.jsEvent.preventDefault();
+                  // Yearly events are HQ-managed in their own modal —
+                  // open it instead of the Google event editor.
+                  if (info.event.extendedProps?._kind === "yearly") {
+                    setYearlyOpen(true);
+                    return;
+                  }
                   // FullCalendar puts the id on the event itself, but our
                   // modal expects a flat object — merge them so the
                   // delete button can see event.id.
@@ -404,7 +478,7 @@ export default function CalendarPage() {
           onDelete={async (id) => { await deleteEvent(id); setModal(null); }}
         />
       )}
-      {yearlyOpen && <YearlyEventsModal onClose={() => setYearlyOpen(false)} />}
+      {yearlyOpen && <YearlyEventsModal onClose={() => { setYearlyOpen(false); setRefreshTick((t) => t + 1); }} />}
     </div>
   );
 }

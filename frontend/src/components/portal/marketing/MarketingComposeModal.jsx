@@ -24,9 +24,17 @@ const emptyPanel = () => ({
   intro: "",
   image_url: "",
   image_key: "",
+  caption: "",
+  layout: "image-top",  // "image-top" | "image-left" | "image-right"
   link_url: "",
   link_label: "Find out more",
 });
+
+// Used to pre-fill the first panel of a brand-new campaign with the
+// franchisee's personalised "Hi {{first_name}}," greeting so they can
+// just keep typing their copy underneath.
+const DEFAULT_FIRST_INTRO =
+  '<div>Hi <strong>{{first_name}}</strong>,</div><div><br/></div>';
 
 export default function MarketingComposeModal({ open, access, draft, onClose, onSent, onDraftSaved }) {
   const [draftId, setDraftId] = useState(null);
@@ -79,7 +87,10 @@ export default function MarketingComposeModal({ open, access, draft, onClose, on
     } else {
       setDraftId(null);
       setTitle("");
-      setPanels([emptyPanel()]);
+      // First panel of a brand new campaign starts with a friendly
+      // greeting placeholder so the franchisee doesn't have to remember
+      // it. They can keep, edit, or delete it.
+      setPanels([{ ...emptyPanel(), intro: DEFAULT_FIRST_INTRO }]);
       setIncludeBookings(false);
       setFooterShowPhone(false);
       setFooterShowEmail(true);
@@ -191,6 +202,8 @@ export default function MarketingComposeModal({ open, access, draft, onClose, on
       intro: p.intro || "",
       image_url: p.image_url || "",
       image_key: p.image_key || "",
+      caption: p.caption || "",
+      layout: p.layout || "image-top",
       link_url: p.link_url || "",
       link_label: p.link_label || "Find out more",
     })),
@@ -217,10 +230,34 @@ export default function MarketingComposeModal({ open, access, draft, onClose, on
       setDraftId(data.id);
       setInfo("Draft saved — you can come back and finish later.");
       onDraftSaved?.();
+      return data.id;
     } catch (e) {
       setError(e?.response?.data?.detail || "Couldn't save draft.");
+      return null;
     } finally { setSavingDraft(false); }
   };
+
+  // Closing the modal must NEVER silently drop unsaved work. We
+  // auto-save the in-progress campaign as a draft when there's
+  // anything worth keeping, then close. The backdrop click is wired
+  // to do nothing (per-user spec); the X button + Done button are
+  // the only exit paths.
+  const handleClose = useCallback(async () => {
+    const worthSaving = (title || "").trim() || panels.some(
+      (p) => (p.intro || "").trim() || (p.image_url || "").trim() || (p.link_url || "").trim()
+    );
+    if (worthSaving && !sending) {
+      try {
+        await api.post("/portal/marketing/campaigns/draft", {
+          ...baseBody(),
+          id: draftId || undefined,
+        });
+        onDraftSaved?.();
+      } catch { /* swallow — closing should not stall on a save error */ }
+    }
+    onClose?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, panels, sending, draftId, includeBookings, footerShowPhone, footerShowEmail, footerShowFacebook]);
 
   const send = async () => {
     if (selectedRecipients.length === 0) {
@@ -265,12 +302,10 @@ export default function MarketingComposeModal({ open, access, draft, onClose, on
   return (
     <div
       className="fixed inset-0 z-50 bg-stone-950/40 backdrop-blur-sm flex items-stretch justify-center p-4 overflow-y-auto"
-      onClick={onClose}
       data-testid="marketing-compose-modal"
     >
       <div
         className="bg-white w-full max-w-[1400px] rounded-2xl border border-stone-200 shadow-2xl my-auto flex flex-col max-h-[95vh]"
-        onClick={(e) => e.stopPropagation()}
       >
         <div className="px-6 py-4 border-b border-stone-200 flex items-start justify-between gap-4">
           <div>
@@ -280,7 +315,7 @@ export default function MarketingComposeModal({ open, access, draft, onClose, on
             <h2 className="font-display text-2xl font-black text-stone-950 mt-1">Compose Campaign</h2>
           </div>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             data-testid="marketing-compose-close"
             className="w-9 h-9 rounded-full border border-stone-300 hover:bg-stone-50 flex items-center justify-center"
           >
@@ -505,6 +540,15 @@ export default function MarketingComposeModal({ open, access, draft, onClose, on
           </button>
           <button
             type="button"
+            onClick={handleClose}
+            data-testid="marketing-done-btn"
+            className="px-4 py-2 text-xs font-bold uppercase tracking-wider border border-stone-900 hover:bg-stone-900 hover:text-white text-stone-900 rounded-lg flex items-center gap-1.5"
+            title="Save & close — drafts are kept automatically"
+          >
+            <CheckCircle2 className="w-3.5 h-3.5" /> Done
+          </button>
+          <button
+            type="button"
             onClick={sendTest}
             disabled={testing || !title.trim() || !hasAnyContent}
             data-testid="marketing-test-send"
@@ -601,6 +645,53 @@ function PanelEditor({ idx, panel, canRemove, onChange, onRemove, onPickImage, o
         )}
       </div>
 
+      {/* Image caption + layout selector — only meaningful when an
+          image has been uploaded for this panel, so hidden otherwise. */}
+      {panel.image_url && (
+        <>
+          <div className="mt-3">
+            <Field label="Image caption (optional)">
+              <input
+                value={panel.caption || ""}
+                onChange={(e) => onChange({ caption: e.target.value })}
+                data-testid={`marketing-caption-${idx}`}
+                placeholder="e.g. Our messy-play session last Tuesday"
+                className="w-full px-3 py-2.5 border border-stone-300 rounded-xl text-sm focus:outline-none focus:border-stone-950"
+                maxLength={400}
+              />
+            </Field>
+          </div>
+          <div className="mt-3">
+            <label className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1.5 block">
+              Layout
+            </label>
+            <div className="grid grid-cols-3 gap-2" data-testid={`marketing-layout-${idx}`}>
+              {[
+                { id: "image-top",   label: "Image top",   svg: <LayoutTopIcon /> },
+                { id: "image-left",  label: "Image left",  svg: <LayoutLeftIcon /> },
+                { id: "image-right", label: "Image right", svg: <LayoutRightIcon /> },
+              ].map((opt) => {
+                const active = (panel.layout || "image-top") === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => onChange({ layout: opt.id })}
+                    data-testid={`marketing-layout-${idx}-${opt.id}`}
+                    className={`flex flex-col items-center justify-center gap-1 px-2 py-2 rounded-lg border text-[10px] font-bold uppercase tracking-wider transition ${active
+                      ? "border-stone-950 bg-stone-950 text-white"
+                      : "border-stone-300 hover:bg-stone-50 text-stone-700"}`}
+                  >
+                    <span className={active ? "opacity-100" : "opacity-70"}>{opt.svg}</span>
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
+
       {/* Link */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
         <Field label="Link URL (optional)">
@@ -645,6 +736,42 @@ function EyeIcon() {
     <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" />
       <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+// Tiny layout-preview icons used by the per-panel layout selector.
+// Each one shows a 24×16 mock-up of the email panel with a shaded
+// "image" block + "text lines" so the franchisee can pick by sight.
+function LayoutTopIcon() {
+  return (
+    <svg width="32" height="22" viewBox="0 0 32 22" fill="none">
+      <rect x="2" y="2" width="28" height="9" rx="1" fill="currentColor" opacity="0.6" />
+      <rect x="2" y="13" width="28" height="1.5" rx="0.5" fill="currentColor" />
+      <rect x="2" y="16" width="20" height="1.5" rx="0.5" fill="currentColor" />
+      <rect x="2" y="19" width="24" height="1.5" rx="0.5" fill="currentColor" />
+    </svg>
+  );
+}
+function LayoutLeftIcon() {
+  return (
+    <svg width="32" height="22" viewBox="0 0 32 22" fill="none">
+      <rect x="2" y="3" width="13" height="16" rx="1" fill="currentColor" opacity="0.6" />
+      <rect x="17" y="4" width="13" height="1.5" rx="0.5" fill="currentColor" />
+      <rect x="17" y="8" width="11" height="1.5" rx="0.5" fill="currentColor" />
+      <rect x="17" y="12" width="12" height="1.5" rx="0.5" fill="currentColor" />
+      <rect x="17" y="16" width="9" height="1.5" rx="0.5" fill="currentColor" />
+    </svg>
+  );
+}
+function LayoutRightIcon() {
+  return (
+    <svg width="32" height="22" viewBox="0 0 32 22" fill="none">
+      <rect x="17" y="3" width="13" height="16" rx="1" fill="currentColor" opacity="0.6" />
+      <rect x="2" y="4" width="13" height="1.5" rx="0.5" fill="currentColor" />
+      <rect x="2" y="8" width="11" height="1.5" rx="0.5" fill="currentColor" />
+      <rect x="2" y="12" width="12" height="1.5" rx="0.5" fill="currentColor" />
+      <rect x="2" y="16" width="9" height="1.5" rx="0.5" fill="currentColor" />
     </svg>
   );
 }

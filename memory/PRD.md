@@ -1,6 +1,32 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## Admin Calendar yearly events + Marketing modal overhaul (Jun 04 2026)
+
+**Admin Calendar — yearly events populated on the grid**
+- Yearly events (CSV-uploaded by HQ via the "Yearly events" button) are now fetched on the Admin Calendar (`CalendarPage.jsx`) alongside Google Calendar events. They render as **solid light-blue blocks** identical to the franchisee portal so admins see exactly what franchisees see.
+- The "Yearly events" management button now sits in the page header **regardless of Google connection state** — yearly events live in Mongo and are independent of Google OAuth.
+- Added a colour legend strip above the FullCalendar grid: lime = Google events, light-blue = Yearly events.
+- When Google Calendar is disconnected, the page still renders a yearly-events-only mini grid so admins can preview what franchisees see.
+- Clicking a yearly event opens the YearlyEventsModal (manage) rather than the Google event editor.
+
+**Marketing compose modal — 5 enhancements**
+1. **"Hi {{first_name}}," now part of Section 1 intro** — removed the hardcoded greeting row from the email template. New campaigns pre-fill the first panel with `<div>Hi <strong>{{first_name}}</strong>,</div>`. The backend substitutes `{{first_name}}` per recipient on render. Franchisees can move, restyle, or delete the greeting wherever they want.
+2. **Extended rich-text toolbar**: Bold, Italic, Underline, Align Left / Centre / Right, Text-colour picker (10-swatch palette + reset), plus an explicit "Insert name" button that injects the `{{first_name}}` placeholder. Backend `_sanitise_intro_html` extended to allow `color` (hex / rgb / named) + all four text-align values; `<font color="…">` is auto-promoted to `<span style="color:…">` for execCommand-quirk-proofing.
+3. **Per-panel image caption** — small italic line rendered immediately below the image in the email.
+4. **Modal no longer drops work on backdrop click** — backdrop click is a no-op. The X button and the new bottom-right "Done" button both auto-save the in-progress campaign as a draft before closing.
+5. **Per-panel layout templates**: `image-top` (default), `image-left` (image left / text right), `image-right` (text left / image right). Backend renders side-by-side variants via nested `<table>` (45/55 split) for Outlook compatibility. Selector only appears once an image is uploaded on the panel.
+
+**Files touched**
+- `frontend/src/pages/CalendarPage.jsx` — yearly events fetch, merge into `fcEvents`, legend, disconnect-state grid, button moved out of the connected gate.
+- `frontend/src/components/portal/marketing/MarketingIntroEditor.jsx` — rewritten with the extended toolbar + colour palette + Insert-name action.
+- `frontend/src/components/portal/marketing/MarketingComposeModal.jsx` — caption + layout selector + Done button + handleClose auto-save + DEFAULT_FIRST_INTRO greeting, backdrop click disabled.
+- `backend/portal_marketing_routes.py` — sanitiser extended (colour + all alignments), `_build_panel_html` rewritten with 3 layouts + caption + `{{first_name}}` substitution, hardcoded "Hi {first_name}" greeting row removed from `_build_html`, `_validate_panels` accepts `caption` + `layout`.
+
+**Public Folder Share grid thumbnails** — verified the previously-implemented `isImage()` + `inline_url` thumbnail rendering on `PublicFolderSharePage.jsx` (lines 156-178) already pulls real image thumbnails into the grid view tiles. No change required.
+
+
+
 ## Admin Franchisee detail page — layout polish (Jun 04 2026)
 - **KPI strip expanded from 4 → 6 cards** (`grid-cols-2 sm:grid-cols-3 lg:grid-cols-6`): added **Tenure** (years-as-franchisee, shown to one decimal place + start date) and **Bought For** (sum of `initial_starting_fee` across every contract, smart-formatted as £2.5k / £12,500 etc.). The existing four cards (Contracts · Territory · Mandate · Xero) keep their slots so muscle memory survives.
 - **Contact Details + Address panels promoted above the Contracts panel** — they're now the first thing below the hero, matching Paul's "this is what I look at first when I open a franchisee" feedback.

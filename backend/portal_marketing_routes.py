@@ -100,12 +100,13 @@ async def _check_access(db, user: dict) -> dict:
 # ---------------------------------------------------------------- HTML builder
 def _sanitise_intro_html(raw: str) -> str:
     """Strict allowlist sanitiser for the intro field. The composer
-    saves HTML so a franchisee can bold/centre selected text, but we
-    can't trust the payload — script tags, iframes, event handlers,
-    style attributes etc would let a hostile draft inject arbitrary
-    CSS/JS into every recipient's inbox. So we keep only ``<b>``,
-    ``<strong>``, ``<i>``, ``<em>``, ``<u>``, ``<br>`` and ``<div>``/
-    ``<p>`` with a single style attr restricted to ``text-align: …``.
+    saves HTML so a franchisee can bold/italic/underline/colour/align
+    selected text, but we can't trust the payload — script tags,
+    iframes, event handlers, arbitrary style/class attributes etc would
+    let a hostile draft inject CSS/JS into every recipient's inbox.
+    So we keep only ``<b><strong><i><em><u><br>`` and ``<div>``/``<p>``/
+    ``<span>``/``<font>`` carrying a tightly-restricted ``style`` /
+    ``color`` attribute (text-align + colour only).
 
     Plain text (the common case) passes straight through with newline
     → ``<br/>`` so it still looks right in the email.
@@ -118,12 +119,18 @@ def _sanitise_intro_html(raw: str) -> str:
     try:
         from html.parser import HTMLParser
         ALLOWED_TAGS = {
-            "b", "strong", "i", "em", "u", "br", "div", "p", "span",
+            "b", "strong", "i", "em", "u", "br", "div", "p", "span", "font",
         }
-        # Only keep ``text-align`` from style attributes, and only
-        # if the value is one of left/right/center/justify.
         import re as _re
-        STYLE_RX = _re.compile(r"text-align\s*:\s*(left|right|center|justify)", _re.I)
+        ALIGN_RX = _re.compile(r"text-align\s*:\s*(left|right|center|justify)", _re.I)
+        # Accept #abc / #aabbcc / rgb(…) — keep it simple but tight.
+        COLOR_RX = _re.compile(
+            r"color\s*:\s*(#[0-9a-fA-F]{3,8}|rgb\([^)]{1,40}\)|[a-zA-Z]{3,20})",
+            _re.I,
+        )
+        HEX_NAMED_RX = _re.compile(
+            r"^(#[0-9a-fA-F]{3,8}|rgb\([^)]{1,40}\)|[a-zA-Z]{3,20})$",
+        )
 
         out_parts: list[str] = []
 
@@ -133,24 +140,38 @@ def _sanitise_intro_html(raw: str) -> str:
                 if t not in ALLOWED_TAGS:
                     return
                 kept: list[str] = []
+                styles: list[str] = []
                 for k, v in attrs:
-                    if k.lower() == "style" and v:
-                        m = STYLE_RX.search(v)
+                    kl = k.lower()
+                    if kl == "style" and v:
+                        m = ALIGN_RX.search(v)
                         if m:
-                            kept.append(f'style="text-align:{m.group(1).lower()}"')
+                            styles.append(f"text-align:{m.group(1).lower()}")
+                        c = COLOR_RX.search(v)
+                        if c:
+                            styles.append(f"color:{c.group(1)}")
+                    elif kl == "color" and v and t == "font" and HEX_NAMED_RX.match(v.strip()):
+                        # ``execCommand("foreColor")`` in some browsers
+                        # emits ``<font color="…">``; convert it to a
+                        # style attr so the email client respects it.
+                        styles.append(f"color:{v.strip()}")
+                if styles:
+                    kept.append(f'style="{";".join(styles)}"')
                 attr_str = (" " + " ".join(kept)) if kept else ""
-                out_parts.append(f"<{t}{attr_str}>")
+                # Normalise <font> → <span> with style so we control the
+                # output shape regardless of browser quirks.
+                emit_tag = "span" if t == "font" else t
+                out_parts.append(f"<{emit_tag}{attr_str}>")
             def handle_endtag(self, tag):
                 t = tag.lower()
                 if t in ALLOWED_TAGS and t != "br":
-                    out_parts.append(f"</{t}>")
+                    emit_tag = "span" if t == "font" else t
+                    out_parts.append(f"</{emit_tag}>")
             def handle_startendtag(self, tag, attrs):
                 t = tag.lower()
                 if t == "br":
                     out_parts.append("<br/>")
             def handle_data(self, data):
-                # html.escape so the literal text can't reintroduce
-                # tags via entities.
                 from html import escape as _esc
                 out_parts.append(_esc(data))
 
@@ -158,42 +179,120 @@ def _sanitise_intro_html(raw: str) -> str:
         cleaner.feed(raw)
         return "".join(out_parts)
     except Exception:
-        # If anything goes wrong, fall back to fully escaped text — the
-        # email still goes out, just without formatting.
         from html import escape as _esc
         return _esc(raw).replace("\n", "<br/>")
 
 
-def _build_panel_html(panel: dict) -> str:
-    """Render a single content panel — intro text + image + link
-    button. Empty subsections are skipped. Each panel is later
-    separated by the brand-yellow divider."""
+def _build_panel_html(panel: dict, first_name: str = "{{first_name}}") -> str:
+    """Render a single content panel — intro text + image (with
+    optional caption) + link button. Empty subsections are skipped.
+    Each panel is later separated by the brand-yellow divider.
+
+    Layout options (``panel["layout"]``):
+      * ``"image-top"`` (default) — image above text
+      * ``"image-left"``           — image left, intro+caption right
+      * ``"image-right"``          — image right, intro+caption left
+
+    Optional ``panel["caption"]`` renders directly below the image as
+    a small italic line (works in every layout).
+    """
     intro_html = _sanitise_intro_html((panel.get("intro") or ""))
+    # Substitute the recipient first-name placeholder inside the intro
+    # so franchisees can put "Hi {{first_name}}," wherever they like.
+    if first_name and intro_html:
+        from html import escape as _esc
+        intro_html = intro_html.replace("{{first_name}}", _esc(first_name))
     image_url = (panel.get("image_url") or "").strip()
+    caption_raw = (panel.get("caption") or "").strip()
     link_url = (panel.get("link_url") or "").strip()
     link_label = (panel.get("link_label") or "Find out more").strip() or "Find out more"
+    layout = (panel.get("layout") or "image-top").lower()
+    if layout not in {"image-top", "image-left", "image-right"}:
+        layout = "image-top"
 
-    blocks: list[str] = []
-    if intro_html:
-        blocks.append(
-            f'<tr><td style="padding:14px 30px 18px;font-size:15px;line-height:1.6;color:#1a1a1a;">{intro_html}</td></tr>'
+    # Pre-render the constituent fragments so we can shuffle them
+    # based on the chosen layout.
+    intro_block = (
+        f'<div style="font-size:15px;line-height:1.6;color:#1a1a1a;">{intro_html}</div>'
+        if intro_html else ""
+    )
+    if caption_raw:
+        from html import escape as _esc
+        caption_html = (
+            f'<div style="font-size:13px;line-height:1.5;color:#525252;'
+            f'font-style:italic;margin-top:6px;">{_esc(caption_raw)}</div>'
         )
+    else:
+        caption_html = ""
+    img_block = ""
     if image_url:
-        blocks.append(
-            '<tr><td align="center" style="padding:0 30px 16px 30px;">'
-            f'<img src="{image_url}" alt="" width="540" '
-            'style="max-width:100%;height:auto;border-radius:8px;display:block;margin:0 auto;" />'
-            '</td></tr>'
+        img_block = (
+            f'<img src="{image_url}" alt="" '
+            'style="max-width:100%;height:auto;border-radius:8px;display:block;margin:0 auto;border:0;" />'
         )
+    link_block = ""
     if link_url:
-        blocks.append(
-            f'<tr><td align="center" style="padding:6px 30px 18px 30px;">'
+        link_block = (
             f'<a href="{link_url}" style="display:inline-block;background:#dddd16;color:#1a1a1a;'
             'font-weight:700;text-decoration:none;padding:13px 32px;border-radius:4px;'
             f'font-size:13px;letter-spacing:0.5px;margin:4px;">{link_label.upper()} &rsaquo;</a>'
-            '</td></tr>'
         )
-    return "".join(blocks)
+
+    if not (intro_block or img_block or link_block):
+        return ""
+
+    # Stacked layout — image on top (default, identical to the
+    # pre-templates behaviour). Each block in its own <tr> for solid
+    # email-client rendering.
+    if layout == "image-top" or not image_url:
+        rows: list[str] = []
+        if intro_block:
+            rows.append(
+                f'<tr><td style="padding:14px 30px 8px;">{intro_block}</td></tr>'
+            )
+        if img_block:
+            rows.append(
+                '<tr><td align="center" style="padding:6px 30px 6px 30px;">'
+                f'{img_block}{caption_html}'
+                '</td></tr>'
+            )
+        if link_block:
+            rows.append(
+                '<tr><td align="center" style="padding:6px 30px 18px 30px;">'
+                f'{link_block}</td></tr>'
+            )
+        return "".join(rows)
+
+    # Side-by-side layouts use an inner nested table because email
+    # clients (Outlook especially) hate flex / grid. Width split is
+    # 45/55 so the text side always has room to breathe.
+    image_col = (
+        f'<td valign="top" align="center" width="45%" '
+        f'style="padding:0 12px 0 0;width:45%;">{img_block}{caption_html}</td>'
+    )
+    text_col_inner = "".join([
+        intro_block,
+        # Link inside text column when present — keeps it visually
+        # bound to its panel even when the image hangs to the side.
+        (f'<div style="margin-top:10px;">{link_block}</div>' if link_block else ""),
+    ])
+    text_col = (
+        f'<td valign="top" width="55%" '
+        f'style="padding:0 0 0 12px;width:55%;font-size:15px;line-height:1.6;color:#1a1a1a;">'
+        f'{text_col_inner}</td>'
+    )
+    if layout == "image-left":
+        cols = image_col + text_col
+    else:  # image-right
+        cols = text_col + image_col
+    return (
+        '<tr><td style="padding:14px 30px 14px 30px;">'
+        '<table cellpadding="0" cellspacing="0" border="0" width="100%" '
+        'style="width:100%;border-collapse:collapse;">'
+        f'<tr>{cols}</tr>'
+        '</table>'
+        '</td></tr>'
+    )
 
 
 def _build_html(campaign: dict, first_name: str = "{{first_name}}") -> str:
@@ -234,7 +333,7 @@ def _build_html(campaign: dict, first_name: str = "{{first_name}}") -> str:
 
     panel_html: list[str] = []
     for i, p in enumerate(panels):
-        rendered = _build_panel_html(p or {})
+        rendered = _build_panel_html(p or {}, first_name=first_name)
         if not rendered:
             continue
         if panel_html:
@@ -325,9 +424,6 @@ def _build_html(campaign: dict, first_name: str = "{{first_name}}") -> str:
           {campaign.get('title','')}
         </div>
       </td></tr>
-      <tr><td style="padding:14px 30px 6px;font-size:15px;line-height:1.6;color:#1a1a1a;">
-        <div>Hi <strong>{first_name}</strong>,</div>
-      </td></tr>
       {body_panels}
       {bookings_block}
       {contact_block}
@@ -359,16 +455,22 @@ def _validate_panels(body: dict, require_content: bool = True) -> tuple[list[dic
         for p in raw_panels[:8]:  # hard-cap at 8 sections — UX/anti-abuse
             if not isinstance(p, dict):
                 continue
+            layout = (p.get("layout") or "image-top").lower()
+            if layout not in {"image-top", "image-left", "image-right"}:
+                layout = "image-top"
             cleaned = {
                 "intro":      (p.get("intro") or "").strip(),
                 "image_url":  (p.get("image_url") or "").strip(),
                 "image_key":  (p.get("image_key") or "").strip(),
+                "caption":    (p.get("caption") or "").strip()[:400],
+                "layout":     layout,
                 "link_url":   (p.get("link_url") or "").strip(),
                 "link_label": (p.get("link_label") or "").strip() or "Find out more",
             }
             # Skip totally-empty panels — the user probably added one
             # and forgot to fill it.
-            if cleaned["intro"] or cleaned["image_url"] or cleaned["link_url"]:
+            if (cleaned["intro"] or cleaned["image_url"] or cleaned["link_url"]
+                    or cleaned["caption"]):
                 panels.append(cleaned)
     else:
         # Legacy shape → one-element array.
@@ -376,6 +478,8 @@ def _validate_panels(body: dict, require_content: bool = True) -> tuple[list[dic
             "intro":      (body.get("intro") or "").strip(),
             "image_url":  (body.get("image_url") or "").strip(),
             "image_key":  (body.get("image_key") or "").strip(),
+            "caption":    "",
+            "layout":     "image-top",
             "link_url":   (body.get("link_url") or "").strip(),
             "link_label": (body.get("link_label") or "").strip() or "Find out more",
         }
