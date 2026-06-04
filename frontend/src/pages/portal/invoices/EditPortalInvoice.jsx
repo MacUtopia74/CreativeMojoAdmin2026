@@ -83,7 +83,7 @@ function InvoicePreview({ formData, subtotal, discountAmount, taxAmount, total, 
         <div className="flex-1">
           <div className="flex justify-between items-start mb-6">
             <div>
-              <h2 className="text-3xl font-bold tracking-tight text-slate-900 font-['Manrope']">INVOICE</h2>
+              <h2 className="text-3xl font-bold tracking-tight text-slate-900 font-display">INVOICE</h2>
               <p className="font-mono text-lg mt-1 text-slate-700">{formData.invoice_number || "SCD-000"}</p>
             </div>
             <StatusBadge status={formData.status} />
@@ -310,7 +310,7 @@ function EditInvoice() {
       <div className="flex items-center gap-4">
         <Button variant="ghost" onClick={() => navigate(-1)} data-testid="back-btn"><ArrowLeft className="w-4 h-4" /></Button>
         <div>
-          <h1 className="text-4xl font-bold tracking-tight font-['Manrope']" data-testid="page-title">Edit Invoice</h1>
+          <h1 className="text-4xl font-bold tracking-tight font-display" data-testid="page-title">Edit Invoice</h1>
           <p className="text-muted-foreground mt-1">Update invoice details</p>
         </div>
       </div>

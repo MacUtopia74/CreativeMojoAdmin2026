@@ -69,7 +69,7 @@ ADMIN_NAV_KEYS = {
     "find-class", "cqc-definitions", "scotland-definitions",
     "invoices", "banking",
     "admin-users", "admin-email-templates", "admin-youtube",
-    "admin-announcements", "admin-xero", "admin-shape-orders", "form-intake",
+    "admin-announcements", "admin-logs", "admin-xero", "admin-shape-orders", "form-intake",
 }
 
 

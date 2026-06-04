@@ -264,6 +264,32 @@ function InvoiceDetail() {
               <Edit className="w-4 h-4 mr-2" />Edit
             </Button>
           </Link>
+          {/* Standalone Delete button so franchisees don't have to
+              hunt through Update Status → Delete. Hidden once the
+              invoice already lives in /deleted. */}
+          {invoice.status !== "deleted" && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  data-testid="delete-invoice-quick-btn"
+                  className="text-rose-700 hover:text-rose-800 hover:bg-rose-50 border-rose-200"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" /> Delete
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete Invoice?</AlertDialogTitle>
+                  <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={deleteInvoice} className="bg-destructive text-destructive-foreground">Delete</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button data-testid="status-dropdown-btn">Update Status</Button>
@@ -390,7 +416,7 @@ function InvoiceDetail() {
           <div className="flex-1">
             <div className="flex justify-between items-start mb-6">
               <div>
-                <h2 className="text-3xl font-bold tracking-tight text-slate-900 font-['Manrope']">INVOICE</h2>
+                <h2 className="text-3xl font-bold tracking-tight text-slate-900 font-display">INVOICE</h2>
                 <p className="font-mono text-xl mt-1 text-slate-700">{invoice.invoice_number}</p>
               </div>
               <StatusBadge status={invoice.status} className="text-sm px-4 py-1" />

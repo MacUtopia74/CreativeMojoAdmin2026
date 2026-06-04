@@ -227,7 +227,7 @@ function InvoiceDetail() {
           </Button>
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-4xl font-bold tracking-tight font-['Manrope']" data-testid="invoice-number">{invoice.invoice_number}</h1>
+              <h1 className="text-4xl font-bold tracking-tight font-display" data-testid="invoice-number">{invoice.invoice_number}</h1>
               <StatusBadge status={invoice.status} />
             </div>
             <p className="text-muted-foreground mt-1">Created {formattedCreatedAt}</p>
@@ -436,7 +436,7 @@ function InvoiceDetail() {
           <div className="flex-1">
             <div className="flex justify-between items-start mb-6">
               <div>
-                <h2 className="text-3xl font-bold tracking-tight text-slate-900 font-['Manrope']">INVOICE</h2>
+                <h2 className="text-3xl font-bold tracking-tight text-slate-900 font-display">INVOICE</h2>
                 <p className="font-mono text-xl mt-1 text-slate-700">{invoice.invoice_number}</p>
               </div>
               <StatusBadge status={invoice.status} className="text-sm px-4 py-1" />

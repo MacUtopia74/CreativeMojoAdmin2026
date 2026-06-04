@@ -189,7 +189,13 @@ const InvoiceList = () => {
               className="animate-fade-in"
               style={{ animationDelay: `${index * 0.05}s` }}
             >
-              <InvoiceCard invoice={invoice} />
+              <InvoiceCard
+                invoice={invoice}
+                onDeleted={(id) => {
+                  setInvoices((arr) => arr.filter((x) => x.id !== id));
+                  fetchStats();
+                }}
+              />
             </div>
           ))
         )}

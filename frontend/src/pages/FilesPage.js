@@ -21,7 +21,6 @@ import FolderActionsMenu from "@/components/files/FolderActionsMenu";
 import FolderMovePicker from "@/components/files/FolderMovePicker";
 import FolderShareModal from "@/components/files/FolderShareModal";
 import RecentFilesStrip from "@/components/files/RecentFilesStrip";
-import FileVaultAuditLog from "@/components/files/FileVaultAuditLog";
 import TrashView from "@/components/files/TrashView";
 import FileThumbnail from "@/components/files/FileThumbnail";
 import FilePreviewModal from "@/components/files/FilePreviewModal";
@@ -852,7 +851,6 @@ export default function FilesPage() {
                   onOpenFile={(it) => setPreview(it)}
                   onDownload={(key) => download(key)}
                   onOpenFolder={(key) => setPrefix(key)} />
-                <FileVaultAuditLog />
                 <div className="bg-[#EEEE86] border border-stone-300 rounded-2xl px-5 py-4 flex items-center justify-between gap-3 flex-wrap shadow-sm" data-testid="files-tree">
                   <Breadcrumb prefix={prefix} onJump={setPrefix} />
                   <div className="flex items-center gap-2 relative">

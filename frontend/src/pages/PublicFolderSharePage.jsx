@@ -155,7 +155,7 @@ export default function PublicFolderSharePage() {
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                 {data.files.map((f) => {
                   const Icon = pickIcon(f.name, f.content_type);
-                  const showThumb = isImage(f.name, f.content_type);
+                  const showThumb = isImage(f.name, f.content_type) && f.inline_url;
                   return (
                     <div
                       key={f.rel_path}
@@ -165,7 +165,7 @@ export default function PublicFolderSharePage() {
                       <div className="aspect-square bg-stone-50 flex items-center justify-center relative">
                         {showThumb ? (
                           <img
-                            src={f.download_url}
+                            src={f.inline_url}
                             alt={f.name}
                             loading="lazy"
                             className="w-full h-full object-cover"

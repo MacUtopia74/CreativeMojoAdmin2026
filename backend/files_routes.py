@@ -1347,15 +1347,31 @@ def build_router(db, require_role) -> APIRouter:
         files_out = []
         for it in items:
             rel = it["key"][len(prefix):]
-            disp = f'attachment; filename="{(it.get("name") or "file").replace(chr(34), "")}"'
-            signed = presigned_get_url(it["key"], expires_in=3600,
-                                        content_disposition=disp)
+            safe_name = (it.get("name") or "file").replace(chr(34), "")
+            disp_attach = f'attachment; filename="{safe_name}"'
+            disp_inline = f'inline; filename="{safe_name}"'
+            signed_dl = presigned_get_url(it["key"], expires_in=3600,
+                                          content_disposition=disp_attach)
+            # Inline URL is only useful for things browsers can render
+            # directly (images mainly). It's served with a `inline`
+            # Content-Disposition so the grid view can use it as an
+            # ``<img src>`` without the browser kicking off a download.
+            ct = (it.get("content_type") or "").lower()
+            ext = ((it.get("name") or "").rsplit(".", 1)[-1] or "").lower()
+            inlineable = ct.startswith("image/") or ext in {
+                "jpg", "jpeg", "png", "gif", "webp", "svg",
+            }
+            signed_inline = (
+                presigned_get_url(it["key"], expires_in=3600, content_disposition=disp_inline)
+                if inlineable else None
+            )
             files_out.append({
                 "name": it.get("name"),
                 "rel_path": rel,
                 "size": it.get("size", 0),
                 "content_type": it.get("content_type"),
-                "download_url": signed,
+                "download_url": signed_dl,
+                "inline_url": signed_inline,
             })
         await db.files_share_links.update_one(
             {"token": token},

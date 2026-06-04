@@ -30,6 +30,7 @@ import OrdersReconciliationPage from "@/pages/OrdersReconciliationPage";
 import ScotlandDefinitionsPage from "@/pages/ScotlandDefinitionsPage";
 import EmailTemplatesPage from "@/pages/EmailTemplatesPage";
 import AnnouncementsPage from "@/pages/AnnouncementsPage";
+import LogsPage from "@/pages/LogsPage";
 // Invoices module (merged from Pay-Paperwork)
 import InvoiceList from "@/pages/invoices/InvoiceList";
 import CreateInvoice from "@/pages/invoices/CreateInvoice";
@@ -129,6 +130,7 @@ export default function App() {
               <Route path="/scotland-definitions" element={<ScotlandDefinitionsPage />} />
               <Route path="/admin/email-templates" element={<EmailTemplatesPage />} />
               <Route path="/admin/announcements" element={<AnnouncementsPage />} />
+              <Route path="/admin/logs" element={<LogsPage />} />
               <Route path="/admin/youtube" element={<AdminYouTubePage />} />
               <Route path="/calendar" element={<CalendarPage />} />
               <Route path="/contacts" element={<ContactsPage />} />

@@ -15,8 +15,6 @@ import {
 } from "lucide-react";
 import api from "@/lib/api";
 import FileThumbnail from "@/components/files/FileThumbnail";
-import AnnouncementReadLog from "@/components/announcements/AnnouncementReadLog";
-import MarketingUsageLog from "@/components/announcements/MarketingUsageLog";
 
 function fmtDate(iso) {
   if (!iso) return "—";
@@ -115,12 +113,6 @@ function AnnouncementsList({ onCompose, onView, refresh }) {
             })}
           </tbody>
         </table>
-      </div>
-      {/* Admin-only audit panels — slot beneath the table so they're
-          visible but out of the way. */}
-      <div className="mt-4 space-y-3">
-        <AnnouncementReadLog />
-        <MarketingUsageLog />
       </div>
     </div>
   );

@@ -245,12 +245,68 @@ def build_franchisee_invoices_router(db, require_role):
         return fid
 
     # ----------------------------- CLIENTS
+    #
+    # Per Paul (Jun 2026): the invoicing client list MUST be the same
+    # list as My Territory+. Previously this endpoint returned a
+    # separate ``franchisee_invoice_clients`` collection that you had
+    # to populate manually — duplicate data entry.
+    #
+    # We now project every Territory+ client into the legacy ``Client``
+    # shape so the existing front-end keeps rendering without any UI
+    # changes. The bookkeeping fields (``franchisee_invoice_clients``)
+    # is left in place as a fallback for any franchisee who hasn't
+    # opted into Territory+ yet — we union the two lists, de-duped by
+    # name+postcode.
     @router.get("/clients", response_model=List[Client])
     async def list_clients(user: dict = franchisee):
         fid = await _fid(user)
-        return await db.franchisee_invoice_clients.find(
-            {"franchisee_id": fid}, {"_id": 0, "franchisee_id": 0}
-        ).to_list(1000)
+        seen: set[tuple[str, str]] = set()
+        out: list[dict] = []
+
+        # 1) Pull every Territory+ client this franchisee owns and
+        # adapt its shape to the legacy Client model. Each row carries
+        # ``id``, ``name``, ``email``, ``phone``, ``address``, etc.
+        async for c in db.franchisee_clients.find(
+            {"franchisee_id": fid}, {"_id": 0},
+        ).sort([("name", 1)]):
+            # Pick a primary contact email if there isn't one on the
+            # client doc — Territory+ stores per-person contacts in a
+            # nested array.
+            primary_email = c.get("email")
+            primary_phone = c.get("phone")
+            if not primary_email or not primary_phone:
+                for ct in c.get("contacts") or []:
+                    primary_email = primary_email or ct.get("email")
+                    primary_phone = primary_phone or ct.get("phone")
+                    if primary_email and primary_phone:
+                        break
+            key = ((c.get("name") or "").strip().lower(),
+                   (c.get("postcode") or "").strip().lower())
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({
+                "id": c.get("id"),
+                "name": c.get("name") or "—",
+                "email": primary_email,
+                "phone": primary_phone,
+                "address": c.get("address"),
+                "notes": c.get("notes"),
+            })
+
+        # 2) Anything still in the legacy collection that isn't already
+        # represented in Territory+ — falls through here.
+        async for c in db.franchisee_invoice_clients.find(
+            {"franchisee_id": fid}, {"_id": 0, "franchisee_id": 0},
+        ):
+            key = ((c.get("name") or "").strip().lower(),
+                   (c.get("postcode") or "").strip().lower() if c.get("postcode") else "")
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(c)
+
+        return out
 
     @router.get("/clients/{client_id}", response_model=Client)
     async def get_client(client_id: str, user: dict = franchisee):
@@ -270,6 +326,7 @@ def build_franchisee_invoices_router(db, require_role):
         doc["franchisee_id"] = fid
         await db.franchisee_invoice_clients.insert_one(doc)
         doc.pop("franchisee_id", None)
+        doc.pop("_id", None)
         return doc
 
     @router.put("/clients/{client_id}", response_model=Client)
@@ -383,6 +440,7 @@ def build_franchisee_invoices_router(db, require_role):
         doc["franchisee_id"] = fid
         await db.franchisee_invoices.insert_one(doc)
         doc.pop("franchisee_id", None)
+        doc.pop("_id", None)
         return doc
 
     @router.put("/{invoice_id}", response_model=Invoice)
@@ -490,7 +548,8 @@ def build_franchisee_invoices_router(db, require_role):
         if out:
             out.pop("_id", None)
             out["id"] = fid
-        return out
+            return out
+        return None
 
     # ----------------------------- PDF
     @router.get("/{invoice_id}/pdf")

@@ -27,6 +27,7 @@ import {
   Cog,
   Mail,
   Megaphone,
+  ClipboardList,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -74,6 +75,7 @@ const SIDEBAR = [
   // Announcements promoted out of Admin → Settings so it sits next to the
   // outbound-comms tools (Files + Calendar).
   { kind: "item", to: "/admin/announcements", label: "HQ Updates", icon: Megaphone, testid: "nav-admin-announcements", permKey: "admin-announcements" },
+  { kind: "item", to: "/admin/logs", label: "Logs", icon: ClipboardList, testid: "nav-admin-logs", permKey: "admin-logs" },
   { kind: "divider" },
 
   { kind: "item", to: "/calendar", label: "Calendar", icon: CalendarDays, testid: "nav-calendar", permKey: "calendar" },
@@ -140,6 +142,7 @@ export const ADMIN_NAV_KEYS = [
   { key: "admin-email-templates", label: "Email Templates",  paths: ["/admin/email-templates"] },
   { key: "admin-youtube",    label: "YouTube Playlists",    paths: ["/admin/youtube"] },
   { key: "admin-announcements", label: "HQ Updates",       paths: ["/admin/announcements"] },
+  { key: "admin-logs",       label: "Logs",                paths: ["/admin/logs"] },
   { key: "admin-xero",       label: "Xero (settings)",      paths: ["/admin/xero"] },
   { key: "form-intake",      label: "Form Intake",          paths: ["/form-intake"] },
 ];

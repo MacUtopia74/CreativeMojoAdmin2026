@@ -53,7 +53,7 @@ function DeletedInvoices() {
   return (
     <div className="space-y-8" data-testid="deleted-invoices-page">
       <div>
-        <h1 className="text-4xl font-bold tracking-tight font-['Manrope']" data-testid="page-title">Deleted Invoices</h1>
+        <h1 className="text-4xl font-bold tracking-tight font-display" data-testid="page-title">Deleted Invoices</h1>
         <p className="text-muted-foreground mt-1">Recover or permanently delete invoices</p>
       </div>
 
