@@ -1,6 +1,46 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## Marketing modal v2 + PDF thumbnails + Background colour (Jun 04 2026 — afternoon)
+
+**Marketing compose modal — full restructure (per user feedback)**
+The previous one-blob-per-section shape didn't match the intended editorial flow. Now the email is split into three concerns:
+
+1. **Subject line** — `title` field at the top
+2. **Top-level Intro Text** — full RTE with `{{first_name}}` placeholder support. Stored as `intro_html` on the campaign; rendered as its own row above every section so it ALWAYS sits above Section 1 regardless of how the franchisee structures the sections themselves.
+3. **Sections (repeatable up to 8)** — each containing in order:
+   - Optional **Section header** (one-line, big bold dark heading rendered above the section)
+   - **Image** picker
+   - **Layout selector** (only visible once an image is uploaded) — `image-top` (text below), `image-left` (text right), `image-right` (text left). Labels reworded to "Text below / Text right / Text left" so they match what the buttons actually do.
+   - **Section text** — full RTE (bold / italic / underline / colours / L-C-R align). Rendered at the position the layout dictates.
+   - **Link URL + Button label**
+
+The old `caption` field is now legacy-only — kept for backwards-compat reads but no longer surfaced in the composer.
+
+**Background colour picker for the whole mailer**
+- New `background_color` field on the campaign, surfaced via a `<input type="color">` swatch + hex text input + Reset button.
+- Backend sanitises to hex / rgb / named colour, defaults to `#f7f7f4` (cream) for legacy/unset campaigns.
+
+**Light-grey dividers in the email**
+- The previous yellow divider (`#dddd16`) between panels swapped for a subtle light-grey (`#e5e5e5`) 1px line.
+- Divider also inserted between the Intro row and the first section so the reader's eye lands cleanly.
+
+**Public folder share — PDF thumbnails**
+- Grid view now renders the first page of every PDF as a real thumbnail using `pdfjs-dist@4.7.76`.
+- Lazy-rendered via `IntersectionObserver` so a folder of 200+ PDFs doesn't choke the worker thread on page-load.
+- Backend gained a new `/api/files/folder-share/:token/inline/:rel_path` proxy endpoint because R2 doesn't return CORS headers — pdfjs needs to `fetch()` the bytes via XHR. The proxy streams the R2 object with `Access-Control-Allow-Origin: *` and `Content-Disposition: inline`.
+- `inline_url` on the public share endpoint is now a relative `/api/files/folder-share/…/inline/…` path; both `<img src>` (images) and pdfjs (PDFs) consume it without CORS issues.
+- Other file types fall back to the original coloured-icon tile.
+
+**Files touched**
+- `backend/portal_marketing_routes.py` — `_build_panel_html` rewritten (section header + 3-layout text positioning), `_build_html` extended (top-level intro row + bg colour + light-grey dividers), `_validate_panels` accepts `header` + `text_html`, all four endpoints (preview, test-send, create, draft) wired through.
+- `backend/files_routes.py` — new `files_folder_share_inline` proxy + `inline_url` routed through it for both images and PDFs.
+- `frontend/src/components/portal/marketing/MarketingComposeModal.jsx` — top-level Intro RTE, Background colour picker, removed caption, restructured section editor (header → image → layout → text → link), legacy draft hydration kept.
+- `frontend/src/components/portal/marketing/MarketingIntroEditor.jsx` — unchanged from morning (already has full RTE).
+- `frontend/src/pages/PublicFolderSharePage.jsx` — pdfjs import, `PdfThumb` component with IntersectionObserver-based lazy render.
+
+
+
 ## Admin Calendar yearly events + Marketing modal overhaul (Jun 04 2026)
 
 **Admin Calendar — yearly events populated on the grid**

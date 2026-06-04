@@ -1349,20 +1349,24 @@ def build_router(db, require_role) -> APIRouter:
             rel = it["key"][len(prefix):]
             safe_name = (it.get("name") or "file").replace(chr(34), "")
             disp_attach = f'attachment; filename="{safe_name}"'
-            disp_inline = f'inline; filename="{safe_name}"'
             signed_dl = presigned_get_url(it["key"], expires_in=3600,
                                           content_disposition=disp_attach)
-            # Inline URL is only useful for things browsers can render
-            # directly (images mainly). It's served with a `inline`
-            # Content-Disposition so the grid view can use it as an
-            # ``<img src>`` without the browser kicking off a download.
+            # Inline URL — for grid thumbnails (images via <img>, PDFs
+            # via pdfjs canvas). We can't link directly to R2 because
+            # the bucket doesn't return CORS headers, and pdfjs needs
+            # to fetch() the bytes via XHR. So inline_url points at our
+            # own backend proxy which sets ``Access-Control-Allow-
+            # Origin: *`` on the way out.
             ct = (it.get("content_type") or "").lower()
             ext = ((it.get("name") or "").rsplit(".", 1)[-1] or "").lower()
-            inlineable = ct.startswith("image/") or ext in {
-                "jpg", "jpeg", "png", "gif", "webp", "svg",
-            }
+            inlineable = (
+                ct.startswith("image/")
+                or ct == "application/pdf"
+                or ext in {"jpg", "jpeg", "png", "gif", "webp", "svg", "pdf"}
+            )
+            from urllib.parse import quote
             signed_inline = (
-                presigned_get_url(it["key"], expires_in=3600, content_disposition=disp_inline)
+                f"/api/files/folder-share/{token}/inline/{quote(rel, safe='')}"
                 if inlineable else None
             )
             files_out.append({
@@ -1384,6 +1388,65 @@ def build_router(db, require_role) -> APIRouter:
             "files": files_out,
             "zip_url": f"/api/files/folder-share/{token}/zip",
         }
+
+    @router.get("/files/folder-share/{token}/inline/{rel_path:path}")
+    async def files_folder_share_inline(token: str, rel_path: str):
+        """Stream a single file from a shared folder with CORS-friendly
+        headers. Used by the grid view for image <img src=…> tags and
+        by pdfjs for PDF thumbnail rendering (which can't fetch R2
+        directly because the bucket doesn't expose CORS).
+
+        We proxy the R2 GetObject response through FastAPI, set
+        ``Access-Control-Allow-Origin: *`` so any browser context can
+        pull it, and use ``inline`` Content-Disposition so the
+        browser renders rather than downloads. Stream end-to-end so
+        large files don't blow up memory.
+        """
+        from fastapi.responses import StreamingResponse
+        rec = await _resolve_folder_token(token)
+        prefix = rec["prefix"]
+        # `rel_path` is URL-decoded automatically by FastAPI's path
+        # converter, so we can rebuild the storage key directly.
+        full_key = prefix + rel_path
+        meta = await db.files_index.find_one(
+            {"key": full_key, "hidden": {"$ne": True}},
+            {"_id": 0, "name": 1, "content_type": 1, "size": 1},
+        )
+        if not meta:
+            raise HTTPException(404, detail="File not found in share")
+        ct = (meta.get("content_type") or "").lower()
+        ext = ((meta.get("name") or "").rsplit(".", 1)[-1] or "").lower()
+        inlineable = (
+            ct.startswith("image/")
+            or ct == "application/pdf"
+            or ext in {"jpg", "jpeg", "png", "gif", "webp", "svg", "pdf"}
+        )
+        if not inlineable:
+            raise HTTPException(415, detail="File type not eligible for inline preview")
+        try:
+            s3 = get_client()
+            obj = s3.get_object(Bucket=R2_BUCKET, Key=full_key)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Inline proxy failed for %s: %s", full_key, exc)
+            raise HTTPException(404, detail="File unavailable") from None
+        body = obj["Body"]
+        safe = (meta.get("name") or "file").replace('"', "")
+        headers = {
+            "Content-Disposition": f'inline; filename="{safe}"',
+            # Browsers won't honour the disposition without an explicit
+            # CORS allowance because pdfjs uses fetch() with
+            # `cors` mode. Allow any origin (the share token itself is
+            # the access control).
+            "Access-Control-Allow-Origin": "*",
+            "Cache-Control": "private, max-age=300",
+        }
+        if meta.get("size"):
+            headers["Content-Length"] = str(meta["size"])
+        return StreamingResponse(
+            body.iter_chunks(chunk_size=64 * 1024),
+            media_type=meta.get("content_type") or "application/octet-stream",
+            headers=headers,
+        )
 
     # -----------------------------------------------------------------
     # Streaming ZIP download — both for public folder shares and for

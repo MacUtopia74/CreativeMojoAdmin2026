@@ -21,24 +21,31 @@ const MAX_RECIPIENTS = 5;
 const MAX_PANELS = 8;
 
 const emptyPanel = () => ({
-  intro: "",
+  header: "",
+  text_html: "",
   image_url: "",
   image_key: "",
-  caption: "",
   layout: "image-top",  // "image-top" | "image-left" | "image-right"
   link_url: "",
   link_label: "Find out more",
 });
 
-// Used to pre-fill the first panel of a brand-new campaign with the
-// franchisee's personalised "Hi {{first_name}}," greeting so they can
-// just keep typing their copy underneath.
-const DEFAULT_FIRST_INTRO =
+// Used to pre-fill the top-level intro field of a brand-new campaign
+// with the franchisee's personalised "Hi {{first_name}}," greeting so
+// they can just keep typing their copy underneath.
+const DEFAULT_INTRO_HTML =
   '<div>Hi <strong>{{first_name}}</strong>,</div><div><br/></div>';
+
+const DEFAULT_BG = "#f7f7f4";
 
 export default function MarketingComposeModal({ open, access, draft, onClose, onSent, onDraftSaved }) {
   const [draftId, setDraftId] = useState(null);
   const [title, setTitle] = useState("");
+  // Top-level intro lives OUTSIDE the sections so it always sits above
+  // section 1. The franchisee personalises it once and every section
+  // can be reordered/added/removed without losing the greeting.
+  const [introHtml, setIntroHtml] = useState(DEFAULT_INTRO_HTML);
+  const [backgroundColor, setBackgroundColor] = useState(DEFAULT_BG);
   const [panels, setPanels] = useState([emptyPanel()]);
   const [includeBookings, setIncludeBookings] = useState(false);
   // Per-send footer-contact checkboxes. Persisted with drafts so the
@@ -69,11 +76,22 @@ export default function MarketingComposeModal({ open, access, draft, onClose, on
     if (draft) {
       setDraftId(draft.id);
       setTitle(draft.title || "");
+      // Drafts saved under the new shape carry intro_html separately;
+      // older drafts may have intro/caption baked into panel 0 — leave
+      // them as-is (per spec, no migration) but read whichever exists.
+      setIntroHtml(draft.intro_html || "");
+      setBackgroundColor(draft.background_color || DEFAULT_BG);
       const dp = Array.isArray(draft.panels) && draft.panels.length
-        ? draft.panels.map((p) => ({ ...emptyPanel(), ...p }))
+        ? draft.panels.map((p) => ({
+            ...emptyPanel(),
+            ...p,
+            // Migrate legacy `intro` into `text_html` on the fly so
+            // reopened older drafts edit correctly.
+            text_html: p.text_html || p.intro || "",
+          }))
         : [{
             ...emptyPanel(),
-            intro: draft.intro || "",
+            text_html: draft.intro || "",
             image_url: draft.image_url || "",
             image_key: draft.image_key || "",
             link_url: draft.link_url || "",
@@ -87,10 +105,9 @@ export default function MarketingComposeModal({ open, access, draft, onClose, on
     } else {
       setDraftId(null);
       setTitle("");
-      // First panel of a brand new campaign starts with a friendly
-      // greeting placeholder so the franchisee doesn't have to remember
-      // it. They can keep, edit, or delete it.
-      setPanels([{ ...emptyPanel(), intro: DEFAULT_FIRST_INTRO }]);
+      setIntroHtml(DEFAULT_INTRO_HTML);
+      setBackgroundColor(DEFAULT_BG);
+      setPanels([emptyPanel()]);
       setIncludeBookings(false);
       setFooterShowPhone(false);
       setFooterShowEmail(true);
@@ -113,6 +130,8 @@ export default function MarketingComposeModal({ open, access, draft, onClose, on
         const { data } = await api.post("/portal/marketing/preview-html", {
           title,
           panels,
+          intro_html: introHtml,
+          background_color: backgroundColor,
           bookings_url: includeBookings && access?.bookings_enabled
             ? `${window.location.origin}/portal/bookings` : "",
           sample_first_name: "Sandra",
@@ -124,7 +143,7 @@ export default function MarketingComposeModal({ open, access, draft, onClose, on
       } catch { /* swallow — preview is best-effort */ }
     }, 300);
     return () => clearTimeout(t);
-  }, [open, title, panels, includeBookings, access?.bookings_enabled,
+  }, [open, title, panels, introHtml, backgroundColor, includeBookings, access?.bookings_enabled,
       footerShowPhone, footerShowEmail, footerShowFacebook]);
 
   const filteredRecipients = useMemo(() => {
@@ -198,11 +217,13 @@ export default function MarketingComposeModal({ open, access, draft, onClose, on
   const baseBody = () => ({
     frontend_origin: typeof window !== "undefined" ? window.location.origin : "",
     title: title.trim(),
+    intro_html: introHtml,
+    background_color: backgroundColor,
     panels: panels.map((p) => ({
-      intro: p.intro || "",
+      header: p.header || "",
+      text_html: p.text_html || "",
       image_url: p.image_url || "",
       image_key: p.image_key || "",
-      caption: p.caption || "",
       layout: p.layout || "image-top",
       link_url: p.link_url || "",
       link_label: p.link_label || "Find out more",
@@ -243,8 +264,9 @@ export default function MarketingComposeModal({ open, access, draft, onClose, on
   // to do nothing (per-user spec); the X button + Done button are
   // the only exit paths.
   const handleClose = useCallback(async () => {
-    const worthSaving = (title || "").trim() || panels.some(
-      (p) => (p.intro || "").trim() || (p.image_url || "").trim() || (p.link_url || "").trim()
+    const worthSaving = (title || "").trim() || (introHtml || "").trim() || panels.some(
+      (p) => (p.header || "").trim() || (p.text_html || "").trim() ||
+             (p.image_url || "").trim() || (p.link_url || "").trim()
     );
     if (worthSaving && !sending) {
       try {
@@ -257,7 +279,7 @@ export default function MarketingComposeModal({ open, access, draft, onClose, on
     }
     onClose?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, panels, sending, draftId, includeBookings, footerShowPhone, footerShowEmail, footerShowFacebook]);
+  }, [title, introHtml, backgroundColor, panels, sending, draftId, includeBookings, footerShowPhone, footerShowEmail, footerShowFacebook]);
 
   const send = async () => {
     if (selectedRecipients.length === 0) {
@@ -291,8 +313,9 @@ export default function MarketingComposeModal({ open, access, draft, onClose, on
     } finally { setTesting(false); }
   };
 
-  const hasAnyContent = panels.some(
-    (p) => (p.intro || "").trim() || (p.image_url || "").trim() || (p.link_url || "").trim()
+  const hasAnyContent = (introHtml || "").trim() || panels.some(
+    (p) => (p.header || "").trim() || (p.text_html || "").trim() ||
+           (p.image_url || "").trim() || (p.link_url || "").trim()
   );
   const canSend = title.trim() && hasAnyContent && selectedRecipients.length > 0 && !sending;
   const canSaveDraft = (title.trim() || hasAnyContent) && !savingDraft;
@@ -337,6 +360,54 @@ export default function MarketingComposeModal({ open, access, draft, onClose, on
                   placeholder="e.g. New summer craft sessions"
                 />
               </Field>
+
+              {/* Top-level Intro — sits above every section in the
+                  email. Personalised once via {{first_name}}. */}
+              <Field label="Intro text" required>
+                <MarketingIntroEditor
+                  value={introHtml}
+                  onChange={setIntroHtml}
+                  placeholder="Hi {{first_name}}, hope you're well…"
+                  testid="marketing-top-intro"
+                />
+              </Field>
+
+              {/* Whole-mailer background colour — full picker + hex input. */}
+              <Field label="Background colour">
+                <div className="flex items-center gap-2" data-testid="marketing-bg-color">
+                  <input
+                    type="color"
+                    value={backgroundColor}
+                    onChange={(e) => setBackgroundColor(e.target.value)}
+                    className="h-10 w-12 rounded-lg border border-stone-300 cursor-pointer p-0"
+                    data-testid="marketing-bg-color-picker"
+                    title="Pick background colour"
+                  />
+                  <input
+                    type="text"
+                    value={backgroundColor}
+                    onChange={(e) => setBackgroundColor(e.target.value)}
+                    placeholder="#f7f7f4"
+                    className="flex-1 px-3 py-2.5 border border-stone-300 rounded-xl text-sm font-mono focus:outline-none focus:border-stone-950"
+                    data-testid="marketing-bg-color-input"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setBackgroundColor(DEFAULT_BG)}
+                    className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider border border-stone-300 hover:bg-stone-50 rounded-lg text-stone-700"
+                    data-testid="marketing-bg-color-reset"
+                    title="Reset to default cream"
+                  >Reset</button>
+                </div>
+              </Field>
+
+              {/* Separator — visual reinforcement that everything
+                  below lives inside repeatable sections. */}
+              <div className="flex items-center gap-3 pt-1">
+                <div className="flex-1 h-px bg-stone-200" />
+                <span className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">Sections</span>
+                <div className="flex-1 h-px bg-stone-200" />
+              </div>
 
               {/* Repeatable content sections */}
               <div className="space-y-4">
@@ -599,17 +670,21 @@ function PanelEditor({ idx, panel, canRemove, onChange, onRemove, onPickImage, o
         )}
       </div>
 
-      <Field label="Intro text" required={idx === 0}>
-        <MarketingIntroEditor
-          value={panel.intro}
-          onChange={(html) => onChange({ intro: html })}
-          placeholder={idx === 0 ? "Hi! We're running…" : "Add more details, an offer, a follow-up note…"}
-          testid={`marketing-intro-${idx}`}
+      {/* Section header — optional one-line heading rendered as a
+          big bold dark heading above the rest of the section. */}
+      <Field label="Section header (optional)">
+        <input
+          value={panel.header || ""}
+          onChange={(e) => onChange({ header: e.target.value })}
+          data-testid={`marketing-header-${idx}`}
+          placeholder="e.g. Summer drop-in sessions"
+          maxLength={200}
+          className="w-full px-3 py-2.5 border border-stone-300 rounded-xl text-sm focus:outline-none focus:border-stone-950"
         />
       </Field>
 
       {/* Image */}
-      <div className="mt-3">
+      <div className="mt-4">
         <label className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1.5 flex items-center justify-between">
           <span><ImageIcon className="w-3 h-3 inline mr-1" /> Image (optional)</span>
           {panel.image_url && (
@@ -645,52 +720,51 @@ function PanelEditor({ idx, panel, canRemove, onChange, onRemove, onPickImage, o
         )}
       </div>
 
-      {/* Image caption + layout selector — only meaningful when an
-          image has been uploaded for this panel, so hidden otherwise. */}
+      {/* Layout selector — only relevant when an image is present.
+          Drives where the section TEXT sits relative to the image. */}
       {panel.image_url && (
-        <>
-          <div className="mt-3">
-            <Field label="Image caption (optional)">
-              <input
-                value={panel.caption || ""}
-                onChange={(e) => onChange({ caption: e.target.value })}
-                data-testid={`marketing-caption-${idx}`}
-                placeholder="e.g. Our messy-play session last Tuesday"
-                className="w-full px-3 py-2.5 border border-stone-300 rounded-xl text-sm focus:outline-none focus:border-stone-950"
-                maxLength={400}
-              />
-            </Field>
+        <div className="mt-3">
+          <label className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1.5 block">
+            Where should the text go?
+          </label>
+          <div className="grid grid-cols-3 gap-2" data-testid={`marketing-layout-${idx}`}>
+            {[
+              { id: "image-top",   label: "Text below",  svg: <LayoutTopIcon /> },
+              { id: "image-left",  label: "Text right",  svg: <LayoutLeftIcon /> },
+              { id: "image-right", label: "Text left",   svg: <LayoutRightIcon /> },
+            ].map((opt) => {
+              const active = (panel.layout || "image-top") === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => onChange({ layout: opt.id })}
+                  data-testid={`marketing-layout-${idx}-${opt.id}`}
+                  className={`flex flex-col items-center justify-center gap-1 px-2 py-2 rounded-lg border text-[10px] font-bold uppercase tracking-wider transition ${active
+                    ? "border-stone-950 bg-stone-950 text-white"
+                    : "border-stone-300 hover:bg-stone-50 text-stone-700"}`}
+                >
+                  <span className={active ? "opacity-100" : "opacity-70"}>{opt.svg}</span>
+                  {opt.label}
+                </button>
+              );
+            })}
           </div>
-          <div className="mt-3">
-            <label className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1.5 block">
-              Layout
-            </label>
-            <div className="grid grid-cols-3 gap-2" data-testid={`marketing-layout-${idx}`}>
-              {[
-                { id: "image-top",   label: "Image top",   svg: <LayoutTopIcon /> },
-                { id: "image-left",  label: "Image left",  svg: <LayoutLeftIcon /> },
-                { id: "image-right", label: "Image right", svg: <LayoutRightIcon /> },
-              ].map((opt) => {
-                const active = (panel.layout || "image-top") === opt.id;
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => onChange({ layout: opt.id })}
-                    data-testid={`marketing-layout-${idx}-${opt.id}`}
-                    className={`flex flex-col items-center justify-center gap-1 px-2 py-2 rounded-lg border text-[10px] font-bold uppercase tracking-wider transition ${active
-                      ? "border-stone-950 bg-stone-950 text-white"
-                      : "border-stone-300 hover:bg-stone-50 text-stone-700"}`}
-                  >
-                    <span className={active ? "opacity-100" : "opacity-70"}>{opt.svg}</span>
-                    {opt.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </>
+        </div>
       )}
+
+      {/* Section body text — full RTE. Sits L/R/below the image
+          according to the layout selector. */}
+      <div className="mt-3">
+        <Field label="Section text">
+          <MarketingIntroEditor
+            value={panel.text_html || ""}
+            onChange={(html) => onChange({ text_html: html })}
+            placeholder="Tell people what this section is about…"
+            testid={`marketing-text-${idx}`}
+          />
+        </Field>
+      </div>
 
       {/* Link */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">

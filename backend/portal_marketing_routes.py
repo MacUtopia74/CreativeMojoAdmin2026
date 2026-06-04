@@ -184,46 +184,59 @@ def _sanitise_intro_html(raw: str) -> str:
 
 
 def _build_panel_html(panel: dict, first_name: str = "{{first_name}}") -> str:
-    """Render a single content panel — intro text + image (with
-    optional caption) + link button. Empty subsections are skipped.
-    Each panel is later separated by the brand-yellow divider.
+    """Render a single content section.
 
-    Layout options (``panel["layout"]``):
+    Each section is now structured as:
+      • Optional header (bold dark heading on its own row)
+      • Image (optional, JPG/PNG/WebP)
+      • Body text (rich-text intro — bold / italic / underline / colour
+        / alignment) — substitutes ``{{first_name}}`` per recipient
+      • Link button (optional)
+
+    The ``layout`` option drives where the text sits in relation to
+    the image:
       * ``"image-top"`` (default) — image above text
-      * ``"image-left"``           — image left, intro+caption right
-      * ``"image-right"``          — image right, intro+caption left
+      * ``"image-left"``           — image left, text right
+      * ``"image-right"``          — image right, text left
 
-    Optional ``panel["caption"]`` renders directly below the image as
-    a small italic line (works in every layout).
+    Older campaigns stored the body text under ``intro`` and an
+    optional caption under ``caption``. We keep reading both for
+    backwards compatibility (caption is merged into the body text)
+    but the new composer always writes to ``text_html``.
     """
-    intro_html = _sanitise_intro_html((panel.get("intro") or ""))
-    # Substitute the recipient first-name placeholder inside the intro
-    # so franchisees can put "Hi {{first_name}}," wherever they like.
-    if first_name and intro_html:
+    # Body text — accept new `text_html`, fall back to legacy `intro`,
+    # and append legacy caption on its own line if present.
+    raw_body = (panel.get("text_html") or panel.get("intro") or "").strip()
+    legacy_caption = (panel.get("caption") or "").strip()
+    if legacy_caption:
+        raw_body = (raw_body + ("<br/>" if raw_body else "")
+                    + f'<span style="font-style:italic;color:#525252;">{legacy_caption}</span>')
+    text_html = _sanitise_intro_html(raw_body)
+    if first_name and text_html:
         from html import escape as _esc
-        intro_html = intro_html.replace("{{first_name}}", _esc(first_name))
+        text_html = text_html.replace("{{first_name}}", _esc(first_name))
+
+    header_raw = (panel.get("header") or "").strip()
     image_url = (panel.get("image_url") or "").strip()
-    caption_raw = (panel.get("caption") or "").strip()
     link_url = (panel.get("link_url") or "").strip()
     link_label = (panel.get("link_label") or "Find out more").strip() or "Find out more"
     layout = (panel.get("layout") or "image-top").lower()
     if layout not in {"image-top", "image-left", "image-right"}:
         layout = "image-top"
 
-    # Pre-render the constituent fragments so we can shuffle them
-    # based on the chosen layout.
-    intro_block = (
-        f'<div style="font-size:15px;line-height:1.6;color:#1a1a1a;">{intro_html}</div>'
-        if intro_html else ""
-    )
-    if caption_raw:
-        from html import escape as _esc
-        caption_html = (
-            f'<div style="font-size:13px;line-height:1.5;color:#525252;'
-            f'font-style:italic;margin-top:6px;">{_esc(caption_raw)}</div>'
+    # Pre-render fragments
+    from html import escape as _esc
+    header_block = ""
+    if header_raw:
+        header_block = (
+            '<tr><td style="padding:18px 30px 6px 30px;'
+            'font-family:Helvetica,Arial,sans-serif;font-size:20px;font-weight:800;'
+            f'color:#1a1a1a;line-height:1.25;">{_esc(header_raw)}</td></tr>'
         )
-    else:
-        caption_html = ""
+    text_block = (
+        f'<div style="font-size:15px;line-height:1.6;color:#1a1a1a;">{text_html}</div>'
+        if text_html else ""
+    )
     img_block = ""
     if image_url:
         img_block = (
@@ -238,23 +251,23 @@ def _build_panel_html(panel: dict, first_name: str = "{{first_name}}") -> str:
             f'font-size:13px;letter-spacing:0.5px;margin:4px;">{link_label.upper()} &rsaquo;</a>'
         )
 
-    if not (intro_block or img_block or link_block):
+    if not (header_block or text_block or img_block or link_block):
         return ""
 
-    # Stacked layout — image on top (default, identical to the
-    # pre-templates behaviour). Each block in its own <tr> for solid
-    # email-client rendering.
+    # Stacked layout — image on top of text. Also used when no image
+    # is present (side-by-side has nothing to lay out against).
     if layout == "image-top" or not image_url:
         rows: list[str] = []
-        if intro_block:
-            rows.append(
-                f'<tr><td style="padding:14px 30px 8px;">{intro_block}</td></tr>'
-            )
+        if header_block:
+            rows.append(header_block)
         if img_block:
             rows.append(
-                '<tr><td align="center" style="padding:6px 30px 6px 30px;">'
-                f'{img_block}{caption_html}'
-                '</td></tr>'
+                '<tr><td align="center" style="padding:8px 30px 6px 30px;">'
+                f'{img_block}</td></tr>'
+            )
+        if text_block:
+            rows.append(
+                f'<tr><td style="padding:10px 30px 6px 30px;">{text_block}</td></tr>'
             )
         if link_block:
             rows.append(
@@ -263,36 +276,35 @@ def _build_panel_html(panel: dict, first_name: str = "{{first_name}}") -> str:
             )
         return "".join(rows)
 
-    # Side-by-side layouts use an inner nested table because email
-    # clients (Outlook especially) hate flex / grid. Width split is
-    # 45/55 so the text side always has room to breathe.
+    # Side-by-side layouts — nested <table> for Outlook compatibility.
     image_col = (
-        f'<td valign="top" align="center" width="45%" '
-        f'style="padding:0 12px 0 0;width:45%;">{img_block}{caption_html}</td>'
+        '<td valign="top" align="center" width="45%" '
+        f'style="padding:0 12px 0 0;width:45%;">{img_block}</td>'
     )
+    # Text column carries the link inline so it visually belongs to
+    # the panel even when the image hangs to the side.
     text_col_inner = "".join([
-        intro_block,
-        # Link inside text column when present — keeps it visually
-        # bound to its panel even when the image hangs to the side.
+        text_block,
         (f'<div style="margin-top:10px;">{link_block}</div>' if link_block else ""),
     ])
     text_col = (
-        f'<td valign="top" width="55%" '
-        f'style="padding:0 0 0 12px;width:55%;font-size:15px;line-height:1.6;color:#1a1a1a;">'
+        '<td valign="top" width="55%" '
+        'style="padding:0 0 0 12px;width:55%;font-size:15px;line-height:1.6;color:#1a1a1a;">'
         f'{text_col_inner}</td>'
     )
     if layout == "image-left":
         cols = image_col + text_col
     else:  # image-right
         cols = text_col + image_col
-    return (
-        '<tr><td style="padding:14px 30px 14px 30px;">'
+    body_row = (
+        '<tr><td style="padding:10px 30px 14px 30px;">'
         '<table cellpadding="0" cellspacing="0" border="0" width="100%" '
         'style="width:100%;border-collapse:collapse;">'
         f'<tr>{cols}</tr>'
         '</table>'
         '</td></tr>'
     )
+    return f"{header_block}{body_row}"
 
 
 def _build_html(campaign: dict, first_name: str = "{{first_name}}") -> str:
@@ -325,19 +337,47 @@ def _build_html(campaign: dict, first_name: str = "{{first_name}}") -> str:
     footer_email = (campaign.get("footer_email") or "").strip()
     footer_facebook = (campaign.get("footer_facebook") or "").strip()
     franchisee_address = (campaign.get("franchisee_address") or "").strip()
+    # Email page background colour — picker on the composer. Defaults
+    # to the existing soft-cream tone so existing/legacy drafts look
+    # identical. Sanitised to hex/rgb/named — anything funky falls
+    # back to default to keep dodgy CSS out of recipients' inboxes.
+    bg_choice = (campaign.get("background_color") or "").strip()
+    import re as _re
+    if not _re.match(r"^(#[0-9a-fA-F]{3,8}|rgb\([^)]{1,40}\)|[a-zA-Z]{3,20})$", bg_choice or ""):
+        bg_choice = "#f7f7f4"
+    # Light-grey divider between Intro and each section + between
+    # sections.
     divider = (
-        '<tr><td style="padding:0 30px 18px 30px;">'
-        '<div style="height:0;border-top:1px solid #dddd16;margin:0;"></div>'
+        '<tr><td style="padding:6px 30px 6px 30px;">'
+        '<div style="height:0;border-top:1px solid #e5e5e5;margin:0;"></div>'
         '</td></tr>'
     )
+
+    # ---- Top-level intro (above every section). Rendered as its own
+    # row so it always sits above the first section regardless of how
+    # the franchisee structures the sections themselves.
+    intro_raw = (campaign.get("intro_html") or campaign.get("top_intro") or "").strip()
+    intro_clean = _sanitise_intro_html(intro_raw)
+    if first_name and intro_clean:
+        from html import escape as _esc
+        intro_clean = intro_clean.replace("{{first_name}}", _esc(first_name))
+    intro_row = ""
+    if intro_clean:
+        intro_row = (
+            '<tr><td style="padding:18px 30px 10px 30px;'
+            'font-size:15px;line-height:1.6;color:#1a1a1a;">'
+            f'{intro_clean}'
+            '</td></tr>'
+        )
 
     panel_html: list[str] = []
     for i, p in enumerate(panels):
         rendered = _build_panel_html(p or {}, first_name=first_name)
         if not rendered:
             continue
-        if panel_html:
-            # Yellow divider between panels (mirrors HQ Updates)
+        # Divider before EVERY section — including the first one when
+        # there's a top-level intro above it.
+        if panel_html or intro_row:
             panel_html.append(divider)
         panel_html.append(rendered)
     body_panels = "".join(panel_html)
@@ -411,8 +451,8 @@ def _build_html(campaign: dict, first_name: str = "{{first_name}}") -> str:
     )
 
     return f"""<!doctype html>
-<html><body style="margin:0;background:#f7f7f4;font-family:Helvetica,Arial,sans-serif;">
-<table cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="#f7f7f4" style="background:#f7f7f4;">
+<html><body style="margin:0;background:{bg_choice};font-family:Helvetica,Arial,sans-serif;">
+<table cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="{bg_choice}" style="background:{bg_choice};">
   <tr><td align="center" style="padding:30px 16px;">
     <table cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;background:#ffffff;border:1px solid #ececec;">
       <tr><td align="center" style="padding:30px 30px 14px;">
@@ -424,6 +464,7 @@ def _build_html(campaign: dict, first_name: str = "{{first_name}}") -> str:
           {campaign.get('title','')}
         </div>
       </td></tr>
+      {intro_row}
       {body_panels}
       {bookings_block}
       {contact_block}
@@ -459,6 +500,11 @@ def _validate_panels(body: dict, require_content: bool = True) -> tuple[list[dic
             if layout not in {"image-top", "image-left", "image-right"}:
                 layout = "image-top"
             cleaned = {
+                # New shape: section header + rich text body
+                "header":     (p.get("header") or "").strip()[:200],
+                "text_html":  (p.get("text_html") or p.get("intro") or "").strip(),
+                # ``intro`` retained for backwards-compat reads of
+                # older drafts; the composer no longer writes to it.
                 "intro":      (p.get("intro") or "").strip(),
                 "image_url":  (p.get("image_url") or "").strip(),
                 "image_key":  (p.get("image_key") or "").strip(),
@@ -467,14 +513,16 @@ def _validate_panels(body: dict, require_content: bool = True) -> tuple[list[dic
                 "link_url":   (p.get("link_url") or "").strip(),
                 "link_label": (p.get("link_label") or "").strip() or "Find out more",
             }
-            # Skip totally-empty panels — the user probably added one
+            # Skip totally-empty sections — the user probably added one
             # and forgot to fill it.
-            if (cleaned["intro"] or cleaned["image_url"] or cleaned["link_url"]
-                    or cleaned["caption"]):
+            if (cleaned["header"] or cleaned["text_html"] or cleaned["image_url"]
+                    or cleaned["link_url"] or cleaned["caption"]):
                 panels.append(cleaned)
     else:
         # Legacy shape → one-element array.
         legacy = {
+            "header":     "",
+            "text_html":  (body.get("intro") or "").strip(),
             "intro":      (body.get("intro") or "").strip(),
             "image_url":  (body.get("image_url") or "").strip(),
             "image_key":  (body.get("image_key") or "").strip(),
@@ -483,7 +531,7 @@ def _validate_panels(body: dict, require_content: bool = True) -> tuple[list[dic
             "link_url":   (body.get("link_url") or "").strip(),
             "link_label": (body.get("link_label") or "").strip() or "Find out more",
         }
-        if legacy["intro"] or legacy["image_url"] or legacy["link_url"]:
+        if legacy["text_html"] or legacy["image_url"] or legacy["link_url"]:
             panels.append(legacy)
 
     if require_content and not panels:
@@ -737,6 +785,9 @@ def attach(api, db, require_role):
         campaign = {
             "title": (body.get("title") or "").strip() or "(no subject yet)",
             "panels": body.get("panels"),
+            # New top-level intro + background colour.
+            "intro_html": body.get("intro_html") or "",
+            "background_color": body.get("background_color") or "",
             # Backwards-compat fallback for callers still on the
             # single-panel shape (test-send, older drafts).
             "intro": body.get("intro") or "",
@@ -769,6 +820,8 @@ def attach(api, db, require_role):
         campaign = {
             "title": title,
             "panels": body.get("panels"),
+            "intro_html": body.get("intro_html") or "",
+            "background_color": body.get("background_color") or "",
             "intro": body.get("intro") or "",
             "image_url": body.get("image_url") or "",
             "link_url": body.get("link_url") or "",
@@ -890,6 +943,10 @@ def attach(api, db, require_role):
             "status": "sent",
             "title": title,
             "panels": panels_in,
+            # New top-level intro + bg colour, persisted with the
+            # campaign so reports and re-sends render identically.
+            "intro_html": (body.get("intro_html") or "").strip(),
+            "background_color": (body.get("background_color") or "").strip(),
             "intro": first_panel.get("intro") or "",
             "image_url": first_panel.get("image_url") or "",
             "image_key": first_panel.get("image_key") or "",
@@ -1015,6 +1072,9 @@ def attach(api, db, require_role):
             "status": "draft",
             "title": title,
             "panels": panels_in or [],
+            # New top-level intro + bg colour, kept across save→reload.
+            "intro_html": (body.get("intro_html") or "").strip(),
+            "background_color": (body.get("background_color") or "").strip(),
             "intro": first_panel.get("intro") or "",
             "image_url": first_panel.get("image_url") or "",
             "image_key": first_panel.get("image_key") or "",

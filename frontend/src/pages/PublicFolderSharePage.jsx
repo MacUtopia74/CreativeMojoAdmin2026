@@ -6,16 +6,30 @@
 // tiles). The toggle persists per browser via localStorage so the
 // recipient gets their preference back next time. List is the default
 // since it accommodates long filenames + paths better.
-import { useEffect, useState } from "react";
+//
+// In grid view we render real thumbnails for both images (via the
+// presigned inline URL) and PDFs (via pdfjs-dist rendering the first
+// page into a canvas). Other file types fall back to a coloured icon.
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { API_BASE } from "@/lib/api";
 import axios from "axios";
+import * as pdfjsLib from "pdfjs-dist";
 import {
   Download, FileText, Image as ImageIcon, FileAudio, FileVideo,
   FileArchive, File as FileIcon, AlertCircle, Loader2, Package,
   LayoutGrid, List,
 } from "lucide-react";
 import Logo from "@/components/Logo";
+
+// Point pdfjs at the worker bundled inside the same package. The
+// official cdnjs URL guarantees the version matches whichever
+// pdfjs-dist is installed in package.json (4.7.76 at time of
+// writing), so no version-drift risk vs. a hardcoded URL.
+if (typeof window !== "undefined" && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+}
 
 function fmtBytes(b) {
   if (b == null) return "—";
@@ -42,6 +56,112 @@ function isImage(name, ct) {
   const ext = (name?.split(".").pop() || "").toLowerCase();
   return (ct || "").toLowerCase().startsWith("image/")
     || ["jpg", "jpeg", "png", "gif", "webp", "svg"].includes(ext);
+}
+
+// Detect whether a file is a PDF — we render its first page as a
+// thumbnail via pdfjs-dist so the recipient gets a real preview
+// instead of a generic document icon.
+function isPdf(name, ct) {
+  const ext = (name?.split(".").pop() || "").toLowerCase();
+  return (ct || "").toLowerCase() === "application/pdf" || ext === "pdf";
+}
+
+// Renders the first page of a PDF into a <canvas>. The presigned
+// `inline_url` is fetched as an ArrayBuffer so pdfjs can parse it
+// without re-triggering a download. Each tile is rendered lazily on
+// mount; if anything fails (CORS, broken file, oversized doc) we
+// degrade gracefully to a coloured PDF icon.
+function PdfThumb({ url, name }) {
+  const wrapRef = useRef(null);
+  const canvasRef = useRef(null);
+  const [failed, setFailed] = useState(false);
+  const [loading, setLoading] = useState(true);
+  // Lazy-render: most folder shares have dozens of PDFs and rendering
+  // all of them in parallel chokes the single pdfjs worker thread.
+  // Only start parsing when the tile actually enters the viewport.
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") {
+      setVisible(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) {
+            setVisible(true);
+            io.disconnect();
+            break;
+          }
+        }
+      },
+      { rootMargin: "200px" },  // start a little before the tile reaches the viewport
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!visible || !url) return;
+    let cancelled = false;
+    let loadingTask = null;
+    (async () => {
+      try {
+        const resp = await fetch(url, { credentials: "omit" });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const buf = await resp.arrayBuffer();
+        if (cancelled) return;
+        loadingTask = pdfjsLib.getDocument({ data: buf });
+        const pdf = await loadingTask.promise;
+        if (cancelled) return;
+        const page = await pdf.getPage(1);
+        const viewport = page.getViewport({ scale: 1 });
+        const targetWidth = 360;
+        const scale = targetWidth / viewport.width;
+        const scaled = page.getViewport({ scale });
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        canvas.width = scaled.width;
+        canvas.height = scaled.height;
+        const ctx = canvas.getContext("2d");
+        await page.render({ canvasContext: ctx, viewport: scaled }).promise;
+      } catch {
+        if (!cancelled) setFailed(true);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; try { loadingTask?.destroy?.(); } catch { /* noop */ } };
+  }, [visible, url]);
+
+  if (failed) {
+    return (
+      <div ref={wrapRef} className="flex flex-col items-center justify-center text-stone-400 gap-1.5" title={name}>
+        <FileText className="w-10 h-10" />
+        <span className="text-[9px] font-bold uppercase tracking-wider">PDF</span>
+      </div>
+    );
+  }
+  return (
+    <div ref={wrapRef} className="w-full h-full flex items-center justify-center">
+      {(loading || !visible) && (
+        <div className="absolute inset-0 flex items-center justify-center text-stone-300">
+          {visible ? (
+            <Loader2 className="w-5 h-5 animate-spin" />
+          ) : (
+            <FileText className="w-10 h-10 text-stone-300" />
+          )}
+        </div>
+      )}
+      <canvas
+        ref={canvasRef}
+        className="max-w-full max-h-full w-auto h-auto object-contain bg-white shadow-sm"
+        data-testid="pdf-thumb-canvas"
+      />
+    </div>
+  );
 }
 
 export default function PublicFolderSharePage() {
@@ -155,14 +275,18 @@ export default function PublicFolderSharePage() {
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                 {data.files.map((f) => {
                   const Icon = pickIcon(f.name, f.content_type);
+                  // Both endpoints live under the same React-served
+                  // domain, so a leading-slash inline_url works fine
+                  // out of the box (no need to prefix with API_BASE).
                   const showThumb = isImage(f.name, f.content_type) && f.inline_url;
+                  const showPdf = !showThumb && isPdf(f.name, f.content_type) && f.inline_url;
                   return (
                     <div
                       key={f.rel_path}
                       className="bg-white border border-stone-200 rounded-2xl overflow-hidden flex flex-col"
                       data-testid={`public-file-grid-${f.rel_path}`}
                     >
-                      <div className="aspect-square bg-stone-50 flex items-center justify-center relative">
+                      <div className="aspect-square bg-stone-50 flex items-center justify-center relative overflow-hidden">
                         {showThumb ? (
                           <img
                             src={f.inline_url}
@@ -171,6 +295,8 @@ export default function PublicFolderSharePage() {
                             className="w-full h-full object-cover"
                             onError={(e) => { e.currentTarget.style.display = "none"; }}
                           />
+                        ) : showPdf ? (
+                          <PdfThumb url={f.inline_url} name={f.name} />
                         ) : (
                           <Icon className="w-10 h-10 text-stone-400" />
                         )}
