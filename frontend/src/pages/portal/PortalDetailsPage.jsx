@@ -10,7 +10,7 @@ import { useOutletContext } from "react-router-dom";
 import {
   Mail, Phone, Globe, MapPin, Calendar, Clock, Smartphone,
   User as UserIcon, FileText, FolderOpen,
-  ShieldCheck, ShieldAlert, Home,
+  ShieldCheck, ShieldAlert, Home, Facebook,
 } from "lucide-react";
 import FranchiseeFilesPanel from "@/components/files/FranchiseeFilesPanel";
 import PortalPageHeading from "@/components/portal/PortalPageHeading";
@@ -127,6 +127,12 @@ export default function PortalDetailsPage() {
           <Field icon={Phone} label="Phone" value={profile.phone} href={`tel:${profile.phone}`} />
           <Field icon={Smartphone} label="Mobile" value={profile.mobile} href={`tel:${profile.mobile}`} />
           <Field icon={Globe} label="Website" value={profile.website} href={profile.website} />
+          <Field
+            icon={Facebook}
+            label="Facebook page"
+            value={profile.facebook_page || profile.facebook_url}
+            href={profile.facebook_page || profile.facebook_url}
+          />
           <Field icon={Calendar} label="Started with us" value={profile.start_date ? new Date(profile.start_date).toLocaleDateString("en-GB") : null} />
           {profile.end_date && <Field icon={Clock} label="End date" value={new Date(profile.end_date).toLocaleDateString("en-GB")} />}
           {profile.current_contract && (
@@ -160,7 +166,7 @@ export default function PortalDetailsPage() {
       <section className="bg-white border border-stone-200 rounded-2xl px-4 sm:px-6 py-5 sm:py-6" data-testid="portal-my-documents">
         <div className="flex items-center gap-3 mb-5 pb-4 border-b border-stone-200">
           <FolderOpen className="w-6 h-6 text-stone-700 shrink-0" />
-          <h1 className="font-display text-2xl sm:text-3xl font-black text-stone-950 tracking-tight">My franchise documents</h1>
+          <h1 className="font-display text-2xl sm:text-3xl font-black text-stone-950 tracking-tight">My Own Franchise Documents</h1>
         </div>
         <FranchiseeFilesPanel franchisee={profile} lockedTab="own" />
       </section>

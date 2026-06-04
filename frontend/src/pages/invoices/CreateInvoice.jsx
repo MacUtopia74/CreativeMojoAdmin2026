@@ -30,6 +30,16 @@ function LineItemRow({ item, index, onUpdate, onRemove, canRemove }) {
           </Button>
         )}
       </div>
+      <div className="mt-2">
+        <Label>Date of class / event (optional)</Label>
+        <Input
+          type="date"
+          className="mt-1 font-mono"
+          value={item.class_date || ""}
+          onChange={(e) => onUpdate(index, "class_date", e.target.value)}
+          data-testid={`line-item-class-date-${index}`}
+        />
+      </div>
       <div className="grid grid-cols-3 gap-2 mt-2">
         <div>
           <Label>Qty</Label>

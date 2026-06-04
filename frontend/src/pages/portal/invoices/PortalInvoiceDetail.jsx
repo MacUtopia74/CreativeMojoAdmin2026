@@ -13,9 +13,25 @@ import StatusBadge from "@/components/invoices/StatusBadge";
 
 
 function InvoiceLineItem({ item, index }) {
+  // class_date is set by the create / edit form for any "this class on
+  // this day" line items. Render it inline below the description so
+  // the customer can see exactly which session(s) they're being billed
+  // for, without changing the rest of the invoice layout.
+  const classDate = item.class_date
+    ? new Date(`${item.class_date}T12:00:00`).toLocaleDateString("en-GB", {
+      day: "2-digit", month: "short", year: "numeric",
+    })
+    : null;
   return (
     <tr className="border-b border-slate-100">
-      <td className="py-4 text-slate-900">{item.description}</td>
+      <td className="py-4 text-slate-900">
+        <div>{item.description}</div>
+        {classDate && (
+          <div className="text-xs text-slate-500 mt-0.5">
+            Date of class/event: <span className="font-mono">{classDate}</span>
+          </div>
+        )}
+      </td>
       <td className="py-4 text-right font-mono text-slate-700">{item.quantity}</td>
       <td className="py-4 text-right font-mono text-slate-700">£{Number(item.unit_price).toFixed(2)}</td>
       <td className="py-4 text-right font-mono font-medium text-slate-900">£{Number(item.amount).toFixed(2)}</td>
@@ -243,7 +259,7 @@ function InvoiceDetail() {
           <Button variant="outline" onClick={viewPDF} data-testid="view-pdf-btn">
             <Download className="w-4 h-4 mr-2" />View PDF
           </Button>
-          <Link to={`/invoices/${id}/edit`}>
+          <Link to={`/portal/invoices/${id}/edit`}>
             <Button variant="outline" data-testid="edit-invoice-btn">
               <Edit className="w-4 h-4 mr-2" />Edit
             </Button>
@@ -292,93 +308,12 @@ function InvoiceDetail() {
       </div>
 
 
-      {/* Linked Payment card — sits between the action row and the invoice
-          preview so the user immediately sees whether this invoice has
-          been matched to one or more banking transactions. Supports
-          partial payments via a running total. */}
-      {(() => {
-        const links = invoice.linked_transactions || [];
-        // Back-compat: if a legacy single-field link exists but no
-        // linked_transactions list, synthesise a row so old data renders.
-        const displayLinks = links.length > 0
-          ? links
-          : (invoice.linked_transaction_id ? [{
-              transaction_id: invoice.linked_transaction_id,
-              amount: invoice.linked_transaction_amount,
-              timestamp: invoice.linked_transaction_timestamp,
-              description: invoice.linked_transaction_description,
-            }] : []);
-        const paidTotal = displayLinks.reduce((a, x) => a + Number(x.amount || 0), 0);
-        const remaining = Math.max(0, Number(invoice.total) - paidTotal);
-        const progressPct = Math.min(100, (paidTotal / Number(invoice.total || 1)) * 100);
-        const fullyPaid = remaining < 0.005 && displayLinks.length > 0;
-        return (
-          <Card className={`max-w-4xl mx-auto p-4 mb-4 ${fullyPaid ? "border-emerald-200 bg-emerald-50/40" : displayLinks.length > 0 ? "border-amber-200 bg-amber-50/40" : "border-stone-200"}`} data-testid="invoice-payment-link">
-            <div className="flex items-start gap-3 flex-wrap">
-              <Banknote className={`w-5 h-5 shrink-0 mt-0.5 ${fullyPaid ? "text-emerald-700" : displayLinks.length > 0 ? "text-amber-700" : "text-stone-500"}`} />
-              <div className="flex-1 min-w-0">
-                {displayLinks.length === 0 ? (
-                  <>
-                    <div className="font-bold text-stone-800">No payment linked</div>
-                    <div className="text-xs text-stone-600">Match this invoice to one or more banking receipts to mark it Paid.</div>
-                  </>
-                ) : (
-                  <>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`font-bold ${fullyPaid ? "text-emerald-900" : "text-amber-900"}`}>
-                        {fullyPaid ? "Fully paid" : "Partially paid"}
-                      </span>
-                      <span className="text-xs tabular-nums text-stone-700">
-                        £{paidTotal.toFixed(2)} of £{Number(invoice.total).toFixed(2)}
-                        {!fullyPaid && <> · <strong>£{remaining.toFixed(2)}</strong> outstanding</>}
-                      </span>
-                    </div>
-                    {/* Progress bar */}
-                    <div className="mt-2 h-1.5 w-full bg-stone-100 rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full ${fullyPaid ? "bg-emerald-500" : "bg-amber-500"}`} style={{ width: `${progressPct}%` }} />
-                    </div>
-                    {/* List of linked transactions */}
-                    <ul className="mt-3 divide-y divide-stone-200 text-xs">
-                      {displayLinks.map((tx) => (
-                        <li key={tx.transaction_id} className="flex items-center gap-2 py-1.5" data-testid={`linked-tx-${tx.transaction_id}`}>
-                          <span className="tabular-nums text-stone-600 w-20 shrink-0">
-                            {tx.timestamp ? new Date(tx.timestamp).toLocaleDateString("en-GB") : "—"}
-                          </span>
-                          <span className="tabular-nums font-bold w-16 shrink-0">£{Number(tx.amount || 0).toFixed(2)}</span>
-                          <span className="truncate text-stone-700 flex-1" title={tx.description}>{tx.description}</span>
-                          <button
-                            onClick={() => unlinkSinglePayment(tx.transaction_id)}
-                            className="text-stone-400 hover:text-red-600 p-1"
-                            title="Unlink this payment"
-                            data-testid={`unlink-tx-${tx.transaction_id}`}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                )}
-              </div>
-              <div className="flex flex-col gap-1.5 shrink-0">
-                {!fullyPaid && (
-                  <Button size="sm" onClick={openLinker} data-testid="link-payment-btn">
-                    <Link2 className="w-3.5 h-3.5 mr-1.5" />
-                    {displayLinks.length > 0 ? "Link Another" : "Link a Payment"}
-                  </Button>
-                )}
-                {displayLinks.length > 1 && (
-                  <Button size="sm" variant="outline" onClick={unlinkAllPayments} data-testid="unlink-all-btn">
-                    <Trash2 className="w-3.5 h-3.5 mr-1.5" /> Unlink All
-                  </Button>
-                )}
-              </div>
-            </div>
-          </Card>
-        );
-      })()}
+      {/* Payment-linker panel was removed from the franchisee portal —
+          CSV reconciliation is admin-only now. Franchisees mark
+          invoices as paid via the "Update Status" dropdown above. */}
 
-      {/* Payment-picker modal */}
+      {/* Payment-picker modal (legacy — kept hidden via linkOpen state
+          which is no longer ever set to true on the portal). */}
       <AlertDialog open={linkOpen} onOpenChange={setLinkOpen}>
         <AlertDialogContent className="max-w-2xl">
           <AlertDialogHeader>
@@ -431,8 +366,8 @@ function InvoiceDetail() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <Card className="bg-white shadow-xl max-w-4xl mx-auto overflow-hidden" data-testid="invoice-content" style={{ aspectRatio: '210/297', minHeight: '800px' }}>
-        <div className="h-full flex flex-col p-12 md:p-16">
+      <Card className="bg-white shadow-xl max-w-4xl mx-auto sm:overflow-hidden min-h-[800px] sm:aspect-[210/297]" data-testid="invoice-content">
+        <div className="h-full flex flex-col p-6 sm:p-12 md:p-16">
           {/* Brand logo top-left + franchise name top-right.
               The logo lives in /public so it's served same-origin and
               doesn't need auth (unlike the PDF bytes). */}
@@ -455,7 +390,7 @@ function InvoiceDetail() {
           <div className="flex-1">
             <div className="flex justify-between items-start mb-6">
               <div>
-                <h2 className="text-3xl font-bold tracking-tight text-slate-900">INVOICE</h2>
+                <h2 className="text-3xl font-bold tracking-tight text-slate-900 font-['Manrope']">INVOICE</h2>
                 <p className="font-mono text-xl mt-1 text-slate-700">{invoice.invoice_number}</p>
               </div>
               <StatusBadge status={invoice.status} className="text-sm px-4 py-1" />

@@ -486,7 +486,16 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
                 totalHomes={providersTotalHomes}
                 totalAllHomes={homes.length}
                 activeProvider={providerFilter}
-                onSelectProvider={setProviderFilter}
+                onSelectProvider={(next) => {
+                  // "Only Mine" silently filters out every non-client
+                  // marker — so as soon as a care group is selected we
+                  // need to clear it, otherwise the user picks (say)
+                  // Barchester and sees zero pins because none of those
+                  // homes happen to be in their client list. Selecting
+                  // any care group / "all" pill clears the toggle.
+                  setMyClientsOnly(false);
+                  setProviderFilter(next);
+                }}
               />
             </div>
           )}

@@ -29,7 +29,7 @@ export default function PortalFilesPage() {
       <PortalPageHeading
         eyebrow="Shared brand library"
         icon={FolderOpen}
-        title="Files for all Franchisees"
+        title="File Vault"
         subtitle="Brand assets, training material, and project files curated by HQ."
       />
       <RecentFilesStrip

@@ -112,7 +112,7 @@ export default function RecentFilesStrip({ onOpenFile, onDownload, onOpenFolder,
           </div>
           <div className="flex items-center gap-2">
             {loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-stone-700" />}
-            <span className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md flex items-center gap-1 bg-stone-950 text-white">
+            <span className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md flex items-center gap-1 bg-stone-950 text-white whitespace-nowrap">
               {open
                 ? <><ChevronUp className="w-3 h-3" /> Hide</>
                 : <><ChevronDown className="w-3 h-3" /> Show recent files</>}

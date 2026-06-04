@@ -49,6 +49,10 @@ class LineItem(BaseModel):
     quantity: float = 1
     unit_price: float
     amount: float = 0
+    # Optional date the class / event happened — surfaced on the
+    # invoice preview as "Date of class/event" so customers can see
+    # exactly which session(s) they're being billed for.
+    class_date: Optional[str] = None
 
 
 class ClientBase(BaseModel):
@@ -862,8 +866,18 @@ def _render_invoice_pdf(invoice: dict, settings: dict) -> bytes:
     # Line-items table
     rows = [["Description", "Qty", "Unit Price", "Amount"]]
     for it in invoice["line_items"]:
+        # If the franchisee supplied a class_date, fold it into the
+        # description column so the PDF echoes what the on-screen
+        # invoice preview shows.
+        desc = it["description"] or ""
+        if it.get("class_date"):
+            try:
+                dt = datetime.strptime(it["class_date"][:10], "%Y-%m-%d")
+                desc = f"{desc}<br/><font size=8 color='#64748b'>Date of class/event: {dt.strftime('%d %b %Y')}</font>"
+            except (ValueError, TypeError):
+                pass
         rows.append([
-            it["description"],
+            Paragraph(desc, normal_style),
             str(it["quantity"]),
             f"£{it['unit_price']:.2f}",
             f"£{it['amount']:.2f}",

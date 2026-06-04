@@ -61,6 +61,8 @@ class LineItem(BaseModel):
     quantity: float = 1
     unit_price: float
     amount: float = 0
+    # Optional date the class / event happened.
+    class_date: Optional[str] = None
 
 
 class ClientBase(BaseModel):
@@ -1010,9 +1012,17 @@ def _render_invoice_pdf(invoice: dict, settings: dict) -> bytes:
 
     # Line items table
     rows = [["Description", "Qty", "Unit", "Amount"]]
+    desc_style = ParagraphStyle("desc", parent=styles["Normal"], fontSize=9, leading=11)
     for li in invoice.get("line_items") or []:
+        desc = li.get("description") or ""
+        if li.get("class_date"):
+            try:
+                dt = datetime.strptime(li["class_date"][:10], "%Y-%m-%d")
+                desc = f"{desc}<br/><font size=8 color='#64748b'>Date of class/event: {dt.strftime('%d %b %Y')}</font>"
+            except (ValueError, TypeError):
+                pass
         rows.append([
-            li.get("description") or "",
+            Paragraph(desc, desc_style),
             f"{float(li.get('quantity') or 0):g}",
             f"£{float(li.get('unit_price') or 0):,.2f}",
             f"£{float(li.get('amount') or 0):,.2f}",

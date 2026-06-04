@@ -1,6 +1,25 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## Portal polish — Batch A (text/label) + Batch B (bug fixes) (Jun 04 2026)
+**Batch A — quick text/label fixes**
+- Bigger Mojo logo top-left on every portal page (`h-7 sm:h-10` → `h-10 sm:h-14`, max-w 40% → 55%).
+- File Vault page header: "Files for all Franchisees" → "File Vault".
+- "Show recent files" lozenge fixed to single-line + matching style as "Hide" (added `whitespace-nowrap`).
+- My Franchise documents section renamed → "My Own Franchise Documents".
+- Added clickable Facebook page row on the My Franchise page, pulled from existing `profile.facebook_url` (already exposed by `/portal/me`).
+- INVOICE h1 forced to `font-['Manrope']` on both portal + admin invoice previews (was rendering as serif via browser fallback).
+- Added "Date of class / event (optional)" date input to every invoice line item — both portal + admin Create/Edit pages, plus rendering on the on-screen invoice preview AND in both ReportLab PDFs. Backend `LineItem` Pydantic schemas updated with `class_date: Optional[str]` in `invoices_routes.py` and `franchisee_invoices_routes.py`.
+- Subscriptions page text updates: Invoicing bullets → "Add tax rates and discount rates" / "Save / download as PDF in one click". Territory+ → "Edit existing CQC database client info" / "Group by care home group within your territory". Marketing → removed "Get in touch" reply box bullet, replaced 4th with "Or link straight to your Bookings booking page (bookings bolt-on required)".
+
+**Batch B — bug fixes**
+- **Invoice Edit button** (portal) was linking to the admin route `/invoices/${id}/edit` instead of `/portal/invoices/${id}/edit`, so clicking it dumped franchisees back at the admin app shell. Fixed.
+- **"No payment linked" panel** removed from the portal invoice detail entirely (CSV reconciliation is admin-only). Reduces mobile overflow + clears the user complaint about the panel being there.
+- **Mobile invoice preview footer cut off**: removed the rigid `aspectRatio: 210/297` + `overflow-hidden` lock on small viewports. Now `sm:overflow-hidden min-h-[800px] sm:aspect-[210/297]` — natural overflow on phones so the footer (bank details) renders, A4 lock kicks in from 640px up. Applied to both portal + admin invoice detail.
+- **Territory "Only Mine" overrode care-group views**: selecting a provider in `TerritoryCareGroupsCard` now resets `myClientsOnly=false` so the picked group's homes actually render on the map.
+
+
+
 ## Calendar overhaul — Yearly events CSV + franchisee entries + Week/Day views (Jun 04 2026)
 - **New backend module** `calendar_extras_routes.py` with two Mongo collections:
   - `calendar_yearly_events` — `{id, date_iso, title, source, uploaded_at, uploaded_by}`. Visible to every authenticated user.

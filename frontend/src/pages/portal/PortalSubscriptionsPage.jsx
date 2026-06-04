@@ -32,8 +32,8 @@ const BOLT_ONS = [
       "Create, save and send invoices from inside the portal",
       "Linked to your customer contacts",
       "Branded invoice PDFs with your franchise details",
-      "Automatic VAT calculation and tax-period reports",
-      "Send by email or download as PDF in one click",
+      "Add tax rates and discount rates",
+      "Save / download as PDF in one click",
     ],
   },
   {
@@ -48,8 +48,8 @@ const BOLT_ONS = [
       "“Claim” a client as yours and drop a marker on the map",
       "Add unlimited contacts of your own to your territory",
       "Basic CRM — notes, statuses, follow-up reminders",
-      "Care-home, school and nursery overlays for prospecting",
-      "Shareable territory snapshot link",
+      "Edit existing CQC database client info",
+      "Group by care home group within your territory",
     ],
   },
   {
@@ -62,8 +62,7 @@ const BOLT_ONS = [
     features: [
       "Build basic e-shots with our drag-in templates",
       "Drop in images, headlines and your own copy",
-      "Link to a “Get in touch” reply box on each send",
-      "Or link straight to your Bookings booking page",
+      "Or link straight to your Bookings booking page (bookings bolt-on required)",
       "Auto-co-branded with your franchise details",
     ],
   },

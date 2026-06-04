@@ -13,9 +13,21 @@ import StatusBadge from "@/components/invoices/StatusBadge";
 
 
 function InvoiceLineItem({ item, index }) {
+  const classDate = item.class_date
+    ? new Date(`${item.class_date}T12:00:00`).toLocaleDateString("en-GB", {
+      day: "2-digit", month: "short", year: "numeric",
+    })
+    : null;
   return (
     <tr className="border-b border-slate-100">
-      <td className="py-4 text-slate-900">{item.description}</td>
+      <td className="py-4 text-slate-900">
+        <div>{item.description}</div>
+        {classDate && (
+          <div className="text-xs text-slate-500 mt-0.5">
+            Date of class/event: <span className="font-mono">{classDate}</span>
+          </div>
+        )}
+      </td>
       <td className="py-4 text-right font-mono text-slate-700">{item.quantity}</td>
       <td className="py-4 text-right font-mono text-slate-700">£{Number(item.unit_price).toFixed(2)}</td>
       <td className="py-4 text-right font-mono font-medium text-slate-900">£{Number(item.amount).toFixed(2)}</td>
@@ -418,13 +430,13 @@ function InvoiceDetail() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <Card className="bg-white shadow-xl max-w-4xl mx-auto overflow-hidden" data-testid="invoice-content" style={{ aspectRatio: '210/297', minHeight: '800px' }}>
-        <div className="h-full flex flex-col p-12 md:p-16">
+      <Card className="bg-white shadow-xl max-w-4xl mx-auto sm:overflow-hidden min-h-[800px] sm:aspect-[210/297]" data-testid="invoice-content">
+        <div className="h-full flex flex-col p-6 sm:p-12 md:p-16">
           {/* Main Content */}
           <div className="flex-1">
             <div className="flex justify-between items-start mb-6">
               <div>
-                <h2 className="text-3xl font-bold tracking-tight text-slate-900">INVOICE</h2>
+                <h2 className="text-3xl font-bold tracking-tight text-slate-900 font-['Manrope']">INVOICE</h2>
                 <p className="font-mono text-xl mt-1 text-slate-700">{invoice.invoice_number}</p>
               </div>
               <StatusBadge status={invoice.status} className="text-sm px-4 py-1" />
