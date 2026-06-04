@@ -976,6 +976,54 @@ def attach(api, db, require_role):
             raise HTTPException(404, detail="Campaign not found")
         return {"ok": True}
 
+    # ---- ADMIN AUDIT LOG ---------------------------------------------
+    # Surfaces every campaign across every franchisee — admin-only.
+    # Builds franchisee_name in-process via a small in-memory map so we
+    # don't N+1 query Mongo. Sorted by sent_at desc, defaults to drafts
+    # excluded but exposes a ?include_drafts=true flag if HQ ever wants
+    # to see who's mid-compose.
+    @api.get("/admin/marketing/log")
+    async def admin_marketing_log(
+        limit: int = 500,
+        include_drafts: bool = False,
+        _: dict = Depends(require_role("admin")),
+    ):
+        fr_by_id: dict[str, dict] = {}
+        async for f in db.franchisees.find(
+            {}, {"_id": 0, "id": 1, "first_name": 1, "last_name": 1, "organisation": 1, "email": 1},
+        ):
+            fr_by_id[f["id"]] = f
+        query: dict = {} if include_drafts else {"status": {"$ne": "draft"}}
+        items: list[dict] = []
+        async for c in db.marketing_campaigns.find(query, {"_id": 0}) \
+                .sort([("sent_at", -1), ("created_at", -1)]).limit(limit):
+            fr = fr_by_id.get(c.get("franchisee_id")) or {}
+            full_name = (
+                f"{fr.get('first_name') or ''} {fr.get('last_name') or ''}".strip()
+                or fr.get("organisation") or c.get("franchisee_name") or "—"
+            )
+            recipients = c.get("recipients") or []
+            delivery = c.get("delivery") or {}
+            opens = sum(1 for r in recipients if (r.get("last_event") or "") in {"email.opened", "email.clicked"})
+            clicks = sum(1 for r in recipients if (r.get("last_event") or "") == "email.clicked")
+            items.append({
+                "id": c.get("id"),
+                "franchisee_id": c.get("franchisee_id"),
+                "franchisee_name": full_name,
+                "franchisee_email": fr.get("email") or c.get("from_email"),
+                "title": c.get("title"),
+                "status": c.get("status") or "draft",
+                "sent_at": c.get("sent_at"),
+                "created_at": c.get("created_at"),
+                "recipient_count": len(recipients),
+                "delivered": int(delivery.get("succeeded") or 0),
+                "failed": int(delivery.get("failed") or 0),
+                "opens": opens,
+                "clicks": clicks,
+            })
+        total = await db.marketing_campaigns.count_documents(query)
+        return {"items": items, "returned": len(items), "total": total}
+
     # ---- webhook fan-out: called by ``resend_routes`` via the
     # module-level ``apply_event`` function defined above. Nothing to
     # register on the router itself.

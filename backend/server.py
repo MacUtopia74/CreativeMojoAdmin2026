@@ -1763,7 +1763,7 @@ async def portal_me(user: dict = Depends(require_role("franchisee"))):
         # We expose both so the dashboard can fall back cleanly.
         "address", "address_street", "address_line2",
         "city", "town", "county", "postcode", "country",
-        "website", "facebook_url",
+        "website", "facebook_url", "facebook",
         "date_added",  # legacy "started with us" date — fallback for tenure
         "start_date", "end_date", "lifecycle_status",
         "gocardless_mandate_status", "gocardless_last_payment_at",

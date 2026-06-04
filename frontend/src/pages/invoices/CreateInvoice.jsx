@@ -66,7 +66,7 @@ function InvoicePreview({ formData, subtotal, discountAmount, taxAmount, total, 
         <div className="flex-1">
           <div className="flex justify-between items-start mb-6">
             <div>
-              <h2 className="text-3xl font-bold tracking-tight  text-slate-900">INVOICE</h2>
+              <h2 className="text-3xl font-bold tracking-tight text-slate-900 font-['Manrope']">INVOICE</h2>
               <p className="font-mono text-lg mt-1 text-slate-700">{formData.invoice_number || "SCD-000"}</p>
             </div>
             <StatusBadge status={formData.status} />

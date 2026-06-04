@@ -731,6 +731,44 @@ def attach(api, db, require_role):
             .sort("created_at", -1).limit(200).to_list(200)
         return {"items": items, "total": len(items)}
 
+    # ---- Admin read/open log. Returns who opened which announcement
+    # and when. Joins ``announcement_reads`` (user_key, announcement_id,
+    # read_at) with the announcements collection to get titles, and
+    # with the franchisees collection to get human-readable names.
+    @api.get("/admin/announcements/reads")
+    async def list_announcement_reads(
+        limit: int = 500, _: dict = Depends(require_role("admin")),
+    ):
+        # Build small in-memory maps so we can attach titles + names
+        # without N+1 queries.
+        ann_by_id: dict[str, dict] = {}
+        async for a in db.announcements.find({}, {"_id": 0, "id": 1, "title": 1, "sent_at": 1, "created_at": 1}):
+            ann_by_id[a["id"]] = a
+        fr_by_id: dict[str, dict] = {}
+        async for f in db.franchisees.find(
+            {}, {"_id": 0, "id": 1, "first_name": 1, "last_name": 1, "organisation": 1, "email": 1},
+        ):
+            fr_by_id[f["id"]] = f
+        items: list[dict] = []
+        async for r in db.announcement_reads.find({}, {"_id": 0}) \
+                .sort("read_at", -1).limit(limit):
+            ann = ann_by_id.get(r.get("announcement_id")) or {}
+            fr = fr_by_id.get(r.get("user_key")) or {}
+            full_name = (
+                f"{fr.get('first_name') or ''} {fr.get('last_name') or ''}".strip()
+                or fr.get("organisation") or r.get("user_key")
+            )
+            items.append({
+                "announcement_id": r.get("announcement_id"),
+                "announcement_title": ann.get("title"),
+                "franchisee_id": r.get("user_key"),
+                "franchisee_name": full_name,
+                "franchisee_email": fr.get("email"),
+                "read_at": r.get("read_at"),
+            })
+        total = await db.announcement_reads.count_documents({})
+        return {"items": items, "returned": len(items), "total": total}
+
     # --------------------- recent files helper for the composer ----
     # MUST be declared before /admin/announcements/{ann_id} so FastAPI's
     # path matcher routes the literal "recent-files" segment here rather

@@ -400,7 +400,7 @@ export default function Layout() {
       {/* Sidebar */}
       <aside className="w-[260px] shrink-0 bg-[#F2F2F0] border-r border-stone-200 flex flex-col" data-testid="sidebar">
         <div className="px-5 py-5 border-b border-stone-200 bg-white flex flex-col items-start gap-1.5">
-          <Logo className="h-16" />
+          <Logo className="h-20" />
           <div className="text-[10px] uppercase tracking-[0.2em] text-stone-500 font-bold pl-1">Admin Console</div>
         </div>
 

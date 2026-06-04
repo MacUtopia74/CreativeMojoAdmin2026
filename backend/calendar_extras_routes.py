@@ -47,7 +47,8 @@ import io
 import logging
 import re
 import uuid
-from datetime import datetime, timezone
+from calendar import monthrange
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -145,6 +146,52 @@ class FranchiseeEventIn(BaseModel):
     all_day: bool = False
     location: Optional[str] = Field(None, max_length=500)
     notes: Optional[str] = Field(None, max_length=2000)
+    # Optional recurrence — when set, the create endpoint clones the
+    # base event N times in the DB so each occurrence is editable /
+    # deletable on its own. All clones share a ``series_id`` so we can
+    # implement a "delete the whole series" action later if needed.
+    repeat: Optional[str] = Field(
+        None,
+        description='"weekly" | "fortnightly" | "monthly"',
+    )
+    repeat_until: Optional[str] = Field(
+        None, description="YYYY-MM-DD — last occurrence date (inclusive)",
+    )
+
+
+_REPEAT_DAY_STEPS = {"weekly": 7, "fortnightly": 14}
+
+
+def _expand_occurrences(base_start: datetime, base_end: datetime,
+                        repeat: str, repeat_until: datetime) -> list[tuple[datetime, datetime]]:
+    """Yield ``(start, end)`` tuples for every occurrence from the
+    first repeat onwards (the base event is inserted separately).
+    Caps at 200 occurrences so a runaway repeat-until can't fill the DB.
+    """
+    out: list[tuple[datetime, datetime]] = []
+    cur_start = base_start
+    cur_end = base_end
+    for _ in range(200):
+        if repeat in _REPEAT_DAY_STEPS:
+            days = _REPEAT_DAY_STEPS[repeat]
+            cur_start = cur_start + timedelta(days=days)
+            cur_end = cur_end + timedelta(days=days)
+        elif repeat == "monthly":
+            # Bump month by 1, clamp day to month length.
+            y, m, d = cur_start.year, cur_start.month + 1, cur_start.day
+            if m == 13:
+                y, m = y + 1, 1
+            last_day = monthrange(y, m)[1]
+            day = min(d, last_day)
+            delta = datetime(y, m, day, cur_start.hour, cur_start.minute) - cur_start.replace(tzinfo=None)
+            cur_start = cur_start + delta
+            cur_end = cur_end + delta
+        else:
+            break
+        if cur_start.date() > repeat_until.date():
+            break
+        out.append((cur_start, cur_end))
+    return out
 
 
 def _shape_yearly(doc: dict) -> dict:
@@ -168,6 +215,8 @@ def _shape_franchisee(doc: dict) -> dict:
         "location": doc.get("location"),
         "notes": doc.get("notes"),
         "created_at": doc.get("created_at"),
+        "series_id": doc.get("series_id"),
+        "repeat": doc.get("repeat"),
     }
 
 
@@ -307,8 +356,21 @@ def attach(api, db, require_role, get_current_user):
         # as a single tile instead of a 24h spanning block.
         start = body.start[:10] if body.all_day else body.start
         end = body.end[:10] if body.all_day else body.end
-        doc = {
-            "id": str(uuid.uuid4()),
+        repeat = (body.repeat or "").lower().strip() or None
+        if repeat and repeat not in {"weekly", "fortnightly", "monthly"}:
+            raise HTTPException(400, detail="repeat must be weekly, fortnightly or monthly")
+        # Determine the recurrence horizon. Defaults to 12 months out
+        # so franchisees don't have to think about an end-date for
+        # routine "weekly visit to such-and-such care home".
+        repeat_until_iso = (body.repeat_until or "").strip() or None
+        series_id: str | None = None
+        # Insert the base event.
+        now = _now_iso()
+        base_id = str(uuid.uuid4())
+        if repeat:
+            series_id = str(uuid.uuid4())
+        base_doc = {
+            "id": base_id,
             "franchisee_id": fid,
             "title": body.title.strip(),
             "start": start,
@@ -316,11 +378,49 @@ def attach(api, db, require_role, get_current_user):
             "all_day": body.all_day,
             "location": (body.location or "").strip() or None,
             "notes": (body.notes or "").strip() or None,
-            "created_at": _now_iso(),
+            "created_at": now,
             "created_by": user.get("email"),
+            "series_id": series_id,
+            "repeat": repeat,
         }
-        await db.calendar_franchisee_events.insert_one(doc)
-        return _shape_franchisee(doc)
+        await db.calendar_franchisee_events.insert_one(base_doc)
+        # Strip the auto-injected ``_id`` so the next inserts don't
+        # collide on the same id. We've already kept our own uuid in
+        # ``id``; Mongo will pick a new ObjectId for each insert.
+        base_doc.pop("_id", None)
+
+        # Expand occurrences. We need real datetimes for date math, so
+        # parse the base start/end into UTC-aware datetimes.
+        if repeat:
+            try:
+                if body.all_day:
+                    base_start_dt = datetime.strptime(start, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                    base_end_dt = datetime.strptime(end, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                else:
+                    base_start_dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+                    base_end_dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
+            except ValueError:
+                raise HTTPException(400, detail="start/end must be ISO 8601") from None
+            if repeat_until_iso:
+                try:
+                    repeat_until_dt = datetime.strptime(repeat_until_iso[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                except ValueError as exc:
+                    raise HTTPException(400, detail="repeat_until must be YYYY-MM-DD") from exc
+            else:
+                # Default horizon: 12 months ahead of the base event.
+                repeat_until_dt = base_start_dt + timedelta(days=365)
+            occurrences = _expand_occurrences(base_start_dt, base_end_dt, repeat, repeat_until_dt)
+            for occ_start, occ_end in occurrences:
+                clone = {
+                    **base_doc,
+                    "id": str(uuid.uuid4()),
+                    "start": occ_start.strftime("%Y-%m-%d") if body.all_day
+                             else occ_start.isoformat(),
+                    "end": occ_end.strftime("%Y-%m-%d") if body.all_day
+                           else occ_end.isoformat(),
+                }
+                await db.calendar_franchisee_events.insert_one(clone)
+        return _shape_franchisee(base_doc)
 
     @router.patch("/portal/calendar/my-events/{event_id}")
     async def update_my_event(
@@ -357,9 +457,31 @@ def attach(api, db, require_role, get_current_user):
 
     @router.delete("/portal/calendar/my-events/{event_id}")
     async def delete_my_event(
-        event_id: str, user: dict = Depends(require_role("franchisee")),
+        event_id: str,
+        series: bool = False,
+        user: dict = Depends(require_role("franchisee")),
     ):
         fid = _fid(user)
+        # When ``?series=true`` we delete this event AND every other
+        # event sharing the same series_id — handy for "cancel all
+        # remaining occurrences of my weekly drop-in".
+        if series:
+            doc = await db.calendar_franchisee_events.find_one(
+                {"id": event_id, "franchisee_id": fid}, {"_id": 0, "series_id": 1},
+            )
+            if not doc:
+                raise HTTPException(404, detail="Event not found")
+            sid = doc.get("series_id")
+            if not sid:
+                # Not part of a series — fall back to single delete.
+                r = await db.calendar_franchisee_events.delete_one(
+                    {"id": event_id, "franchisee_id": fid},
+                )
+                return {"ok": True, "deleted": r.deleted_count}
+            r = await db.calendar_franchisee_events.delete_many(
+                {"series_id": sid, "franchisee_id": fid},
+            )
+            return {"ok": True, "deleted": r.deleted_count}
         r = await db.calendar_franchisee_events.delete_one(
             {"id": event_id, "franchisee_id": fid},
         )

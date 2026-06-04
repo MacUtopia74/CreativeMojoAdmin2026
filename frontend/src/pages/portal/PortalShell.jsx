@@ -187,7 +187,7 @@ export default function PortalShell() {
       {/* Top bar — logo, font-size, sign-out (desktop). Always sticky. */}
       <header className="bg-white border-b border-stone-200 sticky top-0 z-30 pt-safe">
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 py-2 sm:py-3 flex items-center justify-between gap-2">
-          <Logo className="h-10 sm:h-14 shrink-0 max-w-[55%]" />
+          <Logo className="h-12 sm:h-16 shrink-0 max-w-[55%]" />
           <div className="flex items-center gap-2 sm:gap-4">
             <button
               onClick={() => {

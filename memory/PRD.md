@@ -1,6 +1,35 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## Production-feedback round 2 — polish + missing features (Jun 04 2026)
+
+**Logo size (general admin)**
+- Portal logo bumped to `h-12 sm:h-16` (was `h-10 sm:h-14`) — ~20% larger as requested.
+- Admin sidebar logo bumped to `h-20` (was `h-16`).
+
+**My Franchise — Facebook link**
+- The Field already existed but referenced `facebook_page || facebook_url`. The DB field is `facebook` (lowercase) on legacy franchisee docs. Added that as a third fallback and surfaced `facebook` in the `/portal/me` keep-list so it actually arrives at the client.
+
+**Marketing**
+- Settings button moved out of the (easy-to-miss) compose-modal footer onto the page header — a square "Settings" pill sits to the left of the "+ New Campaign" button.
+- Added a visible, expandable **GDPR & UK PECR — what your e-shots already include** block on the Marketing page that walks the franchisee through the four legal elements baked into every email (sender ID, postal address, lawful-basis statement, reply-UNSUBSCRIBE mechanism).
+
+**Invoicing**
+- Forced `font-['Manrope']` on the `<h2>INVOICE</h2>` heading on the four remaining files: portal/admin Create + portal/admin Edit pages.
+
+**Calendar**
+- **"Invalid Date" / "NaN"** in list view fixed: yearly events were leaking `date_iso` into the list's `extendedProps` but not as a `start` field. Mirrored `start: e.date_iso` in the spread, and hardened `ListRow` to render "—" instead of NaN when a date is unparseable.
+- **Repeatable franchisee entries**: `FranchiseeEventIn` now accepts `repeat: "weekly"|"fortnightly"|"monthly"` + optional `repeat_until: "YYYY-MM-DD"` (defaults to 12 months out). The backend clones the base event N times into Mongo, all sharing a `series_id`. Capped at 200 occurrences as a safety rail. Each occurrence is an independent doc so a franchisee can edit/delete any single date; the DELETE endpoint now also accepts `?series=true` to remove the whole chain. Frontend `MyEventModal` exposes the dropdown + Until-date picker; on submit, if a repeat was picked the panel reloads from server to pull the cloned occurrences.
+
+**HQ Updates**
+- **Open folder grid view**: `PublicFolderSharePage` now has a List / Grid toggle (persisted in localStorage, defaults to List). Grid tiles show real image thumbnails for image files (with graceful fall-back if the presigned URL 404s) and the file icon otherwise.
+- **Admin-only "who has opened what" log**: new `GET /api/admin/announcements/reads` aggregates `announcement_reads` ↔ announcements ↔ franchisees in-process so it's a single round-trip with no N+1. Surfaced on `/admin/announcements` as a new collapsible `AnnouncementReadLog` panel showing **Opened · Franchisee · Announcement**.
+
+**General Admin**
+- **Marketing usage log**: new admin endpoint `GET /api/admin/marketing/log` rolls up every campaign across every franchisee with delivery / open / click counts. Excludes drafts by default; pass `?include_drafts=true` to include them. Surfaced on `/admin/announcements` as a new collapsible `MarketingUsageLog` panel below the read log.
+
+
+
 ## Batch D — Marketing eshot footer, settings, GDPR (Jun 04 2026)
 **Backend** (`portal_marketing_routes.py`)
 - New `marketing_settings` dict on the franchisee doc: `{logo_target: "facebook"|"mojo_page", facebook_url, mojo_page_url}`. Mojo page URL falls back to the existing `wp_page_url` (admin-managed).

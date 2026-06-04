@@ -154,7 +154,10 @@ export default function PortalEventsPanel({ open, onToggle, alwaysOpen = false, 
         title: e.title,
         start: e.date_iso,
         allDay: true,
-        extendedProps: { ...e, _kind: "yearly" },
+        // Ensure listed-view rendering has a `start` it can parse —
+        // yearly docs only carry `date_iso`. Mirror it as `start` so
+        // `new Date(event.start)` doesn't return Invalid Date / NaN.
+        extendedProps: { ...e, _kind: "yearly", start: e.date_iso, all_day: true },
         backgroundColor: COLOUR_YEARLY.bg,
         borderColor: COLOUR_YEARLY.border,
         textColor: COLOUR_YEARLY.text,
@@ -419,6 +422,12 @@ export default function PortalEventsPanel({ open, onToggle, alwaysOpen = false, 
           onSaved={(doc, mode) => {
             setEditorOpen(false);
             setEditorEvent(null);
+            if (mode === "create-series") {
+              // Repeat occurrences were created server-side; refetch
+              // the whole list so they all render.
+              load();
+              return;
+            }
             setMyEvents((arr) => {
               if (mode === "create") return [...arr, doc];
               return arr.map((x) => (x.id === doc.id ? doc : x));
@@ -453,14 +462,18 @@ function LegendSwatch({ colour, border, label }) {
 }
 
 function ListRow({ event, onEdit, onDelete }) {
-  const past = event.start && new Date(event.start).getTime() < Date.now() - 30 * 60 * 1000;
+  const startIso = event.start;
+  // `new Date(yyyy-mm-dd)` is valid; `new Date(undefined)` is not.
+  // Build the chip date defensively so the list never renders NaN.
+  const startDate = startIso ? new Date(startIso) : null;
+  const validStart = startDate && !Number.isNaN(startDate.getTime());
+  const past = validStart && startDate.getTime() < Date.now() - 30 * 60 * 1000;
   const isTeams = event.meeting_url && /teams\.(microsoft|live)\.com/i.test(event.meeting_url);
   const tagColour = event._kind === "yearly"
     ? COLOUR_YEARLY
     : event._kind === "mine"
       ? COLOUR_MINE
       : COLOUR_HQ;
-  const startIso = event.start;
   return (
     <li
       className={`px-3 sm:px-4 py-3 flex items-start gap-3 flex-wrap sm:flex-nowrap ${past ? "bg-stone-50/60" : ""}`}
@@ -468,10 +481,10 @@ function ListRow({ event, onEdit, onDelete }) {
     >
       <div className="shrink-0 w-14 sm:w-16 text-center pt-0.5">
         <div className="text-[10px] uppercase tracking-wider font-bold text-stone-500">
-          {new Date(startIso).toLocaleDateString(UK, { month: "short" })}
+          {validStart ? startDate.toLocaleDateString(UK, { month: "short" }) : "—"}
         </div>
         <div className="text-2xl font-display tabular-nums text-stone-950">
-          {new Date(startIso).getDate()}
+          {validStart ? startDate.getDate() : "—"}
         </div>
       </div>
       <div className="flex-1 min-w-0">
@@ -675,8 +688,13 @@ function MyEventModal({ event, prefillDate, onClose, onSaved }) {
   const [end, setEnd] = useState(initialEnd);
   const [location, setLocation] = useState(event?.location || "");
   const [notes, setNotes] = useState(event?.notes || "");
+  // Repeat options (only meaningful on create — once persisted, each
+  // occurrence is its own document so editing the base doesn't ripple).
+  const [repeat, setRepeat] = useState("none");
+  const [repeatUntil, setRepeatUntil] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  const editing = !!event?.id;
 
   const save = async () => {
     setErr("");
@@ -703,12 +721,21 @@ function MyEventModal({ event, prefillDate, onClose, onSaved }) {
         location: location || null,
         notes: notes || null,
       };
+      // Send repeat info only on create — there's no edit-the-series
+      // path yet and PATCH ignores these fields anyway.
+      if (!editing && repeat !== "none") {
+        body.repeat = repeat;
+        if (repeatUntil) body.repeat_until = repeatUntil;
+      }
       if (event?.id) {
         const { data } = await api.patch(`/portal/calendar/my-events/${event.id}`, body);
         onSaved(data, "edit");
       } else {
         const { data } = await api.post("/portal/calendar/my-events", body);
-        onSaved(data, "create");
+        // When the user picks a repeat, the backend creates clones on
+        // top of the base — we need to refetch to pick them up rather
+        // than just appending the base locally.
+        onSaved(data, repeat !== "none" ? "create-series" : "create");
       }
     } catch (e) {
       setErr(e?.response?.data?.detail || "Save failed");
@@ -802,6 +829,42 @@ function MyEventModal({ event, prefillDate, onClose, onSaved }) {
               className="w-full px-3 py-2 text-sm border border-stone-300 rounded-lg"
             />
           </div>
+          {/* Repeat — only shown on create. */}
+          {!editing && (
+            <div className="border border-stone-200 rounded-lg p-3 bg-stone-50/60">
+              <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-2">
+                Repeat
+              </label>
+              <select
+                value={repeat}
+                onChange={(e) => setRepeat(e.target.value)}
+                data-testid="my-event-repeat"
+                className="w-full px-3 py-2 text-sm border border-stone-300 rounded-lg bg-white"
+              >
+                <option value="none">Doesn't repeat</option>
+                <option value="weekly">Weekly</option>
+                <option value="fortnightly">Fortnightly (every 2 weeks)</option>
+                <option value="monthly">Monthly</option>
+              </select>
+              {repeat !== "none" && (
+                <div className="mt-2">
+                  <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-1">
+                    Until (optional · defaults to 12 months)
+                  </label>
+                  <input
+                    type="date"
+                    value={repeatUntil}
+                    onChange={(e) => setRepeatUntil(e.target.value)}
+                    data-testid="my-event-repeat-until"
+                    className="w-full px-3 py-2 text-sm border border-stone-300 rounded-lg tabular-nums bg-white"
+                  />
+                  <p className="text-[11px] text-stone-500 mt-1">
+                    We'll create each occurrence as a separate entry so you can edit or delete any single date.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
           {err && (
             <div className="text-xs text-red-700 bg-red-50 border border-red-200 px-3 py-2 rounded-lg flex items-center gap-1.5">
               <AlertCircle className="w-3.5 h-3.5" /> {err}

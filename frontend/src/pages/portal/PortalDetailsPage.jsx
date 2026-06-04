@@ -130,8 +130,8 @@ export default function PortalDetailsPage() {
           <Field
             icon={Facebook}
             label="Facebook page"
-            value={profile.facebook_page || profile.facebook_url}
-            href={profile.facebook_page || profile.facebook_url}
+            value={profile.facebook_page || profile.facebook_url || profile.facebook}
+            href={profile.facebook_page || profile.facebook_url || profile.facebook}
           />
           <Field icon={Calendar} label="Started with us" value={profile.start_date ? new Date(profile.start_date).toLocaleDateString("en-GB") : null} />
           {profile.end_date && <Field icon={Clock} label="End date" value={new Date(profile.end_date).toLocaleDateString("en-GB")} />}

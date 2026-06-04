@@ -9,9 +9,10 @@
 // History list shows past campaigns with delivery + open/click stats
 // rolled up from the Resend webhook events stored on each campaign.
 import { useEffect, useState, useCallback } from "react";
+import { Link as RouterLink } from "react-router-dom";
 import {
   Megaphone, Loader2, AlertCircle, Plus, Mail, Sparkles, RefreshCw,
-  Eye, Calendar, FileText, Pencil, Trash2,
+  Eye, Calendar, FileText, Pencil, Trash2, Settings,
 } from "lucide-react";
 import api from "@/lib/api";
 import PortalPageHeading from "@/components/portal/PortalPageHeading";
@@ -111,13 +112,23 @@ export default function PortalMarketingPage() {
         title="Marketing"
         subtitle="Send branded e-shots to your Territory+ clients. Max 5 recipients per send."
         actions={
-          <button
-            onClick={() => openCompose(null)}
-            data-testid="marketing-compose-btn"
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 hover:bg-stone-800 text-[#dddd16] rounded-lg"
-          >
-            <Plus className="w-3.5 h-3.5" /> New Campaign
-          </button>
+          <div className="flex items-center gap-2">
+            <RouterLink
+              to="/portal/marketing/settings"
+              data-testid="marketing-settings-link"
+              title="Edit your marketing settings (logo destination + Facebook URL)"
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold uppercase tracking-wider border border-stone-300 bg-white hover:bg-stone-50 text-stone-900 rounded-lg"
+            >
+              <Settings className="w-3.5 h-3.5" /> Settings
+            </RouterLink>
+            <button
+              onClick={() => openCompose(null)}
+              data-testid="marketing-compose-btn"
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 hover:bg-stone-800 text-[#dddd16] rounded-lg"
+            >
+              <Plus className="w-3.5 h-3.5" /> New Campaign
+            </button>
+          </div>
         }
       />
 
@@ -125,6 +136,31 @@ export default function PortalMarketingPage() {
         <Sparkles className="w-3.5 h-3.5 shrink-0" />
         Sent from <strong className="mx-1">{access.from_email}</strong> · Capped at <strong>5</strong> recipients per send to keep your emails out of spam folders.
       </div>
+
+      {/* GDPR / PECR compliance note — surfaced so the franchisee
+          knows what their e-shots include automatically. */}
+      <details
+        className="bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-xs text-stone-700"
+        data-testid="marketing-gdpr-block"
+      >
+        <summary className="cursor-pointer font-bold text-stone-900 select-none flex items-center gap-2">
+          <Sparkles className="w-3.5 h-3.5 text-stone-500" />
+          GDPR &amp; UK PECR — what your e-shots already include
+          <span className="ml-auto text-[10px] uppercase tracking-wider text-stone-500 font-bold">Click to expand</span>
+        </summary>
+        <div className="pt-3 mt-3 border-t border-stone-200 space-y-2 leading-relaxed">
+          <p>Every e-shot you send from this portal automatically includes the four legally required elements for marketing email under UK PECR + GDPR:</p>
+          <ol className="list-decimal pl-5 space-y-1">
+            <li><strong>Sender identity</strong> — your name + your franchise organisation, rendered at the bottom of every email.</li>
+            <li><strong>Postal address</strong> — pulled from your franchisee profile so recipients can identify a real business.</li>
+            <li><strong>Lawful basis statement</strong> — the line <em>"You're receiving this because you're a Creative Mojo customer."</em></li>
+            <li><strong>Opt-out mechanism</strong> — recipients can reply <code className="bg-white px-1 rounded">UNSUBSCRIBE</code> in the subject line at any time, which you'll then need to honour by removing them from your client list.</li>
+          </ol>
+          <p className="text-stone-600">
+            <strong>Your job</strong>: only e-shot people who are existing or recent customers (soft opt-in), and respect unsubscribe replies promptly. If anyone formally asks to be forgotten, delete them from My Territory+ → that removes them from every future send.
+          </p>
+        </div>
+      </details>
 
       {/* Drafts (if any) */}
       {(() => {
