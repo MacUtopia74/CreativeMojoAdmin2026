@@ -890,10 +890,32 @@ def attach(api, db, require_role):
                 "migrated_folder_tokens": migrated}
 
     # --------------------- portal endpoint ------------------------
+    async def _user_key(user: dict) -> str:
+        """Stable key for per-user read tracking. Falls back to email
+        when neither franchisee_id nor id is present (shouldn't happen
+        in practice, but defensive)."""
+        return user.get("franchisee_id") or user.get("id") or user.get("email") or "anon"
+
+    async def _read_set(user_key: str, ann_ids: list[str]) -> set[str]:
+        """Return the subset of ``ann_ids`` that ``user_key`` has
+        already read. One query, returned as a Python set for O(1)
+        membership tests in the listing loop."""
+        if not ann_ids:
+            return set()
+        out: set[str] = set()
+        async for r in db.announcement_reads.find(
+            {"user_key": user_key, "announcement_id": {"$in": ann_ids}},
+            {"_id": 0, "announcement_id": 1},
+        ):
+            out.add(r["announcement_id"])
+        return out
+
     @api.get("/portal/announcements")
     async def portal_list(user: dict = Depends(require_role("franchisee", "admin"))):
         """Past announcements the logged-in franchisee was a recipient of.
         Admins see everything (handy for QA). Sorted newest first.
+        Each item is annotated with ``is_unread=True`` until the user
+        opens it on the portal (POST .../read clears the flag).
         """
         if user.get("role") == "admin":
             items = await db.announcements.find({}, {"_id": 0}) \
@@ -903,5 +925,57 @@ def attach(api, db, require_role):
             items = await db.announcements.find(
                 {"sent_to": fid}, {"_id": 0},
             ).sort("created_at", -1).limit(200).to_list(200)
+
+        # Annotate with unread flag.
+        user_key = await _user_key(user)
+        ann_ids = [it.get("id") for it in items if it.get("id")]
+        read = await _read_set(user_key, ann_ids)
+        for it in items:
+            it["is_unread"] = it.get("id") not in read
         return {"items": items, "total": len(items)}
+
+    @api.get("/portal/announcements/unread-count")
+    async def portal_unread_count(user: dict = Depends(require_role("franchisee", "admin"))):
+        """Lightweight count for the sidebar badge. Just the IDs the
+        user *can* see minus the IDs they've already opened."""
+        if user.get("role") == "admin":
+            all_ids = await db.announcements.find({}, {"_id": 0, "id": 1}) \
+                .sort("created_at", -1).limit(200).to_list(200)
+        else:
+            fid = user.get("franchisee_id") or user.get("id")
+            all_ids = await db.announcements.find(
+                {"sent_to": fid}, {"_id": 0, "id": 1},
+            ).sort("created_at", -1).limit(200).to_list(200)
+        ids = [x["id"] for x in all_ids if x.get("id")]
+        if not ids:
+            return {"unread": 0}
+        user_key = await _user_key(user)
+        read = await _read_set(user_key, ids)
+        return {"unread": max(0, len(ids) - len(read))}
+
+    @api.post("/portal/announcements/{ann_id}/read")
+    async def portal_mark_read(
+        ann_id: str,
+        user: dict = Depends(require_role("franchisee", "admin")),
+    ):
+        """Idempotent — upsert one row in ``announcement_reads`` so
+        subsequent unread-count queries skip this announcement for
+        this user."""
+        # Verify the announcement exists + that this user is allowed
+        # to read it (admins skip the recipient filter).
+        ann = await db.announcements.find_one({"id": ann_id}, {"_id": 0, "sent_to": 1})
+        if not ann:
+            raise HTTPException(404, detail="Announcement not found")
+        if user.get("role") != "admin":
+            fid = user.get("franchisee_id") or user.get("id")
+            if fid not in (ann.get("sent_to") or []):
+                raise HTTPException(403, detail="Not a recipient")
+        user_key = await _user_key(user)
+        await db.announcement_reads.update_one(
+            {"user_key": user_key, "announcement_id": ann_id},
+            {"$set": {"user_key": user_key, "announcement_id": ann_id, "read_at": _now_iso()}},
+            upsert=True,
+        )
+        return {"ok": True}
+
 

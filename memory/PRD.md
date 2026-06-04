@@ -1,6 +1,23 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## Batch C — HQ Updates badge system (Jun 04 2026)
+- **Backend** (`announcements_routes.py`):
+  - New collection `announcement_reads` keyed by `{user_key, announcement_id}` where `user_key = franchisee_id || user.id || email`.
+  - `GET /api/portal/announcements/unread-count` → `{unread: N}` (lightweight count for sidebar badge).
+  - `POST /api/portal/announcements/{ann_id}/read` → idempotent upsert, verifies the user is a recipient (admins bypass) before marking.
+  - `GET /api/portal/announcements` now annotates each item with `is_unread: bool`.
+- **Frontend**:
+  - New shared hook `useUnreadUpdates` — polls the count endpoint every 60s + on window-focus; exposes `{ unread, refresh }`.
+  - `PortalShell` wires the hook into both the **desktop sidebar** and the **mobile drawer**: a small rose-coloured pill (`min-w 1.25rem · h-5 · "99+"` cap) sits to the right of the "HQ Updates" nav label whenever `unread > 0`. The shell also passes `refreshUnreadUpdates` through `Outlet` context so child pages can force-clear the badge.
+  - `PortalUpdatesPage` rewritten:
+    - Unread rows render with a rose border + ring, a rose megaphone tile, and a red **"NEW"** lozenge next to the title.
+    - Expanding any row fires `POST /portal/announcements/{id}/read` (optimistic local state — the lozenge clears immediately, then the shell badge clears once the refresh call returns).
+    - Date is now `text-sm` + `font-semibold` (was `text-xs`) with a larger calendar icon — clearly readable rather than micro-print.
+- **Verified** end-to-end as Sandra: seeded a test announcement → sidebar showed `1` badge → portal listing showed NEW lozenge with prominent date → expanding the row cleared the lozenge instantly → navigating away cleared the sidebar badge. Test data tidied up afterwards.
+
+
+
 ## Portal polish — Batch A (text/label) + Batch B (bug fixes) (Jun 04 2026)
 **Batch A — quick text/label fixes**
 - Bigger Mojo logo top-left on every portal page (`h-7 sm:h-10` → `h-10 sm:h-14`, max-w 40% → 55%).

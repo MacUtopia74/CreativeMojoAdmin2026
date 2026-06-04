@@ -16,6 +16,7 @@ import { Outlet, NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import api from "@/lib/api";
 import Logo from "@/components/Logo";
+import useUnreadUpdates from "@/hooks/useUnreadUpdates";
 import {
   User as UserIcon, MapPin, CalendarDays, FolderOpen, Receipt,
   LogOut, Type, Loader2, AlertCircle, Megaphone, GraduationCap,
@@ -149,6 +150,12 @@ export default function PortalShell() {
   const tags = profile?.profile?.tags || [];
   const isDemo = tags.some((t) => String(t).trim().toLowerCase() === "demo");
   const sections = buildTabs({ modules, isDemo });
+
+  // HQ Updates unread badge — visible on the sidebar + bottom-nav.
+  // Polls every 60s and on focus; refresh() is also called explicitly
+  // by PortalUpdatesPage via the OutletContext below when the user
+  // opens an update so the badge clears instantly.
+  const { unread: unreadUpdates, refresh: refreshUnreadUpdates } = useUnreadUpdates(!!profile);
 
   // Account dropdown — auto-opens if the user is currently on any
   // /portal/account/* route (so a fresh navigate doesn't hide the
@@ -294,24 +301,36 @@ export default function PortalShell() {
                 return (
                   <div key={sIdx}>
                     {sIdx > 0 && <div className="my-3 border-t border-stone-200" data-testid={`portal-nav-divider-${sIdx}`} />}
-                    {tabs.map(({ to, label, icon: Icon, end, testid }) => (
-                      <NavLink
-                        key={to}
-                        to={to}
-                        end={end}
-                        data-testid={testid}
-                        className={({ isActive }) =>
-                          `flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg font-medium transition-colors ${
-                            isActive
-                              ? "bg-stone-950 text-white"
-                              : "text-stone-700 hover:bg-stone-100"
-                          }`
-                        }
-                      >
-                        <Icon className="w-4 h-4" />
-                        {label}
-                      </NavLink>
-                    ))}
+                    {tabs.map(({ to, label, icon: Icon, end, testid }) => {
+                      const showBadge = to === "/portal/updates" && unreadUpdates > 0;
+                      return (
+                        <NavLink
+                          key={to}
+                          to={to}
+                          end={end}
+                          data-testid={testid}
+                          className={({ isActive }) =>
+                            `relative flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg font-medium transition-colors ${
+                              isActive
+                                ? "bg-stone-950 text-white"
+                                : "text-stone-700 hover:bg-stone-100"
+                            }`
+                          }
+                        >
+                          <Icon className="w-4 h-4" />
+                          <span className="flex-1">{label}</span>
+                          {showBadge && (
+                            <span
+                              data-testid="nav-updates-badge"
+                              className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 text-[10px] font-bold rounded-full bg-rose-600 text-white tabular-nums shadow-sm"
+                              title={`${unreadUpdates} unread update${unreadUpdates === 1 ? "" : "s"}`}
+                            >
+                              {unreadUpdates > 99 ? "99+" : unreadUpdates}
+                            </span>
+                          )}
+                        </NavLink>
+                      );
+                    })}
                   </div>
                 );
               })}
@@ -320,11 +339,15 @@ export default function PortalShell() {
 
           {/* Main content — page-specific via Outlet. */}
           <main className="flex-1 min-w-0 pb-8" data-testid="portal-main">
-            {/* Provide the profile to children via outlet context */}
-            <Outlet context={{ profile, refreshProfile: async () => {
-              const { data } = await api.get("/portal/me");
-              setProfile(data);
-            } }} />
+            {/* Provide the profile + unread-updates refresher to children via outlet context */}
+            <Outlet context={{
+              profile,
+              refreshProfile: async () => {
+                const { data } = await api.get("/portal/me");
+                setProfile(data);
+              },
+              refreshUnreadUpdates,
+            }} />
           </main>
         </div>
       )}
@@ -339,6 +362,7 @@ export default function PortalShell() {
         onToggleAccount={() => setAccountOpen((v) => !v)}
         onLogout={logout}
         userEmail={user?.email}
+        unreadUpdates={unreadUpdates}
       />
     </div>
   );
@@ -348,6 +372,7 @@ export default function PortalShell() {
 // Last section is the Account dropdown so behaviour matches md+ exactly.
 function PortalMobileDrawer({
   open, onClose, sections, accountOpen, onToggleAccount, onLogout, userEmail,
+  unreadUpdates = 0,
 }) {
   if (!open) return null;
   return (
@@ -438,24 +463,35 @@ function PortalMobileDrawer({
             return (
               <div key={sIdx}>
                 {sIdx > 0 && <div className="my-3 border-t border-stone-200" />}
-                {tabs.map(({ to, label, icon: Icon, end, testid }) => (
-                  <NavLink
-                    key={to}
-                    to={to}
-                    end={end}
-                    data-testid={testid}
-                    className={({ isActive }) =>
-                      `flex items-center gap-3 px-3 py-3 text-base rounded-lg font-medium transition-colors ${
-                        isActive
-                          ? "bg-stone-950 text-white"
-                          : "text-stone-700 hover:bg-stone-100"
-                      }`
-                    }
-                  >
-                    <Icon className="w-5 h-5" />
-                    {label}
-                  </NavLink>
-                ))}
+                {tabs.map(({ to, label, icon: Icon, end, testid }) => {
+                  const showBadge = to === "/portal/updates" && unreadUpdates > 0;
+                  return (
+                    <NavLink
+                      key={to}
+                      to={to}
+                      end={end}
+                      data-testid={testid}
+                      className={({ isActive }) =>
+                        `relative flex items-center gap-3 px-3 py-3 text-base rounded-lg font-medium transition-colors ${
+                          isActive
+                            ? "bg-stone-950 text-white"
+                            : "text-stone-700 hover:bg-stone-100"
+                        }`
+                      }
+                    >
+                      <Icon className="w-5 h-5" />
+                      <span className="flex-1">{label}</span>
+                      {showBadge && (
+                        <span
+                          data-testid="mobile-nav-updates-badge"
+                          className="inline-flex items-center justify-center min-w-[1.4rem] h-6 px-1.5 text-xs font-bold rounded-full bg-rose-600 text-white tabular-nums shadow-sm"
+                        >
+                          {unreadUpdates > 99 ? "99+" : unreadUpdates}
+                        </span>
+                      )}
+                    </NavLink>
+                  );
+                })}
               </div>
             );
           })}

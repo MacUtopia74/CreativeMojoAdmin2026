@@ -2,7 +2,13 @@
 // announcement they were a recipient of, newest first. Each card
 // expands inline to show the original panels with working file/folder
 // links (the same lifetime share token Paul emailed them).
+//
+// Read tracking: items come back with `is_unread`. We show a NEW
+// lozenge while unread, fire POST /portal/announcements/{id}/read
+// when the user expands the row, and tell the shell to re-fetch the
+// sidebar badge so it clears instantly (no 60s poll wait).
 import { useEffect, useState } from "react";
+import { useOutletContext } from "react-router-dom";
 import { Megaphone, Calendar, Loader2, AlertCircle, ChevronDown, Image as ImageIcon } from "lucide-react";
 import api from "@/lib/api";
 import FileThumbnail from "@/components/files/FileThumbnail";
@@ -48,10 +54,16 @@ function fmtDate(iso) {
 }
 
 export default function PortalUpdatesPage() {
+  const ctx = useOutletContext() || {};
+  const refreshUnreadUpdates = ctx.refreshUnreadUpdates;
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [openId, setOpenId] = useState(null);
+  // Track IDs we've already POSTed /read for in this session — keeps
+  // the NEW lozenge gone after re-collapse, and prevents redundant
+  // network chatter when the user fan-toggles a row.
+  const [readNow, setReadNow] = useState(() => new Set());
 
   useEffect(() => {
     (async () => {
@@ -66,6 +78,29 @@ export default function PortalUpdatesPage() {
       }
     })();
   }, []);
+
+  const markRead = async (id) => {
+    if (!id || readNow.has(id)) return;
+    // Optimistically mark in local state so the lozenge clears even
+    // if the request stalls. If the request fails (offline, etc.) we
+    // simply leave it — the next page load will re-derive from the
+    // server, and the user can still open the link.
+    setReadNow((s) => { const n = new Set(s); n.add(id); return n; });
+    try {
+      await api.post(`/portal/announcements/${id}/read`);
+      refreshUnreadUpdates?.();
+    } catch {
+      // Swallow — non-critical, retry happens next mount.
+    }
+  };
+
+  const toggleOpen = (it) => {
+    const nextOpen = openId === it.id ? null : it.id;
+    setOpenId(nextOpen);
+    if (nextOpen) {
+      markRead(it.id);
+    }
+  };
 
   return (
     <div className="px-6 md:px-10 py-8 max-w-5xl mx-auto" data-testid="portal-updates-page">
@@ -93,22 +128,49 @@ export default function PortalUpdatesPage() {
         <div className="space-y-3">
           {items.map((it) => {
             const isOpen = openId === it.id;
+            const isUnread = (it.is_unread === true) && !readNow.has(it.id);
             return (
-              <div key={it.id} className="bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid={`portal-update-${it.id}`}>
+              <div
+                key={it.id}
+                className={`bg-white border rounded-2xl overflow-hidden ${
+                  isUnread ? "border-rose-300 ring-1 ring-rose-100" : "border-stone-200"
+                }`}
+                data-testid={`portal-update-${it.id}`}
+              >
                 <button
-                  onClick={() => setOpenId(isOpen ? null : it.id)}
+                  onClick={() => toggleOpen(it)}
                   data-testid={`portal-update-toggle-${it.id}`}
                   className="w-full flex items-center gap-4 px-5 py-4 hover:bg-stone-50/60 text-left transition-colors"
                 >
-                  <div className="w-10 h-10 rounded-full bg-[#dddd16]/20 flex items-center justify-center shrink-0">
-                    <Megaphone className="w-4 h-4 text-stone-900" />
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
+                    isUnread ? "bg-rose-100 text-rose-700" : "bg-[#dddd16]/20 text-stone-900"
+                  }`}>
+                    <Megaphone className="w-4 h-4" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="font-display text-xl font-bold text-stone-950 truncate">{it.title}</div>
-                    <div className="text-xs text-stone-500 mt-0.5 flex items-center gap-2">
-                      <Calendar className="w-3 h-3" /> {fmtDate(it.sent_at || it.created_at)}
-                      <span>·</span>
-                      <span>{(it.panels || []).length} item{(it.panels || []).length === 1 ? "" : "s"}</span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <div className="font-display text-xl font-bold text-stone-950 truncate">{it.title}</div>
+                      {isUnread && (
+                        <span
+                          data-testid={`portal-update-new-${it.id}`}
+                          className="inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-rose-600 text-white rounded-full shadow-sm"
+                        >
+                          New
+                        </span>
+                      )}
+                    </div>
+                    {/* Date — bumped up to text-sm and the brand font
+                        so it reads as proper metadata not micro-print.
+                        (Was text-xs in the previous build.) */}
+                    <div className="text-sm font-semibold text-stone-700 mt-1 flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-stone-500" />
+                      <span data-testid={`portal-update-date-${it.id}`}>
+                        {fmtDate(it.sent_at || it.created_at)}
+                      </span>
+                      <span className="text-stone-400">·</span>
+                      <span className="text-stone-500 font-normal">
+                        {(it.panels || []).length} item{(it.panels || []).length === 1 ? "" : "s"}
+                      </span>
                     </div>
                   </div>
                   <ChevronDown className={`w-4 h-4 text-stone-500 transition-transform ${isOpen ? "rotate-180" : ""}`} />
