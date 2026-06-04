@@ -3953,6 +3953,18 @@ portal_marketing_routes.attach(api, db, require_role)
 import shape_orders_routes  # noqa: E402
 shape_orders_routes.attach(api, db, require_role)
 
+
+@app.on_event("startup")
+async def _heal_legacy_shape_statuses():
+    # Idempotent boot-time repair for shape orders that were created
+    # before the status fix went in — without this they only show up
+    # under the FRANCHISEE tab, never under ACTIVE. Safe to run every
+    # restart because it only writes when there's drift.
+    try:
+        await shape_orders_routes.heal_legacy_shape_statuses(db)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Shape order status heal failed (non-fatal): %s", exc)
+
 # Phase 2 — WooCommerce live sync (Stage A: read-only orders + product mirror)
 import woocommerce_integration  # noqa: E402
 woocommerce_integration.attach(api, db, require_role)

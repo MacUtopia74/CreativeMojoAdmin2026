@@ -408,3 +408,22 @@ def attach(api, db, require_role):
             "line_item_count": len(line_items),
             "boxes": len(line_items) // 2,
         }
+
+
+async def heal_legacy_shape_statuses(db) -> dict:
+    """Idempotent migration — flips any shape order with a non-active/
+    non-completed status to ``"active"`` so it appears in the Orders >
+    ACTIVE tab. Safe to run on every backend startup; only writes when
+    there's drift to repair.
+    """
+    r = await db.woo_orders.update_many(
+        {"order_kind": "shape_order",
+         "status": {"$nin": ["active", "completed"]}},
+        {"$set": {"status": "active", "is_draft": False}},
+    )
+    if r.modified_count:
+        logger.info(
+            "shape_orders.heal_legacy_shape_statuses: repaired %s legacy doc(s)",
+            r.modified_count,
+        )
+    return {"matched": r.matched_count, "updated": r.modified_count}

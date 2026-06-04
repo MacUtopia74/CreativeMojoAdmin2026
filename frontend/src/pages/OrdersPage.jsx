@@ -107,6 +107,28 @@ export default function OrdersPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [subscriptionsOpen, setSubscriptionsOpen] = useState(false);
   const [bulkPending, setBulkPending] = useState(false);
+  const [fixingStatuses, setFixingStatuses] = useState(false);
+
+  const fixShapeStatuses = async () => {
+    if (fixingStatuses) return;
+    setFixingStatuses(true);
+    try {
+      const { data } = await api.post("/admin/shape-orders/fix-statuses");
+      const n = data?.updated ?? 0;
+      alert(
+        n
+          ? `Repaired ${n} shape order${n === 1 ? "" : "s"} — they'll now show up under ACTIVE.`
+          : "No shape orders needed fixing — you're all caught up.",
+      );
+      await load();
+      await loadCounts();
+    } catch (e) {
+      alert(e?.response?.data?.detail || "Could not run the fix. Check the console for details.");
+    } finally {
+      setFixingStatuses(false);
+    }
+  };
+
 
   const load = async () => {
     setLoading(true);
@@ -214,6 +236,21 @@ export default function OrdersPage() {
           </h1>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={fixShapeStatuses}
+            disabled={fixingStatuses}
+            data-testid="fix-shape-statuses-button"
+            title="Re-flag any legacy shape orders so they show up under ACTIVE"
+            className="px-4 py-2 border border-stone-300 bg-white text-stone-900 text-xs font-bold uppercase tracking-wider hover:bg-stone-50 rounded-lg transition-colors flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {fixingStatuses ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="w-3.5 h-3.5" />
+            )}
+            Fix Shape Statuses
+          </button>
           <button
             type="button"
             onClick={() => setSubscriptionsOpen(true)}

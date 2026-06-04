@@ -1,6 +1,14 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## Shape Orders — ACTIVE tab visibility + one-click status repair (Jun 04 2026)
+- **Issue**: Shape orders submitted via the franchisee portal only appeared under the FRANCHISEE tab, never under ACTIVE. Root cause: legacy shape orders in the DB carried `status="processing"` (or other Woo statuses) instead of `status="active"`, so the `/api/orders?tab=active` filter (`status: "active", is_draft: $ne true`) excluded them. New shape orders are already created with the right status — only legacy docs needed repair.
+- **Auto-heal on startup**: added `heal_legacy_shape_statuses(db)` in `shape_orders_routes.py` and wired it into a new `@app.on_event("startup")` hook in `server.py`. Runs on every boot, idempotent — flips any `order_kind="shape_order"` doc whose status isn't `active`/`completed` to `status="active", is_draft=False`. Logs the row count when it actually writes.
+- **One-click admin button**: added "Fix Shape Statuses" button to the Admin Orders page header (`OrdersPage.jsx`, `data-testid="fix-shape-statuses-button"`). Calls the existing `POST /api/admin/shape-orders/fix-statuses` endpoint with the proper Bearer token, shows a result alert, and reloads the table. Lets the user trigger the repair on production immediately without redeploying or running console fetch.
+- **Verified**: backend restarted clean, endpoint returned `{ok:true, updated:0, matched:0}` on the preview DB (already healed), and the button renders + functions on the live preview UI.
+
+
+
 ## Territory save — rollback + audit log + unambiguous toast (Jun 02 2026)
 - **`territory_history` collection** added. Every call to `PUT /api/franchisees/{id}/territory` now writes a snapshot BEFORE the overwrite, capturing `previous_sectors`, `previous_home_count`, `previous_updated_at`, `previous_updated_by`, `new_sectors`, `new_home_count`, `changed_at`, `changed_by`, `added_count`, `removed_count`. Restoring is a single bulk write — no destructive operations possible without an audit trail.
 - **New endpoints**:
