@@ -17,6 +17,7 @@ import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import { CalendarDays, ExternalLink, Loader2, Plus, RefreshCw, Trash2, AlertCircle, CheckCircle2, X, Save, Link as LinkIcon, MapPin, Clock, Pencil, PowerOff, Video, LayoutGrid, LayoutList, Users, Sparkles } from "lucide-react";
+import YearlyEventsModal from "@/components/calendar/YearlyEventsModal";
 
 function formatDateRange(start, end, allDay) {
   if (!start) return "";
@@ -51,6 +52,7 @@ export default function CalendarPage() {
   const [err, setErr] = useState("");
   const [modal, setModal] = useState(null); // null | { event? }
   const [refreshTick, setRefreshTick] = useState(0);
+  const [yearlyOpen, setYearlyOpen] = useState(false);
   // View mode persists across visits so each admin lands back where they left.
   const [view, setView] = useState(() => {
     try { return localStorage.getItem("calendar.view") || "grid"; }
@@ -248,6 +250,11 @@ export default function CalendarPage() {
                 <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
                 {refreshing ? "Refreshing…" : "Refresh"}
               </button>
+              <button onClick={() => setYearlyOpen(true)} data-testid="cal-yearly-events-btn"
+                title="Manage the yearly events that appear on every franchisee portal calendar"
+                className="px-3 py-2 text-xs font-bold uppercase tracking-wider border border-blue-300 bg-blue-50 text-blue-800 hover:bg-blue-100 rounded-lg flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5" /> Yearly events
+              </button>
               <button onClick={() => setModal({ event: null })} data-testid="cal-new-event"
                 className="px-3 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-lg flex items-center gap-1.5">
                 <Plus className="w-3.5 h-3.5" /> New event
@@ -397,6 +404,7 @@ export default function CalendarPage() {
           onDelete={async (id) => { await deleteEvent(id); setModal(null); }}
         />
       )}
+      {yearlyOpen && <YearlyEventsModal onClose={() => setYearlyOpen(false)} />}
     </div>
   );
 }

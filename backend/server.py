@@ -4060,6 +4060,11 @@ async def _banking_indexes():
 from calendar_routes import attach as build_calendar_router  # noqa: E402
 api.include_router(build_calendar_router(api, db, require_role, get_current_user))
 
+# Calendar extras — yearly HQ events (CSV upload) + per-franchisee
+# personal entries. Lives alongside the Google Calendar integration.
+from calendar_extras_routes import attach as build_calendar_extras_router  # noqa: E402
+api.include_router(build_calendar_extras_router(api, db, require_role, get_current_user))
+
 # Zoom — Server-to-Server OAuth meeting creation
 from zoom_routes import attach as build_zoom_router  # noqa: E402
 api.include_router(build_zoom_router(api, db, require_role))

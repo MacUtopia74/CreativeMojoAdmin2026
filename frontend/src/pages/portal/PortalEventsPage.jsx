@@ -13,7 +13,7 @@ export default function PortalEventsPage() {
         title="Calendar"
         subtitle="Training sessions, franchisee meetings, and HQ events you've been invited to."
       />
-      <PortalEventsPanel open={true} onToggle={() => { /* always open on dedicated route */ }} />
+      <PortalEventsPanel alwaysOpen onToggle={() => { /* always open on dedicated route */ }} />
     </div>
   );
 }

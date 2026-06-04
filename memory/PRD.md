@@ -1,6 +1,25 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## Calendar overhaul — Yearly events CSV + franchisee entries + Week/Day views (Jun 04 2026)
+- **New backend module** `calendar_extras_routes.py` with two Mongo collections:
+  - `calendar_yearly_events` — `{id, date_iso, title, source, uploaded_at, uploaded_by}`. Visible to every authenticated user.
+  - `calendar_franchisee_events` — `{id, franchisee_id, title, start, end, all_day, location, notes, created_at, created_by}`. Strictly scoped to its owner.
+- **Admin endpoints**: `POST /api/admin/calendar/yearly-events/upload` (CSV multipart, `?replace=true` to wipe first), `GET/POST/DELETE /api/admin/calendar/yearly-events[/{id}]`. CSV parser accepts UK-first `DD/MM/YYYY`, ISO `YYYY-MM-DD`, dashed `DD-MM-YYYY`, and short `DD/MM` (recurs against current year). Dedupes by (date, title) so accidental re-uploads are safe.
+- **Portal endpoints**: `GET /api/portal/calendar/yearly-events` (read-only, all roles), `GET/POST/PATCH/DELETE /api/portal/calendar/my-events[/{id}]` (franchisee-only).
+- **Admin Calendar page**: new "Yearly events" pill (blue) in the header opens a `YearlyEventsModal` with CSV upload, per-row delete, "Add single", "Replace mode", and an "Imported N · skipped M · errors" feedback line.
+- **Franchisee portal Calendar** (`PortalEventsPanel.jsx`, fully rewritten):
+  - Default view is **Calendar grid**, not List.
+  - **Month / Week / Day** sub-view buttons drive FullCalendar's `dayGridMonth`, `timeGridWeek`, `timeGridDay`.
+  - Three colour-coded sources: **Yearly Events** (solid `#3B82F6` blue + white text), **HQ Events** (lime), **My Entries** (solid `#9333EA` purple + white text). Legend below the grid.
+  - **"Add Calendar Entry"** purple button above the calendar (franchisee only) — opens a slide-up modal on mobile, dialog on desktop. Fields: title, all-day toggle, start/end, location, notes. Edit/delete from list view or day modal.
+  - **Mobile day-tap**: tap any day → fullscreen modal listing every event for that day in full, with Join buttons, edit/delete for personal entries, and "Add entry on this day".
+  - **"Show recent past" toggle removed** — past events always included (days_back: 30 from HQ Google + the full history from yearly/my collections).
+  - **Collapse chevron** hidden on the dedicated `/portal/events` page via new `alwaysOpen` prop; still collapsible on the dashboard widget where it makes sense.
+- **Verified** end-to-end: CSV uploaded 3 events as admin → Sandra's portal renders the solid-blue blocks on the correct calendar squares, the Coffee with Jane personal entry shows as a purple block, tapping a day opens the detail modal, and the chevron is gone on the dedicated page.
+
+
+
 ## Shape Orders — ACTIVE tab visibility + one-click status repair (Jun 04 2026)
 - **Issue**: Shape orders submitted via the franchisee portal only appeared under the FRANCHISEE tab, never under ACTIVE. Root cause: legacy shape orders in the DB carried `status="processing"` (or other Woo statuses) instead of `status="active"`, so the `/api/orders?tab=active` filter (`status: "active", is_draft: $ne true`) excluded them. New shape orders are already created with the right status — only legacy docs needed repair.
 - **Auto-heal on startup**: added `heal_legacy_shape_statuses(db)` in `shape_orders_routes.py` and wired it into a new `@app.on_event("startup")` hook in `server.py`. Runs on every boot, idempotent — flips any `order_kind="shape_order"` doc whose status isn't `active`/`completed` to `status="active", is_draft=False`. Logs the row count when it actually writes.
