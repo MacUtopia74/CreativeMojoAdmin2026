@@ -45,6 +45,7 @@ import ReconcilePage from "@/pages/invoices/ReconcilePage";
 import PortalShell from "@/pages/portal/PortalShell";
 import PortalDetailsPage from "@/pages/portal/PortalDetailsPage";
 import PortalMarketingPage from "@/pages/portal/PortalMarketingPage";
+import PortalMarketingSettingsPage from "@/pages/portal/PortalMarketingSettingsPage";
 import PortalTrainingPage from "@/pages/portal/PortalTrainingPage";
 import PortalPlaylistPage from "@/pages/portal/PortalPlaylistPage";
 import PortalBookingsPage from "@/pages/portal/PortalBookingsPage";
@@ -88,6 +89,7 @@ export default function App() {
               <Route path="territory/basic" element={<PortalTerritoryPage forceBasic={true} />} />
               <Route path="events" element={<PortalEventsPage />} />
               <Route path="marketing" element={<PortalMarketingPage />} />
+              <Route path="marketing/settings" element={<PortalMarketingSettingsPage />} />
               <Route path="training" element={<PortalTrainingPage />} />
               <Route path="training/:playlistId" element={<PortalPlaylistPage />} />
               <Route path="bookings" element={<PortalBookingsPage />} />

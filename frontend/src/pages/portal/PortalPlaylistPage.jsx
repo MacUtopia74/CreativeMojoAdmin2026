@@ -4,7 +4,7 @@
 // our cached metadata. "Watch on YouTube" CTA links externally.
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, ExternalLink, Loader2, AlertCircle, PlayCircle, Clock } from "lucide-react";
+import { ArrowLeft, Loader2, AlertCircle, PlayCircle, Clock } from "lucide-react";
 import api from "@/lib/api";
 import { bustThumb } from "@/lib/youtubeThumb";
 
@@ -49,10 +49,19 @@ export default function PortalPlaylistPage() {
 
   // Embed URL — autoplay the selected video while keeping the playlist
   // queue active so "Up next" works naturally inside the iframe.
+  //
+  // Sharing hardening (per Paul, Jun 2026):
+  //   • ``rel=0`` — never end on suggested videos
+  //   • ``modestbranding=1`` — no YT logo bug
+  //   • ``iv_load_policy=3`` — hide annotations/cards
+  //   • ``disablekb=1`` — kill keyboard shortcuts that surface the share menu
+  //   • ``cc_load_policy=0`` — hide closed-caption pop-overs
+  //   • Origin pinned so YT denies the iframe outside our hosts
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const lockdownParams = `rel=0&modestbranding=1&iv_load_policy=3&disablekb=1&cc_load_policy=0&playsinline=1&origin=${encodeURIComponent(origin)}`;
   const embedSrc = activeVideoId
-    ? `https://www.youtube-nocookie.com/embed/${activeVideoId}?list=${playlist.youtube_id}&rel=0&modestbranding=1`
-    : `https://www.youtube-nocookie.com/embed/videoseries?list=${playlist.youtube_id}&rel=0&modestbranding=1`;
-  const externalUrl = `https://www.youtube.com/playlist?list=${playlist.youtube_id}`;
+    ? `https://www.youtube-nocookie.com/embed/${activeVideoId}?list=${playlist.youtube_id}&${lockdownParams}`
+    : `https://www.youtube-nocookie.com/embed/videoseries?list=${playlist.youtube_id}&${lockdownParams}`;
 
   return (
     <div className="space-y-4" data-testid="portal-playlist-page">
@@ -66,24 +75,23 @@ export default function PortalPlaylistPage() {
             <p className="text-sm text-stone-600 mt-2 max-w-3xl whitespace-pre-line">{playlist.description}</p>
           )}
         </div>
-        <a href={externalUrl} target="_blank" rel="noopener noreferrer"
-          data-testid="playlist-watch-on-yt"
-          className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 text-[#dedd0a] hover:bg-stone-800 rounded-lg shrink-0">
-          <ExternalLink className="w-3.5 h-3.5" /> Watch on YouTube
-        </a>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5">
         {/* Player */}
-        <div className="bg-stone-950 rounded-2xl overflow-hidden aspect-video">
+        <div className="bg-stone-950 rounded-2xl overflow-hidden aspect-video relative">
           <iframe
             key={activeVideoId || playlist.youtube_id}
             src={embedSrc}
             title={playlist.title}
             className="w-full h-full"
             frameBorder="0"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            // No `web-share` permission — closes off the most obvious
+            // share-menu path inside the player.
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen
+            referrerPolicy="strict-origin-when-cross-origin"
+            sandbox="allow-scripts allow-same-origin allow-presentation"
             data-testid="playlist-iframe"
           />
         </div>

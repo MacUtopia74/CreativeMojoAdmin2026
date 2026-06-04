@@ -12,7 +12,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   GraduationCap, Loader2, AlertCircle, PlayCircle, Users,
-  LayoutGrid, List,
+  LayoutGrid, List, Lock,
 } from "lucide-react";
 import api from "@/lib/api";
 import { bustThumb } from "@/lib/youtubeThumb";
@@ -158,6 +158,20 @@ export default function PortalTrainingPage() {
           </div>
         ) : null}
       />
+
+      {/* Franchisee-only confidentiality notice — visible on every
+          Video Hub visit, not dismissable. */}
+      <div
+        className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-3"
+        data-testid="video-hub-confidentiality"
+      >
+        <Lock className="w-4 h-4 text-amber-700 mt-0.5 shrink-0" />
+        <p className="text-xs sm:text-sm text-amber-900 leading-snug">
+          <strong>For Creative Mojo franchisees only.</strong> These videos are
+          confidential and must not be shared with anyone outside the franchise
+          network. Please don't forward links, download recordings, or screen-record.
+        </p>
+      </div>
 
       {loading && (
         <div className="text-center py-16 text-stone-500">

@@ -33,6 +33,11 @@ export default function MarketingComposeModal({ open, access, draft, onClose, on
   const [title, setTitle] = useState("");
   const [panels, setPanels] = useState([emptyPanel()]);
   const [includeBookings, setIncludeBookings] = useState(false);
+  // Per-send footer-contact checkboxes. Persisted with drafts so the
+  // franchisee's choices stick on every Save → reload cycle.
+  const [footerShowPhone, setFooterShowPhone] = useState(false);
+  const [footerShowEmail, setFooterShowEmail] = useState(true);
+  const [footerShowFacebook, setFooterShowFacebook] = useState(false);
 
   const [recipients, setRecipients] = useState([]);
   const [recipientSearch, setRecipientSearch] = useState("");
@@ -68,11 +73,17 @@ export default function MarketingComposeModal({ open, access, draft, onClose, on
           }];
       setPanels(dp);
       setIncludeBookings(!!draft.include_bookings_link);
+      setFooterShowPhone(!!draft.footer_show_phone);
+      setFooterShowEmail(draft.footer_show_email !== false);
+      setFooterShowFacebook(!!draft.footer_show_facebook);
     } else {
       setDraftId(null);
       setTitle("");
       setPanels([emptyPanel()]);
       setIncludeBookings(false);
+      setFooterShowPhone(false);
+      setFooterShowEmail(true);
+      setFooterShowFacebook(false);
     }
     setRecipientSearch(""); setSelectedKeys(new Set());
     setPreviewHtml(""); setError(""); setInfo("");
@@ -94,12 +105,16 @@ export default function MarketingComposeModal({ open, access, draft, onClose, on
           bookings_url: includeBookings && access?.bookings_enabled
             ? `${window.location.origin}/portal/bookings` : "",
           sample_first_name: "Sandra",
+          footer_show_phone: footerShowPhone,
+          footer_show_email: footerShowEmail,
+          footer_show_facebook: footerShowFacebook,
         });
         setPreviewHtml(data.html || "");
       } catch { /* swallow — preview is best-effort */ }
     }, 300);
     return () => clearTimeout(t);
-  }, [open, title, panels, includeBookings, access?.bookings_enabled]);
+  }, [open, title, panels, includeBookings, access?.bookings_enabled,
+      footerShowPhone, footerShowEmail, footerShowFacebook]);
 
   const filteredRecipients = useMemo(() => {
     const needle = recipientSearch.trim().toLowerCase();
@@ -180,6 +195,9 @@ export default function MarketingComposeModal({ open, access, draft, onClose, on
       link_label: p.link_label || "Find out more",
     })),
     include_bookings_link: includeBookings && access?.bookings_enabled,
+    footer_show_phone: footerShowPhone,
+    footer_show_email: footerShowEmail,
+    footer_show_facebook: footerShowFacebook,
   });
   const sendBody = () => ({
     ...baseBody(),
@@ -327,6 +345,58 @@ export default function MarketingComposeModal({ open, access, draft, onClose, on
                   </span>
                 </label>
               )}
+
+              {/* Footer contact block — per-send checkboxes pulled from
+                  the franchisee's own contact details. */}
+              <div className="border border-stone-200 rounded-xl bg-stone-50/60 p-3" data-testid="marketing-footer-block">
+                <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-2 flex items-center justify-between gap-3">
+                  <span>Footer · what to include on this e-shot</span>
+                  <a
+                    href="/portal/marketing/settings"
+                    className="text-[10px] font-bold text-stone-700 hover:text-stone-950 underline normal-case tracking-normal"
+                  >Edit my marketing settings →</a>
+                </div>
+                <div className="space-y-1.5">
+                  <label className={`flex items-center gap-2 text-sm ${access?.phone ? "text-stone-800 cursor-pointer" : "text-stone-400 cursor-not-allowed"}`}>
+                    <input
+                      type="checkbox"
+                      checked={footerShowPhone && !!access?.phone}
+                      disabled={!access?.phone}
+                      onChange={(e) => setFooterShowPhone(e.target.checked)}
+                      data-testid="footer-show-phone"
+                      className="w-4 h-4 rounded border-stone-300 text-stone-900"
+                    />
+                    Phone — {access?.phone || <em className="text-stone-400">no phone on your profile</em>}
+                  </label>
+                  <label className={`flex items-center gap-2 text-sm ${access?.from_email ? "text-stone-800 cursor-pointer" : "text-stone-400 cursor-not-allowed"}`}>
+                    <input
+                      type="checkbox"
+                      checked={footerShowEmail && !!access?.from_email}
+                      disabled={!access?.from_email}
+                      onChange={(e) => setFooterShowEmail(e.target.checked)}
+                      data-testid="footer-show-email"
+                      className="w-4 h-4 rounded border-stone-300 text-stone-900"
+                    />
+                    Email — {access?.from_email || <em className="text-stone-400">no email</em>}
+                  </label>
+                  <label className={`flex items-center gap-2 text-sm ${access?.facebook_url ? "text-stone-800 cursor-pointer" : "text-stone-400 cursor-not-allowed"}`}>
+                    <input
+                      type="checkbox"
+                      checked={footerShowFacebook && !!access?.facebook_url}
+                      disabled={!access?.facebook_url}
+                      onChange={(e) => setFooterShowFacebook(e.target.checked)}
+                      data-testid="footer-show-facebook"
+                      className="w-4 h-4 rounded border-stone-300 text-stone-900"
+                    />
+                    Facebook page — {access?.facebook_url
+                      ? <span className="truncate max-w-[260px] inline-block align-bottom" title={access.facebook_url}>{access.facebook_url}</span>
+                      : <em className="text-stone-400">add a link in marketing settings</em>}
+                  </label>
+                </div>
+                <div className="mt-2 text-[11px] text-stone-500 italic">
+                  The Creative Mojo logo at the top of each e-shot links to your <strong>{access?.logo_target === "facebook" ? "Facebook page" : "Mojo franchise page"}</strong>. Change in settings.
+                </div>
+              </div>
 
               {/* Recipients */}
               <div>

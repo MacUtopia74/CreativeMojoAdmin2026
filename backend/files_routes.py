@@ -18,6 +18,7 @@ from __future__ import annotations
 import os
 import re
 import urllib.parse
+import uuid
 import logging
 from datetime import datetime, timezone
 from typing import Optional
@@ -464,7 +465,52 @@ def build_router(db, require_role) -> APIRouter:
         else:
             disp = f'inline; filename="{safe}"'
         url = presigned_get_url(key, expires_in=3600, content_disposition=disp)
+        # ---- audit log (admin-visible). We only record actual download
+        # clicks (attachment=True). Inline previews aren't logged because
+        # browser PDF/image previews can fire multiple times per view.
+        if attachment:
+            try:
+                fr_name = None
+                if user.get("role") == "franchisee" and user.get("franchisee_id"):
+                    fr = await db.franchisees.find_one(
+                        {"id": user["franchisee_id"]},
+                        {"_id": 0, "first_name": 1, "last_name": 1, "organisation": 1},
+                    )
+                    if fr:
+                        fr_name = (
+                            f"{fr.get('first_name') or ''} {fr.get('last_name') or ''}".strip()
+                            or fr.get("organisation")
+                        )
+                await db.file_downloads.insert_one({
+                    "id": str(uuid.uuid4()),
+                    "user_id": user.get("id"),
+                    "user_email": user.get("email"),
+                    "user_role": user.get("role"),
+                    "franchisee_id": user.get("franchisee_id"),
+                    "franchisee_name": fr_name,
+                    "file_key": key,
+                    "file_name": existing.get("name"),
+                    "downloaded_at": datetime.now(timezone.utc).isoformat(),
+                })
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("file download audit log failed: %s", exc)
         return {"url": url, "expires_in": 3600}
+
+    # -----------------------------------------------------------------
+    # Admin-only File Vault audit log. Returns the most recent N
+    # download events; tiny payload (no need to paginate yet — drops
+    # ~50 bytes per row and we cap at 500).
+    @router.get("/admin/files/download-log")
+    async def admin_file_download_log(
+        limit: int = Query(500, ge=1, le=2000),
+        _: dict = Depends(require_role("admin")),
+    ):
+        items: list[dict] = []
+        async for d in db.file_downloads.find({}, {"_id": 0}) \
+                .sort("downloaded_at", -1).limit(limit):
+            items.append(d)
+        total = await db.file_downloads.count_documents({})
+        return {"items": items, "returned": len(items), "total": total}
 
     # -----------------------------------------------------------------
     # Share links — these use a stable app-side token that redirects to a

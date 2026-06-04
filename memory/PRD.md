@@ -1,6 +1,54 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## Batch D — Marketing eshot footer, settings, GDPR (Jun 04 2026)
+**Backend** (`portal_marketing_routes.py`)
+- New `marketing_settings` dict on the franchisee doc: `{logo_target: "facebook"|"mojo_page", facebook_url, mojo_page_url}`. Mojo page URL falls back to the existing `wp_page_url` (admin-managed).
+- New endpoints:
+  - `GET /api/portal/marketing/settings` — read franchisee's marketing settings + read-only contact fields (phone, email).
+  - `PATCH /api/portal/marketing/settings` — persist `logo_target` and `facebook_url`.
+- `GET /api/portal/marketing/access` now also returns `phone`, `facebook_url`, `mojo_page_url`, `logo_target` so the compose modal can pre-tick checkboxes + show what would land in the footer.
+- `_check_access` projection widened to include `mobile_phone`, `facebook_url`, `facebook`, `wp_page_url`, `marketing_settings`, `address_street`, `city`, `postcode` (was filtering them out — pulled out new contact / logo / address fields).
+- New helper `_campaign_branding_from(fr, body)` consolidates: logo click destination, footer phone/email/Facebook (gated by per-send booleans), and the franchisee address line. Spread into preview/test-send/send/draft campaign dicts.
+- `_build_html` rewritten:
+  - Logo wrapped in `<a href={logo_target_url}>` only when a target is set (no broken anchors).
+  - Compact footer contact row rendered when at least one checkbox is ticked: `Tel · email · Find us on Facebook`.
+  - GDPR/compliance block now identifies sender by organisation + postal address and explains the opt-out mechanism: *"reply with UNSUBSCRIBE in the subject line"*. Postal address satisfies UK PECR sender-identification.
+- Campaign + draft docs now persist `footer_show_phone/email/facebook` so reload-a-draft round-trips correctly.
+
+**Frontend**
+- New page **`/portal/marketing/settings`** (`PortalMarketingSettingsPage`):
+  - Radio: "When recipients click the Creative Mojo logo, take them to: My Mojo franchise page (read-only, from `wp_page_url`) | My Facebook page". Shows amber "HQ hasn't set yours yet — speak to Paul" if Mojo page is missing.
+  - Facebook URL text input (saved to `marketing_settings.facebook_url`).
+  - Read-only "From your profile" panel (Phone + Email + "speak to Paul" hint).
+- `MarketingComposeModal` — new footer block under the Bookings toggle:
+  - Three checkboxes (Phone / Email / Facebook), each disabled if the corresponding field isn't set on the profile, each pre-tagged with the actual value so the franchisee can see exactly what would render.
+  - "Edit my marketing settings →" link to the settings page.
+  - Status line indicating which logo destination is active.
+  - All three flags persist on Save Draft and on Send; reload-a-draft restores them.
+
+**GDPR — what's now in place** (advisory wrap-up for Paul):
+1. **Sender identity** — organisation name + postal address rendered in every email footer (PECR-compliant).
+2. **Lawful basis** — soft opt-in: every email reminds the recipient *"You're receiving this because you're a Creative Mojo customer."*
+3. **Opt-out mechanism** — clear "Reply with UNSUBSCRIBE in the subject" line; rate-limit-friendly and works on every email client.
+4. **Roadmap suggestion** — eventually wire a token-based unsubscribe URL ("`/u/{token}`") so recipients don't have to reply. That would also let us auto-suppress unsubscribed addresses on subsequent sends. ~2-3hrs work whenever desired.
+
+## Batch E — Video Hub lockdown + File Vault audit log (Jun 04 2026)
+**Video Hub**
+- Hardened `PortalPlaylistPage` iframe:
+  - Already on `youtube-nocookie.com`. Added `iv_load_policy=3` (hide cards), `disablekb=1` (no keyboard shortcuts), `cc_load_policy=0` (no captions popovers), `playsinline=1`, and `origin={current_origin}` so YT denies the embed outside our hosts.
+  - `allow=` no longer includes `web-share`. Added `referrerPolicy="strict-origin-when-cross-origin"` and an iframe `sandbox="allow-scripts allow-same-origin allow-presentation"` for belt-and-braces.
+  - Removed the prominent "Watch on YouTube" button that was acting as a one-click share shortcut.
+- `PortalTrainingPage` now renders a permanent, non-dismissable amber confidentiality banner: *"For Creative Mojo franchisees only. These videos are confidential and must not be shared with anyone outside the franchise network. Please don't forward links, download recordings, or screen-record."*
+- **Honest caveat for Paul**: a determined user can still copy the URL once they're inside our portal or screen-record. Going fully sandboxed would mean re-uploading every video to private storage (Cloudflare R2 / Mux), which is bigger work — call any time you want that step.
+
+**File Vault audit log** (admin-only)
+- Backend: every authenticated `attachment=true` download to `GET /api/files/download` now writes a row to a new `file_downloads` Mongo collection: `{user_id, user_email, user_role, franchisee_id, franchisee_name, file_key, file_name, downloaded_at}`.
+- New `GET /api/admin/files/download-log?limit=N` returns the most recent rows (cap 2000, default 500), sorted newest first.
+- Frontend: new `FileVaultAuditLog` component, mounted just below `RecentFilesStrip` on the admin Files page. Collapsible header (panel is closed by default), lazy-loads on first expand, refresh icon, scrollable max-h-[420px] table showing **When · Franchisee (with admin pill) · File** with the storage key as small monospace under each row.
+
+
+
 ## Batch C — HQ Updates badge system (Jun 04 2026)
 - **Backend** (`announcements_routes.py`):
   - New collection `announcement_reads` keyed by `{user_key, announcement_id}` where `user_key = franchisee_id || user.id || email`.

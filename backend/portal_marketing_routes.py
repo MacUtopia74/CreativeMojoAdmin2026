@@ -77,7 +77,12 @@ async def _check_access(db, user: dict) -> dict:
     fr = await db.franchisees.find_one(
         {"id": fid},
         {"_id": 0, "id": 1, "first_name": 1, "last_name": 1, "organisation": 1,
-         "mojo_email": 1, "tags": 1, "portal_modules": 1},
+         "mojo_email": 1, "tags": 1, "portal_modules": 1,
+         # Needed by the e-shot builder for the logo target + footer
+         # contact block + GDPR sender block.
+         "mobile_phone": 1, "facebook_url": 1, "facebook": 1,
+         "wp_page_url": 1, "marketing_settings": 1,
+         "address_street": 1, "city": 1, "postcode": 1},
     )
     if not fr:
         raise HTTPException(404, detail="Franchisee not found")
@@ -210,6 +215,17 @@ def _build_html(campaign: dict, first_name: str = "{{first_name}}") -> str:
     bookings_url = (campaign.get("bookings_url") or "").strip()
     franchisee_name = (campaign.get("franchisee_name") or "Creative Mojo").strip()
     franchisee_org = (campaign.get("franchisee_organisation") or "Creative Mojo").strip()
+    # Logo click-through target. Falls back gracefully if the franchisee
+    # hasn't configured a Mojo franchise page yet — we don't want a
+    # broken link in the email, so we omit the anchor wrapper instead.
+    logo_target = (campaign.get("logo_target_url") or "").strip()
+    # Per-send footer toggles. Each value is a string the franchisee
+    # picked from the compose-modal checkboxes; if blank we hide the
+    # corresponding line.
+    footer_phone = (campaign.get("footer_phone") or "").strip()
+    footer_email = (campaign.get("footer_email") or "").strip()
+    footer_facebook = (campaign.get("footer_facebook") or "").strip()
+    franchisee_address = (campaign.get("franchisee_address") or "").strip()
     divider = (
         '<tr><td style="padding:0 30px 18px 30px;">'
         '<div style="height:0;border-top:1px solid #dddd16;margin:0;"></div>'
@@ -237,14 +253,71 @@ def _build_html(campaign: dict, first_name: str = "{{first_name}}") -> str:
             '</td></tr>'
         )
 
+    # Header logo — wrap in <a> only if we have a sensible target so
+    # we never ship a broken anchor.
+    logo_img = (
+        f'<img src="{LOGO_URL}" alt="Creative Mojo" width="220"'
+        ' style="max-width:220px;height:auto;display:block;border:0;" />'
+    )
+    if logo_target:
+        logo_block = (
+            f'<a href="{logo_target}" target="_blank" rel="noopener" '
+            f'style="display:inline-block;text-decoration:none;">{logo_img}</a>'
+        )
+    else:
+        logo_block = logo_img
+
+    # ---- Footer contact block. Rendered only when at least one
+    # checkbox is ticked. Kept compact, single column, easy to scan.
+    contact_lines: list[str] = []
+    if footer_phone:
+        contact_lines.append(
+            f'<a href="tel:{footer_phone}" style="color:#1a1a1a;text-decoration:none;">'
+            f'Tel: {footer_phone}</a>'
+        )
+    if footer_email:
+        contact_lines.append(
+            f'<a href="mailto:{footer_email}" style="color:#1a1a1a;text-decoration:none;">'
+            f'{footer_email}</a>'
+        )
+    if footer_facebook:
+        contact_lines.append(
+            f'<a href="{footer_facebook}" target="_blank" rel="noopener" '
+            f'style="color:#1a1a1a;text-decoration:none;">Find us on Facebook</a>'
+        )
+    contact_block = ""
+    if contact_lines:
+        contact_block = (
+            '<tr><td align="center" style="padding:8px 30px 18px 30px;'
+            'font-size:13px;line-height:1.7;color:#1a1a1a;">'
+            + ' &middot; '.join(contact_lines) +
+            '</td></tr>'
+        )
+
+    # ---- GDPR / compliance block. Always rendered. Identifies the
+    # sender (organisation + postal address) and explains lawful basis
+    # + opt-out path in plain English so it satisfies UK PECR + GDPR.
+    addr_line = f"{franchisee_address}<br/>" if franchisee_address else ""
+    compliance_block = (
+        '<tr><td style="padding:18px 30px 24px 30px;font-size:11px;'
+        'color:#999999;line-height:1.6;text-align:center;'
+        'border-top:1px solid #eaeaea;">'
+        f'Sent by <strong>{franchisee_name}</strong> &middot; {franchisee_org}<br/>'
+        f'{addr_line}'
+        "You're receiving this because you're a Creative Mojo customer."
+        " To unsubscribe, simply reply to this email with"
+        ' <em>UNSUBSCRIBE</em> in the subject line and we\'ll remove you'
+        ' from our list immediately.'
+        '</td></tr>'
+    )
+
     return f"""<!doctype html>
 <html><body style="margin:0;background:#f7f7f4;font-family:Helvetica,Arial,sans-serif;">
 <table cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="#f7f7f4" style="background:#f7f7f4;">
   <tr><td align="center" style="padding:30px 16px;">
     <table cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;background:#ffffff;border:1px solid #ececec;">
       <tr><td align="center" style="padding:30px 30px 14px;">
-        <img src="{LOGO_URL}" alt="Creative Mojo" width="220"
-             style="max-width:220px;height:auto;display:block;" />
+        {logo_block}
       </td></tr>
       <tr><td align="center" style="padding:22px 30px 0;">
         <div style="font-family:Helvetica,Arial,sans-serif;font-size:24px;font-weight:800;
@@ -257,10 +330,8 @@ def _build_html(campaign: dict, first_name: str = "{{first_name}}") -> str:
       </td></tr>
       {body_panels}
       {bookings_block}
-      <tr><td style="padding:24px 30px;font-size:11px;color:#999999;line-height:1.5;text-align:center;border-top:1px solid #eaeaea;">
-        Sent by <strong>{franchisee_name}</strong> &middot; {franchisee_org}<br/>
-        You're receiving this because you're a client of Creative Mojo. Reply to this email if you'd like to be removed.
-      </td></tr>
+      {contact_block}
+      {compliance_block}
     </table>
   </td></tr>
 </table>
@@ -350,6 +421,41 @@ async def apply_event(db, campaign_id: str, send_id: Optional[str],
     return bool(r.matched_count)
 
 
+def _campaign_branding_from(fr: dict, body: dict | None = None) -> dict:
+    """Pull the per-franchisee branding bits out of the franchisee
+    record + per-send body, returning the dict fragment that
+    ``_build_html`` understands.
+
+    ``body`` carries the four per-send toggles
+    (``footer_show_phone/email/facebook`` booleans) so the franchisee
+    can choose what's on each individual e-shot. ``logo_target_url``
+    is fully derived from the franchisee profile — they pick the
+    target once in Marketing → Settings and it sticks.
+    """
+    body = body or {}
+    marketing = fr.get("marketing_settings") or {}
+    logo_choice = (marketing.get("logo_target") or "mojo_page").lower()
+    fb_url = (marketing.get("facebook_url") or fr.get("facebook_url") or fr.get("facebook") or "").strip()
+    mojo_url = (marketing.get("mojo_page_url") or fr.get("wp_page_url") or "").strip()
+    logo_target = fb_url if logo_choice == "facebook" else mojo_url
+    addr = ", ".join([
+        p for p in (
+            (fr.get("address_street") or "").strip().rstrip(","),
+            (fr.get("city") or "").strip(),
+            (fr.get("postcode") or "").strip(),
+        ) if p
+    ])
+    return {
+        "logo_target_url": logo_target,
+        "franchisee_address": addr,
+        "footer_phone": (fr.get("mobile_phone") or "").strip()
+            if body.get("footer_show_phone") else "",
+        "footer_email": (fr.get("mojo_email") or "").strip()
+            if body.get("footer_show_email") else "",
+        "footer_facebook": fb_url if body.get("footer_show_facebook") else "",
+    }
+
+
 def attach(api, db, require_role):
 
     # ---- access probe (used by the page to decide if it should render)
@@ -358,6 +464,7 @@ def attach(api, db, require_role):
         try:
             fr = await _check_access(db, user)
             mods = fr.get("portal_modules") or {}
+            marketing = fr.get("marketing_settings") or {}
             return {
                 "allowed": True,
                 "bookings_enabled": bool(mods.get("bookings"))
@@ -366,9 +473,60 @@ def attach(api, db, require_role):
                 "franchisee_name": f"{fr.get('first_name','')} {fr.get('last_name','')}".strip()
                                    or fr.get("organisation") or "Creative Mojo",
                 "organisation": fr.get("organisation") or "",
+                # Surface what the compose modal needs to pre-tick its
+                # checkboxes + show greyed-out previews of the contact
+                # block. Empty strings = "field not set, skip".
+                "phone": fr.get("mobile_phone") or "",
+                "facebook_url": (marketing.get("facebook_url")
+                                 or fr.get("facebook_url")
+                                 or fr.get("facebook") or ""),
+                "mojo_page_url": (marketing.get("mojo_page_url")
+                                  or fr.get("wp_page_url") or ""),
+                "logo_target": (marketing.get("logo_target") or "mojo_page"),
             }
         except HTTPException as e:
             return {"allowed": False, "reason": e.detail}
+
+    # ---- Marketing settings (logo destination + Facebook URL). The
+    # Mojo franchise page URL is derived from the franchisee's
+    # ``wp_page_url`` so admins only have to maintain it in one place.
+    @api.get("/portal/marketing/settings")
+    async def get_marketing_settings(user: dict = Depends(require_role("franchisee"))):
+        fr = await _check_access(db, user)
+        m = fr.get("marketing_settings") or {}
+        return {
+            "logo_target": m.get("logo_target") or "mojo_page",
+            "facebook_url": m.get("facebook_url") or fr.get("facebook_url") or fr.get("facebook") or "",
+            "mojo_page_url": m.get("mojo_page_url") or fr.get("wp_page_url") or "",
+            # Read-only fields surfaced for the UI to render contextual
+            # info next to each form input.
+            "phone": fr.get("mobile_phone") or "",
+            "email": fr.get("mojo_email") or "",
+        }
+
+    @api.patch("/portal/marketing/settings")
+    async def update_marketing_settings(
+        body: dict, user: dict = Depends(require_role("franchisee")),
+    ):
+        fr = await _check_access(db, user)
+        existing = fr.get("marketing_settings") or {}
+        update = dict(existing)
+        if "logo_target" in body:
+            choice = str(body.get("logo_target") or "").lower()
+            if choice not in {"facebook", "mojo_page"}:
+                raise HTTPException(400, detail="logo_target must be 'facebook' or 'mojo_page'")
+            update["logo_target"] = choice
+        if "facebook_url" in body:
+            update["facebook_url"] = (body.get("facebook_url") or "").strip() or None
+        if "mojo_page_url" in body:
+            update["mojo_page_url"] = (body.get("mojo_page_url") or "").strip() or None
+        # Persist back onto the franchisee doc so the rest of the app
+        # (panels, /portal/me, etc.) keeps seeing the same source of truth.
+        await db.franchisees.update_one(
+            {"id": fr["id"]},
+            {"$set": {"marketing_settings": update, "updated_at": _now_iso()}},
+        )
+        return {"ok": True, "marketing_settings": update}
 
     # ---- recipients (Territory+ clients with at least one email)
     @api.get("/portal/marketing/recipients")
@@ -485,6 +643,7 @@ def attach(api, db, require_role):
             "franchisee_name": f"{fr.get('first_name','')} {fr.get('last_name','')}".strip()
                                or fr.get("organisation") or "Creative Mojo",
             "franchisee_organisation": fr.get("organisation") or "Creative Mojo",
+            **_campaign_branding_from(fr, body),
         }
         sample = (body.get("sample_first_name") or "there").strip() or "there"
         return {"html": _build_html(campaign, first_name=sample)}
@@ -514,6 +673,7 @@ def attach(api, db, require_role):
             "franchisee_name": f"{fr.get('first_name','')} {fr.get('last_name','')}".strip()
                                or fr.get("organisation") or "Creative Mojo",
             "franchisee_organisation": fr.get("organisation") or "Creative Mojo",
+            **_campaign_branding_from(fr, body),
         }
         first_name = (body.get("sample_first_name") or "there").strip() or "there"
         html = _build_html(campaign, first_name=first_name)
@@ -633,10 +793,14 @@ def attach(api, db, require_role):
             "link_label": first_panel.get("link_label") or "Find out more",
             "bookings_url": bookings_url,
             "include_bookings_link": bool(body.get("include_bookings_link")),
+            "footer_show_phone": bool(body.get("footer_show_phone")),
+            "footer_show_email": bool(body.get("footer_show_email")),
+            "footer_show_facebook": bool(body.get("footer_show_facebook")),
             "from_email": from_email,
             "franchisee_name": f"{fr.get('first_name','')} {fr.get('last_name','')}".strip()
                                or fr.get("organisation") or "Creative Mojo",
             "franchisee_organisation": fr.get("organisation") or "Creative Mojo",
+            **_campaign_branding_from(fr, body),
             "created_at": _now_iso(),
             "created_by": user.get("email"),
             "recipients": [],
@@ -753,6 +917,9 @@ def attach(api, db, require_role):
             "link_url": first_panel.get("link_url") or "",
             "link_label": first_panel.get("link_label") or "Find out more",
             "include_bookings_link": bool(body.get("include_bookings_link")),
+            "footer_show_phone": bool(body.get("footer_show_phone")),
+            "footer_show_email": bool(body.get("footer_show_email")),
+            "footer_show_facebook": bool(body.get("footer_show_facebook")),
             "franchisee_name": f"{fr.get('first_name','')} {fr.get('last_name','')}".strip()
                                or fr.get("organisation") or "Creative Mojo",
             "franchisee_organisation": fr.get("organisation") or "Creative Mojo",
