@@ -1,6 +1,14 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## Admin Franchisee detail page — layout polish (Jun 04 2026)
+- **KPI strip expanded from 4 → 6 cards** (`grid-cols-2 sm:grid-cols-3 lg:grid-cols-6`): added **Tenure** (years-as-franchisee, shown to one decimal place + start date) and **Bought For** (sum of `initial_starting_fee` across every contract, smart-formatted as £2.5k / £12,500 etc.). The existing four cards (Contracts · Territory · Mandate · Xero) keep their slots so muscle memory survives.
+- **Contact Details + Address panels promoted above the Contracts panel** — they're now the first thing below the hero, matching Paul's "this is what I look at first when I open a franchisee" feedback.
+- **Hero block decluttered**: removed the address line and the redundant "X.X years as a franchisee" row — both now live in the KPI strip / Address panel respectively. The "£2.5k" lozenge in the hero is kept as a compact at-a-glance reference for the same value surfaced in detail by the new KPI card.
+- **Verified** end-to-end on Helen Lyons' record (preview): KPI strip renders 6 cards with Tenure = 8.4 yrs / Bought For = £2.5k; Contact + Address sit directly under the hero; no hero address/years lines remain.
+
+
+
 ## Production-feedback round 2 — polish + missing features (Jun 04 2026)
 
 **Logo size (general admin)**

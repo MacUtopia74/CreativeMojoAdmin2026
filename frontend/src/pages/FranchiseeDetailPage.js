@@ -456,6 +456,17 @@ export default function FranchiseeDetailPage() {
     return { years: diff, since: earliest };
   }, [data]);
 
+  // Sum of every contract's initial starting fee — surfaced in the KPI
+  // strip as "Bought For" so HQ can see the lifetime investment at a
+  // glance without drilling into each contract.
+  const totalStartingFee = useMemo(() => {
+    if (!data?.contracts?.length) return null;
+    const total = data.contracts.reduce(
+      (acc, c) => acc + (Number(c.initial_starting_fee) || 0), 0,
+    );
+    return total > 0 ? total : null;
+  }, [data]);
+
   if (loading) return <div className="min-h-screen flex items-center justify-center text-stone-500 text-sm uppercase tracking-widest">Loading…</div>;
   if (error || !data) return (
     <div className="p-12">
@@ -585,7 +596,7 @@ export default function FranchiseeDetailPage() {
             </button>
           </div>
           <div className="space-y-6 min-w-0">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-stone-200 border border-stone-200 rounded-2xl overflow-hidden">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-px bg-stone-200 border border-stone-200 rounded-2xl overflow-hidden">
               <div className="bg-white p-4">
                 <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Contracts</div>
                 <div className="font-display text-2xl text-stone-950 mt-1">{contracts.length}</div>
@@ -604,6 +615,33 @@ export default function FranchiseeDetailPage() {
                 <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Xero</div>
                 <XeroPill franchiseeId={f.id} />
               </div>
+              {/* Tenure — "X.X years" since the earliest contract or
+                  legacy date_added — replaces the now-removed hero line. */}
+              <div className="bg-white p-4" data-testid="kpi-tenure">
+                <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Tenure</div>
+                {yearsAsFranchisee ? (
+                  <>
+                    <div className="font-display text-2xl text-stone-950 mt-1 tabular-nums">{yearsAsFranchisee.years.toFixed(1)} yrs</div>
+                    <div className="text-xs text-stone-500 mt-0.5">since {formatDate(yearsAsFranchisee.since)}</div>
+                  </>
+                ) : (
+                  <div className="font-display text-2xl text-stone-300 mt-1">—</div>
+                )}
+              </div>
+              {/* Bought For — total initial starting fees across every
+                  contract, shown alongside Tenure so the lifetime
+                  investment is visible from the KPI strip. */}
+              <div className="bg-white p-4" data-testid="kpi-bought-for">
+                <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Bought For</div>
+                {totalStartingFee != null ? (
+                  <>
+                    <div className="font-display text-2xl text-stone-950 mt-1 tabular-nums">£{totalStartingFee >= 1000 ? `${(totalStartingFee / 1000).toFixed(totalStartingFee % 1000 === 0 ? 0 : 1)}k` : totalStartingFee.toLocaleString()}</div>
+                    <div className="text-xs text-stone-500 mt-0.5">across {contracts.length} contract{contracts.length === 1 ? "" : "s"}</div>
+                  </>
+                ) : (
+                  <div className="font-display text-2xl text-stone-300 mt-1">—</div>
+                )}
+              </div>
             </div>
             <div className="space-y-3">
               <div className="flex items-center gap-2 flex-wrap">
@@ -615,23 +653,9 @@ export default function FranchiseeDetailPage() {
                 <h2 className="font-display text-4xl text-stone-950">{fullName || f.organisation}</h2>
                 {f.organisation && fullName && <div className="text-base text-stone-600 mt-1">{f.organisation}</div>}
               </div>
-              {/* Full address — line 1, city, county, postcode, country */}
-              <div className="text-sm text-stone-700 flex items-start gap-1.5" data-testid="hero-address">
-                <MapPin className="w-3.5 h-3.5 text-stone-400 mt-0.5 shrink-0" />
-                <div className="leading-relaxed">
-                  {[f.address || f.address_street, f.city, f.county, f.postcode, f.country]
-                    .filter(Boolean).join(", ") || "—"}
-                </div>
-              </div>
-              {yearsAsFranchisee && (
-                <div className="text-sm text-stone-700 flex items-center gap-1.5" data-testid="hero-years">
-                  <Calendar className="w-3.5 h-3.5 text-stone-400 shrink-0" />
-                  <span>
-                    <strong className="text-stone-950">{yearsAsFranchisee.years.toFixed(1)} years</strong> as a franchisee
-                    <span className="text-stone-500"> · since {formatDate(yearsAsFranchisee.since)}</span>
-                  </span>
-                </div>
-              )}
+              {/* Hero address + tenure rows were removed — those are
+                  now surfaced via the KPI strip (Tenure card) and the
+                  Address panel which sits directly above Contracts. */}
               {otherTags.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
                   {otherTags.map((t) => <span key={t} className="px-2 py-0.5 bg-stone-100 text-xs text-stone-700 rounded-md">{t}</span>)}
@@ -639,6 +663,49 @@ export default function FranchiseeDetailPage() {
               )}
             </div>
           </div>
+        </div>
+
+        {/* Contact + Address — moved above Contracts at Paul's
+            request: this info is what HQ glances at first when they
+            open a franchisee page, so it earns the top slot. */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6" data-testid="franchisee-detail-block">
+          <Panel icon={User} title="Contact Details" testid="panel-contact"
+            action={!editing && (
+              <button onClick={startEdit} className="text-[10px] uppercase tracking-widest font-bold text-stone-500 hover:text-stone-950 flex items-center gap-1">
+                <Pencil className="w-3 h-3" /> Edit
+              </button>
+            )}>
+            <div className="grid grid-cols-2 gap-5">
+              <EditField field="first_name" label="First Name" value={f.first_name} editing={editing} draft={draft} setDraft={setDraft} />
+              <EditField field="last_name" label="Last Name" value={f.last_name} editing={editing} draft={draft} setDraft={setDraft} />
+              <EditField field="organisation" label="Organisation" value={f.organisation} editing={editing} draft={draft} setDraft={setDraft} />
+              <EditField field="email" label="Email" value={f.email} type="email" editing={editing} draft={draft} setDraft={setDraft} mono />
+              <EditField field="mojo_email" label="Mojo Email" value={f.mojo_email} type="email" editing={editing} draft={draft} setDraft={setDraft} mono />
+              <EditField field="secondary_email" label="Secondary Email" value={f.secondary_email} type="email" editing={editing} draft={draft} setDraft={setDraft} mono />
+              <EditField field="telephone" label="Telephone" value={f.telephone} editing={editing} draft={draft} setDraft={setDraft} mono />
+              <EditField field="mobile_phone" label="Mobile" value={f.mobile_phone} editing={editing} draft={draft} setDraft={setDraft} mono />
+            </div>
+            {!editing && (f.website || f.facebook) && (
+              <div className="flex flex-wrap gap-4 pt-4 mt-4 border-t border-stone-100 text-xs">
+                {f.website && <a href={f.website.startsWith("http") ? f.website : `https://${f.website}`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-stone-700 hover:text-stone-950"><Globe className="w-3 h-3" /> {f.website}</a>}
+                {f.facebook && <a href={f.facebook.startsWith("http") ? f.facebook : `https://facebook.com/${f.facebook}`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-stone-700 hover:text-stone-950"><Facebook className="w-3 h-3" /> {f.facebook}</a>}
+              </div>
+            )}
+          </Panel>
+
+          <Panel icon={MapPin} title="Address" testid="panel-address">
+            <div className="grid grid-cols-2 gap-5">
+              <EditField field="address" label="Street" value={f.address || f.address_street} editing={editing} draft={draft} setDraft={setDraft} />
+              <EditField field="city" label="City" value={f.city} editing={editing} draft={draft} setDraft={setDraft} />
+              <EditField field="county" label="County" value={f.county} editing={editing} draft={draft} setDraft={setDraft} />
+              <EditField field="postcode" label="Postcode" value={f.postcode} editing={editing} draft={draft} setDraft={setDraft} mono />
+              <EditField field="country" label="Country" value={f.country} editing={editing} draft={draft} setDraft={setDraft} />
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Date Added</div>
+                <div className="text-sm text-stone-900 mt-1 tabular-nums">{(f.date_added || f.created_at) ? formatDate(f.date_added || f.created_at) : <span className="text-stone-300">—</span>}</div>
+              </div>
+            </div>
+          </Panel>
         </div>
 
         {/* CONTRACTS — full-width prominent */}
@@ -743,44 +810,6 @@ export default function FranchiseeDetailPage() {
 
         {/* Side-by-side details + map placeholder */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Panel icon={User} title="Contact Details" testid="panel-contact"
-            action={!editing && (
-              <button onClick={startEdit} className="text-[10px] uppercase tracking-widest font-bold text-stone-500 hover:text-stone-950 flex items-center gap-1">
-                <Pencil className="w-3 h-3" /> Edit
-              </button>
-            )}>
-            <div className="grid grid-cols-2 gap-5">
-              <EditField field="first_name" label="First Name" value={f.first_name} editing={editing} draft={draft} setDraft={setDraft} />
-              <EditField field="last_name" label="Last Name" value={f.last_name} editing={editing} draft={draft} setDraft={setDraft} />
-              <EditField field="organisation" label="Organisation" value={f.organisation} editing={editing} draft={draft} setDraft={setDraft} />
-              <EditField field="email" label="Email" value={f.email} type="email" editing={editing} draft={draft} setDraft={setDraft} mono />
-              <EditField field="mojo_email" label="Mojo Email" value={f.mojo_email} type="email" editing={editing} draft={draft} setDraft={setDraft} mono />
-              <EditField field="secondary_email" label="Secondary Email" value={f.secondary_email} type="email" editing={editing} draft={draft} setDraft={setDraft} mono />
-              <EditField field="telephone" label="Telephone" value={f.telephone} editing={editing} draft={draft} setDraft={setDraft} mono />
-              <EditField field="mobile_phone" label="Mobile" value={f.mobile_phone} editing={editing} draft={draft} setDraft={setDraft} mono />
-            </div>
-            {!editing && (f.website || f.facebook) && (
-              <div className="flex flex-wrap gap-4 pt-4 mt-4 border-t border-stone-100 text-xs">
-                {f.website && <a href={f.website.startsWith("http") ? f.website : `https://${f.website}`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-stone-700 hover:text-stone-950"><Globe className="w-3 h-3" /> {f.website}</a>}
-                {f.facebook && <a href={f.facebook.startsWith("http") ? f.facebook : `https://facebook.com/${f.facebook}`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-stone-700 hover:text-stone-950"><Facebook className="w-3 h-3" /> {f.facebook}</a>}
-              </div>
-            )}
-          </Panel>
-
-          <Panel icon={MapPin} title="Address" testid="panel-address">
-            <div className="grid grid-cols-2 gap-5">
-              <EditField field="address" label="Street" value={f.address || f.address_street} editing={editing} draft={draft} setDraft={setDraft} />
-              <EditField field="city" label="City" value={f.city} editing={editing} draft={draft} setDraft={setDraft} />
-              <EditField field="county" label="County" value={f.county} editing={editing} draft={draft} setDraft={setDraft} />
-              <EditField field="postcode" label="Postcode" value={f.postcode} editing={editing} draft={draft} setDraft={setDraft} mono />
-              <EditField field="country" label="Country" value={f.country} editing={editing} draft={draft} setDraft={setDraft} />
-              <div>
-                <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Date Added</div>
-                <div className="text-sm text-stone-900 mt-1 tabular-nums">{(f.date_added || f.created_at) ? formatDate(f.date_added || f.created_at) : <span className="text-stone-300">—</span>}</div>
-              </div>
-            </div>
-          </Panel>
-
           {/* Territory map — live Mapbox (Phase 4) */}
           <Panel
             icon={Map}
