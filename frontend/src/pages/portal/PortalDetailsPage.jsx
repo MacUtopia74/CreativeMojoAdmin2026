@@ -127,14 +127,45 @@ export default function PortalDetailsPage() {
           <Field icon={Phone} label="Phone" value={profile.phone} href={`tel:${profile.phone}`} />
           <Field icon={Smartphone} label="Mobile" value={profile.mobile} href={`tel:${profile.mobile}`} />
           <Field icon={Globe} label="Website" value={profile.website} href={profile.website} />
-          <Field
-            icon={Facebook}
-            label="Facebook page"
-            value={profile.facebook_page || profile.facebook_url || profile.facebook}
-            href={profile.facebook_page || profile.facebook_url || profile.facebook}
-          />
           <Field icon={Calendar} label="Started with us" value={profile.start_date ? new Date(profile.start_date).toLocaleDateString("en-GB") : null} />
           {profile.end_date && <Field icon={Clock} label="End date" value={new Date(profile.end_date).toLocaleDateString("en-GB")} />}
+          {/* Franchisee's OWN public Facebook page — promoted to a
+              prominent button (not the tiny mailto/tel-style line we
+              show for the others) because it's something Sandra et al
+              click into constantly to check their public-facing
+              presence. Spans the full row on every breakpoint. */}
+          {(() => {
+            const fbUrl = profile.facebook_page || profile.facebook_url || profile.facebook;
+            if (!fbUrl) return null;
+            const display = String(fbUrl).replace(/^https?:\/\/(www\.)?/, "");
+            return (
+              <div className="sm:col-span-2 lg:col-span-3" data-testid="portal-my-facebook">
+                <a
+                  href={fbUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group flex items-center gap-4 px-4 py-4 sm:px-5 sm:py-5 rounded-2xl border border-[#1877F2]/30 bg-[#1877F2]/5 hover:bg-[#1877F2]/10 transition-colors"
+                  data-testid="portal-visit-my-facebook"
+                >
+                  <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-[#1877F2] flex items-center justify-center shrink-0 shadow-sm">
+                    <Facebook className="w-6 h-6 sm:w-7 sm:h-7 text-white fill-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[10px] sm:text-[11px] uppercase tracking-[0.2em] font-bold text-[#1877F2]">
+                      My Mojo Facebook page
+                    </div>
+                    <div className="text-sm sm:text-base text-stone-900 font-medium truncate">{display}</div>
+                  </div>
+                  <div className="hidden sm:flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#1877F2] text-white text-xs font-bold uppercase tracking-wider group-hover:bg-[#1666d4] transition-colors">
+                    Visit My Mojo Facebook Page
+                  </div>
+                  <div className="sm:hidden px-3 py-2 rounded-lg bg-[#1877F2] text-white text-[10px] font-bold uppercase tracking-wider">
+                    Visit
+                  </div>
+                </a>
+              </div>
+            );
+          })()}
           {profile.current_contract && (
             <div className="sm:col-span-2 lg:col-span-3 mt-2 pt-4 border-t border-stone-200">
               <div className="flex items-center gap-2 mb-3">

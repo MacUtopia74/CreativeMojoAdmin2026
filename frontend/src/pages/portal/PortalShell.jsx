@@ -21,8 +21,14 @@ import {
   User as UserIcon, MapPin, CalendarDays, FolderOpen, Receipt,
   LogOut, Type, Loader2, AlertCircle, Megaphone, GraduationCap,
   CalendarClock, KeyRound, Sparkles, UserCog, ChevronDown, ShoppingBag,
-  Menu, X,
+  Menu, X, Facebook,
 } from "lucide-react";
+
+// Private community Facebook group — every franchisee gets the same
+// button to keep the link consistent and visible across every portal
+// page. Meta blocks embedding private groups so the only viable UX
+// is opening it in a new tab.
+const COMFORT_ZONE_FB_URL = "https://www.facebook.com/groups/223912961485958/";
 
 const FONT_SCALES = {
   small: { label: "Small", zoom: 0.9 },
@@ -189,6 +195,21 @@ export default function PortalShell() {
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 py-2 sm:py-3 flex items-center justify-between gap-2">
           <Logo className="h-12 sm:h-16 shrink-0 max-w-[55%]" />
           <div className="flex items-center gap-2 sm:gap-4">
+            {/* Comfort Zone — opens the private FB group in a new tab.
+                Always visible (every franchisee has access to it). On
+                small screens the label collapses to the icon only. */}
+            <a
+              href={COMFORT_ZONE_FB_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="portal-comfort-zone-btn"
+              title="Open the Creative Mojo Comfort Zone private Facebook group"
+              className="px-2.5 sm:px-4 py-2 text-[10px] sm:text-xs font-bold uppercase tracking-wider bg-[#1877F2] hover:bg-[#1666d4] text-white rounded-lg flex items-center gap-1.5 sm:gap-2 transition-colors shadow-sm"
+            >
+              <Facebook className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-white" />
+              <span className="hidden sm:inline">Creative Mojo Comfort Zone</span>
+              <span className="sm:hidden">Comfort Zone</span>
+            </a>
             <button
               onClick={() => {
                 const order = ["small", "medium", "large", "xlarge"];
