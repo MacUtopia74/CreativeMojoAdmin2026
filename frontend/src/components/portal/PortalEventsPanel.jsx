@@ -15,7 +15,7 @@ import api from "@/lib/api";
 import {
   CalendarDays, Video, MapPin, Clock, ChevronDown, ChevronUp,
   Loader2, ExternalLink, RefreshCw, LayoutGrid, LayoutList, X, Plus,
-  Pencil, Trash2, Save, AlertCircle, Sparkles, User,
+  Pencil, Trash2, Save, AlertCircle, Sparkles, User, Search,
 } from "lucide-react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
@@ -94,6 +94,12 @@ export default function PortalEventsPanel({ open, onToggle, alwaysOpen = false, 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorEvent, setEditorEvent] = useState(null); // null = create
 
+  // Search query — filters event title / location / notes across all
+  // three sources. Empty string shows everything. Matched against
+  // case-insensitive substring so franchisees can find an event by
+  // any partial word (e.g. "wimble" → "Wimbledon training").
+  const [search, setSearch] = useState("");
+
   const load = useCallback(async () => {
     setBusy(true);
     try {
@@ -133,9 +139,24 @@ export default function PortalEventsPanel({ open, onToggle, alwaysOpen = false, 
 
   // Merged FullCalendar events. Each carries `_kind` so click handlers
   // can route correctly (HQ join URL vs edit-mine vs read-only yearly).
+  //
+  // Search-aware: when `search` is non-empty, only events whose
+  // title / location / notes contain the query (case-insensitive)
+  // make it into the merged list. The query also feeds the search
+  // results panel below the calendar.
+  const searchNeedle = (search || "").trim().toLowerCase();
+  const matchesSearch = useCallback((evt) => {
+    if (!searchNeedle) return true;
+    const hay = [
+      evt.title, evt.location, evt.notes, evt.description, evt.summary,
+    ].filter(Boolean).join(" ").toLowerCase();
+    return hay.includes(searchNeedle);
+  }, [searchNeedle]);
+
   const fcEvents = useMemo(() => {
     const out = [];
     (hqEvents || []).forEach((e) => {
+      if (!matchesSearch(e)) return;
       out.push({
         id: `hq-${e.id}`,
         title: e.title,
@@ -149,6 +170,7 @@ export default function PortalEventsPanel({ open, onToggle, alwaysOpen = false, 
       });
     });
     yearlyEvents.forEach((e) => {
+      if (!matchesSearch(e)) return;
       out.push({
         id: `yr-${e.id}`,
         title: e.title,
@@ -165,6 +187,7 @@ export default function PortalEventsPanel({ open, onToggle, alwaysOpen = false, 
       });
     });
     myEvents.forEach((e) => {
+      if (!matchesSearch(e)) return;
       out.push({
         id: `my-${e.id}`,
         title: e.title,
@@ -179,7 +202,7 @@ export default function PortalEventsPanel({ open, onToggle, alwaysOpen = false, 
       });
     });
     return out;
-  }, [hqEvents, yearlyEvents, myEvents]);
+  }, [hqEvents, yearlyEvents, myEvents, matchesSearch]);
 
   // Helper: every event tied to a given YYYY-MM-DD, sorted by time.
   const eventsOnDay = useCallback((dayIso) => {
@@ -187,12 +210,15 @@ export default function PortalEventsPanel({ open, onToggle, alwaysOpen = false, 
     const day = dayIso.slice(0, 10);
     const list = [];
     (hqEvents || []).forEach((e) => {
+      if (!matchesSearch(e)) return;
       if ((e.start || "").slice(0, 10) === day) list.push({ ...e, _kind: "hq" });
     });
     yearlyEvents.forEach((e) => {
+      if (!matchesSearch(e)) return;
       if (e.date_iso === day) list.push({ ...e, _kind: "yearly", start: e.date_iso, all_day: true });
     });
     myEvents.forEach((e) => {
+      if (!matchesSearch(e)) return;
       if ((e.start || "").slice(0, 10) === day) list.push({ ...e, _kind: "mine" });
     });
     return list.sort((a, b) => {
@@ -200,7 +226,7 @@ export default function PortalEventsPanel({ open, onToggle, alwaysOpen = false, 
       const bb = b.all_day ? "0" : (b.start || "");
       return aa.localeCompare(bb);
     });
-  }, [hqEvents, yearlyEvents, myEvents]);
+  }, [hqEvents, yearlyEvents, myEvents, matchesSearch]);
 
   // Listed view (legacy) — keep working but no longer the default.
   const listEvents = useMemo(() => {
@@ -262,6 +288,44 @@ export default function PortalEventsPanel({ open, onToggle, alwaysOpen = false, 
 
       {isOpen && (
         <div className={`${alwaysOpen ? "px-4 sm:px-6 py-5 sm:py-6" : "px-4 sm:px-6 pb-5 sm:pb-6"} space-y-4`}>
+          {/* Search panel — filters the calendar grid + list view AND
+              feeds the results count line below. Matches event title /
+              location / notes (case-insensitive substring). Sits at
+              the very top of the body so the franchisee always knows
+              what they're looking at. */}
+          <div className="flex items-stretch gap-2" data-testid="portal-events-search">
+            <div className="relative flex-1">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search events by name, location, or notes…"
+                data-testid="portal-events-search-input"
+                className="w-full pl-9 pr-9 py-2.5 border border-stone-300 rounded-xl text-sm focus:outline-none focus:border-stone-950 bg-white"
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  data-testid="portal-events-search-clear"
+                  title="Clear search"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 inline-flex items-center justify-center rounded-md hover:bg-stone-100 text-stone-500"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            {search && (
+              <div
+                className="px-3 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wider bg-stone-100 text-stone-700 flex items-center"
+                data-testid="portal-events-search-count"
+              >
+                {fcEvents.length} match{fcEvents.length === 1 ? "" : "es"}
+              </div>
+            )}
+          </div>
+
           {/* Toolbar */}
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2 flex-wrap">
@@ -688,13 +752,11 @@ function MyEventModal({ event, prefillDate, onClose, onSaved }) {
   const [end, setEnd] = useState(initialEnd);
   const [location, setLocation] = useState(event?.location || "");
   const [notes, setNotes] = useState(event?.notes || "");
-  // Repeat options (only meaningful on create — once persisted, each
-  // occurrence is its own document so editing the base doesn't ripple).
-  const [repeat, setRepeat] = useState("none");
-  const [repeatUntil, setRepeatUntil] = useState("");
+  // Repeat intentionally removed from the portal — the booking module
+  // will own recurrence. Keeping it here would create rows the booking
+  // calendar can't manage.
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
-  const editing = !!event?.id;
 
   const save = async () => {
     setErr("");
@@ -721,21 +783,14 @@ function MyEventModal({ event, prefillDate, onClose, onSaved }) {
         location: location || null,
         notes: notes || null,
       };
-      // Send repeat info only on create — there's no edit-the-series
-      // path yet and PATCH ignores these fields anyway.
-      if (!editing && repeat !== "none") {
-        body.repeat = repeat;
-        if (repeatUntil) body.repeat_until = repeatUntil;
-      }
+      // Repeat fields intentionally not sent — the portal no longer
+      // exposes recurrence (booking module will).
       if (event?.id) {
         const { data } = await api.patch(`/portal/calendar/my-events/${event.id}`, body);
         onSaved(data, "edit");
       } else {
         const { data } = await api.post("/portal/calendar/my-events", body);
-        // When the user picks a repeat, the backend creates clones on
-        // top of the base — we need to refetch to pick them up rather
-        // than just appending the base locally.
-        onSaved(data, repeat !== "none" ? "create-series" : "create");
+        onSaved(data, "create");
       }
     } catch (e) {
       setErr(e?.response?.data?.detail || "Save failed");
@@ -829,42 +884,6 @@ function MyEventModal({ event, prefillDate, onClose, onSaved }) {
               className="w-full px-3 py-2 text-sm border border-stone-300 rounded-lg"
             />
           </div>
-          {/* Repeat — only shown on create. */}
-          {!editing && (
-            <div className="border border-stone-200 rounded-lg p-3 bg-stone-50/60">
-              <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-2">
-                Repeat
-              </label>
-              <select
-                value={repeat}
-                onChange={(e) => setRepeat(e.target.value)}
-                data-testid="my-event-repeat"
-                className="w-full px-3 py-2 text-sm border border-stone-300 rounded-lg bg-white"
-              >
-                <option value="none">Doesn't repeat</option>
-                <option value="weekly">Weekly</option>
-                <option value="fortnightly">Fortnightly (every 2 weeks)</option>
-                <option value="monthly">Monthly</option>
-              </select>
-              {repeat !== "none" && (
-                <div className="mt-2">
-                  <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-1">
-                    Until (optional · defaults to 12 months)
-                  </label>
-                  <input
-                    type="date"
-                    value={repeatUntil}
-                    onChange={(e) => setRepeatUntil(e.target.value)}
-                    data-testid="my-event-repeat-until"
-                    className="w-full px-3 py-2 text-sm border border-stone-300 rounded-lg tabular-nums bg-white"
-                  />
-                  <p className="text-[11px] text-stone-500 mt-1">
-                    We'll create each occurrence as a separate entry so you can edit or delete any single date.
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
           {err && (
             <div className="text-xs text-red-700 bg-red-50 border border-red-200 px-3 py-2 rounded-lg flex items-center gap-1.5">
               <AlertCircle className="w-3.5 h-3.5" /> {err}

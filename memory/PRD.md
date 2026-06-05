@@ -1,6 +1,27 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## Calendar — Search bar + dropped portal recurrence (Jun 05 2026)
+
+**1) Search panel above both admin and portal calendars**
+- New search input rendered above the toolbar on `/calendar` (admin) and `/portal/events` (franchisee).
+- Filters: case-insensitive substring match against event `title` / `location` / `description` / `summary` / `notes`.
+- Applies to: grid view, list view, day-detail modal AND (admin) the yearly-only fallback grid that shows when Google Calendar is disconnected.
+- "X matches" count pill appears when a search is active.
+- Clear-with-X button. Single-line input that doesn't push the existing toolbar around (search row + tools row on separate flex lines).
+- Hidden when nothing is loadable (admin shows the search only when status.connected or yearly events exist).
+
+**2) Portal calendar — repeat options removed**
+- Dropped the entire "Repeat" panel from the `My Event Editor` modal (was offering weekly/fortnightly/monthly with optional end date). The booking module will own recurrence going forward; keeping it here was creating orphan series rows the booking calendar couldn't manage.
+- Removed associated state (`repeat`, `repeatUntil`), the conditional `body.repeat` / `body.repeat_until` payload fields, and the now-redundant `create-series` onSaved branch.
+- Existing already-created repeating entries are unaffected — backend still accepts the legacy payload, the portal just no longer offers it as an option.
+
+**Files touched**
+- `frontend/src/pages/CalendarPage.jsx` — `query` state + `queryNeedle` / `matchesQuery` helpers (declared top of component to avoid TDZ), `grouped` + `fcEvents` filtered, Search/X icons imported, search row inserted under the page header.
+- `frontend/src/components/portal/PortalEventsPanel.jsx` — `search` state + `matchesSearch` callback, `fcEvents` + `eventsOnDay` honour the filter, search row added above the toolbar with count pill, `repeat` UI + state + payload + onSaved branch removed.
+
+
+
 ## Marketing — Bolt-on gating + Unsubscribe management (Jun 05 2026)
 
 **1) Hide Megaphone deep-link when no Marketing bolt-on**

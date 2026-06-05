@@ -16,7 +16,7 @@ import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
-import { CalendarDays, ExternalLink, Loader2, Plus, RefreshCw, Trash2, AlertCircle, CheckCircle2, X, Save, Link as LinkIcon, MapPin, Clock, Pencil, PowerOff, Video, LayoutGrid, LayoutList, Users, Sparkles } from "lucide-react";
+import { CalendarDays, ExternalLink, Loader2, Plus, RefreshCw, Trash2, AlertCircle, CheckCircle2, X, Save, Link as LinkIcon, MapPin, Clock, Pencil, PowerOff, Video, LayoutGrid, LayoutList, Users, Sparkles, Search } from "lucide-react";
 import YearlyEventsModal from "@/components/calendar/YearlyEventsModal";
 
 function formatDateRange(start, end, allDay) {
@@ -57,6 +57,11 @@ export default function CalendarPage() {
   // grid alongside Google events in the same light-blue swatch the
   // franchisee portal uses so admins see exactly what franchisees see.
   const [yearlyEvents, setYearlyEvents] = useState([]);
+  // Search query — filters which events render in the grid + list view.
+  // Matches event title / location / description / summary
+  // (case-insensitive substring) so admins can find any HQ training or
+  // yearly fixture in seconds without scrolling 12 months of calendar.
+  const [query, setQuery] = useState("");
   // View mode persists across visits so each admin lands back where they left.
   const [view, setView] = useState(() => {
     try { return localStorage.getItem("calendar.view") || "grid"; }
@@ -148,15 +153,31 @@ export default function CalendarPage() {
     } catch (e) { alert(e?.response?.data?.detail || "Delete failed"); }
   };
 
+  // Search query needle — shared by `grouped` (list view) and
+  // `fcEvents` (grid view). Declared once up here so both memos can
+  // reference it without tripping over temporal-dead-zone.
+  const queryNeedle = (query || "").trim().toLowerCase();
+  const matchesQuery = (e) => {
+    if (!queryNeedle) return true;
+    const hay = [e.title, e.location, e.description, e.summary, e.notes]
+      .filter(Boolean).join(" ").toLowerCase();
+    return hay.includes(queryNeedle);
+  };
+
   const grouped = useMemo(() => {
     // Bucket events by their day label. Two-tier sort: upcoming days
     // (today + future) come first in chronological order, then past
     // days afterwards in reverse-chronological (newest-first) order. This
     // means when Sandra opens the list, the next thing she has to do is
     // at the very top — not buried under last year's recurring meetings.
+    //
+    // Search-aware: when a query is active we narrow the input to
+    // events that hit the substring so the listed view shrinks to
+    // matches only, matching the grid behaviour.
     const buckets = new Map();
     const dayKeys = new Map(); // label → timestamp for sorting
-    events.forEach((e) => {
+    const visible = events.filter(matchesQuery);
+    visible.forEach((e) => {
       if (!e.start) return;
       const d = new Date(e.start);
       const label = d.toLocaleDateString("en-GB", {
@@ -187,13 +208,20 @@ export default function CalendarPage() {
       return aFuture ? aTs - bTs : bTs - aTs;
     });
     return entries;
-  }, [events]);
+  }, [events, queryNeedle]);
 
   // FullCalendar event shape — translates our normalised event list.
   // For all-day events Google returns YYYY-MM-DD which FC handles natively;
   // timed events come back as ISO 8601 with tz offset, also fine.
+  //
+  // Search-aware: when the admin types into the search box we filter
+  // both Google events and yearly events by title / location /
+  // description / summary substring so the grid + list view shrink
+  // to just matches. The needle + match helper are declared once at
+  // the top of the component body (see above) so this memo just
+  // applies the filter.
   const fcEvents = useMemo(() => {
-    const out = events.map((e) => ({
+    const out = events.filter(matchesQuery).map((e) => ({
       id: e.id,
       title: e.title,
       start: e.start,
@@ -208,6 +236,7 @@ export default function CalendarPage() {
     // Yearly events get the same light-blue solid block the franchisee
     // portal uses (so admins can verify visual parity at a glance).
     yearlyEvents.forEach((y) => {
+      if (!matchesQuery(y)) return;
       out.push({
         id: `yr-${y.id}`,
         title: y.title,
@@ -221,7 +250,7 @@ export default function CalendarPage() {
       });
     });
     return out;
-  }, [events, yearlyEvents]);
+  }, [events, yearlyEvents, queryNeedle]);
 
   return (
     <div className="px-8 py-7 max-w-7xl mx-auto" data-testid="calendar-page">
@@ -293,6 +322,45 @@ export default function CalendarPage() {
           )}
         </div>
       </div>
+
+      {/* Search panel — filters events on title, location, description
+          across the grid + list views + the yearly-only fallback below.
+          Sits below the page header so it's always visible regardless
+          of Google connection state. */}
+      {(status?.connected || yearlyEvents.length > 0) && (
+        <div className="mb-5 flex items-stretch gap-2" data-testid="cal-search">
+          <div className="relative flex-1 max-w-xl">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search events by name, location, or description…"
+              data-testid="cal-search-input"
+              className="w-full pl-10 pr-10 py-2.5 border border-stone-300 rounded-xl text-sm focus:outline-none focus:border-stone-950 bg-white"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery("")}
+                data-testid="cal-search-clear"
+                title="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 inline-flex items-center justify-center rounded-md hover:bg-stone-100 text-stone-500"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          {query && (
+            <div
+              className="px-3 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-wider bg-stone-100 text-stone-700 flex items-center"
+              data-testid="cal-search-count"
+            >
+              {fcEvents.length} match{fcEvents.length === 1 ? "" : "es"}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Not configured (no env vars) */}
       {status && !status.configured && (
