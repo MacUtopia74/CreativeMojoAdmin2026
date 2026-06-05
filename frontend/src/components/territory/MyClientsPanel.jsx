@@ -15,9 +15,10 @@
 // Map and My Clients columns between balanced and clients-focused
 // proportions. The button lives in the panel header.
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Users, Plus, ChevronRight, Search, Star, BedDouble,
-  Maximize2, Minimize2, Eye,
+  Maximize2, Minimize2, Eye, Megaphone,
 } from "lucide-react";
 
 const PAGE_SIZE = 10;
@@ -51,6 +52,14 @@ export default function MyClientsPanel({
   const [q, setQ] = useState("");
   const [sortValue, setSortValue] = useState("name-asc");
   const [page, setPage] = useState(0);
+  const navigate = useNavigate();
+
+  // Marketing deep-link — opens the Marketing module with this client
+  // pre-selected as the recipient. Triggered by the in-row Megaphone
+  // button. We stopPropagation so the row's edit modal doesn't open.
+  const openMarketing = (clientId) => {
+    navigate(`/portal/marketing?client_id=${encodeURIComponent(clientId)}`);
+  };
 
   // Build display rows with type/beds enrichment for CQC-linked clients.
   // ``_location`` deliberately DOES NOT fall back to postcode — postcode
@@ -236,6 +245,19 @@ export default function MyClientsPanel({
                           </span>
                         )}
                       </div>
+                      {/* Marketing deep-link — only when we have an
+                          email to send to. */}
+                      {c.email && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); openMarketing(c.id); }}
+                          data-testid={`my-clients-marketing-${c.id}`}
+                          title="Send a marketing e-shot to this client"
+                          className="shrink-0 w-8 h-8 rounded-md border border-stone-300 text-stone-600 hover:bg-stone-950 hover:text-[#dddd16] hover:border-stone-950 flex items-center justify-center transition-colors"
+                        >
+                          <Megaphone className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                       <ChevronRight className="w-4 h-4 shrink-0 text-stone-400 group-hover:text-stone-950 group-hover:translate-x-0.5 transition-transform" />
                     </>
                   ) : (
@@ -244,7 +266,20 @@ export default function MyClientsPanel({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
                           <div className="font-semibold text-stone-950 text-sm leading-snug break-words">{c.name}</div>
-                          <ChevronRight className="w-4 h-4 mt-0.5 shrink-0 text-stone-400 group-hover:text-stone-950 group-hover:translate-x-0.5 transition-transform" />
+                          <div className="flex items-center gap-1 shrink-0">
+                            {c.email && (
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); openMarketing(c.id); }}
+                                data-testid={`my-clients-marketing-${c.id}`}
+                                title="Send a marketing e-shot to this client"
+                                className="w-7 h-7 rounded-md border border-stone-300 text-stone-600 hover:bg-stone-950 hover:text-[#dddd16] hover:border-stone-950 flex items-center justify-center transition-colors"
+                              >
+                                <Megaphone className="w-3 h-3" />
+                              </button>
+                            )}
+                            <ChevronRight className="w-4 h-4 mt-0.5 shrink-0 text-stone-400 group-hover:text-stone-950 group-hover:translate-x-0.5 transition-transform" />
+                          </div>
                         </div>
                         <div className="text-[11px] text-stone-600 mt-1 flex flex-wrap gap-x-2 gap-y-1 items-center">
                           {c.postcode && <span className="font-mono">{c.postcode}</span>}

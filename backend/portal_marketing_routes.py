@@ -183,7 +183,8 @@ def _sanitise_intro_html(raw: str) -> str:
         return _esc(raw).replace("\n", "<br/>")
 
 
-def _build_panel_html(panel: dict, first_name: str = "{{first_name}}") -> str:
+def _build_panel_html(panel: dict, first_name: str = "{{first_name}}",
+                       franchisee_email: str = "") -> str:
     """Render a single content section.
 
     Each section is now structured as:
@@ -191,7 +192,10 @@ def _build_panel_html(panel: dict, first_name: str = "{{first_name}}") -> str:
       • Image (optional, JPG/PNG/WebP)
       • Body text (rich-text intro — bold / italic / underline / colour
         / alignment) — substitutes ``{{first_name}}`` per recipient
-      • Link button (optional)
+      • Call-to-action button (optional). Two modes via ``link_type``:
+          - ``"url"`` (default): button links to ``link_url``
+          - ``"email"``: button is a ``mailto:`` to ``franchisee_email``
+            with ``email_subject`` as the pre-filled subject line
 
     The ``layout`` option drives where the text sits in relation to
     the image:
@@ -218,14 +222,21 @@ def _build_panel_html(panel: dict, first_name: str = "{{first_name}}") -> str:
 
     header_raw = (panel.get("header") or "").strip()
     image_url = (panel.get("image_url") or "").strip()
+    link_type = (panel.get("link_type") or "url").lower()
+    if link_type not in {"url", "email"}:
+        link_type = "url"
     link_url = (panel.get("link_url") or "").strip()
-    link_label = (panel.get("link_label") or "Find out more").strip() or "Find out more"
+    link_label = (panel.get("link_label") or "").strip() or (
+        "Email me" if link_type == "email" else "Find out more"
+    )
+    email_subject = (panel.get("email_subject") or "I'd like more information please").strip()
     layout = (panel.get("layout") or "image-top").lower()
     if layout not in {"image-top", "image-left", "image-right"}:
         layout = "image-top"
 
     # Pre-render fragments
     from html import escape as _esc
+    from urllib.parse import quote as _q
     header_block = ""
     if header_raw:
         header_block = (
@@ -243,12 +254,20 @@ def _build_panel_html(panel: dict, first_name: str = "{{first_name}}") -> str:
             f'<img src="{image_url}" alt="" '
             'style="max-width:100%;height:auto;border-radius:8px;display:block;margin:0 auto;border:0;" />'
         )
+    # CTA button — URL link or mailto: depending on link_type.
     link_block = ""
-    if link_url:
+    if link_type == "email" and franchisee_email:
+        href = f"mailto:{franchisee_email}?subject={_q(email_subject, safe='')}"
+        link_block = (
+            f'<a href="{href}" style="display:inline-block;background:#dddd16;color:#1a1a1a;'
+            'font-weight:700;text-decoration:none;padding:13px 32px;border-radius:4px;'
+            f'font-size:13px;letter-spacing:0.5px;margin:4px;">{_esc(link_label.upper())} &rsaquo;</a>'
+        )
+    elif link_type == "url" and link_url:
         link_block = (
             f'<a href="{link_url}" style="display:inline-block;background:#dddd16;color:#1a1a1a;'
             'font-weight:700;text-decoration:none;padding:13px 32px;border-radius:4px;'
-            f'font-size:13px;letter-spacing:0.5px;margin:4px;">{link_label.upper()} &rsaquo;</a>'
+            f'font-size:13px;letter-spacing:0.5px;margin:4px;">{_esc(link_label.upper())} &rsaquo;</a>'
         )
 
     if not (header_block or text_block or img_block or link_block):
@@ -371,8 +390,12 @@ def _build_html(campaign: dict, first_name: str = "{{first_name}}") -> str:
         )
 
     panel_html: list[str] = []
+    franchisee_email_for_cta = (campaign.get("from_email") or "").strip()
     for i, p in enumerate(panels):
-        rendered = _build_panel_html(p or {}, first_name=first_name)
+        rendered = _build_panel_html(
+            p or {}, first_name=first_name,
+            franchisee_email=franchisee_email_for_cta,
+        )
         if not rendered:
             continue
         # Divider before EVERY section — including the first one when
@@ -499,6 +522,9 @@ def _validate_panels(body: dict, require_content: bool = True) -> tuple[list[dic
             layout = (p.get("layout") or "image-top").lower()
             if layout not in {"image-top", "image-left", "image-right"}:
                 layout = "image-top"
+            link_type = (p.get("link_type") or "url").lower()
+            if link_type not in {"url", "email"}:
+                link_type = "url"
             cleaned = {
                 # New shape: section header + rich text body
                 "header":     (p.get("header") or "").strip()[:200],
@@ -510,13 +536,21 @@ def _validate_panels(body: dict, require_content: bool = True) -> tuple[list[dic
                 "image_key":  (p.get("image_key") or "").strip(),
                 "caption":    (p.get("caption") or "").strip()[:400],
                 "layout":     layout,
+                "link_type":  link_type,
                 "link_url":   (p.get("link_url") or "").strip(),
-                "link_label": (p.get("link_label") or "").strip() or "Find out more",
+                "link_label": (p.get("link_label") or "").strip()
+                              or ("Email me" if link_type == "email" else "Find out more"),
+                # Pre-filled subject for the mailto: button when link_type=email.
+                "email_subject": (p.get("email_subject") or "").strip()[:200],
             }
             # Skip totally-empty sections — the user probably added one
             # and forgot to fill it.
+            has_link = (
+                (cleaned["link_type"] == "url" and cleaned["link_url"]) or
+                (cleaned["link_type"] == "email" and cleaned["email_subject"])
+            )
             if (cleaned["header"] or cleaned["text_html"] or cleaned["image_url"]
-                    or cleaned["link_url"] or cleaned["caption"]):
+                    or has_link or cleaned["caption"]):
                 panels.append(cleaned)
     else:
         # Legacy shape → one-element array.
@@ -798,6 +832,9 @@ def attach(api, db, require_role):
             "franchisee_name": f"{fr.get('first_name','')} {fr.get('last_name','')}".strip()
                                or fr.get("organisation") or "Creative Mojo",
             "franchisee_organisation": fr.get("organisation") or "Creative Mojo",
+            # Used by the "Email me" button mode to render a working
+            # mailto: link in the preview iframe.
+            "from_email": (fr.get("mojo_email") or fr.get("email") or "").strip(),
             **_campaign_branding_from(fr, body),
         }
         sample = (body.get("sample_first_name") or "there").strip() or "there"
@@ -830,6 +867,8 @@ def attach(api, db, require_role):
             "franchisee_name": f"{fr.get('first_name','')} {fr.get('last_name','')}".strip()
                                or fr.get("organisation") or "Creative Mojo",
             "franchisee_organisation": fr.get("organisation") or "Creative Mojo",
+            # The "Email me" CTA button uses this as the mailto: target.
+            "from_email": from_email,
             **_campaign_branding_from(fr, body),
         }
         first_name = (body.get("sample_first_name") or "there").strip() or "there"

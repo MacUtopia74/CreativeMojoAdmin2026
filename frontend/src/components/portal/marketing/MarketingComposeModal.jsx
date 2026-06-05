@@ -8,10 +8,10 @@
 //   • "Save draft" — persists the in-progress campaign so the user
 //     can come back and finish later. Loaded drafts re-open here
 //     pre-filled with their stored panels/recipients.
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import {
   X, Send, Loader2, Search, CheckCircle2, AlertCircle, Image as ImageIcon,
-  Trash2, Link as LinkIcon, Calendar, Megaphone, RefreshCw, Plus, FileText,
+  Trash2, Link as LinkIcon, Calendar, Megaphone, RefreshCw, Plus, FileText, Mail,
 } from "lucide-react";
 import api from "@/lib/api";
 import MarketingImageCropper from "@/components/portal/marketing/MarketingImageCropper";
@@ -26,8 +26,10 @@ const emptyPanel = () => ({
   image_url: "",
   image_key: "",
   layout: "image-top",  // "image-top" | "image-left" | "image-right"
+  link_type: "url",     // "url" | "email"
   link_url: "",
   link_label: "Find out more",
+  email_subject: "I'd like more information please",
 });
 
 // Used to pre-fill the top-level intro field of a brand-new campaign
@@ -38,7 +40,7 @@ const DEFAULT_INTRO_HTML =
 
 const DEFAULT_BG = "#f7f7f4";
 
-export default function MarketingComposeModal({ open, access, draft, onClose, onSent, onDraftSaved }) {
+export default function MarketingComposeModal({ open, access, draft, preselectClientId, onClose, onSent, onDraftSaved }) {
   const [draftId, setDraftId] = useState(null);
   const [title, setTitle] = useState("");
   // Top-level intro lives OUTSIDE the sections so it always sits above
@@ -117,10 +119,26 @@ export default function MarketingComposeModal({ open, access, draft, onClose, on
     setPreviewHtml(""); setError(""); setInfo("");
     setRecipientsLoading(true);
     api.get("/portal/marketing/recipients")
-      .then(({ data }) => setRecipients(data.items || []))
+      .then(({ data }) => {
+        const items = data.items || [];
+        setRecipients(items);
+        // Deep-link from My Territory+: pre-tick every recipient row
+        // belonging to the passed-in client_id, capped at MAX_RECIPIENTS
+        // so we never blow past the per-send limit.
+        if (preselectClientId) {
+          const keys = new Set();
+          for (const r of items) {
+            if (r.client_id === preselectClientId) {
+              keys.add(`${r.client_id}:${r.contact_index}`);
+              if (keys.size >= MAX_RECIPIENTS) break;
+            }
+          }
+          if (keys.size) setSelectedKeys(keys);
+        }
+      })
       .catch(() => setRecipients([]))
       .finally(() => setRecipientsLoading(false));
-  }, [open, draft]);
+  }, [open, draft, preselectClientId]);
 
   // Live preview render (debounced).
   useEffect(() => {
@@ -225,8 +243,10 @@ export default function MarketingComposeModal({ open, access, draft, onClose, on
       image_url: p.image_url || "",
       image_key: p.image_key || "",
       layout: p.layout || "image-top",
+      link_type: p.link_type || "url",
       link_url: p.link_url || "",
-      link_label: p.link_label || "Find out more",
+      link_label: p.link_label || (p.link_type === "email" ? "Email me" : "Find out more"),
+      email_subject: p.email_subject || "",
     })),
     include_bookings_link: includeBookings && access?.bookings_enabled,
     footer_show_phone: footerShowPhone,
@@ -266,7 +286,8 @@ export default function MarketingComposeModal({ open, access, draft, onClose, on
   const handleClose = useCallback(async () => {
     const worthSaving = (title || "").trim() || (introHtml || "").trim() || panels.some(
       (p) => (p.header || "").trim() || (p.text_html || "").trim() ||
-             (p.image_url || "").trim() || (p.link_url || "").trim()
+             (p.image_url || "").trim() || (p.link_url || "").trim() ||
+             (p.link_type === "email" && (p.email_subject || "").trim())
     );
     if (worthSaving && !sending) {
       try {
@@ -315,7 +336,8 @@ export default function MarketingComposeModal({ open, access, draft, onClose, on
 
   const hasAnyContent = (introHtml || "").trim() || panels.some(
     (p) => (p.header || "").trim() || (p.text_html || "").trim() ||
-           (p.image_url || "").trim() || (p.link_url || "").trim()
+           (p.image_url || "").trim() || (p.link_url || "").trim() ||
+           (p.link_type === "email" && (p.email_subject || "").trim())
   );
   const canSend = title.trim() && hasAnyContent && selectedRecipients.length > 0 && !sending;
   const canSaveDraft = (title.trim() || hasAnyContent) && !savingDraft;
@@ -561,19 +583,18 @@ export default function MarketingComposeModal({ open, access, draft, onClose, on
               </div>
             </div>
 
-            {/* RIGHT — preview */}
-            <div className="bg-stone-50 px-6 py-5 flex flex-col gap-3">
-              <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-700 flex items-center gap-1.5">
+            {/* RIGHT — preview. Sticky on desktop so it stays visible
+                while the user scrolls the editor on the left. */}
+            <div className="bg-stone-50 px-6 py-5 flex flex-col gap-3 lg:sticky lg:top-0 lg:self-start lg:max-h-[calc(95vh-160px)] lg:overflow-y-auto">
+              <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-700 flex items-center gap-1.5 sticky top-0 bg-stone-50 -mx-6 px-6 py-1 z-10">
                 <EyeIcon /> Live Preview
                 <span className="text-stone-400 font-normal normal-case tracking-normal ml-auto">Rendered as recipients will see it</span>
               </div>
-              <div className="flex-1 bg-white border border-stone-200 rounded-xl overflow-hidden min-h-[420px]">
+              <div className="bg-white border border-stone-200 rounded-xl overflow-hidden">
                 {previewHtml ? (
-                  <iframe
-                    title="Email preview"
+                  <AutosizeIframe
                     srcDoc={previewHtml}
-                    className="w-full h-[600px] border-0"
-                    data-testid="marketing-preview-iframe"
+                    testid="marketing-preview-iframe"
                   />
                 ) : (
                   <div className="flex items-center justify-center h-[420px] text-stone-400 text-sm">
@@ -766,30 +787,91 @@ function PanelEditor({ idx, panel, canRemove, onChange, onRemove, onPickImage, o
         </Field>
       </div>
 
-      {/* Link */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-        <Field label="Link URL (optional)">
-          <div className="relative">
-            <LinkIcon className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
-            <input
-              type="url"
-              value={panel.link_url}
-              onChange={(e) => onChange({ link_url: e.target.value })}
-              data-testid={`marketing-link-url-${idx}`}
-              placeholder="https://…"
-              className="w-full pl-9 pr-3 py-2.5 border border-stone-300 rounded-xl text-sm focus:outline-none focus:border-stone-950"
-            />
-          </div>
-        </Field>
-        <Field label="Button label">
-          <input
-            value={panel.link_label}
-            onChange={(e) => onChange({ link_label: e.target.value })}
-            data-testid={`marketing-link-label-${idx}`}
-            className="w-full px-3 py-2.5 border border-stone-300 rounded-xl text-sm focus:outline-none focus:border-stone-950"
-          />
-        </Field>
+      {/* Button / call-to-action — franchisee picks one of two modes:
+          a URL button (any external link) or an "Email me" button
+          (mailto: link with a pre-filled subject). The actual email
+          address comes from the franchisee's profile on the backend,
+          so the franchisee never has to type it in here. */}
+      <div className="mt-3">
+        <label className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1.5 block">
+          Call-to-action button (optional)
+        </label>
+        <div className="grid grid-cols-2 gap-2" data-testid={`marketing-link-type-${idx}`}>
+          {[
+            { id: "url",   label: "URL button",  icon: LinkIcon, hint: "Sends people to a webpage" },
+            { id: "email", label: "Email me",     icon: Mail,    hint: "Opens their email app to message you" },
+          ].map((opt) => {
+            const Icon = opt.icon;
+            const active = (panel.link_type || "url") === opt.id;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => onChange({ link_type: opt.id })}
+                data-testid={`marketing-link-type-${idx}-${opt.id}`}
+                title={opt.hint}
+                className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border text-[10px] font-bold uppercase tracking-wider transition ${active
+                  ? "border-stone-950 bg-stone-950 text-white"
+                  : "border-stone-300 hover:bg-stone-50 text-stone-700"}`}
+              >
+                <Icon className="w-3 h-3" /> {opt.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
+
+      {/* Mode-specific fields. */}
+      {((panel.link_type || "url") === "url") ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+          <Field label="Link URL (optional)">
+            <div className="relative">
+              <LinkIcon className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+              <input
+                type="url"
+                value={panel.link_url}
+                onChange={(e) => onChange({ link_url: e.target.value })}
+                data-testid={`marketing-link-url-${idx}`}
+                placeholder="https://…"
+                className="w-full pl-9 pr-3 py-2.5 border border-stone-300 rounded-xl text-sm focus:outline-none focus:border-stone-950"
+              />
+            </div>
+          </Field>
+          <Field label="Button label">
+            <input
+              value={panel.link_label}
+              onChange={(e) => onChange({ link_label: e.target.value })}
+              data-testid={`marketing-link-label-${idx}`}
+              className="w-full px-3 py-2.5 border border-stone-300 rounded-xl text-sm focus:outline-none focus:border-stone-950"
+            />
+          </Field>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+          <Field label="Email subject (recipient will see this)">
+            <input
+              value={panel.email_subject || ""}
+              onChange={(e) => onChange({ email_subject: e.target.value })}
+              data-testid={`marketing-email-subject-${idx}`}
+              placeholder="I'd like more information please"
+              className="w-full px-3 py-2.5 border border-stone-300 rounded-xl text-sm focus:outline-none focus:border-stone-950"
+              maxLength={200}
+            />
+          </Field>
+          <Field label="Button label">
+            <input
+              value={panel.link_label || "Email me"}
+              onChange={(e) => onChange({ link_label: e.target.value })}
+              data-testid={`marketing-link-label-${idx}`}
+              className="w-full px-3 py-2.5 border border-stone-300 rounded-xl text-sm focus:outline-none focus:border-stone-950"
+            />
+          </Field>
+          <div className="sm:col-span-2 text-[11px] text-stone-500 flex items-center gap-1.5">
+            <Mail className="w-3 h-3" />
+            The button will open the recipient's email app addressed to your franchisee email (set on your <a href="/portal/details" className="underline">My Franchise</a> page).
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -811,6 +893,77 @@ function EyeIcon() {
       <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" />
       <circle cx="12" cy="12" r="3" />
     </svg>
+  );
+}
+
+// Self-sizing iframe — measures its content document's scrollHeight on
+// load AND on every internal DOM/resize event, so the live preview
+// pane grows with the rendered email instead of trapping the user in
+// an inner scrollbar at a fixed 600px (which was clipping bottom
+// sections like the franchisee signature/footer).
+//
+// Note: srcDoc changes spawn a fresh document so the ResizeObserver
+// has to be re-attached on every load — that's what onLoad is for.
+function AutosizeIframe({ srcDoc, testid }) {
+  const ref = useRef(null);
+  // Start at 420px to avoid a 0-height flash before the first measure
+  // resolves. Anything beyond that becomes content-driven.
+  const [height, setHeight] = useState(420);
+
+  const measure = useCallback(() => {
+    const ifr = ref.current;
+    if (!ifr) return;
+    try {
+      const doc = ifr.contentDocument;
+      if (!doc?.body) return;
+      const h = Math.max(
+        doc.body.scrollHeight,
+        doc.documentElement?.scrollHeight || 0,
+      );
+      setHeight((prev) => (Math.abs(h - prev) > 4 ? h : prev));
+    } catch {
+      /* same-origin srcDoc — but be defensive against detached frames */
+    }
+  }, []);
+
+  const onLoad = useCallback(() => {
+    measure();
+    const ifr = ref.current;
+    if (!ifr) return;
+    try {
+      const doc = ifr.contentDocument;
+      if (!doc) return;
+      // Watch for late-loading images (the section thumbnails take a
+      // tick to come back from R2). Each image bumps the height again
+      // as soon as its dimensions resolve. This is sufficient because
+      // emails are otherwise static HTML — no dynamic font/layout
+      // shifts to chase. A ResizeObserver was tempting but its loop
+      // notification ("ResizeObserver loop completed with undelivered
+      // notifications") trips CRA's react-error-overlay even though
+      // the warning is harmless.
+      const imgs = Array.from(doc.images || []);
+      imgs.forEach((img) => {
+        if (!img.complete) {
+          img.addEventListener("load", measure, { once: true });
+          img.addEventListener("error", measure, { once: true });
+        }
+      });
+      // Safety net — re-measure once after a short delay to catch
+      // anything that finished settling slightly after onLoad fired.
+      setTimeout(measure, 250);
+    } catch { /* noop */ }
+  }, [measure]);
+
+  return (
+    <iframe
+      ref={ref}
+      title="Email preview"
+      srcDoc={srcDoc}
+      onLoad={onLoad}
+      style={{ height: `${height}px` }}
+      className="w-full border-0 block"
+      data-testid={testid}
+    />
   );
 }
 

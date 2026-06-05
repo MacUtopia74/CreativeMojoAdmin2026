@@ -9,7 +9,7 @@
 // History list shows past campaigns with delivery + open/click stats
 // rolled up from the Resend webhook events stored on each campaign.
 import { useEffect, useState, useCallback } from "react";
-import { Link as RouterLink } from "react-router-dom";
+import { Link as RouterLink, useSearchParams } from "react-router-dom";
 import {
   Megaphone, Loader2, AlertCircle, Plus, Mail, Sparkles, RefreshCw,
   Eye, Calendar, FileText, Pencil, Trash2, Settings,
@@ -35,7 +35,13 @@ export default function PortalMarketingPage() {
   const [loading, setLoading] = useState(true);
   const [composeOpen, setComposeOpen] = useState(false);
   const [editingDraft, setEditingDraft] = useState(null);   // draft doc OR null for new
+  const [preselectClientId, setPreselectClientId] = useState(null);
   const [reportId, setReportId] = useState(null);
+  // Deep-link from My Territory+: ``?client_id=…`` opens the compose
+  // modal with that client's recipients pre-ticked. We consume the
+  // search param once on mount, then clear it so a page refresh
+  // doesn't re-open the modal unexpectedly.
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const loadAccess = useCallback(async () => {
     try {
@@ -59,8 +65,23 @@ export default function PortalMarketingPage() {
   useEffect(() => { loadAccess(); }, [loadAccess]);
   useEffect(() => { if (access?.allowed) loadCampaigns(); }, [access?.allowed, loadCampaigns]);
 
+  // Auto-open the compose modal when arriving via /portal/marketing?client_id=…
+  useEffect(() => {
+    const cid = searchParams.get("client_id");
+    if (cid && access?.allowed) {
+      setPreselectClientId(cid);
+      setEditingDraft(null);
+      setComposeOpen(true);
+      // Clear the param so refreshing the page doesn't loop us back
+      // into the modal.
+      setSearchParams({}, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [access?.allowed, searchParams]);
+
   const openCompose = (draft = null) => {
     setEditingDraft(draft);
+    setPreselectClientId(null);
     setComposeOpen(true);
   };
 
@@ -274,9 +295,10 @@ export default function PortalMarketingPage() {
         open={composeOpen}
         access={access}
         draft={editingDraft}
-        onClose={() => { setComposeOpen(false); setEditingDraft(null); }}
+        preselectClientId={preselectClientId}
+        onClose={() => { setComposeOpen(false); setEditingDraft(null); setPreselectClientId(null); }}
         onDraftSaved={() => { loadCampaigns(); }}
-        onSent={() => { setComposeOpen(false); setEditingDraft(null); loadCampaigns(); }}
+        onSent={() => { setComposeOpen(false); setEditingDraft(null); setPreselectClientId(null); loadCampaigns(); }}
       />
 
       <MarketingCampaignReport

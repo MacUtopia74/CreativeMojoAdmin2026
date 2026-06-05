@@ -1,6 +1,38 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## Marketing — Email-me CTA + Territory+ deep-link + autosizing preview (Jun 05 2026)
+
+**1) Marketing email deep-link from Territory+**
+- `MyClientsPanel` rows in My Territory+ now show a small Megaphone button next to the row chevron whenever the client has an email on file. Click → navigates to `/portal/marketing?client_id={franchisee_clients.id}` (stops propagation so the edit modal doesn't open instead).
+- `PortalMarketingPage` reads the `client_id` search param on mount, opens the compose modal with `preselectClientId={cid}`, and clears the URL param so a refresh doesn't loop.
+- `MarketingComposeModal` accepts `preselectClientId` — after `/portal/marketing/recipients` resolves, it auto-ticks every recipient row whose `client_id` matches (capped at MAX_RECIPIENTS=5).
+- Tested end-to-end: visiting `/portal/marketing?client_id=…` for Test Care Home opens the modal with "SEND TO 1 RECIPIENT" pre-armed.
+
+**2) "Email me" CTA button (alternative to URL button)**
+- New `link_type` field per panel: `"url"` (default, existing behaviour) or `"email"`.
+- Composer surfaces a 2-pill toggle ("URL button" / "Email me"). When email is active:
+  - URL field is hidden
+  - "Email subject" field appears (default "I'd like more information please", max 200 chars)
+  - "Button label" defaults to "Email me"
+  - Helper line points to the franchisee's email source (`/portal/details`)
+- Backend renders `<a href="mailto:{franchisee_email}?subject={urlencoded subject}">` for email-mode buttons. Franchisee email pulled from `from_email` campaign field (already populated by `_check_access` from `franchisees.mojo_email` / `email`).
+- Preview endpoint extended with `from_email` so the live preview iframe shows a working mailto: link.
+- Backwards compatible — older campaigns continue to render their URL buttons unchanged.
+
+**3) Live preview iframe autosizes to content**
+- Replaced the fixed `h-[600px]` iframe with a new `AutosizeIframe` component that measures `documentElement.scrollHeight` / `body.scrollHeight` on `onLoad`, after every image load, and after a 250ms safety-net timeout.
+- Right preview pane is now sticky on `lg:` screens (`lg:sticky lg:top-0 lg:max-h-[calc(95vh-160px)] lg:overflow-y-auto`) so it stays visible as the user scrolls the editor.
+- Tried ResizeObserver first but the "ResizeObserver loop completed with undelivered notifications" warning trips CRA's react-error-overlay; the static `onLoad` + image listeners + setTimeout net is sufficient because email HTML is otherwise static.
+
+**Files touched**
+- `backend/portal_marketing_routes.py` — `_build_panel_html` signature now takes `franchisee_email`; CTA block branches on `link_type`; `_validate_panels` accepts `link_type` + `email_subject`; preview & test-send campaigns carry `from_email`.
+- `frontend/src/components/portal/marketing/MarketingComposeModal.jsx` — `link_type` / `email_subject` on emptyPanel + baseBody + hasAnyContent + handleClose, link mode toggle UI, conditional URL vs Email Subject fields, `AutosizeIframe` component, sticky right preview, `preselectClientId` prop with auto-tick.
+- `frontend/src/pages/portal/PortalMarketingPage.jsx` — `useSearchParams` hook, `preselectClientId` state passthrough, auto-open on `?client_id=…`.
+- `frontend/src/components/territory/MyClientsPanel.jsx` — `useNavigate` + `openMarketing()` helper + Megaphone button on each row (both wide and narrow layouts).
+
+
+
 ## Marketing modal v2 + PDF thumbnails + Background colour (Jun 04 2026 — afternoon)
 
 **Marketing compose modal — full restructure (per user feedback)**
