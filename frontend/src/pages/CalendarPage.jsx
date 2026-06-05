@@ -263,10 +263,12 @@ export default function CalendarPage() {
       end: e.end,
       allDay: !!e.all_day,
       extendedProps: { ...e, _kind: "hq" },
-      // Brand-friendly colouring — translucent lime fill, dark green border
-      backgroundColor: "rgba(212, 255, 0, 0.35)",
+      // Solid green block (mirrors the yearly-events styling so the
+      // grid reads as a coherent pair of colour-coded sources).
+      backgroundColor: "#16A34A",
       borderColor: "#14532D",
-      textColor: "#14532D",
+      textColor: "#FFFFFF",
+      display: "block",
     }));
     // Yearly events get the same light-blue solid block the franchisee
     // portal uses (so admins can verify visual parity at a glance).
@@ -288,7 +290,7 @@ export default function CalendarPage() {
   }, [events, yearlyEvents, queryNeedle]);
 
   return (
-    <div className="px-8 py-7 max-w-7xl mx-auto" data-testid="calendar-page">
+    <div className="px-6 sm:px-8 py-7 mx-auto w-full" data-testid="calendar-page">
       <div className="flex items-center justify-between gap-3 mb-7 flex-wrap">
         <div>
           <h1 className="font-display text-4xl text-stone-950 flex items-center gap-3">
@@ -433,11 +435,11 @@ export default function CalendarPage() {
                 initialView="dayGridMonth"
                 headerToolbar={{ left: "prev,next today", center: "title", right: "dayGridMonth" }}
                 events={fcEvents}
-                height={680}
-                contentHeight={680}
+                height={820}
+                contentHeight={820}
                 firstDay={1}
                 weekNumbers={false}
-                dayMaxEventRows={4}
+                dayMaxEventRows={6}
                 buttonText={{ today: "Today", month: "Month" }}
                 eventClick={(info) => { info.jsEvent.preventDefault(); setYearlyOpen(true); }}
               />
@@ -461,7 +463,7 @@ export default function CalendarPage() {
                   a glance which colours map to which event source. */}
               <div className="flex items-center gap-4 mb-3 text-[11px] text-stone-600 flex-wrap" data-testid="cal-legend">
                 <span className="inline-flex items-center gap-1.5">
-                  <span className="w-3 h-3 rounded-sm" style={{ background: "rgba(212, 255, 0, 0.6)", border: "1px solid #14532D" }} />
+                  <span className="w-3 h-3 rounded-sm" style={{ background: "#16A34A", border: "1px solid #14532D" }} />
                   Google Calendar events
                 </span>
                 <span className="inline-flex items-center gap-1.5">
@@ -479,11 +481,11 @@ export default function CalendarPage() {
                   right: "dayGridMonth,timeGridWeek,timeGridDay",
                 }}
                 events={fcEvents}
-                height={780}
-                contentHeight={780}
+                height={860}
+                contentHeight={860}
                 firstDay={1}                 // Monday-first for UK
                 weekNumbers={false}
-                dayMaxEventRows={4}
+                dayMaxEventRows={6}
                 nowIndicator
                 buttonText={{ today: "Today", month: "Month", week: "Week", day: "Day" }}
                 eventTimeFormat={{ hour: "2-digit", minute: "2-digit", meridiem: false }}
