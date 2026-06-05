@@ -84,13 +84,14 @@ function buildTabs({ modules, isDemo }) {
     }
   }
   // Bookings — placeholder for now, ships behind a "coming soon" page.
-  // Available to all franchisees so they can register interest.
-  s1.push({ to: "/portal/bookings", label: "Bookings", icon: CalendarClock, testid: "portal-nav-bookings" });
+  // Available to all franchisees so they can register interest. Branded
+  // with the trailing "+" to match the other bolt-ons.
+  s1.push({ to: "/portal/bookings", label: "Bookings+", icon: CalendarClock, testid: "portal-nav-bookings" });
   if (modules.marketing === true) {
-    s1.push({ to: "/portal/marketing", label: "Marketing", icon: Megaphone, testid: "portal-nav-marketing" });
+    s1.push({ to: "/portal/marketing", label: "Marketing+", icon: Megaphone, testid: "portal-nav-marketing" });
   }
   if (modules.invoicing === true) {
-    s1.push({ to: "/portal/invoices", label: "Invoicing", icon: Receipt, testid: "portal-nav-invoices" });
+    s1.push({ to: "/portal/invoices", label: "Invoicing+", icon: Receipt, testid: "portal-nav-invoices" });
   }
   sections.push(s1);
   // ---- Section 2: comms + scheduling ----

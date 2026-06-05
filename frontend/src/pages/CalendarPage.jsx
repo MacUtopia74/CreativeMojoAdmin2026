@@ -164,6 +164,28 @@ export default function CalendarPage() {
     return hay.includes(queryNeedle);
   };
 
+  // Whenever the search query changes, jump the FullCalendar grid to
+  // the EARLIEST matching event's month so the user instantly sees
+  // what they searched for (rather than being stranded on the current
+  // month with an empty grid). Empty query leaves the view alone.
+  useEffect(() => {
+    if (!queryNeedle || !fcRef.current) return;
+    const candidates = [];
+    events.forEach((e) => { if (matchesQuery(e) && e.start) candidates.push(e.start); });
+    yearlyEvents.forEach((y) => { if (matchesQuery(y) && y.date_iso) candidates.push(y.date_iso); });
+    if (!candidates.length) return;
+    // Bias towards future events first — admins are usually searching
+    // for "what's next", not "what's already happened".
+    const today = new Date().toISOString().slice(0, 10);
+    const future = candidates.filter((d) => d.slice(0, 10) >= today).sort();
+    const past = candidates.filter((d) => d.slice(0, 10) < today).sort().reverse();
+    const target = future[0] || past[0];
+    if (target) {
+      try { fcRef.current.getApi().gotoDate(target); } catch { /* noop */ }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryNeedle, events, yearlyEvents]);
+
   const grouped = useMemo(() => {
     // Bucket events by their day label. Two-tier sort: upcoming days
     // (today + future) come first in chronological order, then past
@@ -176,8 +198,21 @@ export default function CalendarPage() {
     // matches only, matching the grid behaviour.
     const buckets = new Map();
     const dayKeys = new Map(); // label → timestamp for sorting
-    const visible = events.filter(matchesQuery);
-    visible.forEach((e) => {
+    // Build a merged list — Google events + yearly events — so the
+    // list view shows everything the grid does. Each entry carries
+    // `_kind` so the renderer can style them differently.
+    const merged = [];
+    events.filter(matchesQuery).forEach((e) => merged.push({ ...e, _kind: e._kind || "hq" }));
+    yearlyEvents.filter(matchesQuery).forEach((y) => {
+      merged.push({
+        ...y,
+        _kind: "yearly",
+        // Normalise into the shape the loop expects.
+        start: y.date_iso,
+        all_day: true,
+      });
+    });
+    merged.forEach((e) => {
       if (!e.start) return;
       const d = new Date(e.start);
       const label = d.toLocaleDateString("en-GB", {
@@ -208,7 +243,7 @@ export default function CalendarPage() {
       return aFuture ? aTs - bTs : bTs - aTs;
     });
     return entries;
-  }, [events, queryNeedle]);
+  }, [events, yearlyEvents, queryNeedle]);
 
   // FullCalendar event shape — translates our normalised event list.
   // For all-day events Google returns YYYY-MM-DD which FC handles natively;
@@ -393,6 +428,7 @@ export default function CalendarPage() {
                 <span>Yearly events ({yearlyEvents.length}) — visible to every franchisee on the portal</span>
               </div>
               <FullCalendar
+                ref={fcRef}
                 plugins={[dayGridPlugin, interactionPlugin]}
                 initialView="dayGridMonth"
                 headerToolbar={{ left: "prev,next today", center: "title", right: "dayGridMonth" }}

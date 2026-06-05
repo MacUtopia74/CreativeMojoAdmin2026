@@ -153,6 +153,28 @@ export default function PortalEventsPanel({ open, onToggle, alwaysOpen = false, 
     return hay.includes(searchNeedle);
   }, [searchNeedle]);
 
+  // When the search term changes, jump the calendar grid to the
+  // earliest matching event's month so the user sees results
+  // immediately instead of being stranded on the current month.
+  // Prefers future matches over past ones — most searches are
+  // "what's coming up", not retrospective.
+  useEffect(() => {
+    if (!searchNeedle || !fcRef.current) return;
+    const dates = [];
+    (hqEvents || []).forEach((e) => { if (matchesSearch(e) && e.start) dates.push(e.start); });
+    yearlyEvents.forEach((y) => { if (matchesSearch(y) && y.date_iso) dates.push(y.date_iso); });
+    myEvents.forEach((e) => { if (matchesSearch(e) && e.start) dates.push(e.start); });
+    if (!dates.length) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const future = dates.filter((d) => d.slice(0, 10) >= today).sort();
+    const past = dates.filter((d) => d.slice(0, 10) < today).sort().reverse();
+    const target = future[0] || past[0];
+    if (target) {
+      try { fcRef.current.getApi().gotoDate(target); } catch { /* noop */ }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchNeedle, hqEvents, yearlyEvents, myEvents]);
+
   const fcEvents = useMemo(() => {
     const out = [];
     (hqEvents || []).forEach((e) => {

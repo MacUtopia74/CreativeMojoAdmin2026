@@ -109,16 +109,16 @@ export default function PortalMarketingPage() {
         <PortalPageHeading
           eyebrow="Marketing toolkit"
           icon={Megaphone}
-          title="Marketing"
+          title="Marketing+"
           subtitle="Send branded e-shots to your existing Territory+ clients."
         />
         <div className="bg-amber-50 border border-amber-200 rounded-2xl px-6 py-8 text-center" data-testid="marketing-locked">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-amber-100 mb-4">
             <AlertCircle className="w-7 h-7 text-amber-700" />
           </div>
-          <h2 className="font-display text-2xl font-black text-stone-950 mb-2">Marketing is locked</h2>
+          <h2 className="font-display text-2xl font-black text-stone-950 mb-2">Marketing+ is locked</h2>
           <p className="text-sm text-stone-700 max-w-md mx-auto">
-            {access.reason || "Add the Marketing module from your Subscriptions page to enable this feature."}
+            {access.reason || "Add the Marketing+ module from your Subscriptions page to enable this feature."}
           </p>
         </div>
       </div>
@@ -130,7 +130,7 @@ export default function PortalMarketingPage() {
       <PortalPageHeading
         eyebrow="Marketing toolkit"
         icon={Megaphone}
-        title="Marketing"
+        title="Marketing+"
         subtitle="Send branded e-shots to your Territory+ clients. Max 5 recipients per send."
         actions={
           <div className="flex items-center gap-2">

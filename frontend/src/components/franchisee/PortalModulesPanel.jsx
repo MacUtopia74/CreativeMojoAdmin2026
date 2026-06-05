@@ -23,9 +23,9 @@ const STANDARD_MODULES = [
 // Plus add-ons — subscription-gated extras that unlock paid features.
 const PLUS_MODULES = [
   { key: "territory_plus", label: "My Territory+", icon: MapIcon,   description: "Upgrades Territory page — plot contacts, marketing leads, area analytics. Adds the “+” suffix to the menu item." },
-  { key: "marketing",      label: "Marketing",     icon: Megaphone, description: "Social-post templates, local marketing kits, campaign tools." },
-  { key: "invoicing",      label: "Invoicing",     icon: FileText,  description: "Personal invoicing tool with client manager and Xero export." },
-  { key: "bookings",       label: "Bookings",      icon: Calendar,  description: "Client-booking manager — recurring sessions, attendance and franchisee diary." },
+  { key: "marketing",      label: "Marketing+",     icon: Megaphone, description: "Social-post templates, local marketing kits, campaign tools." },
+  { key: "invoicing",      label: "Invoicing+",     icon: FileText,  description: "Personal invoicing tool with client manager and Xero export." },
+  { key: "bookings",       label: "Bookings+",      icon: Calendar,  description: "Client-booking manager — recurring sessions, attendance and franchisee diary." },
   { key: "shape_orders",   label: "Shape Orders",  icon: ShoppingBag, description: "Order Die-Cut Shape sets straight from HQ — replaces the WooCommerce shop checkout." },
 ];
 

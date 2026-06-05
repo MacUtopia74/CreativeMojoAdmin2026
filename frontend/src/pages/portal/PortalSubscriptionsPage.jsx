@@ -14,16 +14,18 @@ import {
 import PortalPageHeading from "@/components/portal/PortalPageHeading";
 
 // PRICING — confirmed by Paul:
-//   Every bolt-on is £10 / month INC VAT. Two automatic bundle tiers
-//   kick in when the franchisee selects multiple:
-//     • Any 3 bolt-ons  →  £25 / month inc VAT  (saves £5)
-//     • All 4 bolt-ons  →  £35 / month inc VAT  (saves £5)
+//   Every bolt-on is £10 / month INC VAT. Tiered bundles kick in
+//   automatically when multiple are selected:
+//     • Any 1  →  £10 / month  (single bolt-on, no bundle)
+//     • Any 2  →  £18 / month  (saves £2)
+//     • Any 3  →  £25 / month  (saves £5)
+//     • All 4  →  £30 / month  (saves £10)
 // Billed monthly via the franchisee's existing GoCardless mandate
 // (added as recurring lines to their Xero invoice on admin approval).
 const BOLT_ONS = [
   {
     key: "invoicing",
-    title: "Invoicing",
+    title: "Invoicing+",
     icon: Receipt,
     price: 10,
     accent: "#10b981",
@@ -54,7 +56,7 @@ const BOLT_ONS = [
   },
   {
     key: "marketing",
-    title: "Marketing",
+    title: "Marketing+",
     icon: Megaphone,
     price: 10,
     accent: "#f97316",
@@ -62,13 +64,13 @@ const BOLT_ONS = [
     features: [
       "Build basic e-shots with our drag-in templates",
       "Drop in images, headlines and your own copy",
-      "Or link straight to your Bookings booking page (bookings bolt-on required)",
+      "Or link straight to your Bookings+ booking page (Bookings+ required)",
       "Auto-co-branded with your franchise details",
     ],
   },
   {
     key: "bookings",
-    title: "Bookings",
+    title: "Bookings+",
     icon: CalendarClock,
     price: 10,
     accent: "#dedd0a",
@@ -88,10 +90,10 @@ const BOLT_ONS = [
 // bolt-ons the franchisee ticks. Index = count selected.
 const BUNDLE_PRICES = {
   0: 0,
-  1: 10,
-  2: 20,  // no bundle discount yet
+  1: 10,  // single bolt-on
+  2: 18,  // "Pick any 2" bundle — saves £2
   3: 25,  // "Pick any 3" bundle — saves £5
-  4: 35,  // "All four" bundle — saves £5
+  4: 30,  // "All four" bundle — saves £10
 };
 const SINGLE_PRICE = 10;
 
@@ -132,15 +134,16 @@ export default function PortalSubscriptionsPage() {
         </h2>
         <p className="text-stone-600 mt-2 text-sm sm:text-base leading-relaxed max-w-3xl">
           Add any of the optional modules below to your monthly Creative Mojo subscription. Each bolt-on is just £10 a
-          month — pick any three for £25 or grab all four for £35. Billed via your existing GoCardless mandate and
-          appears as a separate line on your Xero invoice. Cancel any time, no minimum term. All prices include VAT.
+          month — pick any two for £18, any three for £25, or grab all four for £30. Billed via your existing
+          GoCardless mandate and appears as a separate line on your Xero invoice. Cancel any time, no minimum term.
+          All prices include VAT.
         </p>
         {/* Bundle ladder — shows the franchisee the tier discounts at a glance. */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-5" data-testid="subs-bundle-ladder">
-          <TierBadge label="1 bolt-on"    price="£10" active={selectedCount === 1} />
-          <TierBadge label="2 bolt-ons"   price="£20" active={selectedCount === 2} />
-          <TierBadge label="Any 3 (save £5)" price="£25" active={selectedCount === 3} highlight />
-          <TierBadge label="All 4 (save £5)" price="£35" active={selectedCount === 4} highlight />
+          <TierBadge label="Any 1"            price="£10" active={selectedCount === 1} />
+          <TierBadge label="Any 2 (save £2)"  price="£18" active={selectedCount === 2} highlight />
+          <TierBadge label="Any 3 (save £5)"  price="£25" active={selectedCount === 3} highlight />
+          <TierBadge label="All 4 (save £10)" price="£30" active={selectedCount === 4} highlight />
         </div>
       </div>
 

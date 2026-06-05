@@ -28,7 +28,7 @@ export default function PortalInvoicesShell() {
       <PortalPageHeading
         eyebrow="Your billing"
         icon={Receipt}
-        title="Invoicing"
+        title="Invoicing+"
         subtitle="Issue, send, and reconcile your own customer invoices — branded for your franchise."
       />
       {/* Tabs strip — sits inside PortalShell which already has its own

@@ -1,6 +1,35 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## Calendar search nav + bolt-on branding "+" suffix (Jun 05 2026)
+
+**1) Calendar search now navigates to matching events**
+- Admin (`CalendarPage.jsx`) and portal (`PortalEventsPanel.jsx`) calendars now auto-jump the FullCalendar grid to the EARLIEST matching event's month whenever the search query changes. Future events are prioritised over past — admins searching are almost always asking "what's next?", not "what was last year?".
+- Implemented via the existing `fcRef` + `getApi().gotoDate(target)`. Idempotent (no-op when no matches, leaves the grid alone when query is empty).
+- Verified: portal calendar on June 2026, typing "Christmas" → instantly jumps to December 2026 with the Christmas Day event highlighted.
+
+**2) Admin list view now includes yearly events**
+- The list-view memo (`grouped`) previously only iterated Google `events`, completely ignoring yearly events — so searches for "Christmas Day" returned zero list-view rows even though it lived in the grid.
+- Merged both sources into the same bucket loop with a `_kind` tag. Yearly events get normalised into the same shape (`start = date_iso`, `all_day = true`) so the renderer below can style them with the right colour.
+
+**3) Bolt-on "+" suffix branding everywhere**
+- Renamed across the portal + admin:
+  - **Marketing+** (was "Marketing")
+  - **Invoicing+** (was "Invoicing")
+  - **Bookings+** (was "Bookings")
+  - My Territory+ (unchanged — was already correct)
+- Files: `PortalShell.jsx` (sidebar), `PortalMarketingPage.jsx` (title + locked state + helper copy), `PortalInvoicesShell.jsx` (page title), `PortalBookingsPage.jsx` (page title), `PortalInvoicingSection.jsx` (panel label), `PortalSubscriptionsPage.jsx` (bolt-on cards), `PortalModulesPanel.jsx` (admin franchisee bolt-on toggles), `AdminUsersPage.jsx` (admin module column).
+
+**4) Subscriptions pricing tier update**
+- New bundle ladder (was 1=£10, 2=£20, 3=£25, 4=£35) now:
+  - Any 1 → **£10**
+  - Any 2 → **£18** (saves £2)
+  - Any 3 → **£25** (saves £5)
+  - All 4 → **£30** (saves £10)
+- Updated intro copy on the Subscriptions page to match, badge labels show the new savings.
+
+
+
 ## Calendar — Search bar + dropped portal recurrence (Jun 05 2026)
 
 **1) Search panel above both admin and portal calendars**

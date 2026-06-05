@@ -626,7 +626,7 @@ export default function PortalInvoicingSection({ open, onToggle }) {
         className={`touch-target w-full flex items-center justify-between gap-3 ${open ? "hover:bg-stone-50" : "hover:bg-stone-200"} transition-colors px-4 sm:px-6 py-3.5 sm:py-4`}>
         <div className="flex items-center gap-2">
           <FileText className="w-4 h-4 text-stone-700" />
-          <span className="text-xs uppercase tracking-[0.3em] font-bold text-stone-700">Invoicing</span>
+          <span className="text-xs uppercase tracking-[0.3em] font-bold text-stone-700">Invoicing+</span>
         </div>
         <span className={`w-7 h-7 rounded-full border flex items-center justify-center transition-colors ${open ? "border-stone-300 bg-white" : "border-stone-950 bg-stone-950 text-white"}`}>
           {open ? <ChevronUp className="w-3.5 h-3.5 text-stone-600" /> : <ChevronDown className="w-3.5 h-3.5" />}

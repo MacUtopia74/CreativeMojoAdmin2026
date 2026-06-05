@@ -42,9 +42,9 @@ const ROLE_OPTIONS = [
 // page. Mirrors PortalModulesPanel.PLUS_MODULES — keep these in sync.
 const PLUS_MODULES = [
   { key: "territory_plus", label: "My Territory+", icon: MapIcon },
-  { key: "invoicing",      label: "Invoicing",     icon: FileText },
-  { key: "marketing",      label: "Marketing",     icon: Megaphone },
-  { key: "bookings",       label: "Bookings",      icon: CalendarClock },
+  { key: "invoicing",      label: "Invoicing+",     icon: FileText },
+  { key: "marketing",      label: "Marketing+",     icon: Megaphone },
+  { key: "bookings",       label: "Bookings+",      icon: CalendarClock },
   { key: "shape_orders",   label: "Shape Orders",  icon: ShoppingBag },
 ];
 

@@ -14,7 +14,7 @@ export default function PortalBookingsPage() {
       <PortalPageHeading
         eyebrow="Your booking system"
         icon={CalendarClock}
-        title="Bookings"
+        title="Bookings+"
         subtitle="A calendar-led booking flow for your customers — coming soon."
       />
 
