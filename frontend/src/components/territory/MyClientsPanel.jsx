@@ -48,6 +48,11 @@ export default function MyClientsPanel({
   onExpandedChange = null,    // (next) => void
   myClientsOnly = false,      // map-filter toggle (lives in this header now)
   onMyClientsOnlyChange = null,
+  marketingEnabled = false,   // hide the Megaphone shortcut when the
+                              // Marketing bolt-on isn't on for this
+                              // franchisee. Defaults to off so any
+                              // caller forgetting to pass it stays
+                              // safe (no broken deep-link).
 }) {
   const [q, setQ] = useState("");
   const [sortValue, setSortValue] = useState("name-asc");
@@ -246,8 +251,10 @@ export default function MyClientsPanel({
                         )}
                       </div>
                       {/* Marketing deep-link — only when we have an
-                          email to send to. */}
-                      {c.email && (
+                          email to send to AND the franchisee has the
+                          Marketing bolt-on enabled (otherwise the
+                          shortcut would lead to a 403 page). */}
+                      {marketingEnabled && c.email && !c.primary_marketing_unsubscribed && (
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); openMarketing(c.id); }}
@@ -258,6 +265,18 @@ export default function MyClientsPanel({
                           <Megaphone className="w-3.5 h-3.5" />
                         </button>
                       )}
+                      {/* Unsubscribed badge — small pill so the
+                          franchisee instantly knows this client has
+                          opted out (visible regardless of bolt-on). */}
+                      {c.primary_marketing_unsubscribed && (
+                        <span
+                          data-testid={`my-clients-unsub-${c.id}`}
+                          className="hidden lg:inline-flex shrink-0 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded bg-red-50 text-red-700 border border-red-200"
+                          title="Unsubscribed from marketing emails"
+                        >
+                          Unsub
+                        </span>
+                      )}
                       <ChevronRight className="w-4 h-4 shrink-0 text-stone-400 group-hover:text-stone-950 group-hover:translate-x-0.5 transition-transform" />
                     </>
                   ) : (
@@ -267,7 +286,14 @@ export default function MyClientsPanel({
                         <div className="flex items-start justify-between gap-2">
                           <div className="font-semibold text-stone-950 text-sm leading-snug break-words">{c.name}</div>
                           <div className="flex items-center gap-1 shrink-0">
-                            {c.email && (
+                            {c.primary_marketing_unsubscribed && (
+                              <span
+                                data-testid={`my-clients-unsub-${c.id}`}
+                                className="px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded bg-red-50 text-red-700 border border-red-200"
+                                title="Unsubscribed from marketing"
+                              >Unsub</span>
+                            )}
+                            {marketingEnabled && c.email && !c.primary_marketing_unsubscribed && (
                               <button
                                 type="button"
                                 onClick={(e) => { e.stopPropagation(); openMarketing(c.id); }}

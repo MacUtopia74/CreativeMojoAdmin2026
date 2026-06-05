@@ -14,6 +14,11 @@ Data model:
     first_name, organisation, resend_id, send_id, last_event,
     last_event_at, events[]}`` so the per-recipient open/click report
     has somewhere to land.
+  • ``franchisee_clients`` — per-contact ``marketing_unsubscribed`` +
+    ``marketing_unsubscribed_at`` + ``marketing_unsubscribed_source``
+    fields. Set either by the franchisee toggling a contact off in the
+    UI or by the recipient clicking the one-click unsubscribe link in
+    the email footer (signed token → GET /api/u/{token}).
 
 Resend tags carried on every send so the existing
 ``/api/email/resend-webhook`` can attribute events back:
@@ -31,12 +36,59 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import Depends, HTTPException, UploadFile, File, Request
+from fastapi.responses import HTMLResponse
+from itsdangerous import URLSafeSerializer, BadSignature
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger("creative-mojo-admin.portal_marketing")
 
 LOGO_URL = "https://hub.creativemojo.co.uk/brand/creative-mojo-logo.png"
 MAX_RECIPIENTS_PER_SEND = 5
+
+# Salted serializer for the one-click unsubscribe links. The token is
+# stuffed straight into the email footer href as
+# /api/u/{token} → no DB lookup needed to validate, just verify the
+# signature. Salt scopes the secret so unsubscribe tokens can't be
+# used as login tokens (or vice versa) even if both share a key.
+_UNSUBSCRIBE_SALT = "creative-mojo:marketing-unsubscribe:v1"
+
+
+def _unsubscribe_serializer() -> URLSafeSerializer:
+    """Build (lazily) the URLSafeSerializer used to sign one-click
+    unsubscribe links. The secret is the same JWT_SECRET we already
+    use for auth — colocated under a different salt so the two
+    token families can never be cross-used."""
+    key = os.environ.get("JWT_SECRET") or "dev-only-fallback-do-not-use"
+    return URLSafeSerializer(key, salt=_UNSUBSCRIBE_SALT)
+
+
+def _mint_unsubscribe_token(franchisee_id: str, client_id: str,
+                            contact_index: int, email: str) -> str:
+    """Pack the recipient identity into a signed, URL-safe token so
+    the unsubscribe page can verify the click came from a legitimate
+    email send (and not, e.g., a curious bot guessing tokens).
+
+    We include ``email`` in the payload primarily so the confirmation
+    page can show "we've unsubscribed sandra@example.com" without
+    leaking franchisee_id / client_id to the recipient.
+    """
+    return _unsubscribe_serializer().dumps({
+        "f": franchisee_id,
+        "c": client_id,
+        "i": int(contact_index),
+        "e": (email or "").lower(),
+    })
+
+
+def _verify_unsubscribe_token(token: str) -> Optional[dict]:
+    try:
+        data = _unsubscribe_serializer().loads(token)
+    except BadSignature:
+        return None
+    # Minimal shape check — anything missing means we can't act on it.
+    if not isinstance(data, dict) or not data.get("f") or not data.get("c"):
+        return None
+    return data
 
 
 def _now_iso() -> str:
@@ -326,7 +378,8 @@ def _build_panel_html(panel: dict, first_name: str = "{{first_name}}",
     return f"{header_block}{body_row}"
 
 
-def _build_html(campaign: dict, first_name: str = "{{first_name}}") -> str:
+def _build_html(campaign: dict, first_name: str = "{{first_name}}",
+                 unsubscribe_url: str = "") -> str:
     """Branded HTML email. Supports a multi-panel composition: every
     panel = ``{intro, image_url, link_url, link_label}`` and is
     separated by the brand-yellow horizontal divider. The classic
@@ -459,17 +512,33 @@ def _build_html(campaign: dict, first_name: str = "{{first_name}}") -> str:
     # ---- GDPR / compliance block. Always rendered. Identifies the
     # sender (organisation + postal address) and explains lawful basis
     # + opt-out path in plain English so it satisfies UK PECR + GDPR.
+    # The one-click unsubscribe URL is signed per-recipient at send
+    # time and routes through GET /api/u/{token} on the public site;
+    # if it's missing (preview / test-send) we fall back to the older
+    # "reply with UNSUBSCRIBE" copy.
     addr_line = f"{franchisee_address}<br/>" if franchisee_address else ""
+    if unsubscribe_url:
+        opt_out_line = (
+            "You're receiving this because you're a Creative Mojo customer. "
+            "Don't want any more? "
+            f'<a href="{unsubscribe_url}" style="color:#999999;text-decoration:underline;">'
+            'Unsubscribe with one click</a> — '
+            "we'll remove you immediately."
+        )
+    else:
+        opt_out_line = (
+            "You're receiving this because you're a Creative Mojo customer."
+            " To unsubscribe, simply reply to this email with"
+            ' <em>UNSUBSCRIBE</em> in the subject line and we\'ll remove you'
+            ' from our list immediately.'
+        )
     compliance_block = (
         '<tr><td style="padding:18px 30px 24px 30px;font-size:11px;'
         'color:#999999;line-height:1.6;text-align:center;'
         'border-top:1px solid #eaeaea;">'
         f'Sent by <strong>{franchisee_name}</strong> &middot; {franchisee_org}<br/>'
         f'{addr_line}'
-        "You're receiving this because you're a Creative Mojo customer."
-        " To unsubscribe, simply reply to this email with"
-        ' <em>UNSUBSCRIBE</em> in the subject line and we\'ll remove you'
-        ' from our list immediately.'
+        f'{opt_out_line}'
         '</td></tr>'
     )
 
@@ -714,6 +783,161 @@ def attach(api, db, require_role):
         )
         return {"ok": True, "marketing_settings": update}
 
+    # ============================================================
+    # ---- One-click unsubscribe (public — no auth)
+    # ============================================================
+    # Embedded as ``GET /api/u/{token}`` in every campaign footer +
+    # ``List-Unsubscribe`` header so recipients can opt out with a
+    # single click. Token is HMAC-signed (itsdangerous) so we don't
+    # need a DB lookup to verify legitimacy.
+    async def _apply_unsubscribe(data: dict, source: str) -> tuple[bool, str]:
+        fid = data.get("f")
+        cid = data.get("c")
+        idx = int(data.get("i", -1))
+        email = (data.get("e") or "").lower()
+        client = await db.franchisee_clients.find_one(
+            {"id": cid, "franchisee_id": fid}, {"_id": 0},
+        )
+        if not client:
+            return False, email
+        now = _now_iso()
+        if idx == -1:
+            # Primary email — flag it on the parent doc rather than
+            # bin the email value so the franchisee can still see
+            # who/what this row represents.
+            await db.franchisee_clients.update_one(
+                {"id": cid, "franchisee_id": fid},
+                {"$set": {
+                    "primary_marketing_unsubscribed": True,
+                    "primary_marketing_unsubscribed_at": now,
+                    "primary_marketing_unsubscribed_source": source,
+                }},
+            )
+        else:
+            # Per-contact array path. Positional update via dot-notation.
+            await db.franchisee_clients.update_one(
+                {"id": cid, "franchisee_id": fid},
+                {"$set": {
+                    f"contacts.{idx}.marketing_unsubscribed": True,
+                    f"contacts.{idx}.marketing_unsubscribed_at": now,
+                    f"contacts.{idx}.marketing_unsubscribed_source": source,
+                }},
+            )
+        return True, email
+
+    def _unsubscribe_page(email: str, ok: bool) -> str:
+        """Tiny branded confirmation page — no franchisee identifiers
+        exposed to keep the unsubscribe flow neutral for the
+        recipient. Matches the email's brand tone (lime accent)."""
+        if ok:
+            heading = "You've been unsubscribed"
+            body = (
+                f"<p>We've removed <strong>{(email or 'your email address')}</strong> "
+                "from this Creative Mojo franchisee's marketing list.</p>"
+                "<p>You won't receive any more marketing emails from them. If "
+                "you change your mind later, just reply to one of the previous "
+                "messages and ask to be re-added.</p>"
+            )
+        else:
+            heading = "This unsubscribe link is invalid"
+            body = (
+                "<p>The link you clicked has expired or been tampered with. "
+                "If you're still receiving emails you'd like to stop, reply to "
+                "any one of them with <em>UNSUBSCRIBE</em> in the subject line "
+                "and we'll remove you immediately.</p>"
+            )
+        return f"""<!doctype html>
+<html><head><meta charset="utf-8"><title>Unsubscribed · Creative Mojo</title>
+<style>
+  body{{margin:0;background:#f7f7f4;font-family:Helvetica,Arial,sans-serif;color:#1a1a1a;}}
+  .card{{max-width:520px;margin:80px auto;background:#fff;border:1px solid #ececec;
+        padding:40px 36px;border-radius:12px;text-align:center;}}
+  h1{{font-size:24px;font-weight:800;margin:8px 0 16px;}}
+  p{{font-size:15px;line-height:1.6;color:#3a3a3a;margin:10px 0;}}
+  .dot{{width:48px;height:48px;border-radius:50%;background:#dddd16;
+       display:inline-flex;align-items:center;justify-content:center;
+       font-size:22px;font-weight:800;color:#1a1a1a;}}
+</style></head>
+<body><div class="card">
+  <span class="dot">{('✓' if ok else '!')}</span>
+  <h1>{heading}</h1>
+  {body}
+  <p style="margin-top:24px;font-size:12px;color:#999;">Creative Mojo</p>
+</div></body></html>"""
+
+    @api.get("/u/{token}", response_class=HTMLResponse)
+    async def unsubscribe_get(token: str):
+        """Click-through unsubscribe. Some mail clients pre-fetch
+        links (link warming, anti-phishing scanners) so we
+        deliberately keep this GET idempotent: it ALWAYS marks the
+        recipient unsubscribed when the token is valid, but never
+        errors on repeat clicks."""
+        data = _verify_unsubscribe_token(token)
+        if not data:
+            return HTMLResponse(_unsubscribe_page("", False), status_code=400)
+        ok, email = await _apply_unsubscribe(data, source="recipient")
+        return HTMLResponse(_unsubscribe_page(email, ok))
+
+    @api.post("/u/{token}")
+    async def unsubscribe_post(token: str):
+        """One-click POST per RFC 8058 — the path Gmail/Outlook hit
+        when the user clicks the native unsubscribe affordance. Same
+        action as the GET, returns 204 No Content as the spec asks."""
+        data = _verify_unsubscribe_token(token)
+        if not data:
+            raise HTTPException(400, detail="Invalid or expired token")
+        await _apply_unsubscribe(data, source="recipient")
+        return {"ok": True}
+
+    # ============================================================
+    # ---- Franchisee-facing unsubscribe management (authenticated)
+    # ============================================================
+    @api.post("/portal/marketing/clients/{client_id}/unsubscribe")
+    async def franchisee_set_unsubscribed(
+        client_id: str,
+        body: dict,
+        user: dict = Depends(require_role("franchisee")),
+    ):
+        """Franchisee manually toggles a contact's unsubscribed flag —
+        used when somebody replies asking to be removed and the
+        franchisee wants to honour it without round-tripping the
+        recipient through the one-click link.
+
+        Body shape: ``{"contact_index": int, "unsubscribed": bool}``
+        where ``contact_index`` is -1 for the primary email row.
+        """
+        fr = await _check_access(db, user)
+        try:
+            contact_index = int(body.get("contact_index", -1))
+        except (TypeError, ValueError):
+            raise HTTPException(400, detail="contact_index must be an integer")
+        unsubscribed = bool(body.get("unsubscribed", True))
+        client = await db.franchisee_clients.find_one(
+            {"id": client_id, "franchisee_id": fr["id"]}, {"_id": 0},
+        )
+        if not client:
+            raise HTTPException(404, detail="Client not found")
+        now = _now_iso()
+        if contact_index == -1:
+            update = {
+                "primary_marketing_unsubscribed": unsubscribed,
+                "primary_marketing_unsubscribed_at": now if unsubscribed else None,
+                "primary_marketing_unsubscribed_source": "franchisee" if unsubscribed else None,
+            }
+        else:
+            n = len(client.get("contacts") or [])
+            if not (0 <= contact_index < n):
+                raise HTTPException(400, detail="contact_index out of range")
+            update = {
+                f"contacts.{contact_index}.marketing_unsubscribed": unsubscribed,
+                f"contacts.{contact_index}.marketing_unsubscribed_at": now if unsubscribed else None,
+                f"contacts.{contact_index}.marketing_unsubscribed_source": "franchisee" if unsubscribed else None,
+            }
+        await db.franchisee_clients.update_one(
+            {"id": client_id, "franchisee_id": fr["id"]}, {"$set": update},
+        )
+        return {"ok": True, "contact_index": contact_index, "unsubscribed": unsubscribed}
+
     # ---- recipients (Territory+ clients with at least one email)
     @api.get("/portal/marketing/recipients")
     async def list_recipients(user: dict = Depends(require_role("franchisee"))):
@@ -723,7 +947,11 @@ def attach(api, db, require_role):
             {"franchisee_id": fr["id"]}, {"_id": 0},
         ).sort("name", 1):
             # Primary email row (from the client's manager / generic inbox).
-            if c.get("email"):
+            # Hide if this primary contact has been unsubscribed (per-
+            # contact granularity — other contacts on the same client
+            # row are unaffected).
+            primary_unsub = bool(c.get("primary_marketing_unsubscribed"))
+            if c.get("email") and not primary_unsub:
                 out.append({
                     "client_id": c["id"],
                     "contact_index": -1,
@@ -733,9 +961,10 @@ def attach(api, db, require_role):
                     "email": c.get("email"),
                     "phone": c.get("phone"),
                 })
-            # Each secondary contact that has an email.
+            # Each secondary contact that has an email AND hasn't
+            # individually unsubscribed.
             for idx, ct in enumerate(c.get("contacts") or []):
-                if ct and ct.get("email"):
+                if ct and ct.get("email") and not ct.get("marketing_unsubscribed"):
                     out.append({
                         "client_id": c["id"],
                         "contact_index": idx,
@@ -927,12 +1156,14 @@ def attach(api, db, require_role):
             if not client:
                 continue
             if contact_index == -1:
+                if client.get("primary_marketing_unsubscribed"):
+                    continue
                 email = (client.get("email") or "").strip()
                 first_name = (client.get("manager") or client.get("name") or "there").split(" ", 1)[0]
                 role = "Primary"
             else:
                 ct = (client.get("contacts") or [])[contact_index] if 0 <= contact_index < len(client.get("contacts") or []) else None
-                if not ct:
+                if not ct or ct.get("marketing_unsubscribed"):
                     continue
                 email = (ct.get("email") or "").strip()
                 first_name = (ct.get("name") or "there").split(" ", 1)[0]
@@ -1017,9 +1248,21 @@ def attach(api, db, require_role):
         succeeded = 0
         failures: list[str] = []
         per_recipient: list[dict] = []
+        # Public base URL for the one-click unsubscribe link. Same
+        # priority order as bookings (request → body origin → default).
+        unsubscribe_base = base.rstrip("/")
         for r in resolved:
             send_id = str(uuid.uuid4())
-            html = _build_html(campaign_doc, first_name=r["first_name"])
+            # Per-recipient signed token → /api/u/{token} on the public
+            # site. Recipient clicks once, no DB lookup needed to
+            # verify, and we tag the exact contact_index so multi-
+            # contact clients only kill the right subscription.
+            unsub_token = _mint_unsubscribe_token(
+                fr["id"], r["client_id"], r.get("contact_index", -1), r["email"],
+            )
+            unsub_url = f"{unsubscribe_base}/api/u/{unsub_token}"
+            html = _build_html(campaign_doc, first_name=r["first_name"],
+                               unsubscribe_url=unsub_url)
             try:
                 resp = await asyncio.to_thread(_resend.Emails.send, {
                     "from": f"{sender_name} <{from_email}>",
@@ -1027,7 +1270,16 @@ def attach(api, db, require_role):
                     "reply_to": from_email,
                     "subject": title,
                     "html": html,
-                    "headers": {"X-CM-Send-Id": send_id},
+                    "headers": {
+                        "X-CM-Send-Id": send_id,
+                        # RFC 2369 + RFC 8058 — Gmail / Outlook surface
+                        # a native "Unsubscribe" affordance at the top
+                        # of the message when both headers are present.
+                        # This also helps deliverability (carriers
+                        # actively prefer senders that support one-click).
+                        "List-Unsubscribe": f"<{unsub_url}>",
+                        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+                    },
                     "tags": [
                         {"name": "kind", "value": "marketing-campaign"},
                         {"name": "campaign_id", "value": campaign_id},

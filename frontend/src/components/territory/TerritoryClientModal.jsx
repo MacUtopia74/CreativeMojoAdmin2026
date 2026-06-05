@@ -7,7 +7,7 @@
 // dataset). The "View live CQC data" button opens a side-by-side popup
 // of the current live values so they can compare/reset to source.
 import { useEffect, useState } from "react";
-import { X, Loader2, Trash2, UserPlus, ExternalLink, Database } from "lucide-react";
+import { X, Loader2, Trash2, UserPlus, ExternalLink, Database, MailX, Mail } from "lucide-react";
 import api from "@/lib/api";
 import MiniClientMap from "@/components/territory/MiniClientMap";
 
@@ -44,6 +44,41 @@ export default function TerritoryClientModal({ initial, onClose, onSaved, onDele
   const isLinked = !!initial && initial.source !== "custom";
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  // Toggle the per-contact marketing-unsubscribed flag. The persistence
+  // is a separate single-purpose endpoint (rather than rolled into the
+  // main save) so the franchisee can toggle it without first having
+  // to fix any other validation errors on the form.
+  const toggleUnsubscribed = async (contactIndex, currentlyUnsub) => {
+    if (!editing || !initial?.id) return;
+    setBusy(true); setErr("");
+    try {
+      await api.post(`/portal/marketing/clients/${initial.id}/unsubscribe`, {
+        contact_index: contactIndex,
+        unsubscribed: !currentlyUnsub,
+      });
+      // Mirror the change into local form state so the UI updates
+      // immediately without an extra round-trip.
+      if (contactIndex === -1) {
+        setForm((f) => ({ ...f, primary_marketing_unsubscribed: !currentlyUnsub }));
+      } else {
+        setForm((f) => {
+          const next = [...(f.contacts || [])];
+          if (next[contactIndex]) {
+            next[contactIndex] = {
+              ...next[contactIndex],
+              marketing_unsubscribed: !currentlyUnsub,
+            };
+          }
+          return { ...f, contacts: next };
+        });
+      }
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Couldn't update marketing status.");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const updateContact = (i, k, v) => {
     setForm((f) => {
@@ -230,6 +265,23 @@ export default function TerritoryClientModal({ initial, onClose, onSaved, onDele
             />
           </div>
 
+          {/* Marketing status for the primary contact. Only shown when
+              editing an existing client AND there's actually an email
+              on file (no point unsubscribing nobody). The toggle calls
+              the dedicated endpoint and updates immediately. */}
+          {editing && (form.email || "").trim() && (
+            <UnsubscribeRow
+              label="Primary contact marketing"
+              email={form.email}
+              unsubscribed={!!form.primary_marketing_unsubscribed}
+              unsubscribedAt={form.primary_marketing_unsubscribed_at}
+              source={form.primary_marketing_unsubscribed_source}
+              onToggle={() => toggleUnsubscribed(-1, !!form.primary_marketing_unsubscribed)}
+              busy={busy}
+              testid="t-plus-primary-unsub"
+            />
+          )}
+
           {/* Additional contacts — sales lead, deputy manager, activities
               coordinator, etc. Each row is a mini-card with a delete button. */}
           <div data-testid="t-plus-contacts-section">
@@ -309,6 +361,24 @@ export default function TerritoryClientModal({ initial, onClose, onSaved, onDele
                     data-testid={`t-plus-contact-notes-${i}`}
                     className="mt-2 w-full px-2.5 py-1.5 text-sm bg-white border border-stone-300 rounded focus:outline-none focus:border-stone-950"
                   />
+                  {/* Per-contact unsubscribe toggle. Shown only on
+                      saved clients that have an email — same logic
+                      as the primary row above. */}
+                  {editing && (c.email || "").trim() && (
+                    <div className="mt-2">
+                      <UnsubscribeRow
+                        label="Marketing"
+                        email={c.email}
+                        unsubscribed={!!c.marketing_unsubscribed}
+                        unsubscribedAt={c.marketing_unsubscribed_at}
+                        source={c.marketing_unsubscribed_source}
+                        onToggle={() => toggleUnsubscribed(i, !!c.marketing_unsubscribed)}
+                        busy={busy}
+                        testid={`t-plus-contact-unsub-${i}`}
+                        compact
+                      />
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -407,3 +477,53 @@ export default function TerritoryClientModal({ initial, onClose, onSaved, onDele
     </div>
   );
 }
+
+// Small reusable row that shows the current marketing status for an
+// email + a single button to flip it. We deliberately don't put this
+// in its own file because it's only used inside the client modal and
+// shares the modal's `busy` / `onToggle` plumbing.
+function UnsubscribeRow({ label, email, unsubscribed, unsubscribedAt,
+                          source, onToggle, busy, testid, compact = false }) {
+  const dateLabel = unsubscribedAt
+    ? new Date(unsubscribedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+    : "";
+  const sourceLabel = source === "recipient" ? "via one-click link"
+                    : source === "franchisee" ? "by you"
+                    : "";
+  return (
+    <div
+      data-testid={testid}
+      className={`flex items-center gap-3 ${compact ? "p-2 bg-stone-50" : "px-3 py-2.5 bg-amber-50/40"} border ${unsubscribed ? "border-red-200 bg-red-50/60" : "border-stone-200"} rounded-lg`}
+    >
+      <div className="shrink-0">
+        {unsubscribed
+          ? <span className="w-7 h-7 rounded-full bg-red-100 text-red-700 flex items-center justify-center"><MailX className="w-3.5 h-3.5" /></span>
+          : <span className="w-7 h-7 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center"><Mail className="w-3.5 h-3.5" /></span>}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-[11px] font-bold uppercase tracking-wider text-stone-700">
+          {label} — {unsubscribed ? "Unsubscribed" : "Subscribed"}
+        </div>
+        <div className="text-[11px] text-stone-500 truncate">
+          {unsubscribed
+            ? <>Won't receive marketing e-shots{dateLabel ? ` · since ${dateLabel}` : ""}{sourceLabel ? ` · ${sourceLabel}` : ""}</>
+            : <>{email} will be included in your next campaign</>}
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={onToggle}
+        disabled={busy}
+        data-testid={`${testid}-toggle`}
+        className={`shrink-0 px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition ${
+          unsubscribed
+            ? "bg-stone-950 text-white hover:bg-stone-800"
+            : "bg-red-600 text-white hover:bg-red-700"
+        } disabled:opacity-50`}
+      >
+        {unsubscribed ? "Re-subscribe" : "Mark unsubscribed"}
+      </button>
+    </div>
+  );
+}
+

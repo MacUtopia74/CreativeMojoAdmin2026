@@ -17,6 +17,13 @@ import PortalPageHeading from "@/components/portal/PortalPageHeading";
 export default function PortalTerritoryPage({ forceBasic = false }) {
   const { profile: data } = useOutletContext();
   if (!data) return null;
+  // Marketing bolt-on flag — drives whether per-row "Send marketing
+  // e-shot" shortcuts appear in MyClientsPanel. Demo tag overrides
+  // because Demo franchisees get to preview every module.
+  const modules = data?.profile?.portal_modules || {};
+  const tags = data?.profile?.tags || [];
+  const isDemo = tags.some((t) => String(t).trim().toLowerCase() === "demo");
+  const marketingEnabled = !!modules.marketing || isDemo;
   const title = forceBasic ? "My Territory" : "My Territory+";
   const subtitle = forceBasic
     ? "Your exclusive postcodes and the customers and prospects within them."
@@ -30,10 +37,10 @@ export default function PortalTerritoryPage({ forceBasic = false }) {
         subtitle={subtitle}
       />
       <div className="block md:hidden">
-        <FranchiseeTerritoryWidget mapHeight={420} forceBasic={forceBasic} />
+        <FranchiseeTerritoryWidget mapHeight={420} forceBasic={forceBasic} marketingEnabled={marketingEnabled} />
       </div>
       <div className="hidden md:block">
-        <FranchiseeTerritoryWidget mapHeight={720} forceBasic={forceBasic} />
+        <FranchiseeTerritoryWidget mapHeight={720} forceBasic={forceBasic} marketingEnabled={marketingEnabled} />
       </div>
     </div>
   );

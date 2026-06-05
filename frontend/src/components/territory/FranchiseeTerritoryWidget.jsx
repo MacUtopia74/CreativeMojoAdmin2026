@@ -20,7 +20,7 @@ import {
   Route, Maximize2, Minimize2,
 } from "lucide-react";
 
-export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 560, forceBasic = false }) {
+export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 560, forceBasic = false, marketingEnabled = false }) {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -412,6 +412,7 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
               onExpandedChange={setClientsFocus}
               myClientsOnly={myClientsOnly}
               onMyClientsOnlyChange={setMyClientsOnly}
+              marketingEnabled={marketingEnabled}
             />
           </div>
 

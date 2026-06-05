@@ -1,6 +1,56 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## Marketing — Bolt-on gating + Unsubscribe management (Jun 05 2026)
+
+**1) Hide Megaphone deep-link when no Marketing bolt-on**
+- `MyClientsPanel` now takes a `marketingEnabled` prop. The per-row Megaphone shortcut is suppressed unless the franchisee has `portal_modules.marketing = true` (or carries the Demo tag).
+- Threaded through: `PortalTerritoryPage` reads `profile.portal_modules.marketing` from OutletContext → passes to `FranchiseeTerritoryWidget` → passes to `MyClientsPanel`.
+
+**2) UNSUBSCRIBE management — one-click + manual**
+End-to-end opt-out system with two entry points (recipient click, franchisee toggle) feeding the same per-contact granularity store.
+
+a) **Schema** (`franchisee_clients` collection):
+  - `primary_marketing_unsubscribed: bool` + `_at: iso` + `_source: "recipient"|"franchisee"` for the primary email
+  - `contacts[i].marketing_unsubscribed: bool` + `_at: iso` + `_source` for each secondary contact
+
+b) **One-click unsubscribe link in every campaign footer**:
+  - HMAC-signed token (itsdangerous URLSafeSerializer + JWT_SECRET, scoped under `marketing-unsubscribe:v1` salt) packs `{franchisee_id, client_id, contact_index, email}`
+  - Email footer: replaces the old "reply with UNSUBSCRIBE" copy with `<a href="…/api/u/{token}">Unsubscribe with one click</a>`
+  - `List-Unsubscribe` + `List-Unsubscribe-Post: List-Unsubscribe=One-Click` headers per RFC 8058 so Gmail/Outlook show their native unsubscribe button (also boosts deliverability)
+  - `GET /api/u/{token}` (public, no auth): verifies signature, marks the contact unsubscribed, renders a branded "You've been unsubscribed" confirmation page. Idempotent (handles link-warming/scanner pre-fetches without errors).
+  - `POST /api/u/{token}` (public): same behaviour for one-click POSTs from email clients per RFC 8058.
+
+c) **Franchisee manual toggle**:
+  - `POST /api/portal/marketing/clients/{client_id}/unsubscribe` body `{contact_index, unsubscribed}` — toggles on/off, contact_index=-1 targets the primary.
+  - Surfaced in `TerritoryClientModal` via a new `UnsubscribeRow` component (Mail/MailX icon + status pill + Re-subscribe/Mark unsubscribed button + "since X via one-click link" subtext).
+  - Rendered once for the primary email and once per secondary contact that has an email.
+
+d) **Recipient filter + send guard**:
+  - `GET /portal/marketing/recipients` skips primary rows where `primary_marketing_unsubscribed=true` AND skips secondary contacts where `marketing_unsubscribed=true`.
+  - Send-time check inside `/portal/marketing/campaigns` enforces the same — defence in depth so a stale frontend selection can never push past the filter.
+
+e) **UI surface**:
+  - `MyClientsPanel` shows a red "UNSUB" pill on rows whose primary is unsubscribed; the Megaphone shortcut auto-hides on those rows.
+  - Modal `UnsubscribeRow` makes status legible at a glance with date + source attribution.
+
+**New dependency:** `itsdangerous==2.2.0` (token signing). Added to `requirements.txt`.
+
+**Tested end-to-end via curl:**
+1. Mint token → GET `/api/u/{token}` → 200, "You've been unsubscribed" page rendered, Mongo updated (`source: recipient`).
+2. Franchisee toggle endpoint → marks/clears unsubscribed flag, `/recipients` honours it instantly.
+3. Tampered token → 400 invalid page.
+
+**Files touched**
+- `backend/portal_marketing_routes.py` — token helpers, `/u/{token}` GET+POST, `/portal/marketing/clients/{id}/unsubscribe` toggle, recipient + send-time filters, footer rewrite + `List-Unsubscribe` headers, per-recipient unsubscribe URL generation.
+- `backend/requirements.txt` — added itsdangerous.
+- `frontend/src/components/territory/MyClientsPanel.jsx` — `marketingEnabled` prop, per-row UNSUB pill, conditional Megaphone.
+- `frontend/src/components/territory/FranchiseeTerritoryWidget.jsx` — threads `marketingEnabled`.
+- `frontend/src/pages/portal/PortalTerritoryPage.jsx` — derives `marketingEnabled` from `portal_modules.marketing` (or Demo tag).
+- `frontend/src/components/territory/TerritoryClientModal.jsx` — `toggleUnsubscribed` mutation, primary + per-contact `UnsubscribeRow` widget.
+
+
+
 ## Marketing — Email-me CTA + Territory+ deep-link + autosizing preview (Jun 05 2026)
 
 **1) Marketing email deep-link from Territory+**
