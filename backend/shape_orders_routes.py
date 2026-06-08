@@ -35,7 +35,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import Depends, HTTPException
+from fastapi import Body, Depends, HTTPException
 
 logger = logging.getLogger("creative-mojo-admin.shape_orders")
 
@@ -160,6 +160,80 @@ def attach(api, db, require_role):
         await db.shape_order_products.insert_one(doc)
         doc.pop("_id", None)
         return doc
+
+    @api.post("/admin/shape-orders/products/apply-default-personalisation")
+    async def admin_apply_default_personalisation(
+        body: dict | None = Body(None),
+        _: dict = Depends(require_role("admin")),
+    ):
+        """One-shot helper that fills personalisation defaults for any
+        signage / clothing row whose name matches a well-known pattern.
+        Idempotent — skips rows that already have personalisation
+        configured unless ``body.overwrite`` is true.
+
+        Matches (case-insensitive, substring on ``name``):
+          • "T-Shirt"      → size dropdown (S/M/L/XL/XXL) + colour
+          • "Apron"        → colour
+          • "(Personalised)" — anything else                → text input
+        """
+        overwrite = bool((body or {}).get("overwrite"))
+
+        chart_url = "https://customer-assets.emergentagent.com/job_licensee-vault/artifacts/2mzmnq4q_image.png"
+        default_colours = [
+            "Black", "Dark Grey", "Steel", "Silver", "White", "Sage", "Bottle",
+            "Apple", "Emerald", "Teal", "Aqua", "Olive", "Sapphire", "Mid Blue",
+            "Oasis", "Lime", "Lemon", "Sunflower", "Chestnut", "Terracotta",
+            "Orange", "Strawberry Red", "Hot Pink", "Aubergine", "Rich Violet",
+            "Purple", "Turquoise", "Light Blue", "Natural", "Khaki", "Mocha",
+            "Brown", "Red", "Burgundy", "Fuchsia", "Pink", "Lilac", "Navy",
+            "Marine Blue", "Royal",
+        ]
+
+        applied: list[dict] = []
+        skipped: list[dict] = []
+        async for p in db.shape_order_products.find(
+            {"product_kind": "signage_clothing"},
+            {"_id": 0, "woo_id": 1, "name": 1, "personalisation": 1},
+        ):
+            name = (p.get("name") or "").lower()
+            existing = p.get("personalisation") or {}
+            has_any = bool(
+                existing.get("text_input", {}).get("enabled")
+                or existing.get("size", {}).get("enabled")
+                or existing.get("colour", {}).get("enabled")
+            )
+            if has_any and not overwrite:
+                skipped.append({"woo_id": p["woo_id"], "name": p.get("name"), "reason": "already configured"})
+                continue
+
+            pers: dict = {}
+            if "t-shirt" in name or "tshirt" in name or "t shirt" in name:
+                pers = {
+                    "size": {"enabled": True, "options": ["S", "M", "L", "XL", "XXL"]},
+                    "colour": {"enabled": True, "options": default_colours, "chart_image_url": chart_url},
+                }
+            elif "apron" in name:
+                pers = {
+                    "colour": {"enabled": True, "options": default_colours, "chart_image_url": chart_url},
+                }
+            elif "(personalised)" in name and "non personalised" not in name and "(non personalised)" not in name:
+                pers = {
+                    "text_input": {"enabled": True, "label": "Your franchise name / phone", "max_length": 120},
+                }
+            else:
+                skipped.append({"woo_id": p["woo_id"], "name": p.get("name"), "reason": "no rule matched"})
+                continue
+
+            await db.shape_order_products.update_one(
+                {"woo_id": p["woo_id"]},
+                {"$set": {"personalisation": pers, "updated_at": _now_iso()}},
+            )
+            applied.append({
+                "woo_id": p["woo_id"],
+                "name": p.get("name"),
+                "fields": [k for k in pers if pers[k].get("enabled")],
+            })
+        return {"ok": True, "applied": applied, "skipped": skipped}
 
     @api.patch("/admin/shape-orders/products/{woo_id}")
     async def admin_patch_product(woo_id: int, body: dict, _: dict = Depends(require_role("admin"))):

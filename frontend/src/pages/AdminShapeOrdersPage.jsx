@@ -8,7 +8,7 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   ShoppingBag, Plus, Trash2, Search, Loader2, ArrowUp, ArrowDown,
-  X as XIcon, ImageOff, AlertCircle, CheckCircle2, RefreshCw,
+  X as XIcon, ImageOff, AlertCircle, CheckCircle2, RefreshCw, Sparkles,
 } from "lucide-react";
 import api from "@/lib/api";
 
@@ -59,6 +59,18 @@ export default function AdminShapeOrdersPage() {
       setError(e?.response?.data?.detail || "Reorder failed.");
       load();
     }
+  };
+
+  const applyDefaults = async () => {
+    if (!window.confirm("Auto-fill personalisation options on every signage / clothing product based on its name (T-Shirts → size + colour, Aprons → colour, anything 'Personalised' → text input)? Skips products you've already configured.")) return;
+    setRefreshing(true); setError("");
+    try {
+      const { data } = await api.post("/admin/shape-orders/products/apply-default-personalisation", { overwrite: false });
+      await load();
+      window.alert(`Applied defaults to ${data.applied.length} product${data.applied.length === 1 ? "" : "s"}. Skipped ${data.skipped.length}.`);
+    } catch (e) {
+      setError(e?.response?.data?.detail || "Apply defaults failed.");
+    } finally { setRefreshing(false); }
   };
 
   const toggleActive = async (p) => {
