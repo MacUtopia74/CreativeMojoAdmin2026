@@ -63,6 +63,10 @@ export default function TerritoryBuilderPage() {
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [pastePreview, setPastePreview] = useState(null);
+  // Banner for the "Copy all live franchisee sectors" action — shows a
+  // success or error message above the toolbar for ~3s.
+  const [copyAllStatus, setCopyAllStatus] = useState("");
+  const [copyingAll, setCopyingAll] = useState(false);
   // Overlay: every active franchisee's locked territory. Loaded once on mount,
   // refreshed whenever the lock-target changes so the franchisee being edited
   // isn't duplicated in the background.
@@ -526,7 +530,62 @@ export default function TerritoryBuilderPage() {
           className="px-3 py-2 text-xs font-bold uppercase tracking-wider bg-white border border-stone-300 text-stone-900 hover:bg-stone-50 rounded-lg flex items-center gap-1.5">
           <ClipboardPaste className="w-3.5 h-3.5" /> Paste sectors
         </button>
+        <button
+          onClick={async () => {
+            setCopyingAll(true); setCopyAllStatus("");
+            try {
+              const { data } = await api.get("/territory/all-franchisee-sectors");
+              const text = (data.sectors || []).join(", ");
+              if (!text) {
+                setCopyAllStatus("No live franchisee sectors found.");
+              } else {
+                try {
+                  await navigator.clipboard.writeText(text);
+                  setCopyAllStatus(`Copied ${data.count.toLocaleString()} sectors from ${data.franchisees} franchisee${data.franchisees === 1 ? "" : "s"} to your clipboard.`);
+                } catch {
+                  // Some browsers/contexts block writeText silently — fall
+                  // back to a hidden textarea + execCommand so the admin
+                  // still gets the data on their clipboard.
+                  const ta = document.createElement("textarea");
+                  ta.value = text;
+                  ta.style.position = "fixed";
+                  ta.style.left = "-9999px";
+                  document.body.appendChild(ta);
+                  ta.select();
+                  document.execCommand("copy");
+                  document.body.removeChild(ta);
+                  setCopyAllStatus(`Copied ${data.count.toLocaleString()} sectors from ${data.franchisees} franchisee${data.franchisees === 1 ? "" : "s"} to your clipboard.`);
+                }
+              }
+            } catch (e) {
+              setCopyAllStatus(e?.response?.data?.detail || "Could not copy sectors.");
+            } finally {
+              setCopyingAll(false);
+              setTimeout(() => setCopyAllStatus(""), 4000);
+            }
+          }}
+          disabled={copyingAll}
+          data-testid="copy-all-franchisee-sectors"
+          title="Copy a comma-separated list of every postcode sector allocated to a live franchisee — for Facebook ads geo-targeting upload."
+          className="px-3 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 hover:bg-stone-800 text-white rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+        >
+          {copyingAll ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Copy className="w-3.5 h-3.5" />}
+          Copy all franchisee postcode sectors
+        </button>
       </div>
+
+      {copyAllStatus && (
+        <div className={`text-sm px-3 py-2 rounded-xl flex items-center gap-1.5 border ${
+          copyAllStatus.toLowerCase().startsWith("copied")
+            ? "text-emerald-800 bg-emerald-50 border-emerald-200"
+            : "text-amber-800 bg-amber-50 border-amber-200"
+        }`} data-testid="copy-all-status">
+          {copyAllStatus.toLowerCase().startsWith("copied")
+            ? <CheckCircle2 className="w-4 h-4" />
+            : <AlertCircle className="w-4 h-4" />}
+          {copyAllStatus}
+        </div>
+      )}
 
       {err && (
         <div className="text-sm text-red-700 bg-red-50 border border-red-200 px-3 py-2 rounded-xl flex items-center gap-1.5">

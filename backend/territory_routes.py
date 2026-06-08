@@ -869,6 +869,36 @@ def build_territory_router(db, require_role):  # noqa: D401
     # one map so prospects can be drawn against existing boundaries without
     # accidentally overlapping. Each franchisee gets a deterministic colour
     # (palette indexed by franchise_number) plus a clickable HQ pin.
+    @router.get("/territory/all-franchisee-sectors")
+    async def all_franchisee_sectors(
+        _user: dict = Depends(require_role("admin")),
+    ):
+        """Flat, deduplicated list of every postcode sector currently
+        owned by an active franchisee — for the "Copy all sectors"
+        button (Facebook ads geo-targeting upload).
+
+        Sorted alphanumerically so the copied output is deterministic
+        and human-scannable: ``AB10 1, AB10 2, BT9 7, EX15 1, …``."""
+        rows = await db.franchisees.find(
+            {
+                "tags": "Franchisee",
+                "lifecycle_status": {"$ne": "ex_franchisee"},
+                "territory_sectors": {"$exists": True, "$ne": []},
+            },
+            {"_id": 0, "territory_sectors": 1},
+        ).to_list(1000)
+        seen: set[str] = set()
+        for r in rows:
+            for s in r.get("territory_sectors") or []:
+                if s:
+                    seen.add(s.strip().upper())
+        sectors = sorted(seen)
+        return {
+            "sectors": sectors,
+            "count": len(sectors),
+            "franchisees": len(rows),
+        }
+
     @router.get("/territory/all-franchisees")
     async def all_franchisees_territories(
         exclude_id: Optional[str] = None,
