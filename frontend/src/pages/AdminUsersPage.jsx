@@ -45,7 +45,7 @@ const PLUS_MODULES = [
   { key: "invoicing",      label: "Invoicing+",     icon: FileText },
   { key: "marketing",      label: "Marketing+",     icon: Megaphone },
   { key: "bookings",       label: "Bookings+",      icon: CalendarClock },
-  { key: "shape_orders",   label: "Shape Orders",  icon: ShoppingBag },
+  { key: "shape_orders",   label: "Franchise Store", icon: ShoppingBag },
 ];
 
 const money = (s) => (s ? new Date(s).toLocaleString("en-GB") : "—");

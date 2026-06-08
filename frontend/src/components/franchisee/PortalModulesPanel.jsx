@@ -26,7 +26,7 @@ const PLUS_MODULES = [
   { key: "marketing",      label: "Marketing+",     icon: Megaphone, description: "Social-post templates, local marketing kits, campaign tools." },
   { key: "invoicing",      label: "Invoicing+",     icon: FileText,  description: "Personal invoicing tool with client manager and Xero export." },
   { key: "bookings",       label: "Bookings+",      icon: Calendar,  description: "Client-booking manager — recurring sessions, attendance and franchisee diary." },
-  { key: "shape_orders",   label: "Shape Orders",  icon: ShoppingBag, description: "Order Die-Cut Shape sets straight from HQ — replaces the WooCommerce shop checkout." },
+  { key: "shape_orders",   label: "Franchise Store", icon: ShoppingBag, description: "Order shape sets, signage and branded clothing straight from HQ — replaces the WooCommerce shop checkout." },
 ];
 
 export default function PortalModulesPanel({ franchisee, onChanged }) {
