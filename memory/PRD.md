@@ -1,5 +1,18 @@
 # Creative Mojo — Unified Admin Platform PRD
 
+
+## NI postcode sectors switched to real boundaries (Jun 08 2026)
+
+**Replaced** the temporary Voronoi-derived BT polygons with **real postcode sector boundaries** from Doogal's whole-UK KML (https://www.doogal.co.uk/kml/PostcodeSectors.kml). Methodology now identical to GB:
+
+- **GB** (England, Scotland, Wales): GeoLytix 2012 shapefile, imported via `scripts/import_postcode_sectors.py`.
+- **NI** (BT): Doogal KML, imported via `scripts/import_ni_postcode_sectors.py`. Same `postcode_sector_polygons` collection, same document schema (`sector`, `district`, `area`, `geometry`), same 2dsphere index — so every downstream query that already worked for EX, AB, EH now works identically for BT.
+- **245 BT sectors** loaded; deletes any prior `source: ni-voronoi-synthetic` rows so they can't shadow the real ones.
+- Removed `backend/ni_polygons.py` and the `/api/ni/polygons/regenerate` endpoint — no longer needed.
+
+Belfast franchisee (113 BT sectors) verified to render as a proper shaped territory polygon over Northern Ireland alongside the Scottish + English franchisees on the Territory Builder map. Home count of 221 (Nursing+Residential rule) preserved unchanged.
+
+
 # --- Jun 08 2026 ---
 
 ## Northern Ireland (RQIA) care data module + BT territory map (Jun 08 2026)

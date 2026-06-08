@@ -42,7 +42,6 @@ from ni_definition import (
     DEFAULT_DEFINITION_ID,
     definition_to_mongo_filter,
 )
-from ni_polygons import generate_ni_sector_polygons
 
 logger = logging.getLogger("creative-mojo-admin.ni")
 
@@ -265,16 +264,6 @@ def build_ni_router(db, require_role):  # noqa: D401
             return NiDefinition()
         return NiDefinition(**doc)
 
-    async def _regen_polygons_safely() -> Optional[dict]:
-        """Regenerate BT sector polygons. Logs and swallows any
-        upstream errors (postcodes.io down etc.) so an XLSX import
-        doesn't fail just because the polygon refresh did."""
-        try:
-            return await generate_ni_sector_polygons(db)
-        except Exception as e:  # pragma: no cover — defensive
-            logger.warning("NI polygon regeneration failed: %s", e)
-            return None
-
     async def _recount_ni_franchisees(ni_def: NiDefinition) -> int:
         """Re-derive ``territory_home_count`` for every franchisee with
         BT sectors in their territory, mixing in their non-NI sector
@@ -454,8 +443,7 @@ def build_ni_router(db, require_role):  # noqa: D401
             "rows_skipped": skipped,
         }
         await db.ni_import_state.update_one({"_id": "last_import"}, {"$set": meta}, upsert=True)
-        polygons = await _regen_polygons_safely()
-        return {"ok": True, "rows_loaded": len(docs), "rows_skipped": skipped, "filename": file.filename, "polygons": polygons}
+        return {"ok": True, "rows_loaded": len(docs), "rows_skipped": skipped, "filename": file.filename}
 
     @router.post("/ni/import/refresh")
     async def refresh_from_opendatani(user: dict = Depends(require_role("admin"))):
@@ -479,16 +467,7 @@ def build_ni_router(db, require_role):  # noqa: D401
             "rows_skipped": skipped,
         }
         await db.ni_import_state.update_one({"_id": "last_import"}, {"$set": meta}, upsert=True)
-        polygons = await _regen_polygons_safely()
-        return {"ok": True, "rows_loaded": len(docs), "rows_skipped": skipped, "filename": filename, "source": "opendatani", "polygons": polygons}
-
-    @router.post("/ni/polygons/regenerate")
-    async def regenerate_polygons(_user: dict = Depends(require_role("admin"))):
-        """Rebuild the Voronoi-derived BT postcode sector polygons from
-        the current ``ni_care_services`` anchor set. Already runs after
-        every import — exposed here for manual re-runs after editing
-        anchors or fixing postcodes.io blips."""
-        return await generate_ni_sector_polygons(db)
+        return {"ok": True, "rows_loaded": len(docs), "rows_skipped": skipped, "filename": filename, "source": "opendatani"}
 
     @router.get("/ni/import/status")
     async def import_status(_user: dict = Depends(require_role("admin"))):
