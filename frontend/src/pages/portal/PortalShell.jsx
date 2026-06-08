@@ -21,8 +21,9 @@ import {
   User as UserIcon, MapPin, CalendarDays, FolderOpen, Receipt,
   LogOut, Type, Loader2, AlertCircle, Megaphone, GraduationCap,
   CalendarClock, KeyRound, Sparkles, UserCog, ChevronDown, ShoppingBag,
-  Menu, X, Facebook,
+  Menu, X, Facebook, LifeBuoy,
 } from "lucide-react";
+import PortalHelpModal from "@/components/portal/PortalHelpModal";
 
 // Private community Facebook group — every franchisee gets the same
 // button to keep the link consistent and visible across every portal
@@ -176,6 +177,7 @@ export default function PortalShell() {
   // Mobile drawer state — closes automatically on route change so the
   // user lands on the new page without the menu still covering it.
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   useEffect(() => { setMobileNavOpen(false); }, [location.pathname]);
   // Lock background scroll while drawer is open.
   useEffect(() => {
@@ -196,21 +198,19 @@ export default function PortalShell() {
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 py-2 sm:py-3 flex items-center justify-between gap-2">
           <Logo className="h-12 sm:h-16 shrink-0 max-w-[55%]" />
           <div className="flex items-center gap-2 sm:gap-4">
-            {/* Comfort Zone — opens the private FB group in a new tab.
-                Always visible (every franchisee has access to it). On
-                small screens the label collapses to the icon only. */}
-            <a
-              href={COMFORT_ZONE_FB_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              data-testid="portal-comfort-zone-btn"
-              title="Open the Creative Mojo Comfort Zone private Facebook group"
-              className="px-2.5 sm:px-4 py-2 text-[10px] sm:text-xs font-bold uppercase tracking-wider bg-[#1877F2] hover:bg-[#1666d4] text-white rounded-lg flex items-center gap-1.5 sm:gap-2 transition-colors shadow-sm"
+            {/* Help — opens a full-screen modal with the marked-up
+                screenshot HQ has uploaded for the current page. Same
+                style + position the Comfort Zone button used to live
+                in; Comfort Zone has moved into the sidebar. */}
+            <button
+              onClick={() => setHelpOpen(true)}
+              data-testid="portal-help-btn"
+              title="Show me what this page does"
+              className="px-2.5 sm:px-4 py-2 text-[10px] sm:text-xs font-bold uppercase tracking-wider bg-[#dddd16] hover:bg-[#aaaa11] text-stone-950 rounded-lg flex items-center gap-1.5 sm:gap-2 transition-colors shadow-sm"
             >
-              <Facebook className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-white" />
-              <span className="hidden sm:inline">Creative Mojo Comfort Zone</span>
-              <span className="sm:hidden">Comfort Zone</span>
-            </a>
+              <LifeBuoy className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">Help</span>
+            </button>
             <button
               onClick={() => {
                 const order = ["small", "medium", "large", "xlarge"];
@@ -270,6 +270,23 @@ export default function PortalShell() {
                   return (
                     <div key={sIdx}>
                       <div className="my-3 border-t border-stone-200" data-testid={`portal-nav-divider-${sIdx}`} />
+                      {/* Creative Mojo Comfort Zone — Facebook group
+                          link sitting between Franchise Store and the
+                          Account dropdown, framed by the regular
+                          section dividers so it reads as a peer of the
+                          other nav rows rather than a special CTA. */}
+                      <a
+                        href={COMFORT_ZONE_FB_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        data-testid="portal-nav-comfort-zone"
+                        title="Open the Creative Mojo Comfort Zone private Facebook group"
+                        className="w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg font-medium transition-colors text-stone-700 hover:bg-stone-100"
+                      >
+                        <Facebook className="w-4 h-4 shrink-0 text-[#1877F2]" />
+                        <span>Comfort Zone</span>
+                      </a>
+                      <div className="my-3 border-t border-stone-200" data-testid={`portal-nav-divider-${sIdx}-account`} />
                       <button
                         type="button"
                         onClick={() => setAccountOpen((v) => !v)}
@@ -386,6 +403,7 @@ export default function PortalShell() {
         userEmail={user?.email}
         unreadUpdates={unreadUpdates}
       />
+      <PortalHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   );
 }
@@ -433,6 +451,18 @@ function PortalMobileDrawer({
             if (isAccount) {
               return (
                 <div key={sIdx}>
+                  <div className="my-3 border-t border-stone-200" />
+                  <a
+                    href={COMFORT_ZONE_FB_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={onClose}
+                    data-testid="portal-mobile-comfort-zone"
+                    className="w-full flex items-center gap-3 px-3 py-3 text-base rounded-lg font-medium transition-colors text-stone-700 hover:bg-stone-100"
+                  >
+                    <Facebook className="w-5 h-5 shrink-0 text-[#1877F2]" />
+                    <span>Comfort Zone</span>
+                  </a>
                   <div className="my-3 border-t border-stone-200" />
                   <button
                     type="button"

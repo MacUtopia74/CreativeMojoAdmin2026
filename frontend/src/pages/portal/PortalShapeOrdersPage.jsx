@@ -11,7 +11,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   ShoppingBag, Loader2, AlertCircle, CheckCircle2, X, ImageOff,
-  Plus, Minus, Send,
+  Plus, Minus, Send, Palette,
 } from "lucide-react";
 import api from "@/lib/api";
 import PortalPageHeading from "@/components/portal/PortalPageHeading";
@@ -343,15 +343,16 @@ export default function PortalShapeOrdersPage() {
                             )}
                             {pers?.colour?.enabled && (
                               <div className="mt-2">
-                                <div className="flex items-center justify-between">
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
                                   <label className="text-[10px] uppercase tracking-wider font-bold text-stone-600">Colour</label>
                                   {pers.colour.chart_image_url && (
                                     <button
                                       type="button"
                                       onClick={() => setChartZoomUrl(pers.colour.chart_image_url)}
                                       data-testid={`signage-chart-${p.woo_id}`}
-                                      className="text-[10px] underline text-stone-700 hover:text-stone-950"
+                                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-bold uppercase tracking-wider rounded-lg bg-stone-950 hover:bg-stone-800 text-[#dddd16] shadow-sm"
                                     >
+                                      <Palette className="w-3.5 h-3.5" />
                                       View colour chart
                                     </button>
                                   )}

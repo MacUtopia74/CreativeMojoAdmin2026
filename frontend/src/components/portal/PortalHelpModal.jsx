@@ -1,0 +1,139 @@
+// Context-aware portal Help modal — clicking the Help button in the
+// sidebar opens a full-screen overlay showing whichever marked-up
+// screenshot HQ uploaded for the current page (under /admin/help-centre).
+//
+// Path resolution: walks the index returned by /api/portal/help/index
+// from the longest match_paths down so that "/portal/territory/basic"
+// resolves to "my-territory" not "my-territory-plus".
+import { useEffect, useState, useMemo, useCallback } from "react";
+import { useLocation } from "react-router-dom";
+import { X, Loader2, LifeBuoy, ImageOff } from "lucide-react";
+import api from "@/lib/api";
+
+export default function PortalHelpModal({ open, onClose }) {
+  const { pathname } = useLocation();
+  const [index, setIndex] = useState([]);
+  const [page, setPage] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+
+  // Load the page index once per session — it's tiny and stable enough
+  // to cache for the lifetime of the modal mount.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const { data } = await api.get("/portal/help/index");
+        if (alive) setIndex(data.pages || []);
+      } catch { /* fail silently — fallback path below still works */ }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  const resolvedSlug = useMemo(() => {
+    if (!index.length) return null;
+    // Prefer longest path prefix match so /portal/territory/basic does
+    // not get hijacked by /portal/territory.
+    const sorted = [...index].sort((a, b) => {
+      const maxA = Math.max(...(a.match_paths || []).map((p) => p.length));
+      const maxB = Math.max(...(b.match_paths || []).map((p) => p.length));
+      return maxB - maxA;
+    });
+    for (const p of sorted) {
+      for (const path of p.match_paths || []) {
+        if (pathname === path || pathname.startsWith(path + "/") || pathname.startsWith(path + "?")) {
+          return p.slug;
+        }
+      }
+    }
+    return "home";
+  }, [index, pathname]);
+
+  const fetchPage = useCallback(async (slug) => {
+    if (!slug) return;
+    setLoading(true); setErr("");
+    try {
+      const { data } = await api.get(`/portal/help/pages/${slug}`);
+      setPage(data);
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Couldn't load help for this page.");
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { if (open && resolvedSlug) fetchPage(resolvedSlug); }, [open, resolvedSlug, fetchPage]);
+
+  // ESC closes — small UX nicety that costs nothing.
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => { if (e.key === "Escape") onClose?.(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[120] bg-stone-950/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
+      onClick={onClose}
+      data-testid="portal-help-modal"
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full overflow-hidden my-8"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-5 py-3 flex items-center justify-between border-b border-stone-200 bg-[#dddd16]">
+          <div className="flex items-center gap-2 text-stone-950">
+            <LifeBuoy className="w-4 h-4" />
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.3em] font-bold opacity-70">Help guide</div>
+              <div className="font-display text-lg font-black leading-tight" data-testid="portal-help-title">
+                {page?.title || "Loading…"}
+              </div>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-stone-950/10 rounded-lg" data-testid="portal-help-close">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="px-5 py-4 bg-stone-50 max-h-[80vh] overflow-y-auto">
+          {loading && (
+            <div className="flex items-center justify-center py-10 text-stone-500">
+              <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading help guide…
+            </div>
+          )}
+          {!loading && err && (
+            <div className="text-center py-10 text-amber-700">{err}</div>
+          )}
+          {!loading && !err && page && (
+            <>
+              {page.caption && (
+                <p
+                  className="text-sm text-stone-700 leading-relaxed mb-4 max-w-3xl"
+                  data-testid="portal-help-caption"
+                >
+                  {page.caption}
+                </p>
+              )}
+              {page.image_url ? (
+                <img
+                  src={page.image_url}
+                  alt={`${page.title} help`}
+                  className="w-full rounded-lg border border-stone-200 shadow-sm bg-white"
+                  data-testid="portal-help-image"
+                />
+              ) : (
+                <div className="text-center py-10 text-stone-500 border-2 border-dashed border-stone-200 rounded-xl bg-white">
+                  <ImageOff className="w-8 h-8 mx-auto mb-2 text-stone-300" />
+                  <p className="font-semibold text-stone-700">Help guide coming soon</p>
+                  <p className="text-xs mt-1">HQ hasn&apos;t uploaded a marked-up screenshot for this page yet — speak to your franchise manager if you need a hand.</p>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

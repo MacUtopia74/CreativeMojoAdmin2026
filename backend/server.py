@@ -66,7 +66,7 @@ ADMIN_NAV_KEYS = {
     "dashboard", "orders",
     "franchisees", "renewals", "territory-builder", "files",
     "contacts", "calendar",
-    "find-class", "cqc-definitions", "scotland-definitions", "ni-definitions",
+    "find-class", "cqc-definitions", "scotland-definitions", "ni-definitions", "help-centre",
     "invoices", "banking",
     "admin-users", "admin-email-templates", "admin-youtube",
     "admin-announcements", "admin-logs", "admin-xero", "admin-shape-orders", "form-intake",
@@ -3977,6 +3977,7 @@ from territory_routes import build_territory_router  # noqa: E402
 from cqc_routes import build_cqc_router  # noqa: E402
 from scotland_routes import build_scotland_router  # noqa: E402
 from ni_routes import build_ni_router  # noqa: E402
+from help_routes import build_help_router  # noqa: E402
 from email_templates_routes import build_email_templates_router  # noqa: E402
 from resend_routes import build_resend_router  # noqa: E402
 api.include_router(build_migration_router(db, require_role))
@@ -3990,6 +3991,7 @@ api.include_router(build_territory_router(db, require_role))
 api.include_router(build_cqc_router(db, require_role))
 api.include_router(build_scotland_router(db, require_role))
 api.include_router(build_ni_router(db, require_role))
+api.include_router(build_help_router(db, require_role))
 api.include_router(build_email_templates_router(db, require_role))
 api.include_router(build_resend_router(db, require_role))
 
