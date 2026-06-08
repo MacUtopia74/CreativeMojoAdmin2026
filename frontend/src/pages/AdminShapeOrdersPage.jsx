@@ -32,14 +32,16 @@ export default function AdminShapeOrdersPage() {
   useEffect(() => { load(); }, [load]);
 
   const refreshImages = async () => {
-    if (!window.confirm("Refresh every catalogue card's image from Woo? Takes ~10 seconds.")) return;
+    if (!window.confirm("Pull the latest image AND price for every product from Woo? Takes ~10 seconds.")) return;
     setRefreshing(true); setError("");
     try {
       const { data } = await api.post("/admin/shape-orders/products/refresh-all-images");
       await load();
-      window.alert(`Updated ${data.updated} card${data.updated === 1 ? "" : "s"}${data.errors?.length ? ` (${data.errors.length} failed)` : ""}.`);
+      const priceLine = data.prices_changed ? ` · Prices changed: ${data.prices_changed}` : "";
+      const errLine = data.errors?.length ? ` · ${data.errors.length} failed` : "";
+      window.alert(`Refreshed ${data.updated} card${data.updated === 1 ? "" : "s"} from Woo.${priceLine}${errLine}`);
     } catch (e) {
-      setError(e?.response?.data?.detail || "Image refresh failed.");
+      setError(e?.response?.data?.detail || "Refresh from Woo failed.");
     } finally { setRefreshing(false); }
   };
 
@@ -106,7 +108,7 @@ export default function AdminShapeOrdersPage() {
           className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold uppercase tracking-wider border border-stone-300 hover:bg-stone-50 text-stone-700 rounded-lg disabled:opacity-50"
         >
           {refreshing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-          Refresh images
+          Refresh from Woo
         </button>
         <button
           onClick={() => setPickerOpen(true)}
@@ -146,7 +148,8 @@ export default function AdminShapeOrdersPage() {
           ) : (
             <ul className="divide-y divide-stone-100" data-testid="shape-catalogue-list">
               {items.map((p, idx) => (
-                <li key={p.woo_id} className="px-4 py-3 flex items-center gap-3 flex-wrap" data-testid={`shape-catalogue-row-${p.woo_id}`}>
+                <li key={p.woo_id} data-testid={`shape-catalogue-row-${p.woo_id}`}>
+                  <div className="px-4 py-3 flex items-center gap-3 flex-wrap">
                   <div className="flex flex-col">
                     <button onClick={() => reorder(idx, -1)} disabled={idx === 0} className="p-0.5 text-stone-400 hover:text-stone-950 disabled:opacity-25" data-testid={`shape-catalogue-up-${p.woo_id}`}>
                       <ArrowUp className="w-3.5 h-3.5" />
@@ -179,6 +182,12 @@ export default function AdminShapeOrdersPage() {
                   <button onClick={() => remove(p)} data-testid={`shape-catalogue-remove-${p.woo_id}`} className="text-stone-400 hover:text-red-600 p-2">
                     <Trash2 className="w-4 h-4" />
                   </button>
+                  </div>
+                  {(p.product_kind === "signage_clothing") && (
+                    <PersonalisationPanel product={p} onSaved={(pers) => {
+                      setItems((arr) => arr.map((x) => x.woo_id === p.woo_id ? { ...x, personalisation: pers } : x));
+                    }} />
+                  )}
                 </li>
               ))}
             </ul>
@@ -307,6 +316,155 @@ function ProductPickerModal({ open, onClose, onAdded }) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// Default colour list and chart URL for the signage & clothing line —
+// admin can override per-product if they ever stock a different supplier.
+const DEFAULT_COLOUR_OPTIONS = [
+  "Black","Dark Grey","Steel","Silver","White","Sage","Bottle","Apple","Emerald","Teal",
+  "Aqua","Olive","Sapphire","Mid Blue","Oasis","Lime","Lemon","Sunflower","Chestnut",
+  "Terracotta","Orange","Strawberry Red","Hot Pink","Aubergine","Rich Violet","Purple",
+  "Turquoise","Light Blue","Natural","Khaki","Mocha","Brown","Red","Burgundy","Fuchsia",
+  "Pink","Lilac","Navy","Marine Blue","Royal",
+];
+const DEFAULT_CHART_URL =
+  "https://customer-assets.emergentagent.com/job_licensee-vault/artifacts/2mzmnq4q_image.png";
+const DEFAULT_SIZE_OPTIONS = ["S", "M", "L", "XL", "XXL"];
+
+// Per-product personalisation editor — toggles for text / size / colour
+// plus a chart-image URL field. Saves on blur (so admin doesn't have to
+// hit a button after every keystroke) and surfaces failures inline.
+function PersonalisationPanel({ product, onSaved }) {
+  const pers = product.personalisation || {};
+  const [open, setOpen] = useState(
+    !!(pers?.text_input?.enabled || pers?.size?.enabled || pers?.colour?.enabled),
+  );
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+
+  // Local working state — flushed to backend via save().
+  const [textEnabled, setTextEnabled] = useState(!!pers?.text_input?.enabled);
+  const [textLabel, setTextLabel] = useState(pers?.text_input?.label || "Personalisation text");
+  const [sizeEnabled, setSizeEnabled] = useState(!!pers?.size?.enabled);
+  const [sizeOptions, setSizeOptions] = useState((pers?.size?.options || DEFAULT_SIZE_OPTIONS).join(", "));
+  const [colourEnabled, setColourEnabled] = useState(!!pers?.colour?.enabled);
+  const [chartUrl, setChartUrl] = useState(pers?.colour?.chart_image_url || DEFAULT_CHART_URL);
+  const [colourOptionsStr, setColourOptionsStr] = useState(
+    (pers?.colour?.options && pers.colour.options.length ? pers.colour.options : DEFAULT_COLOUR_OPTIONS).join(", "),
+  );
+
+  const save = async () => {
+    setSaving(true); setErr("");
+    const body = {
+      text_input: { enabled: textEnabled, label: textLabel.trim() || "Personalisation text", max_length: 100 },
+      size: {
+        enabled: sizeEnabled,
+        options: sizeOptions.split(",").map((s) => s.trim()).filter(Boolean),
+      },
+      colour: {
+        enabled: colourEnabled,
+        chart_image_url: chartUrl.trim(),
+        options: colourOptionsStr.split(",").map((s) => s.trim()).filter(Boolean),
+      },
+    };
+    try {
+      await api.patch(`/admin/shape-orders/products/${product.woo_id}`, { personalisation: body });
+      onSaved?.(body);
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Could not save options.");
+    } finally { setSaving(false); }
+  };
+
+  const summary = [
+    textEnabled && "text",
+    sizeEnabled && "size",
+    colourEnabled && "colour",
+  ].filter(Boolean).join(" + ") || "No personalisation";
+
+  return (
+    <div className="px-4 pb-3 border-t border-stone-100 bg-stone-50" data-testid={`shape-catalogue-options-${product.woo_id}`}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full text-left px-2 py-1.5 text-[11px] uppercase tracking-wider font-bold text-stone-600 flex items-center justify-between hover:text-stone-900"
+        data-testid={`shape-catalogue-options-toggle-${product.woo_id}`}
+      >
+        <span>Personalisation options <span className="font-normal normal-case text-stone-500 ml-2">· {summary}</span></span>
+        <span>{open ? "−" : "+"}</span>
+      </button>
+      {open && (
+        <div className="bg-white border border-stone-200 rounded-lg p-3 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+          <div>
+            <label className="inline-flex items-center gap-2 font-semibold text-stone-800">
+              <input type="checkbox" checked={textEnabled} onChange={(e) => setTextEnabled(e.target.checked)} className="rounded" data-testid={`shape-catalogue-text-enabled-${product.woo_id}`} />
+              Text input
+            </label>
+            {textEnabled && (
+              <input
+                value={textLabel}
+                onChange={(e) => setTextLabel(e.target.value)}
+                placeholder="Field label"
+                data-testid={`shape-catalogue-text-label-${product.woo_id}`}
+                className="mt-1 w-full px-2 py-1 border border-stone-300 rounded-md text-xs focus:outline-none focus:border-stone-900"
+              />
+            )}
+          </div>
+          <div>
+            <label className="inline-flex items-center gap-2 font-semibold text-stone-800">
+              <input type="checkbox" checked={sizeEnabled} onChange={(e) => setSizeEnabled(e.target.checked)} className="rounded" data-testid={`shape-catalogue-size-enabled-${product.woo_id}`} />
+              Size dropdown
+            </label>
+            {sizeEnabled && (
+              <input
+                value={sizeOptions}
+                onChange={(e) => setSizeOptions(e.target.value)}
+                placeholder="e.g. S, M, L, XL"
+                data-testid={`shape-catalogue-size-options-${product.woo_id}`}
+                className="mt-1 w-full px-2 py-1 border border-stone-300 rounded-md text-xs focus:outline-none focus:border-stone-900"
+              />
+            )}
+          </div>
+          <div>
+            <label className="inline-flex items-center gap-2 font-semibold text-stone-800">
+              <input type="checkbox" checked={colourEnabled} onChange={(e) => setColourEnabled(e.target.checked)} className="rounded" data-testid={`shape-catalogue-colour-enabled-${product.woo_id}`} />
+              Colour dropdown
+            </label>
+            {colourEnabled && (
+              <>
+                <input
+                  value={chartUrl}
+                  onChange={(e) => setChartUrl(e.target.value)}
+                  placeholder="Colour chart image URL"
+                  data-testid={`shape-catalogue-colour-chart-${product.woo_id}`}
+                  className="mt-1 w-full px-2 py-1 border border-stone-300 rounded-md text-xs focus:outline-none focus:border-stone-900"
+                />
+                <textarea
+                  rows={2}
+                  value={colourOptionsStr}
+                  onChange={(e) => setColourOptionsStr(e.target.value)}
+                  placeholder="Comma-separated colour names"
+                  data-testid={`shape-catalogue-colour-options-${product.woo_id}`}
+                  className="mt-1 w-full px-2 py-1 border border-stone-300 rounded-md text-xs focus:outline-none focus:border-stone-900"
+                />
+              </>
+            )}
+          </div>
+          <div className="md:col-span-3 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={save}
+              disabled={saving}
+              data-testid={`shape-catalogue-options-save-${product.woo_id}`}
+              className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider bg-stone-950 hover:bg-stone-800 text-[#dddd16] rounded-lg disabled:opacity-50"
+            >
+              {saving ? "Saving…" : "Save options"}
+            </button>
+            {err && <span className="text-rose-700 text-[11px]">{err}</span>}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

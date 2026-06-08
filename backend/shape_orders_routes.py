@@ -178,6 +178,15 @@ def attach(api, db, require_role):
             if kind not in {"shape_set", "signage_clothing"}:
                 raise HTTPException(400, detail="product_kind must be 'shape_set' or 'signage_clothing'")
             update["product_kind"] = kind
+        if "personalisation" in body:
+            # Personalisation options structure (every field optional):
+            #   text_input: {enabled, label, max_length}
+            #   size:       {enabled, options: ["S","M","L"]}
+            #   colour:     {enabled, options: [...names], chart_image_url}
+            pers = body.get("personalisation") or {}
+            if not isinstance(pers, dict):
+                raise HTTPException(400, detail="personalisation must be an object")
+            update["personalisation"] = pers
         if not update:
             raise HTTPException(400, detail="Nothing to update.")
         update["updated_at"] = _now_iso()
@@ -214,29 +223,43 @@ def attach(api, db, require_role):
 
     @api.post("/admin/shape-orders/products/refresh-all-images")
     async def admin_refresh_all_images(_: dict = Depends(require_role("admin"))):
-        """Bulk-refresh images on every curated catalogue product. Used
-        once after deploy to backfill the image_url for the existing
-        rows in production."""
+        """Bulk-refresh image AND price for every curated catalogue
+        product directly from Woo. Click this after editing prices on
+        the Woo store to push the new numbers into the franchisee
+        Franchise Store. Idempotent; safe to run anytime."""
         from woocommerce_integration import _woo_get  # noqa: E402
         updated = 0
+        prices_changed = 0
         errors: list[str] = []
-        async for p in db.shape_order_products.find({}, {"_id": 0, "woo_id": 1, "name": 1}):
+        async for p in db.shape_order_products.find({}, {"_id": 0, "woo_id": 1, "name": 1, "price": 1}):
             try:
                 raw = await _woo_get(f"/products/{p['woo_id']}")
                 image = (raw.get("images") or [{}])[0].get("src") if raw.get("images") else None
+                price = raw.get("price")
+                cat_update: dict = {"updated_at": _now_iso()}
                 if image:
-                    await db.shape_order_products.update_one(
-                        {"woo_id": p["woo_id"]},
-                        {"$set": {"image_url": image, "updated_at": _now_iso()}},
-                    )
+                    cat_update["image_url"] = image
+                if price not in (None, ""):
+                    cat_update["price"] = price
+                    if str(p.get("price")) != str(price):
+                        prices_changed += 1
+                await db.shape_order_products.update_one(
+                    {"woo_id": p["woo_id"]},
+                    {"$set": cat_update},
+                )
+                woo_update = {"price": price} if price not in (None, "") else {}
+                if image:
+                    woo_update["image_url"] = image
+                    woo_update["images"] = raw.get("images") or []
+                if woo_update:
                     await db.woo_products.update_one(
                         {"woo_id": p["woo_id"]},
-                        {"$set": {"image_url": image, "images": raw.get("images") or []}},
+                        {"$set": woo_update},
                     )
                     updated += 1
             except Exception as exc:  # noqa: BLE001
                 errors.append(f"{p.get('name')}: {exc}")
-        return {"ok": True, "updated": updated, "errors": errors}
+        return {"ok": True, "updated": updated, "prices_changed": prices_changed, "errors": errors}
 
     @api.delete("/admin/shape-orders/products/{woo_id}")
     async def admin_delete_product(woo_id: int, _: dict = Depends(require_role("admin"))):
@@ -356,7 +379,16 @@ def attach(api, db, require_role):
                 continue
             if qty > 999:
                 raise HTTPException(400, detail="Quantity 999 is the absolute cap per line.")
-            extras.append({"woo_id": wid, "quantity": qty})
+            options = item.get("options") or {}
+            if not isinstance(options, dict):
+                options = {}
+            # Trim text, drop empties — keeps line_items tidy.
+            cleaned_options: dict = {}
+            for k in ("text", "size", "colour"):
+                v = options.get(k)
+                if isinstance(v, str) and v.strip():
+                    cleaned_options[k] = v.strip()[:300]
+            extras.append({"woo_id": wid, "quantity": qty, "options": cleaned_options})
 
         if not shape_ids and not extras:
             raise HTTPException(400, detail="Pick at least one item.")
@@ -443,6 +475,18 @@ def attach(api, db, require_role):
             unit = woo_prices.get(ex["woo_id"], 0.0)
             line_total = round(unit * ex["quantity"], 2)
             order_total += line_total
+            # Validate that each required personalisation field is filled.
+            pers = c.get("personalisation") or {}
+            opts = ex.get("options") or {}
+            for field in ("text_input", "size", "colour"):
+                cfg = pers.get(field) or {}
+                if cfg.get("enabled"):
+                    # text_input -> "text", size -> "size", colour -> "colour"
+                    key = "text" if field == "text_input" else field
+                    if not opts.get(key):
+                        label = c.get("name") or ex["woo_id"]
+                        nice = {"text_input": "personalisation text", "size": "size", "colour": "colour"}[field]
+                        raise HTTPException(400, detail=f"Please pick a {nice} for {label}.")
             line_items.append({
                 "product_id": c["woo_id"],
                 "sku": c.get("sku"),
@@ -452,6 +496,7 @@ def attach(api, db, require_role):
                 "total": line_total,
                 "image_url": c.get("image_url"),
                 "product_kind": "signage_clothing",
+                "options": opts,
             })
         order_total = round(order_total, 2)
 

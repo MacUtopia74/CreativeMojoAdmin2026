@@ -154,6 +154,9 @@ export default function OrderDetailPage() {
           id: li.id, product_id: li.product_id, name: li.name, sku: li.sku,
           quantity: parseInt(li.quantity, 10) || 1,
           subtotal: parseFloat(li.subtotal || 0),
+          options: li.options || undefined,
+          product_kind: li.product_kind || undefined,
+          image_url: li.image_url || undefined,
         })),
         shipping_total: parseFloat(shippingTotal || 0),
         due_date: dueDate || null,
@@ -520,8 +523,17 @@ function AddressBlock({ addr }) {
 }
 
 function LineItemRow({ li, onUpdate, onRemove }) {
+  // Personalisation options (text / size / colour) live on
+  // ``li.options`` for signage & clothing line items. Surface them as
+  // small chips beneath the row so HQ can action the order without
+  // having to dig through raw JSON.
+  const opts = li.options || {};
+  const optEntries = ["text", "size", "colour"]
+    .filter((k) => opts[k] != null && String(opts[k]).trim() !== "")
+    .map((k) => [k, opts[k]]);
   return (
-    <div className="grid grid-cols-[100px_1fr_72px_96px_96px_auto] items-center gap-3 py-3" data-testid={`line-item-${li._key}`}>
+    <div data-testid={`line-item-${li._key}`}>
+      <div className="grid grid-cols-[100px_1fr_72px_96px_96px_auto] items-center gap-3 py-3">
       <input
         type="text"
         value={li.sku || ""}
@@ -569,6 +581,20 @@ function LineItemRow({ li, onUpdate, onRemove }) {
       >
         <Trash2 className="w-3.5 h-3.5" />
       </button>
+      </div>
+      {optEntries.length > 0 && (
+        <div className="pl-[112px] pb-2 -mt-1 flex flex-wrap gap-1.5" data-testid={`line-options-${li._key}`}>
+          {optEntries.map(([k, v]) => (
+            <span
+              key={k}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-100 border border-amber-300 text-amber-900 text-[11px]"
+            >
+              <span className="uppercase tracking-wider text-[9px] font-bold opacity-70">{k}</span>
+              <span className="font-semibold">{v}</span>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

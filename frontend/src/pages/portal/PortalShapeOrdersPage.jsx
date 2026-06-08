@@ -27,6 +27,10 @@ export default function PortalShapeOrdersPage() {
   // shape sets: set of woo_id; extras: map of woo_id → qty
   const [shapeSel, setShapeSel] = useState(() => new Set());
   const [extraSel, setExtraSel] = useState(() => ({}));
+  // Per-item personalisation options keyed by woo_id:
+  //   { [woo_id]: { text, size, colour } }
+  const [extraOpts, setExtraOpts] = useState(() => ({}));
+  const [chartZoomUrl, setChartZoomUrl] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [confirmation, setConfirmation] = useState(null);
@@ -71,6 +75,9 @@ export default function PortalShapeOrdersPage() {
   const adjustExtra = (woo_id, delta) =>
     setExtraQty(woo_id, Math.max(0, (extraSel[woo_id] || 0) + delta));
 
+  const setOption = (woo_id, key, value) =>
+    setExtraOpts((prev) => ({ ...prev, [woo_id]: { ...(prev[woo_id] || {}), [key]: value } }));
+
   const shapeIds = useMemo(() => Array.from(shapeSel), [shapeSel]);
   const isEven = shapeIds.length % 2 === 0;
   const boxes = Math.floor(shapeIds.length / 2);
@@ -79,10 +86,27 @@ export default function PortalShapeOrdersPage() {
     () =>
       Object.entries(extraSel).map(([wid, qty]) => {
         const p = products.find((x) => x.woo_id === Number(wid));
-        return p ? { ...p, quantity: qty } : null;
+        return p ? { ...p, quantity: qty, options: extraOpts[Number(wid)] || {} } : null;
       }).filter(Boolean),
-    [extraSel, products],
+    [extraSel, extraOpts, products],
   );
+
+  // A signage line is incomplete until every "enabled" personalisation
+  // field has a value. We use this to grey out Finalise and to inline
+  // a per-card warning.
+  const missingOptions = useMemo(() => {
+    const missing = {};
+    for (const e of extrasArr) {
+      const pers = e.personalisation || {};
+      const opts = e.options || {};
+      const out = [];
+      if (pers?.text_input?.enabled && !opts.text) out.push("text");
+      if (pers?.size?.enabled && !opts.size) out.push("size");
+      if (pers?.colour?.enabled && !opts.colour) out.push("colour");
+      if (out.length) missing[e.woo_id] = out;
+    }
+    return missing;
+  }, [extrasArr]);
 
   const extrasTotal = useMemo(
     () => extrasArr.reduce((sum, e) => sum + (Number(e.price) || 0) * e.quantity, 0),
@@ -91,18 +115,24 @@ export default function PortalShapeOrdersPage() {
 
   const hasAnything = shapeIds.length > 0 || extrasArr.length > 0;
   const shapesOk = shapeIds.length === 0 || isEven;
-  const canSubmit = hasAnything && shapesOk && !submitting;
+  const optionsOk = Object.keys(missingOptions).length === 0;
+  const canSubmit = hasAnything && shapesOk && optionsOk && !submitting;
 
   const submit = async () => {
     setSubmitting(true); setError("");
     try {
       const { data } = await api.post("/portal/shape-orders", {
         shape_set_woo_ids: shapeIds,
-        extra_items: extrasArr.map((e) => ({ woo_id: e.woo_id, quantity: e.quantity })),
+        extra_items: extrasArr.map((e) => ({
+          woo_id: e.woo_id,
+          quantity: e.quantity,
+          options: e.options || {},
+        })),
       });
       setConfirmation(data);
       setShapeSel(new Set());
       setExtraSel({});
+      setExtraOpts({});
     } catch (e) {
       setError(e?.response?.data?.detail || "Couldn't submit your order.");
     } finally { setSubmitting(false); }
@@ -220,6 +250,9 @@ export default function PortalShapeOrdersPage() {
               <ul className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 p-4">
                 {signageItems.map((p) => {
                   const qty = extraSel[p.woo_id] || 0;
+                  const opts = extraOpts[p.woo_id] || {};
+                  const pers = p.personalisation || {};
+                  const missing = missingOptions[p.woo_id] || [];
                   return (
                     <li
                       key={p.woo_id}
@@ -247,32 +280,102 @@ export default function PortalShapeOrdersPage() {
                             <Plus className="w-3 h-3" /> Add to order
                           </button>
                         ) : (
-                          <div className="mt-2 flex items-center justify-between gap-1" data-testid={`signage-qty-${p.woo_id}`}>
-                            <button
-                              type="button"
-                              onClick={() => adjustExtra(p.woo_id, -1)}
-                              data-testid={`signage-dec-${p.woo_id}`}
-                              className="w-9 h-9 inline-flex items-center justify-center bg-stone-100 hover:bg-stone-200 text-stone-800 rounded-lg"
-                            >
-                              <Minus className="w-3.5 h-3.5" />
-                            </button>
-                            <input
-                              type="number"
-                              min="0"
-                              value={qty}
-                              data-testid={`signage-qty-input-${p.woo_id}`}
-                              onChange={(e) => setExtraQty(p.woo_id, Math.max(0, parseInt(e.target.value || "0", 10)))}
-                              className="flex-1 text-center text-sm font-bold border border-stone-200 rounded-lg py-1.5 focus:outline-none focus:border-stone-950 tabular-nums"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => adjustExtra(p.woo_id, 1)}
-                              data-testid={`signage-inc-${p.woo_id}`}
-                              className="w-9 h-9 inline-flex items-center justify-center bg-stone-950 hover:bg-stone-800 text-[#dddd16] rounded-lg"
-                            >
-                              <Plus className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
+                          <>
+                            <div className="mt-2 flex items-center justify-between gap-1" data-testid={`signage-qty-${p.woo_id}`}>
+                              <button
+                                type="button"
+                                onClick={() => adjustExtra(p.woo_id, -1)}
+                                data-testid={`signage-dec-${p.woo_id}`}
+                                className="w-9 h-9 inline-flex items-center justify-center bg-stone-100 hover:bg-stone-200 text-stone-800 rounded-lg"
+                              >
+                                <Minus className="w-3.5 h-3.5" />
+                              </button>
+                              <input
+                                type="number"
+                                min="0"
+                                value={qty}
+                                data-testid={`signage-qty-input-${p.woo_id}`}
+                                onChange={(e) => setExtraQty(p.woo_id, Math.max(0, parseInt(e.target.value || "0", 10)))}
+                                className="flex-1 text-center text-sm font-bold border border-stone-200 rounded-lg py-1.5 focus:outline-none focus:border-stone-950 tabular-nums"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => adjustExtra(p.woo_id, 1)}
+                                data-testid={`signage-inc-${p.woo_id}`}
+                                className="w-9 h-9 inline-flex items-center justify-center bg-stone-950 hover:bg-stone-800 text-[#dddd16] rounded-lg"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                            {/* Personalisation controls — only render the
+                                fields that are enabled on this product. */}
+                            {pers?.text_input?.enabled && (
+                              <div className="mt-2">
+                                <label className="text-[10px] uppercase tracking-wider font-bold text-stone-600">
+                                  {pers.text_input.label || "Personalisation text"}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={opts.text || ""}
+                                  maxLength={pers.text_input.max_length || 100}
+                                  onChange={(e) => setOption(p.woo_id, "text", e.target.value)}
+                                  data-testid={`signage-text-${p.woo_id}`}
+                                  placeholder="Type your personalisation…"
+                                  className="w-full mt-0.5 px-2 py-1.5 text-sm border border-stone-300 rounded-lg focus:outline-none focus:border-stone-950"
+                                />
+                              </div>
+                            )}
+                            {pers?.size?.enabled && (
+                              <div className="mt-2">
+                                <label className="text-[10px] uppercase tracking-wider font-bold text-stone-600">Size</label>
+                                <select
+                                  value={opts.size || ""}
+                                  onChange={(e) => setOption(p.woo_id, "size", e.target.value)}
+                                  data-testid={`signage-size-${p.woo_id}`}
+                                  className="w-full mt-0.5 px-2 py-1.5 text-sm border border-stone-300 rounded-lg bg-white focus:outline-none focus:border-stone-950"
+                                >
+                                  <option value="">Pick a size…</option>
+                                  {(pers.size.options || ["S","M","L","XL","XXL"]).map((s) => (
+                                    <option key={s} value={s}>{s}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
+                            {pers?.colour?.enabled && (
+                              <div className="mt-2">
+                                <div className="flex items-center justify-between">
+                                  <label className="text-[10px] uppercase tracking-wider font-bold text-stone-600">Colour</label>
+                                  {pers.colour.chart_image_url && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setChartZoomUrl(pers.colour.chart_image_url)}
+                                      data-testid={`signage-chart-${p.woo_id}`}
+                                      className="text-[10px] underline text-stone-700 hover:text-stone-950"
+                                    >
+                                      View colour chart
+                                    </button>
+                                  )}
+                                </div>
+                                <select
+                                  value={opts.colour || ""}
+                                  onChange={(e) => setOption(p.woo_id, "colour", e.target.value)}
+                                  data-testid={`signage-colour-${p.woo_id}`}
+                                  className="w-full mt-0.5 px-2 py-1.5 text-sm border border-stone-300 rounded-lg bg-white focus:outline-none focus:border-stone-950"
+                                >
+                                  <option value="">Pick a colour…</option>
+                                  {(pers.colour.options || []).map((c) => (
+                                    <option key={c} value={c}>{c}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
+                            {missing.length > 0 && (
+                              <div className="mt-2 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 flex items-start gap-1" data-testid={`signage-missing-${p.woo_id}`}>
+                                <AlertCircle className="w-3 h-3 mt-0.5 shrink-0" />
+                                <span>Pick the {missing.join(" + ")} before submitting.</span>
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                     </li>
@@ -376,6 +479,22 @@ export default function PortalShapeOrdersPage() {
           </div>
         </aside>
       </div>
+
+      {chartZoomUrl && (
+        <div onClick={() => setChartZoomUrl("")} className="fixed inset-0 z-50 bg-stone-950/70 backdrop-blur-sm flex items-center justify-center p-4" data-testid="colour-chart-modal">
+          <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full overflow-hidden">
+            <div className="px-5 py-3 flex items-center justify-between border-b border-stone-200">
+              <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-700">Colour chart</div>
+              <button onClick={() => setChartZoomUrl("")} className="text-stone-400 hover:text-stone-900 p-1" data-testid="colour-chart-close">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 bg-stone-50">
+              <img src={chartZoomUrl} alt="Colour chart" className="w-full max-h-[80vh] object-contain" />
+            </div>
+          </div>
+        </div>
+      )}
 
       {confirmation && (
         <div onClick={() => setConfirmation(null)} className="fixed inset-0 z-50 bg-stone-950/40 backdrop-blur-sm flex items-center justify-center p-4" data-testid="shape-confirm-modal">
