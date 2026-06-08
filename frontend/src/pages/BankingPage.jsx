@@ -518,8 +518,10 @@ export default function BankingPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") loadTransactions(); }}
-                placeholder="Search description"
-                className="pl-7 pr-3 py-1.5 text-sm border border-stone-200 rounded-lg w-44 focus:outline-none focus:ring-2 focus:ring-stone-900/10"
+                placeholder="Search description or amount (£42, >100, 42.50)"
+                title="Search description / merchant, or filter by amount. Try: 42  ·  £42.50  ·  >100  ·  <50  ·  >=42  ·  <=42"
+                data-testid="banking-search-input"
+                className="pl-7 pr-3 py-1.5 text-sm border border-stone-200 rounded-lg w-72 focus:outline-none focus:ring-2 focus:ring-stone-900/10"
               />
             </div>
             <div className="inline-flex border border-stone-200 rounded-lg overflow-hidden" role="tablist">

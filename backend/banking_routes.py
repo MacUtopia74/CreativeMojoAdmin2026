@@ -63,6 +63,55 @@ def _frontend_url() -> str:
     return os.environ.get("FRONTEND_URL") or ""
 
 
+# Regex matches the four supported amount-search syntaxes:
+#   `>50`, `<100`, `>=42`, `<=42`, `=42.50`, `42`, `42.50`
+# Currency symbol + commas stripped before matching.
+_AMOUNT_SEARCH_RX = re.compile(r"^(>=|<=|>|<|=)?\s*([0-9]+(?:\.[0-9]{1,2})?)$")
+
+
+def _parse_amount_search(raw: str) -> Optional[dict]:
+    """Translate a search string like ``£42.50`` / ``>50`` into a Mongo
+    query clause matching the ``amount`` field. Returns ``None`` when
+    the string isn't an amount query — caller should fall back to its
+    text-search behaviour.
+
+    Bank transactions store ``amount`` as a positive float for both
+    credits and debits (direction is captured separately by
+    ``transaction_type``), so we don't have to worry about sign here.
+
+    The "bare integer" case (`42`) is treated as a fuzzy match
+    covering 42.00–42.99 — this is what an admin typing "show me the
+    £42 charges" actually means.
+    """
+    if not raw:
+        return None
+    # Strip currency symbol + thousands separators before matching.
+    cleaned = raw.strip().replace("£", "").replace(",", "").replace(" ", "")
+    m = _AMOUNT_SEARCH_RX.match(cleaned)
+    if not m:
+        return None
+    op, num_str = m.group(1), m.group(2)
+    try:
+        value = float(num_str)
+    except ValueError:
+        return None
+    if op == ">":
+        return {"amount": {"$gt": value}}
+    if op == "<":
+        return {"amount": {"$lt": value}}
+    if op == ">=":
+        return {"amount": {"$gte": value}}
+    if op == "<=":
+        return {"amount": {"$lte": value}}
+    if op == "=":
+        return {"amount": value}
+    # No operator → if the user gave us a bare integer (no decimal
+    # point) we treat it as fuzzy (42 → 42.00..42.99), otherwise exact.
+    if "." in num_str:
+        return {"amount": value}
+    return {"amount": {"$gte": value, "$lt": value + 1.0}}
+
+
 def build_banking_router(db, require_role):
     router = APIRouter(prefix="/banking", tags=["banking"])
     admin = Depends(require_role("admin"))
@@ -363,10 +412,27 @@ def build_banking_router(db, require_role):
                 ts["$lte"] = date_to + "T23:59:59"
             q["timestamp"] = ts
         if search:
-            q["$or"] = [
-                {"description": {"$regex": search, "$options": "i"}},
-                {"merchant_name": {"$regex": search, "$options": "i"}},
+            # Search is text by default (description / merchant name), but
+            # admins frequently want "show me everything for £42.50" — so
+            # we also detect numeric / comparison queries and match against
+            # the ``amount`` field. Supported amount syntaxes:
+            #   ``42``        →  amount == 42 (any pence)  i.e. 42.00–42.99
+            #   ``42.50``     →  amount == 42.50 exactly
+            #   ``>50``       →  amount > 50
+            #   ``<100``      →  amount < 100
+            #   ``>=42``      →  amount >= 42
+            #   ``<=42``      →  amount <= 42
+            #   ``=42.50``    →  amount == 42.50 exactly (explicit)
+            # Currency symbols and commas are stripped so ``£1,234.56``
+            # also works. We OR the amount clause with the text clauses
+            # so a user typing ``42.50`` still sees rows where ``42.50``
+            # appears literally in the description (rare but useful).
+            text_clauses = [
+                {"description": {"$regex": re.escape(search), "$options": "i"}},
+                {"merchant_name": {"$regex": re.escape(search), "$options": "i"}},
             ]
+            amount_clause = _parse_amount_search(search)
+            q["$or"] = text_clauses + ([amount_clause] if amount_clause else [])
         # Keyword "supplier chips" — any-match across descriptions. Escape
         # the keywords so regex special chars in supplier names (`.`, `(`)
         # don't blow up the query.
