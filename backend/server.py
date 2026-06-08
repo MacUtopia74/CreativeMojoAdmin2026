@@ -66,7 +66,7 @@ ADMIN_NAV_KEYS = {
     "dashboard", "orders",
     "franchisees", "renewals", "territory-builder", "files",
     "contacts", "calendar",
-    "find-class", "cqc-definitions", "scotland-definitions", "ni-definitions", "help-centre",
+    "find-class", "cqc-definitions", "scotland-definitions", "ni-definitions", "help-centre", "subscription-requests",
     "invoices", "banking",
     "admin-users", "admin-email-templates", "admin-youtube",
     "admin-announcements", "admin-logs", "admin-xero", "admin-shape-orders", "form-intake",
@@ -1853,6 +1853,40 @@ async def portal_subscription_request(
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.subscription_requests.insert_one(doc)
+
+    # Notify HQ via Resend so a new request is visible immediately (the
+    # admin queue is the source of truth, but a nudge prevents requests
+    # sitting unactioned for days). All failures are swallowed — a Resend
+    # outage must NOT block a franchisee submitting their request.
+    try:
+        from resend_routes import RESEND_API_KEY, RESEND_FROM_EMAIL, RESEND_FROM_NAME
+        if RESEND_API_KEY:
+            import resend as _resend
+            _resend.api_key = RESEND_API_KEY
+            addon_label = {
+                "territory_plus": "Territory+", "marketing": "Marketing+",
+                "invoicing": "Invoicing+", "bookings": "Bookings+",
+            }.get(addon, addon)
+            fname = ((await db.franchisees.find_one(
+                {"id": doc["franchisee_id"]},
+                {"_id": 0, "organisation": 1, "first_name": 1, "last_name": 1, "mojo_email": 1},
+            )) or {})
+            who = fname.get("organisation") or f"{fname.get('first_name','')} {fname.get('last_name','')}".strip() or fname.get("mojo_email") or "A franchisee"
+            _resend.Emails.send({
+                "from": f"{RESEND_FROM_NAME} <{RESEND_FROM_EMAIL}>",
+                "to": ["paul@creativemojo.co.uk"],
+                "subject": f"New bolt-on request: {addon_label} — {who}",
+                "html": (
+                    f"<p>{who} has requested <strong>{addon_label}</strong> via their portal.</p>"
+                    f"<p>Action this in the admin queue:<br>"
+                    f"<a href=\"https://hub.creativemojo.co.uk/admin/subscription-requests\">"
+                    f"hub.creativemojo.co.uk/admin/subscription-requests</a></p>"
+                ),
+                "tags": [{"name": "kind", "value": "bolt-on-request"}],
+            })
+    except Exception:  # noqa: BLE001
+        logger.info("Resend HQ notification skipped (non-fatal).")
+
     return {"ok": True, "id": doc["id"]}
 
 
@@ -1928,6 +1962,55 @@ async def admin_approve_subscription_request(
             "decided_by": user.get("email"),
         }},
     )
+
+    # Queue a Xero invoice-line addition so the next monthly invoice
+    # carries the bolt-on charge automatically — no manual HQ work.
+    # The Xero scheduled run reads from ``pending_invoice_additions``.
+    addon_label = {
+        "territory_plus": "Territory+", "marketing": "Marketing+",
+        "invoicing": "Invoicing+", "bookings": "Bookings+",
+    }.get(addon, addon)
+    if new_value:
+        await db.pending_invoice_additions.insert_one({
+            "franchisee_id": req.get("franchisee_id"),
+            "addon": addon,
+            "addon_label": addon_label,
+            "amount": 10.0,
+            "description": f"{addon_label} bolt-on — monthly subscription",
+            "request_id": rid,
+            "queued_at": datetime.now(timezone.utc).isoformat(),
+            "queued_by": user.get("email"),
+            "consumed": False,
+        })
+
+    # Confirmation email to the franchisee.
+    try:
+        from resend_routes import RESEND_API_KEY, RESEND_FROM_EMAIL, RESEND_FROM_NAME
+        f = await db.franchisees.find_one(
+            {"id": req.get("franchisee_id")},
+            {"_id": 0, "first_name": 1, "mojo_email": 1, "email": 1},
+        )
+        to = (f or {}).get("mojo_email") or (f or {}).get("email")
+        if RESEND_API_KEY and to:
+            import resend as _resend
+            _resend.api_key = RESEND_API_KEY
+            _resend.Emails.send({
+                "from": f"{RESEND_FROM_NAME} <{RESEND_FROM_EMAIL}>",
+                "to": [to],
+                "subject": f"{addon_label} is now active on your Creative Mojo portal",
+                "html": (
+                    f"<p>Hi {(f or {}).get('first_name') or 'there'},</p>"
+                    f"<p>Good news — <strong>{addon_label}</strong> is now live on your portal. "
+                    f"Refresh the page and you'll see the new section in your sidebar.</p>"
+                    f"<p>The £10/mo charge will be added as a line item to your next Creative Mojo invoice, "
+                    f"settled via your existing GoCardless Direct Debit mandate. No further action needed.</p>"
+                    f"<p>Thanks,<br>Creative Mojo HQ</p>"
+                ),
+                "tags": [{"name": "kind", "value": "bolt-on-approved"}],
+            })
+    except Exception:  # noqa: BLE001
+        logger.info("Resend approval email skipped (non-fatal).")
+
     return {"ok": True}
 
 

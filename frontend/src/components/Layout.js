@@ -28,6 +28,7 @@ import {
   Mail,
   Megaphone,
   LifeBuoy,
+  Sparkles,
   ClipboardList,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -105,6 +106,7 @@ const SIDEBAR = [
           { kind: "item", to: "/scotland-definitions", label: "Scotland Definitions", icon: Stethoscope, testid: "nav-scotland-definitions", permKey: "scotland-definitions" },
           { kind: "item", to: "/ni-definitions", label: "Northern Ireland Definitions", icon: Stethoscope, testid: "nav-ni-definitions", permKey: "ni-definitions" },
           { kind: "item", to: "/admin/help-centre", label: "Help Centre", icon: LifeBuoy, testid: "nav-help-centre", permKey: "help-centre" },
+          { kind: "item", to: "/admin/subscription-requests", label: "Subscription Requests", icon: Sparkles, testid: "nav-subscription-requests", permKey: "subscription-requests" },
         ],
       },
       {
@@ -140,6 +142,7 @@ export const ADMIN_NAV_KEYS = [
   { key: "scotland-definitions", label: "Scotland Definitions", paths: ["/scotland-definitions"] },
   { key: "ni-definitions",   label: "Northern Ireland Definitions", paths: ["/ni-definitions"] },
   { key: "help-centre",      label: "Help Centre", paths: ["/admin/help-centre"] },
+  { key: "subscription-requests", label: "Subscription Requests", paths: ["/admin/subscription-requests"] },
   { key: "invoices",         label: "Sandra's Invoices",    paths: ["/invoices"] },
   { key: "banking",          label: "Banking",              paths: ["/banking"] },
   { key: "admin-users",      label: "Users",                paths: ["/admin/users", "/admin/password-resets"] },
