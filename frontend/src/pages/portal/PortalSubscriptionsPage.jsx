@@ -1,16 +1,18 @@
 // Portal — Subscriptions.
 //
-// VISUAL MOCK ONLY — nothing is wired up. Each bolt-on is rendered as a
-// tall pricing card (à la OptiSigns / Stripe pricing pages) with a tick
-// checklist of what the franchisee gets and a checkbox + "Upgrade now"
-// button. The "All bolt-ons" bundle below offers all four for £30/mo
-// (saves £7/mo vs buying them individually).
-import { useState } from "react";
+// Live bolt-on selection + checkout. Franchisee ticks a card →
+// confirmation modal explains the DD-mandate / invoice-line payment
+// mechanism → POST to /portal/subscriptions/request → HQ sees it in the
+// admin queue and approves; the matching ``portal_modules.<key>`` flag
+// then flips automatically on the franchisee record.
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useOutletContext } from "react-router-dom";
 import {
   Sparkles, MapPin, Megaphone, Receipt, CalendarClock,
-  CheckCircle2, Check, ArrowRight, Package,
+  CheckCircle2, Check, ArrowRight, Package, X, Loader2,
+  AlertCircle, Clock,
 } from "lucide-react";
+import api from "@/lib/api";
 import PortalPageHeading from "@/components/portal/PortalPageHeading";
 
 // PRICING — confirmed by Paul:
@@ -104,19 +106,86 @@ export default function PortalSubscriptionsPage() {
   // Visual-only selection state. Resets on each visit; not persisted.
   const [selected, setSelected] = useState(() => new Set());
 
-  const toggle = (key) =>
+  // Pending requests already in flight — render a Clock pill on the
+  // card and disable the upgrade button so the franchisee can't fire
+  // off duplicates while HQ is processing.
+  const [pendingKeys, setPendingKeys] = useState(() => new Set());
+  const [pendingLoaded, setPendingLoaded] = useState(false);
+
+  // Confirmation modal state. ``payload`` may be a single addon key or
+  // an array of keys when the franchisee uses the bulk "Confirm
+  // upgrade" footer button.
+  const [confirmFor, setConfirmFor] = useState(null);   // string | string[] | null
+  const [confirming, setConfirming] = useState(false);
+  const [confirmError, setConfirmError] = useState("");
+  const [toast, setToast] = useState("");
+
+  const loadPending = useCallback(async () => {
+    try {
+      const { data } = await api.get("/portal/subscriptions/requests");
+      const keys = new Set(
+        (data.requests || [])
+          .filter((r) => r.status === "pending" && r.action === "enable")
+          .map((r) => r.addon),
+      );
+      setPendingKeys(keys);
+    } catch { /* silent — empty pending state is the safe fallback */ }
+    finally { setPendingLoaded(true); }
+  }, []);
+  useEffect(() => { loadPending(); }, [loadPending]);
+
+  const toggle = (key) => {
+    if (pendingKeys.has(key) || modules[key]) return; // can't reselect
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key); else next.add(key);
       return next;
     });
+  };
 
   const selectedCount = selected.size;
   const totalMonthly = BUNDLE_PRICES[selectedCount] || 0;
-  // Saving = what they'd pay at the single-price rate (£10 each)
-  // minus what the bundle tier actually charges. Only meaningful for
-  // counts >= 3 (where the bundle discount actually kicks in).
+  // Saving = single-price total vs the bundle tier we're charging.
   const savingThisTier = Math.max(0, selectedCount * SINGLE_PRICE - totalMonthly);
+
+  const submitRequests = async (addons) => {
+    setConfirming(true); setConfirmError("");
+    try {
+      // POST one request per addon — sequential is fine, the endpoint
+      // is cheap and the franchisee only ever picks at most four.
+      const results = await Promise.all(
+        addons.map((addon) =>
+          api.post("/portal/subscriptions/request", { addon, action: "enable" }),
+        ),
+      );
+      const ok = results.every((r) => r.data?.ok);
+      if (!ok) throw new Error("Some requests failed.");
+      setPendingKeys((s) => {
+        const n = new Set(s);
+        addons.forEach((a) => n.add(a));
+        return n;
+      });
+      setSelected(new Set());
+      setConfirmFor(null);
+      setToast(
+        addons.length === 1
+          ? `${BOLT_ONS.find((b) => b.key === addons[0])?.title} request sent — HQ will activate it within 1 working day.`
+          : `Request sent for ${addons.length} bolt-ons — HQ will activate them within 1 working day.`,
+      );
+      setTimeout(() => setToast(""), 6000);
+    } catch (e) {
+      setConfirmError(e?.response?.data?.detail || "Couldn't send your request — please try again or email HQ.");
+    } finally { setConfirming(false); }
+  };
+
+  // ``confirmFor`` is normalised to an array for the modal renderer.
+  const confirmAddons = useMemo(
+    () => (Array.isArray(confirmFor) ? confirmFor : confirmFor ? [confirmFor] : []),
+    [confirmFor],
+  );
+  const confirmTotal = confirmAddons.length
+    ? (BUNDLE_PRICES[confirmAddons.length] || confirmAddons.length * SINGLE_PRICE)
+    : 0;
 
   return (
     <div className="space-y-8" data-testid="portal-subscriptions-page">
@@ -167,7 +236,7 @@ export default function PortalSubscriptionsPage() {
                   : "border-stone-200"
               }`}
             >
-              {b.recommended && !active && (
+              {b.recommended && !active && !pendingKeys.has(b.key) && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-[#dedd0a] text-stone-950 text-[10px] font-black uppercase tracking-widest rounded-full">
                   Most popular
                 </div>
@@ -175,6 +244,11 @@ export default function PortalSubscriptionsPage() {
               {active && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-emerald-500 text-white text-[10px] font-black uppercase tracking-widest rounded-full inline-flex items-center gap-1">
                   <CheckCircle2 className="w-3 h-3" /> Active
+                </div>
+              )}
+              {!active && pendingKeys.has(b.key) && (
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-amber-500 text-white text-[10px] font-black uppercase tracking-widest rounded-full inline-flex items-center gap-1" data-testid={`bolt-on-pending-${b.key}`}>
+                  <Clock className="w-3 h-3" /> Pending activation
                 </div>
               )}
 
@@ -352,6 +426,7 @@ export default function PortalSubscriptionsPage() {
           <button
             type="button"
             disabled={totalMonthly === 0}
+            onClick={() => setConfirmFor(Array.from(selected))}
             data-testid="subs-confirm-upgrade"
             className="px-5 py-3 bg-[#dedd0a] hover:brightness-95 text-stone-950 font-bold text-xs uppercase tracking-wider rounded-lg flex items-center gap-2 disabled:opacity-30 disabled:cursor-not-allowed"
           >
@@ -359,12 +434,114 @@ export default function PortalSubscriptionsPage() {
           </button>
         </div>
       </div>
+      {/* Toast for "request sent" success */}
+      {toast && (
+        <div
+          className="fixed bottom-6 right-6 z-50 max-w-sm bg-emerald-50 border border-emerald-300 text-emerald-900 px-4 py-3 rounded-xl shadow-lg flex items-start gap-2"
+          data-testid="subs-toast"
+        >
+          <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5" />
+          <div className="text-sm leading-relaxed">{toast}</div>
+        </div>
+      )}
+
+      {/* Confirmation modal — single source of truth for explaining the
+          DD-mandate payment mechanism so the franchisee has no
+          surprises later. */}
+      {confirmAddons.length > 0 && (
+        <div
+          onClick={() => !confirming && setConfirmFor(null)}
+          className="fixed inset-0 z-[120] bg-stone-950/60 backdrop-blur-sm flex items-center justify-center p-4"
+          data-testid="subs-confirm-modal"
+        >
+          <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden">
+            <div className="px-5 py-3 flex items-center justify-between border-b border-stone-200 bg-[#dedd0a]">
+              <div className="font-display text-xl font-black text-stone-950">Confirm your upgrade</div>
+              <button onClick={() => !confirming && setConfirmFor(null)} className="p-1.5 hover:bg-stone-950/10 rounded-lg" data-testid="subs-confirm-close">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <p className="text-sm text-stone-700 leading-relaxed">
+                You&apos;re adding the following bolt-on{confirmAddons.length === 1 ? "" : "s"} to your Creative Mojo subscription:
+              </p>
+              <ul className="space-y-2" data-testid="subs-confirm-list">
+                {confirmAddons.map((k) => {
+                  const b = BOLT_ONS.find((x) => x.key === k);
+                  if (!b) return null;
+                  const Icon = b.icon;
+                  return (
+                    <li key={k} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-stone-50 border border-stone-200">
+                      <span
+                        className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: `${b.accent}1a`, color: b.accent }}
+                      >
+                        <Icon className="w-4 h-4" />
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-stone-900 text-sm">{b.title}</div>
+                        <div className="text-xs text-stone-500">{b.blurb}</div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+
+              <div className="bg-stone-100 border border-stone-200 rounded-xl px-4 py-3 text-sm leading-relaxed text-stone-800">
+                <div className="flex items-baseline justify-between gap-3 mb-1">
+                  <span className="font-bold">Total added to your monthly bill</span>
+                  <span className="font-display text-2xl font-black text-stone-950" data-testid="subs-confirm-total">
+                    £{confirmTotal}
+                    <span className="text-xs text-stone-500 font-bold ml-1">/ month inc VAT</span>
+                  </span>
+                </div>
+                <p className="text-xs text-stone-600">
+                  Payment will be taken via your <strong>existing GoCardless Direct Debit mandate</strong> as
+                  a <strong>separate invoice line on your next Xero invoice</strong>. No new payment details
+                  needed. Cancel any bolt-on at the end of any month — no minimum term.
+                </p>
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-900 flex items-start gap-2">
+                <Clock className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>
+                  HQ activates new bolt-ons within <strong>1 working day</strong>. You&apos;ll get a confirmation
+                  email and the module will appear in your sidebar automatically.
+                </span>
+              </div>
+
+              {confirmError && (
+                <div className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2 flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{confirmError}</span>
+                </div>
+              )}
+            </div>
+            <div className="px-6 py-4 bg-stone-50 border-t border-stone-200 flex items-center justify-end gap-2">
+              <button
+                onClick={() => setConfirmFor(null)}
+                disabled={confirming}
+                data-testid="subs-confirm-cancel"
+                className="px-4 py-2 text-xs font-bold uppercase tracking-wider border border-stone-300 hover:bg-white text-stone-700 rounded-lg disabled:opacity-50"
+              >
+                Not yet
+              </button>
+              <button
+                onClick={() => submitRequests(confirmAddons)}
+                disabled={confirming}
+                data-testid="subs-confirm-submit"
+                className="px-5 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 hover:bg-stone-800 text-[#dedd0a] rounded-lg flex items-center gap-2 disabled:opacity-50"
+              >
+                {confirming ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                {confirming ? "Sending…" : `Send request${confirmAddons.length > 1 ? "s" : ""} to HQ`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
-// Small tier-badge for the bundle ladder. Glows when its row matches
-// the franchisee's current selection count.
 function TierBadge({ label, price, active, highlight }) {
   return (
     <div

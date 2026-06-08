@@ -14,7 +14,7 @@ import jwt
 import httpx
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Literal, Dict, Any
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, Query, UploadFile, File
+from fastapi import FastAPI, APIRouter, Body, HTTPException, Request, Response, Depends, Query, UploadFile, File
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, EmailStr, Field, ConfigDict
@@ -1854,6 +1854,106 @@ async def portal_subscription_request(
     }
     await db.subscription_requests.insert_one(doc)
     return {"ok": True, "id": doc["id"]}
+
+
+@api.get("/portal/subscriptions/requests")
+async def portal_my_subscription_requests(user: dict = Depends(require_role("franchisee"))):
+    """The franchisee's own subscription requests, newest first. Used
+    by the Subscriptions page to render the "Pending activation" state
+    on cards where a request is already in flight, so they don't double
+    submit."""
+    cur = db.subscription_requests.find(
+        {"franchisee_id": user.get("franchisee_id")},
+        {"_id": 0},
+    ).sort("created_at", -1).limit(50)
+    return {"requests": await cur.to_list(50)}
+
+
+@api.get("/admin/subscription-requests")
+async def admin_list_subscription_requests(
+    status: str = "pending",
+    _: dict = Depends(require_role("admin")),
+):
+    """Admin view of every franchisee-submitted bolt-on request.
+    Enriched with the franchisee's display name + organisation so the
+    admin can action the queue without a second lookup."""
+    q: dict = {}
+    if status and status != "all":
+        q["status"] = status
+    rows = await db.subscription_requests.find(q, {"_id": 0}).sort("created_at", -1).limit(500).to_list(500)
+    fids = list({r.get("franchisee_id") for r in rows if r.get("franchisee_id")})
+    franchisees: dict[str, dict] = {}
+    if fids:
+        async for f in db.franchisees.find(
+            {"id": {"$in": fids}},
+            {"_id": 0, "id": 1, "first_name": 1, "last_name": 1, "organisation": 1, "mojo_email": 1},
+        ):
+            franchisees[f["id"]] = f
+    for r in rows:
+        f = franchisees.get(r.get("franchisee_id")) or {}
+        r["franchisee_name"] = (f.get("organisation")
+                                or " ".join([f.get("first_name") or "", f.get("last_name") or ""]).strip()
+                                or "—")
+        r["franchisee_email"] = f.get("mojo_email")
+    return {"requests": rows}
+
+
+@api.post("/admin/subscription-requests/{rid}/approve")
+async def admin_approve_subscription_request(
+    rid: str,
+    user: dict = Depends(require_role("admin")),
+):
+    """Approving a request flips the corresponding ``portal_modules.*``
+    flag on the franchisee record (enabling the module immediately) and
+    stamps the request approved. The franchisee sees the change on
+    their next portal load without needing to log in/out."""
+    req = await db.subscription_requests.find_one({"id": rid}, {"_id": 0})
+    if not req:
+        raise HTTPException(404, detail="Request not found")
+    if req.get("status") not in (None, "pending"):
+        raise HTTPException(409, detail=f"Already {req.get('status')}")
+    addon = req.get("addon")
+    action = req.get("action") or "enable"
+    new_value = action == "enable"
+    await db.franchisees.update_one(
+        {"id": req.get("franchisee_id")},
+        {"$set": {f"portal_modules.{addon}": new_value,
+                  "portal_modules_updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    await db.subscription_requests.update_one(
+        {"id": rid},
+        {"$set": {
+            "status": "approved",
+            "decided_at": datetime.now(timezone.utc).isoformat(),
+            "decided_by": user.get("email"),
+        }},
+    )
+    return {"ok": True}
+
+
+@api.post("/admin/subscription-requests/{rid}/reject")
+async def admin_reject_subscription_request(
+    rid: str,
+    body: dict | None = Body(None),
+    user: dict = Depends(require_role("admin")),
+):
+    """Declines a bolt-on request. Optional ``body.reason`` is recorded
+    on the request for the audit trail."""
+    req = await db.subscription_requests.find_one({"id": rid})
+    if not req:
+        raise HTTPException(404, detail="Request not found")
+    if req.get("status") not in (None, "pending"):
+        raise HTTPException(409, detail=f"Already {req.get('status')}")
+    await db.subscription_requests.update_one(
+        {"id": rid},
+        {"$set": {
+            "status": "rejected",
+            "decided_at": datetime.now(timezone.utc).isoformat(),
+            "decided_by": user.get("email"),
+            "reject_reason": ((body or {}).get("reason") or "").strip()[:500] or None,
+        }},
+    )
+    return {"ok": True}
 
 
 
