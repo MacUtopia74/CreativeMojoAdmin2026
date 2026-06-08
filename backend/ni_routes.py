@@ -42,6 +42,7 @@ from ni_definition import (
     DEFAULT_DEFINITION_ID,
     definition_to_mongo_filter,
 )
+from ni_polygon_importer import import_ni_polygons_async
 
 logger = logging.getLogger("creative-mojo-admin.ni")
 
@@ -473,6 +474,27 @@ def build_ni_router(db, require_role):  # noqa: D401
     async def import_status(_user: dict = Depends(require_role("admin"))):
         last = await db.ni_import_state.find_one({"_id": "last_import"}, {"_id": 0})
         live_count = await db.ni_care_services.count_documents({})
-        return {"live_count": live_count, "last_import": last}
+        # BT polygon count lets the UI prompt the admin to import them
+        # if zero (e.g. first run on a freshly-deployed production DB).
+        polygon_count = await db.postcode_sector_polygons.count_documents(
+            {"sector": {"$regex": "^BT"}}
+        )
+        return {
+            "live_count": live_count,
+            "polygon_count": polygon_count,
+            "last_import": last,
+        }
+
+    @router.post("/ni/polygons/import-doogal")
+    async def import_doogal_polygons(_user: dict = Depends(require_role("admin"))):
+        """One-click refresh of the BT postcode sector polygons from
+        Doogal's whole-UK KML. Safe to run repeatedly — upserts by
+        ``sector`` so GB rows are untouched and re-runs just refresh
+        the BT geometry. Also clears any legacy ``ni-voronoi-synthetic``
+        rows so they can't shadow the real polygons."""
+        try:
+            return await import_ni_polygons_async(db)
+        except httpx.HTTPError as e:
+            raise HTTPException(502, detail=f"Could not reach Doogal: {e}")
 
     return router

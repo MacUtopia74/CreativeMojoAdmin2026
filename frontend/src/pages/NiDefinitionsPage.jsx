@@ -13,7 +13,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import api from "@/lib/api";
 import {
   Loader2, Save, Upload, Plus, X, AlertCircle,
-  CheckCircle2, RotateCcw, MapPin, Flag, RefreshCw,
+  CheckCircle2, RotateCcw, MapPin, Flag, RefreshCw, Layers,
 } from "lucide-react";
 
 const empty = {
@@ -32,6 +32,7 @@ export default function NiDefinitionsPage() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [importingPolys, setImportingPolys] = useState(false);
   const [err, setErr] = useState("");
   const [preview, setPreview] = useState(null);
   const [previewing, setPreviewing] = useState(false);
@@ -141,6 +142,31 @@ export default function NiDefinitionsPage() {
     }
   };
 
+  // Pulls the latest BT postcode sector polygons from Doogal's KML and
+  // upserts them into the same `postcode_sector_polygons` collection
+  // used for GB. Idempotent — safe to run whenever the map is showing
+  // stale geometry (the production-vs-preview drift case is the
+  // canonical example: code is deployed but the production DB still
+  // holds the old polygons).
+  const onImportPolygons = async () => {
+    setImportingPolys(true); setErr("");
+    try {
+      const { data } = await api.post("/ni/polygons/import-doogal");
+      await reloadFacets();
+      const wrote = (data?.written ?? 0).toLocaleString();
+      const purged = data?.purged ?? 0;
+      const note = purged > 0
+        ? `Refreshed ${wrote} BT sector polygons — replaced ${purged} legacy synthetic rows. Reload any open Territory Map tabs to see the change.`
+        : `Refreshed ${wrote} BT sector polygons. Reload any open Territory Map tabs to see the change.`;
+      setErr(note);
+      setTimeout(() => setErr(""), 6000);
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Polygon import failed.");
+    } finally {
+      setImportingPolys(false);
+    }
+  };
+
   const dirty = JSON.stringify(def) !== JSON.stringify(saved);
 
   if (busy) {
@@ -177,17 +203,39 @@ export default function NiDefinitionsPage() {
       {/* Import banner */}
       <div className="bg-white border border-stone-200 rounded-2xl p-4 flex items-center justify-between gap-4 flex-wrap">
         <div className="text-sm">
-          <div className="text-stone-900 font-semibold">{importState?.live_count?.toLocaleString() || 0} NI services loaded</div>
+          <div className="text-stone-900 font-semibold flex items-center gap-3 flex-wrap">
+            <span>{importState?.live_count?.toLocaleString() || 0} NI services loaded</span>
+            <span className="text-stone-300">·</span>
+            <span className={importState?.polygon_count ? "text-stone-700" : "text-amber-700"} data-testid="ni-polygon-count">
+              {importState?.polygon_count?.toLocaleString() || 0} BT sector polygons on map
+            </span>
+          </div>
           <div className="text-xs text-stone-500 mt-0.5">
             {importState?.last_import
               ? <>Last import: <strong>{importState.last_import.filename}</strong> · {new Date(importState.last_import.imported_at).toLocaleString("en-GB")} · {importState.last_import.rows_loaded?.toLocaleString?.()} rows · <span className="uppercase tracking-wider text-[10px] font-bold text-stone-600">{importState.last_import.source === "opendatani" ? "OpenDataNI" : "Manual upload"}</span></>
               : "No data loaded yet. Click \u201cRefresh from OpenDataNI\u201d or upload an RQIA XLSX file."}
           </div>
+          {(importState?.polygon_count ?? 0) === 0 && (
+            <div className="text-[11px] text-amber-700 mt-1 flex items-center gap-1" data-testid="ni-polygon-warning">
+              <AlertCircle className="w-3 h-3" />
+              No BT polygons on the map yet — click &ldquo;Refresh sector polygons&rdquo; to import them from Doogal (~245 sectors).
+            </div>
+          )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          <button
+            onClick={onImportPolygons}
+            disabled={importingPolys || refreshing || uploading}
+            data-testid="ni-import-polygons-btn"
+            title="Imports official BT postcode sector boundaries from Doogal's whole-UK KML. Same methodology as GB sectors. Idempotent — safe to run anytime."
+            className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-white border border-stone-300 hover:bg-stone-50 text-stone-800 rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+          >
+            {importingPolys ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Layers className="w-3.5 h-3.5" />}
+            {importingPolys ? "Importing polygons…" : "Refresh sector polygons"}
+          </button>
           <button
             onClick={onRefreshFromOpenDataNI}
-            disabled={refreshing || uploading}
+            disabled={refreshing || uploading || importingPolys}
             data-testid="ni-refresh-opendatani-btn"
             className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 hover:bg-stone-800 text-white rounded-lg flex items-center gap-1.5 disabled:opacity-50"
           >
@@ -197,7 +245,7 @@ export default function NiDefinitionsPage() {
           <label className="px-4 py-2 text-xs font-bold uppercase tracking-wider border border-stone-300 hover:bg-stone-50 text-stone-800 rounded-lg flex items-center gap-1.5 cursor-pointer" data-testid="ni-upload-btn">
             {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
             {uploading ? "Uploading…" : "Upload XLSX"}
-            <input ref={fileRef} type="file" accept=".xlsx" disabled={uploading || refreshing} onChange={onUpload} className="hidden" data-testid="ni-upload-input" />
+            <input ref={fileRef} type="file" accept=".xlsx" disabled={uploading || refreshing || importingPolys} onChange={onUpload} className="hidden" data-testid="ni-upload-input" />
           </label>
         </div>
       </div>
