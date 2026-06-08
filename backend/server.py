@@ -1279,6 +1279,7 @@ FRANCHISEE_EDITABLE_FIELDS = {
     "telephone", "mobile_phone", "address", "city", "county", "postcode", "country",
     "potential", "fee_paid", "anniversary_reminder", "notes",
     "status", "staying_leaving",
+    "website", "facebook",
 }
 
 
