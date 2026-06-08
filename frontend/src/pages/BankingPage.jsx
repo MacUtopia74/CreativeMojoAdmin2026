@@ -117,7 +117,8 @@ export default function BankingPage() {
   const [transactions, setTransactions] = useState([]);
   const [statements, setStatements] = useState([]);
   const [direction, setDirection] = useState("in");
-  const [search, setSearch] = useState("");
+  const [descSearch, setDescSearch] = useState("");
+  const [amountSearch, setAmountSearch] = useState("");
   // Supplier-keyword chips. `keywords` is the full saved list; `active`
   // is the subset the user has currently toggled on (empty = no filter).
   const [keywords, setKeywords] = useState([]);
@@ -144,14 +145,19 @@ export default function BankingPage() {
 
   const loadTransactions = useCallback(async () => {
     try {
-      const params = { direction, search: search || undefined, limit: 500 };
+      const params = {
+        direction,
+        description: descSearch || undefined,
+        amount: amountSearch || undefined,
+        limit: 500,
+      };
       if (activeKeywords.size > 0) {
         params.keywords = Array.from(activeKeywords).join(",");
       }
       const { data } = await api.get("/banking/transactions", { params });
       setTransactions(data.transactions || []);
     } catch {/* ignore */}
-  }, [direction, search, activeKeywords]);
+  }, [direction, descSearch, amountSearch, activeKeywords]);
 
   const loadKeywords = useCallback(async () => {
     try {
@@ -511,17 +517,29 @@ export default function BankingPage() {
       <div className="bg-white border border-stone-200 rounded-2xl p-5">
         <div className="flex items-center gap-3 flex-wrap mb-4">
           <h2 className="text-sm font-bold tracking-wider uppercase text-stone-700">Transactions</h2>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex items-center gap-2 flex-wrap">
             <div className="relative">
               <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400" />
               <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                value={descSearch}
+                onChange={(e) => setDescSearch(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") loadTransactions(); }}
-                placeholder="Search description or amount (£42, >100, 42.50)"
-                title="Search description / merchant, or filter by amount. Try: 42  ·  £42.50  ·  >100  ·  <50  ·  >=42  ·  <=42"
-                data-testid="banking-search-input"
-                className="pl-7 pr-3 py-1.5 text-sm border border-stone-200 rounded-lg w-72 focus:outline-none focus:ring-2 focus:ring-stone-900/10"
+                placeholder="Search description"
+                title="Filter by description / merchant text. Combine with the amount box to narrow further."
+                data-testid="banking-search-description"
+                className="pl-7 pr-3 py-1.5 text-sm border border-stone-200 rounded-lg w-56 focus:outline-none focus:ring-2 focus:ring-stone-900/10"
+              />
+            </div>
+            <div className="relative">
+              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-500 text-sm font-medium pointer-events-none">£</span>
+              <input
+                value={amountSearch}
+                onChange={(e) => setAmountSearch(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") loadTransactions(); }}
+                placeholder="Amount (75, 42.50, >100)"
+                title="Filter by amount. Try: 42  ·  42.50  ·  >100  ·  <50  ·  >=42  ·  <=42"
+                data-testid="banking-search-amount"
+                className="pl-6 pr-3 py-1.5 text-sm border border-stone-200 rounded-lg w-44 focus:outline-none focus:ring-2 focus:ring-stone-900/10"
               />
             </div>
             <div className="inline-flex border border-stone-200 rounded-lg overflow-hidden" role="tablist">

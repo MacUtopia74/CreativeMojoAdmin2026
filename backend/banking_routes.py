@@ -392,13 +392,23 @@ def build_banking_router(db, require_role):
         direction: str = Query("in", pattern="^(in|out|all)$"),
         date_from: Optional[str] = None,
         date_to: Optional[str] = None,
-        search: Optional[str] = None,
+        description: Optional[str] = None,
+        amount: Optional[str] = None,
         keywords: Optional[str] = Query(None, description="Comma-separated; any-match"),
         limit: int = Query(200, le=2000),
         _=admin,
     ):
         """List transactions stored locally. Defaults to incoming only —
-        per the brief, we want to see what's come in to the account."""
+        per the brief, we want to see what's come in to the account.
+
+        ``description`` filters by text across ``description`` / ``merchant_name``.
+        ``amount`` filters by numeric amount with supported syntaxes:
+            ``42`` → 42.00–42.99,  ``42.50`` → exact,
+            ``>50`` / ``<100`` / ``>=42`` / ``<=42`` / ``=42.50``.
+        Currency symbols and commas are stripped. The two filters AND
+        together — search "EASTLEIGH" + "75" only returns rows where the
+        description matches *and* the amount is £75-something."""
+        and_clauses: list = []
         q: dict = {}
         if direction == "in":
             q["transaction_type"] = "CREDIT"
@@ -411,28 +421,15 @@ def build_banking_router(db, require_role):
             if date_to:
                 ts["$lte"] = date_to + "T23:59:59"
             q["timestamp"] = ts
-        if search:
-            # Search is text by default (description / merchant name), but
-            # admins frequently want "show me everything for £42.50" — so
-            # we also detect numeric / comparison queries and match against
-            # the ``amount`` field. Supported amount syntaxes:
-            #   ``42``        →  amount == 42 (any pence)  i.e. 42.00–42.99
-            #   ``42.50``     →  amount == 42.50 exactly
-            #   ``>50``       →  amount > 50
-            #   ``<100``      →  amount < 100
-            #   ``>=42``      →  amount >= 42
-            #   ``<=42``      →  amount <= 42
-            #   ``=42.50``    →  amount == 42.50 exactly (explicit)
-            # Currency symbols and commas are stripped so ``£1,234.56``
-            # also works. We OR the amount clause with the text clauses
-            # so a user typing ``42.50`` still sees rows where ``42.50``
-            # appears literally in the description (rare but useful).
-            text_clauses = [
-                {"description": {"$regex": re.escape(search), "$options": "i"}},
-                {"merchant_name": {"$regex": re.escape(search), "$options": "i"}},
-            ]
-            amount_clause = _parse_amount_search(search)
-            q["$or"] = text_clauses + ([amount_clause] if amount_clause else [])
+        if description:
+            and_clauses.append({"$or": [
+                {"description": {"$regex": re.escape(description), "$options": "i"}},
+                {"merchant_name": {"$regex": re.escape(description), "$options": "i"}},
+            ]})
+        if amount:
+            amount_clause = _parse_amount_search(amount)
+            if amount_clause:
+                and_clauses.append(amount_clause)
         # Keyword "supplier chips" — any-match across descriptions. Escape
         # the keywords so regex special chars in supplier names (`.`, `(`)
         # don't blow up the query.
@@ -440,14 +437,9 @@ def build_banking_router(db, require_role):
             words = [k.strip() for k in keywords.split(",") if k.strip()]
             if words:
                 kw_regex = "|".join(re.escape(w) for w in words)
-                # If a `$or` from `search` is already present, combine
-                # via `$and` so both filters apply.
-                kw_clause = {"description": {"$regex": kw_regex, "$options": "i"}}
-                if "$or" in q:
-                    q.setdefault("$and", []).append({"$or": q.pop("$or")})
-                    q["$and"].append(kw_clause)
-                else:
-                    q.update(kw_clause)
+                and_clauses.append({"description": {"$regex": kw_regex, "$options": "i"}})
+        if and_clauses:
+            q["$and"] = and_clauses
         rows = await db.banking_transactions.find(q, {"_id": 0, "raw": 0}) \
             .sort("timestamp", -1).to_list(limit)
         return {"transactions": rows, "count": len(rows)}
