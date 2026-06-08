@@ -28,6 +28,7 @@ import ChangePasswordPage from "@/pages/ChangePasswordPage";
 import XeroSettingsPage from "@/pages/XeroSettingsPage";
 import OrdersReconciliationPage from "@/pages/OrdersReconciliationPage";
 import ScotlandDefinitionsPage from "@/pages/ScotlandDefinitionsPage";
+import NiDefinitionsPage from "@/pages/NiDefinitionsPage";
 import EmailTemplatesPage from "@/pages/EmailTemplatesPage";
 import AnnouncementsPage from "@/pages/AnnouncementsPage";
 import LogsPage from "@/pages/LogsPage";
@@ -128,6 +129,7 @@ export default function App() {
               <Route path="/territory-builder" element={<TerritoryBuilderPage />} />
               <Route path="/cqc-definitions" element={<CqcDefinitionsPage />} />
               <Route path="/scotland-definitions" element={<ScotlandDefinitionsPage />} />
+              <Route path="/ni-definitions" element={<NiDefinitionsPage />} />
               <Route path="/admin/email-templates" element={<EmailTemplatesPage />} />
               <Route path="/admin/announcements" element={<AnnouncementsPage />} />
               <Route path="/admin/logs" element={<LogsPage />} />
