@@ -1,5 +1,30 @@
 # Creative Mojo — Unified Admin Platform PRD
 
+# --- Jun 08 2026 ---
+
+## Northern Ireland (RQIA) care data module + BT territory map (Jun 08 2026)
+
+**1) RQIA Registered Services dataset (OpenDataNI)**
+- New admin page `/ni-definitions` mirroring the CQC + Scotland definition pages.
+- One-click "Refresh from OpenDataNI" pulls the latest XLSX live via the CKAN API (publisher refreshes monthly), or an admin can upload a file manually.
+- ~1,536 NI services loaded on the first refresh. Mapped fields: service name, provider, service type, address, postcode (sector + district), phone, max approved places, **categories of care** (array), conditions, current manager, **last inspection date**, country.
+- Files: `backend/ni_definition.py`, `backend/ni_routes.py`, `frontend/src/pages/NiDefinitionsPage.jsx`. Permission key `ni-definitions` wired into `ADMIN_NAV_KEYS`.
+- Implementation note: OpenDataNI's CKAN endpoint 302s to a presigned R2 URL — we set a desktop User-Agent + follow redirects, otherwise bare httpx hits 403.
+
+**2) BT postcode sector polygons (synthetic Voronoi)**
+- NI postcode sector boundaries aren't published as open data (LPS/Royal Mail license restricts them). We synthesise them via Voronoi tessellation: one anchor postcode per BT sector resolved through postcodes.io's bulk endpoint → scipy Voronoi → clipped to NI bbox → stored in `postcode_sector_polygons` (same schema as the ONS England/Scotland polygons).
+- File: `backend/ni_polygons.py`. Endpoint `POST /api/ni/polygons/regenerate` (admin) — auto-runs after every XLSX import too.
+- First run: 199 polygons generated for 213 unique BT sectors; the 14 unresolved are stale Royal Mail unit codes.
+
+**3) Three-way territory pipeline (CQC / Scotland / NI)**
+- `territory_routes._split_sectors_by_country` returns `(scot, ni, rest)` now. `_count_homes_per_sector` and `_list_homes` query all three collections and union the results. New helper `_count_total_homes` keeps the single-number path DRY.
+- Every "save / parse / paste / rollback" code path that previously hit only `cqc_locations` now routes through the multi-source helper.
+- `PUT /api/ni/definition` recomputes `territory_home_count` for every franchisee with BT sectors (preserving their non-NI count contribution). Mirrors the Scotland recount pattern.
+
+**Verified end-to-end:**
+- Belfast franchisee (Helen Bell) already had 113 BT sectors on her territory with `home_count=0` from the moment they were added — the moment we saved a "Nursing+Residential" rule the count jumped to **221 homes** across her area. The Territory Builder map now renders her BT polygons in red over Northern Ireland alongside the Scottish + English franchisees.
+
+
 
 ## Calendar search nav + bolt-on branding "+" suffix (Jun 05 2026)
 

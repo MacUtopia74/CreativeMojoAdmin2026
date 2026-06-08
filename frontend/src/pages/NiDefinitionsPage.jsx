@@ -96,8 +96,12 @@ export default function NiDefinitionsPage() {
       const { data } = await api.put("/ni/definition", def);
       const merged = { ...empty, ...data };
       setSaved(merged);
-      setErr("Saved.");
-      setTimeout(() => setErr(""), 3000);
+      if (data?._recount) {
+        setErr(`Saved — refreshed ${data._recount.franchisees_updated} franchisee count${data._recount.franchisees_updated === 1 ? "" : "s"}.`);
+      } else {
+        setErr("Saved.");
+      }
+      setTimeout(() => setErr(""), 4000);
     } catch (e) {
       setErr(e?.response?.data?.detail || "Could not save.");
     } finally { setSaving(false); }

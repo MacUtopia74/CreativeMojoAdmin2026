@@ -40,6 +40,20 @@ from scotland_definition import (
     definition_to_mongo_filter as scot_definition_to_mongo_filter,
     DEFAULT_DEFINITION_ID as SCOT_DEFINITION_ID,
 )
+from ni_definition import (
+    NiDefinition,
+    definition_to_mongo_filter as ni_definition_to_mongo_filter,
+    DEFAULT_DEFINITION_ID as NI_DEFINITION_ID,
+)
+
+
+def _is_ni_postcode(code: Optional[str]) -> bool:
+    """NI postcodes / sectors / districts all start with ``BT`` followed
+    by a digit. Defensive against bare ``BT`` (no district number)."""
+    if not code:
+        return False
+    s = re.sub(r"\s+", "", str(code).upper())
+    return s.startswith("BT") and len(s) > 2 and s[2].isdigit()
 
 logger = logging.getLogger("creative-mojo-admin.territory")
 
@@ -110,20 +124,31 @@ def build_territory_router(db, require_role):  # noqa: D401
         d = ScotlandDefinition(**doc) if doc else ScotlandDefinition()
         return scot_definition_to_mongo_filter(d)
 
-    def _split_sectors_by_country(sectors: list[str]) -> tuple[list[str], list[str]]:
-        """Partition sector codes into Scottish and rest-of-UK lists so the
-        right data source can be queried for each."""
+    async def _ni_filter() -> dict:
+        doc = await db.ni_definition.find_one({"_id": NI_DEFINITION_ID}, {"_id": 0})
+        d = NiDefinition(**doc) if doc else NiDefinition()
+        return ni_definition_to_mongo_filter(d)
+
+    def _split_sectors_by_country(sectors: list[str]) -> tuple[list[str], list[str], list[str]]:
+        """Partition sector codes into (Scottish, NI, rest-of-UK) lists so
+        the right data source can be queried for each."""
         scot: list[str] = []
+        ni: list[str] = []
         rest: list[str] = []
         for s in sectors:
-            (scot if is_scottish_postcode(s) else rest).append(s)
-        return scot, rest
+            if _is_ni_postcode(s):
+                ni.append(s)
+            elif is_scottish_postcode(s):
+                scot.append(s)
+            else:
+                rest.append(s)
+        return scot, ni, rest
 
     async def _count_homes_per_sector(sectors: list[str]) -> dict:
-        """Total homes per sector across BOTH CQC + Scotland sources."""
+        """Total homes per sector across CQC + Scotland + NI sources."""
         if not sectors:
             return {}
-        scot, rest = _split_sectors_by_country(sectors)
+        scot, ni, rest = _split_sectors_by_country(sectors)
         merged: dict[str, int] = {}
         if rest:
             homes_coll = await _homes_collection()
@@ -142,7 +167,24 @@ def build_territory_router(db, require_role):  # noqa: D401
             ])
             for r in await cur.to_list(5000):
                 merged[r["_id"]] = merged.get(r["_id"], 0) + r["n"]
+        if ni:
+            base = await _ni_filter()
+            cur = db.ni_care_services.aggregate([
+                {"$match": {**base, "postcode_sector": {"$in": ni}}},
+                {"$group": {"_id": "$postcode_sector", "n": {"$sum": 1}}},
+            ])
+            for r in await cur.to_list(5000):
+                merged[r["_id"]] = merged.get(r["_id"], 0) + r["n"]
         return merged
+
+    async def _count_total_homes(sectors: list[str]) -> int:
+        """Sum of home counts across CQC + Scotland + NI sources for the
+        supplied sector list. Single call into ``_count_homes_per_sector``
+        so the country-routing logic is in one place."""
+        if not sectors:
+            return 0
+        per = await _count_homes_per_sector(sectors)
+        return sum(per.values())
 
     async def _list_homes(sectors: list[str], limit: int) -> list[dict]:
         """Return raw home documents for the sector list, normalising
@@ -158,7 +200,7 @@ def build_territory_router(db, require_role):  # noqa: D401
         """
         if not sectors:
             return []
-        scot, rest = _split_sectors_by_country(sectors)
+        scot, ni, rest = _split_sectors_by_country(sectors)
         out: list[dict] = []
         if rest:
             homes_coll = await _homes_collection()
@@ -191,6 +233,34 @@ def build_territory_router(db, require_role):  # noqa: D401
                     "councilArea": r.get("councilArea"),
                     "healthBoard": r.get("healthBoard"),
                     "providerName": r.get("providerName"),
+                })
+        # NI docs — same normalised shape, tagged country=Northern Ireland.
+        if ni and len(out) < limit:
+            base = await _ni_filter()
+            remaining = limit - len(out)
+            cur = db.ni_care_services.find(
+                {**base, "postcode_sector": {"$in": ni}}, {"_id": 0},
+            ).limit(remaining)
+            for r in await cur.to_list(remaining):
+                out.append({
+                    "locationId": r.get("serviceId"),
+                    "name": r.get("name"),
+                    "postalCode": r.get("postalCode"),
+                    "postcode_sector": r.get("postcode_sector"),
+                    "town": r.get("town"),
+                    # RQIA classifies many services as "homes" but we don't
+                    # have a clean Y/N flag — infer it from the service type.
+                    "careHome": "Y" if ("nursing" in (r.get("serviceType") or "").lower()
+                                         or "residential" in (r.get("serviceType") or "").lower())
+                                else "N",
+                    "numberOfBeds": r.get("maxApprovedPlaces"),
+                    "gacServiceTypes": [{"name": r.get("serviceType")}] if r.get("serviceType") else [],
+                    "specialisms": [{"name": c} for c in (r.get("categoriesOfCare") or [])],
+                    "currentRatings": {},
+                    "country": "Northern Ireland",
+                    "providerName": r.get("provider"),
+                    "phoneNumber": r.get("phone"),
+                    "lastInspectionDate": r.get("lastInspectedDate"),
                 })
 
         # ------ providerName enrichment from legacy cqc_locations -------
@@ -584,19 +654,11 @@ def build_territory_router(db, require_role):  # noqa: D401
                 {"sector": {"$in": sectors}},
                 {"_id": 0, "sector": 1, "geometry": 1},
             ).to_list(5000)
-        homes_coll = await _homes_collection()
-        base_filter = await _homes_filter()
         home_count = 0
         per_sector: dict = {}
         if sectors:
-            home_count = await homes_coll.count_documents(
-                {**base_filter, "postcode_sector": {"$in": sectors}},
-            )
-            agg = await homes_coll.aggregate([
-                {"$match": {**base_filter, "postcode_sector": {"$in": sectors}}},
-                {"$group": {"_id": "$postcode_sector", "n": {"$sum": 1}}},
-            ]).to_list(5000)
-            per_sector = {a["_id"]: a["n"] for a in agg}
+            per_sector = await _count_homes_per_sector(sectors)
+            home_count = sum(per_sector.values())
         # Bump a view counter (best-effort, no PII).
         try:
             await db.territory_plans.update_one(
@@ -647,9 +709,7 @@ def build_territory_router(db, require_role):  # noqa: D401
                 good.append(sec)
         homes = 0
         if good:
-            homes_coll = await _homes_collection()
-            base_filter = await _homes_filter()
-            homes = await homes_coll.count_documents({**base_filter, "postcode_sector": {"$in": good}})
+            homes = await _count_total_homes(good)
         return {"sectors": good, "unrecognised": bad, "home_count": homes}
 
     # --------------------------- franchisee territory save (admin lock-down)
@@ -668,9 +728,7 @@ def build_territory_router(db, require_role):  # noqa: D401
         # Refresh authoritative home count from CQC live data + definition
         homes = 0
         if seen:
-            homes_coll = await _homes_collection()
-            base_filter = await _homes_filter()
-            homes = await homes_coll.count_documents({**base_filter, "postcode_sector": {"$in": seen}})
+            homes = await _count_total_homes(seen)
 
         # ------- snapshot BEFORE overwriting (rollback safety) -------
         # Capture the current persisted state so any save (manual,
@@ -751,9 +809,7 @@ def build_territory_router(db, require_role):  # noqa: D401
         # cached count baked into the snapshot (CQC data may have moved).
         homes = 0
         if target_sectors:
-            homes_coll = await _homes_collection()
-            base_filter = await _homes_filter()
-            homes = await homes_coll.count_documents({**base_filter, "postcode_sector": {"$in": target_sectors}})
+            homes = await _count_total_homes(target_sectors)
 
         # Record the rollback itself as a fresh history entry.
         prev = await db.franchisees.find_one(
@@ -1075,14 +1131,10 @@ def build_territory_router(db, require_role):  # noqa: D401
         if not f:
             raise HTTPException(404, detail="Franchisee not found")
         sectors = f.get("territory_sectors") or []
-        # Home count via live CQC + active definition
+        # Home count via live CQC + Scotland + NI sources via active rules
         count = 0
         if sectors:
-            homes_coll = await _homes_collection()
-            base_filter = await _homes_filter()
-            count = await homes_coll.count_documents(
-                {**base_filter, "postcode_sector": {"$in": sectors}},
-            )
+            count = await _count_total_homes(sectors)
         # Centre = their HQ postcode if available (exact full postcode,
         # falls back to any postcode in the same sector if we can't resolve
         # the precise one — then warm the cache via postcodes.io).

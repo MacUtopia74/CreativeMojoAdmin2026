@@ -42,6 +42,7 @@ from ni_definition import (
     DEFAULT_DEFINITION_ID,
     definition_to_mongo_filter,
 )
+from ni_polygons import generate_ni_sector_polygons
 
 logger = logging.getLogger("creative-mojo-admin.ni")
 
@@ -264,6 +265,81 @@ def build_ni_router(db, require_role):  # noqa: D401
             return NiDefinition()
         return NiDefinition(**doc)
 
+    async def _regen_polygons_safely() -> Optional[dict]:
+        """Regenerate BT sector polygons. Logs and swallows any
+        upstream errors (postcodes.io down etc.) so an XLSX import
+        doesn't fail just because the polygon refresh did."""
+        try:
+            return await generate_ni_sector_polygons(db)
+        except Exception as e:  # pragma: no cover — defensive
+            logger.warning("NI polygon regeneration failed: %s", e)
+            return None
+
+    async def _recount_ni_franchisees(ni_def: NiDefinition) -> int:
+        """Re-derive ``territory_home_count`` for every franchisee with
+        BT sectors in their territory, mixing in their non-NI sector
+        counts from CQC + Scotland so the headline number stays whole.
+
+        Lazy-imports the CQC + Scotland leaf modules to avoid a router
+        load-order dependency (this module gets registered before they
+        are guaranteed to be importable in some env configs)."""
+        from cqc_definition import (
+            CqcDefinition,
+            DEFAULT_DEFINITION_ID as CQC_ID,
+            definition_to_mongo_filter as cqc_filter,
+        )
+        from scotland_definition import (
+            ScotlandDefinition,
+            DEFAULT_DEFINITION_ID as SCOT_ID,
+            definition_to_mongo_filter as scot_filter,
+        )
+        from geo_postcode import is_scottish_postcode
+
+        cqc_doc = await db.cqc_definition.find_one({"_id": CQC_ID}, {"_id": 0})
+        cqc_def = CqcDefinition(**cqc_doc) if cqc_doc else CqcDefinition()
+        scot_doc = await db.scotland_definition.find_one({"_id": SCOT_ID}, {"_id": 0})
+        scot_def = ScotlandDefinition(**scot_doc) if scot_doc else ScotlandDefinition()
+
+        ni_filter = definition_to_mongo_filter(ni_def)
+        cqc_f = cqc_filter(cqc_def)
+        scot_f = scot_filter(scot_def)
+
+        updated = 0
+        cur = db.franchisees.find(
+            {"territory_sectors": {"$exists": True, "$ne": []}},
+            {"_id": 0, "id": 1, "territory_sectors": 1},
+        )
+        async for f in cur:
+            sectors = f.get("territory_sectors") or []
+            ni_secs = [s for s in sectors if s.upper().startswith("BT")]
+            if not ni_secs:
+                continue
+            other_secs = [s for s in sectors if not s.upper().startswith("BT")]
+            scot_secs = [s for s in other_secs if is_scottish_postcode(s)]
+            cqc_secs = [s for s in other_secs if not is_scottish_postcode(s)]
+
+            total = await db.ni_care_services.count_documents(
+                {**ni_filter, "postcode_sector": {"$in": ni_secs}}
+            )
+            if scot_secs:
+                total += await db.scotland_care_services.count_documents(
+                    {**scot_f, "postcode_sector": {"$in": scot_secs}}
+                )
+            if cqc_secs:
+                live = await db.cqc_locations_live.count_documents(
+                    {**cqc_f, "postcode_sector": {"$in": cqc_secs}}
+                )
+                if live == 0:
+                    live = await db.cqc_locations.count_documents(
+                        {**cqc_f, "postcode_sector": {"$in": cqc_secs}}
+                    )
+                total += live
+            await db.franchisees.update_one(
+                {"id": f["id"]}, {"$set": {"territory_home_count": total}}
+            )
+            updated += 1
+        return updated
+
     @router.get("/ni/definition")
     async def get_definition(_user: dict = Depends(require_role("admin"))):
         d = await _get_def()
@@ -280,7 +356,8 @@ def build_ni_router(db, require_role):  # noqa: D401
         await db.ni_definition.update_one(
             {"_id": DEFAULT_DEFINITION_ID}, {"$set": doc}, upsert=True,
         )
-        return body.model_dump()
+        franchisees_updated = await _recount_ni_franchisees(body)
+        return {**body.model_dump(), "_recount": {"franchisees_updated": franchisees_updated}}
 
     @router.get("/ni/definition/preview")
     async def preview_definition(
@@ -377,7 +454,8 @@ def build_ni_router(db, require_role):  # noqa: D401
             "rows_skipped": skipped,
         }
         await db.ni_import_state.update_one({"_id": "last_import"}, {"$set": meta}, upsert=True)
-        return {"ok": True, "rows_loaded": len(docs), "rows_skipped": skipped, "filename": file.filename}
+        polygons = await _regen_polygons_safely()
+        return {"ok": True, "rows_loaded": len(docs), "rows_skipped": skipped, "filename": file.filename, "polygons": polygons}
 
     @router.post("/ni/import/refresh")
     async def refresh_from_opendatani(user: dict = Depends(require_role("admin"))):
@@ -401,7 +479,16 @@ def build_ni_router(db, require_role):  # noqa: D401
             "rows_skipped": skipped,
         }
         await db.ni_import_state.update_one({"_id": "last_import"}, {"$set": meta}, upsert=True)
-        return {"ok": True, "rows_loaded": len(docs), "rows_skipped": skipped, "filename": filename, "source": "opendatani"}
+        polygons = await _regen_polygons_safely()
+        return {"ok": True, "rows_loaded": len(docs), "rows_skipped": skipped, "filename": filename, "source": "opendatani", "polygons": polygons}
+
+    @router.post("/ni/polygons/regenerate")
+    async def regenerate_polygons(_user: dict = Depends(require_role("admin"))):
+        """Rebuild the Voronoi-derived BT postcode sector polygons from
+        the current ``ni_care_services`` anchor set. Already runs after
+        every import — exposed here for manual re-runs after editing
+        anchors or fixing postcodes.io blips."""
+        return await generate_ni_sector_polygons(db)
 
     @router.get("/ni/import/status")
     async def import_status(_user: dict = Depends(require_role("admin"))):
