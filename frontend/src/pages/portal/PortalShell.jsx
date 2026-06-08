@@ -110,7 +110,7 @@ function buildTabs({ modules, isDemo }) {
   // "stores / supplies" area rather than a portal feature.
   const s4 = [];
   if (modules.shape_orders === true) {
-    s4.push({ to: "/portal/shape-orders", label: "Shape Orders", icon: ShoppingBag, testid: "portal-nav-shape-orders" });
+    s4.push({ to: "/portal/shape-orders", label: "Franchise Store", icon: ShoppingBag, testid: "portal-nav-shape-orders" });
   }
   sections.push(s4);
   // ---- Section 5: account (always last) — change password, subscriptions, sign out

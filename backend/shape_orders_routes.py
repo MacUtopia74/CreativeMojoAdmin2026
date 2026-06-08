@@ -105,6 +105,11 @@ def attach(api, db, require_role):
             woo_id = int(woo_id)
         except (TypeError, ValueError):
             raise HTTPException(400, detail="woo_id must be an integer") from None
+        # Two kinds: ``shape_set`` (free, ships as pairs) and
+        # ``signage_clothing`` (priced, no pair rule, no qty cap).
+        kind = (body.get("product_kind") or "shape_set").strip().lower()
+        if kind not in {"shape_set", "signage_clothing"}:
+            raise HTTPException(400, detail="product_kind must be 'shape_set' or 'signage_clothing'")
 
         existing = await db.shape_order_products.find_one({"woo_id": woo_id})
         if existing:
@@ -146,6 +151,7 @@ def attach(api, db, require_role):
             "image_url": image,
             "permalink": woo_prod.get("permalink"),
             "price": woo_prod.get("price"),
+            "product_kind": kind,
             "active": True,
             "sort_order": next_sort,
             "created_at": _now_iso(),
@@ -167,6 +173,11 @@ def attach(api, db, require_role):
                 raise HTTPException(400, detail="sort_order must be an integer") from None
         if "name" in body and isinstance(body["name"], str):
             update["name"] = body["name"].strip()
+        if "product_kind" in body:
+            kind = (body["product_kind"] or "").strip().lower()
+            if kind not in {"shape_set", "signage_clothing"}:
+                raise HTTPException(400, detail="product_kind must be 'shape_set' or 'signage_clothing'")
+            update["product_kind"] = kind
         if not update:
             raise HTTPException(400, detail="Nothing to update.")
         update["updated_at"] = _now_iso()
@@ -285,53 +296,127 @@ def attach(api, db, require_role):
     @api.get("/portal/shape-orders/products")
     async def portal_list_products(user: dict = Depends(require_role("franchisee"))):
         await _check_access(db, user)
-        items: list[dict] = []
+        # Enrich price + image from the Woo mirror at list time so the
+        # Signage & Clothing cards stay accurate after Woo price edits
+        # without HQ having to re-add each product.
+        rows: list[dict] = []
         async for p in db.shape_order_products.find(
             {"active": True}, {"_id": 0},
         ).sort("sort_order", 1):
-            items.append(p)
-        return {"items": items, "total": len(items)}
+            rows.append(p)
+        if rows:
+            woo_ids = [r["woo_id"] for r in rows]
+            mirror: dict[int, dict] = {}
+            async for w in db.woo_products.find(
+                {"woo_id": {"$in": woo_ids}},
+                {"_id": 0, "woo_id": 1, "price": 1, "image_url": 1, "images": 1},
+            ):
+                mirror[w["woo_id"]] = w
+            for r in rows:
+                live = mirror.get(r["woo_id"]) or {}
+                if live.get("price") not in (None, ""):
+                    r["price"] = live["price"]
+                if not r.get("image_url") and live.get("images"):
+                    src = (live["images"][0] or {}).get("src")
+                    if src:
+                        r["image_url"] = src
+                # Default kind for any legacy rows that pre-date the new
+                # field — they're shape sets.
+                r.setdefault("product_kind", "shape_set")
+        return {"items": rows, "total": len(rows)}
 
     @api.post("/portal/shape-orders")
     async def portal_submit(body: dict, user: dict = Depends(require_role("franchisee"))):
         fr = await _check_access(db, user)
-        selection_in = body.get("woo_ids") or []
-        if not isinstance(selection_in, list) or not selection_in:
-            raise HTTPException(400, detail="Pick at least one shape set.")
-        # Strict-pairs rule — each shipping box holds exactly two
-        # DIFFERENT sets, no duplicates allowed.
-        try:
-            woo_ids = [int(x) for x in selection_in]
-        except (TypeError, ValueError):
-            raise HTTPException(400, detail="Invalid selection.") from None
-        if len(woo_ids) != len(set(woo_ids)):
-            raise HTTPException(
-                400,
-                detail="No duplicates allowed — each set can only appear once per order.",
-            )
-        if len(woo_ids) % 2 != 0:
-            raise HTTPException(
-                400,
-                detail="Each box ships two different sets, so your selection must be an even number (2, 4, 6…).",
-            )
 
-        # Resolve via curated list so franchisees can't order anything
-        # we haven't approved for the portal.
+        # Two payload shapes are accepted:
+        #   • legacy:  {"woo_ids": [int, …]}             — all shape sets
+        #   • current: {"shape_set_woo_ids": [...],
+        #               "extra_items": [{"woo_id":int, "quantity":int}, ...]}
+        # Either side may be empty so long as at least one item ends up
+        # in the order overall.
+        legacy_ids = body.get("woo_ids") or []
+        shape_ids_in = body.get("shape_set_woo_ids") or legacy_ids or []
+        extras_in = body.get("extra_items") or []
+
+        try:
+            shape_ids = [int(x) for x in shape_ids_in]
+        except (TypeError, ValueError):
+            raise HTTPException(400, detail="Invalid shape set selection.") from None
+
+        # Validate extras (signage & clothing — quantities allowed).
+        extras: list[dict] = []
+        for item in extras_in:
+            try:
+                wid = int(item.get("woo_id"))
+                qty = int(item.get("quantity") or 1)
+            except (TypeError, ValueError):
+                raise HTTPException(400, detail="Invalid extras item.") from None
+            if qty < 1:
+                continue
+            if qty > 999:
+                raise HTTPException(400, detail="Quantity 999 is the absolute cap per line.")
+            extras.append({"woo_id": wid, "quantity": qty})
+
+        if not shape_ids and not extras:
+            raise HTTPException(400, detail="Pick at least one item.")
+
+        # Shape-set rules: no duplicates + ship as pairs.
+        if shape_ids:
+            if len(shape_ids) != len(set(shape_ids)):
+                raise HTTPException(
+                    400,
+                    detail="No duplicate shape sets allowed — each set can only appear once per order.",
+                )
+            if len(shape_ids) % 2 != 0:
+                raise HTTPException(
+                    400,
+                    detail="Each box ships two different sets, so your shape selection must be an even number (2, 4, 6…).",
+                )
+
+        # Resolve everything against the curated catalogue (one query).
+        all_ids = list({*shape_ids, *(e["woo_id"] for e in extras)})
         curated: dict[int, dict] = {}
         async for p in db.shape_order_products.find(
-            {"woo_id": {"$in": woo_ids}, "active": True}, {"_id": 0},
+            {"woo_id": {"$in": all_ids}, "active": True}, {"_id": 0},
         ):
             curated[p["woo_id"]] = p
-        missing = [w for w in woo_ids if w not in curated]
+        missing = [w for w in all_ids if w not in curated]
         if missing:
-            raise HTTPException(400, detail=f"Some chosen sets aren't available right now: {missing}.")
+            raise HTTPException(400, detail=f"Some chosen items aren't available right now: {missing}.")
+
+        # Kind safety: shape_ids must be shape_set, extras must be signage_clothing.
+        for sid in shape_ids:
+            if (curated[sid].get("product_kind") or "shape_set") != "shape_set":
+                raise HTTPException(
+                    400,
+                    detail=f"{curated[sid].get('name') or sid} isn't a shape set — add it via Signage & Clothing.",
+                )
+        for ex in extras:
+            kind = curated[ex["woo_id"]].get("product_kind") or "shape_set"
+            if kind != "signage_clothing":
+                raise HTTPException(
+                    400,
+                    detail=f"{curated[ex['woo_id']].get('name') or ex['woo_id']} isn't a signage / clothing product.",
+                )
+
+        # Live-price the extras from the Woo mirror to make sure the
+        # franchisee can't talk us into the wrong price.
+        woo_prices: dict[int, float] = {}
+        if extras:
+            extra_ids = [e["woo_id"] for e in extras]
+            async for w in db.woo_products.find(
+                {"woo_id": {"$in": extra_ids}}, {"_id": 0, "woo_id": 1, "price": 1},
+            ):
+                try:
+                    woo_prices[w["woo_id"]] = float(w.get("price") or 0)
+                except (TypeError, ValueError):
+                    woo_prices[w["woo_id"]] = 0.0
 
         # Build the order doc. Mimic the manual "Direct" order shape
         # so the existing OrdersPage + OrderDetailPage render it
         # without changes.
         oid = str(uuid.uuid4())
-        # ``_next_display_order_id`` from woo integration lives inside its
-        # router attach closure, so we replicate the same logic here.
         top = await db.woo_orders.find_one(
             {"display_order_id": {"$ne": None}},
             sort=[("display_order_id", -1)],
@@ -339,15 +424,37 @@ def attach(api, db, require_role):
         )
         next_display = int((top or {}).get("display_order_id") or 8066) + 1
 
-        line_items = [{
-            "product_id": curated[w]["woo_id"],
-            "sku": curated[w].get("sku"),
-            "name": curated[w].get("name"),
-            "quantity": 1,
-            "price": 0.0,
-            "total": 0.0,
-            "image_url": curated[w].get("image_url"),
-        } for w in woo_ids]
+        line_items: list[dict] = []
+        order_total = 0.0
+        for sid in shape_ids:
+            c = curated[sid]
+            line_items.append({
+                "product_id": c["woo_id"],
+                "sku": c.get("sku"),
+                "name": c.get("name"),
+                "quantity": 1,
+                "price": 0.0,
+                "total": 0.0,
+                "image_url": c.get("image_url"),
+                "product_kind": "shape_set",
+            })
+        for ex in extras:
+            c = curated[ex["woo_id"]]
+            unit = woo_prices.get(ex["woo_id"], 0.0)
+            line_total = round(unit * ex["quantity"], 2)
+            order_total += line_total
+            line_items.append({
+                "product_id": c["woo_id"],
+                "sku": c.get("sku"),
+                "name": c.get("name"),
+                "quantity": ex["quantity"],
+                "price": unit,
+                "total": line_total,
+                "image_url": c.get("image_url"),
+                "product_kind": "signage_clothing",
+            })
+        order_total = round(order_total, 2)
+
         org = fr.get("organisation") or ""
         full_name = f"{fr.get('first_name','')} {fr.get('last_name','')}".strip()
         customer_label = org or full_name or "Franchisee"
@@ -380,16 +487,13 @@ def attach(api, db, require_role):
             "line_items": line_items,
             "line_items_unavailable": False,
             "shipping_total": 0.0,
-            "total": 0.0,
+            "total": order_total,
             "currency": "GBP",
-            # Internal status must be "active" so the order shows up on
-            # the Orders > ACTIVE tab (the franchisee facing label is
-            # carried separately on ``production_status``).
             "status": "active",
             "is_draft": False,
             "payment_status": "Pending",
             "production_status": "Awaiting Assembly",
-            "channel_label": "Shape Order",
+            "channel_label": "Franchise Store",
             "channel_pill": "shape-order",
             "date_created": now,
             "due_date": (body.get("due_date") or None),
@@ -406,7 +510,8 @@ def attach(api, db, require_role):
             "order_id": oid,
             "display_order_id": next_display,
             "line_item_count": len(line_items),
-            "boxes": len(line_items) // 2,
+            "boxes": len(shape_ids) // 2,
+            "total": order_total,
         }
 
 

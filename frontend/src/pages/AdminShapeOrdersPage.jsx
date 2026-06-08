@@ -70,6 +70,17 @@ export default function AdminShapeOrdersPage() {
     }
   };
 
+  const setKind = async (p, kind) => {
+    if ((p.product_kind || "shape_set") === kind) return;
+    setItems((arr) => arr.map((x) => x.woo_id === p.woo_id ? { ...x, product_kind: kind } : x));
+    try {
+      await api.patch(`/admin/shape-orders/products/${p.woo_id}`, { product_kind: kind });
+    } catch (e) {
+      setError(e?.response?.data?.detail || "Couldn't change product kind.");
+      load();
+    }
+  };
+
   const remove = async (p) => {
     if (!window.confirm(`Remove "${p.name}" from the catalogue?\n\nFranchisees won't be able to order this set any more, but existing orders are unaffected.`)) return;
     try {
@@ -85,7 +96,7 @@ export default function AdminShapeOrdersPage() {
       <div className="h-16 border-b border-stone-200 bg-white flex items-center px-8 sticky top-0 z-10">
         <div className="flex items-baseline gap-3 flex-1">
           <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">Admin</div>
-          <h1 className="font-display text-xl text-stone-950">Shape Order Catalogue</h1>
+          <h1 className="font-display text-xl text-stone-950">Franchise Store</h1>
           <span className="text-xs text-stone-500">{items.length} product{items.length === 1 ? "" : "s"}</span>
         </div>
         <button
@@ -110,7 +121,8 @@ export default function AdminShapeOrdersPage() {
         <div className="bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-xs text-stone-700 flex items-start gap-2">
           <ShoppingBag className="w-3.5 h-3.5 shrink-0 mt-0.5" />
           <div>
-            These are the products that appear on the franchisee <strong>Shape Orders</strong> page.
+            These are the products that appear on the franchisee <strong>Franchise Store</strong> page.
+            Each row is either a <strong>Shape Set</strong> (free, ships in pairs) or <strong>Signage &amp; Clothing</strong> (priced from Woo, ordered by quantity).
             Adding a product copies its name, SKU and image from the Woo mirror — keeping the page in sync without you having to retype anything.
             Toggle Active to temporarily hide a product without losing its position.
           </div>
@@ -148,8 +160,18 @@ export default function AdminShapeOrdersPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold text-stone-900 truncate">{p.name}</div>
-                    <div className="text-xs text-stone-500 font-mono">{p.sku || `#${p.woo_id}`}</div>
+                    <div className="text-xs text-stone-500 font-mono">{p.sku || `#${p.woo_id}`}{(p.product_kind === "signage_clothing" && p.price) ? <> · <span className="text-stone-700 font-bold">£{Number(p.price).toFixed(2)}</span></> : null}</div>
                   </div>
+                  <select
+                    value={p.product_kind || "shape_set"}
+                    onChange={(e) => setKind(p, e.target.value)}
+                    data-testid={`shape-catalogue-kind-${p.woo_id}`}
+                    className="text-[11px] font-semibold border border-stone-300 rounded-lg px-2 py-1 bg-white text-stone-800 focus:outline-none focus:border-stone-950"
+                    title="Shape Set: free, ships in pairs. Signage & Clothing: priced at Woo, no pair rule."
+                  >
+                    <option value="shape_set">Shape Set</option>
+                    <option value="signage_clothing">Signage &amp; Clothing</option>
+                  </select>
                   <label className="inline-flex items-center gap-1.5 text-xs cursor-pointer" data-testid={`shape-catalogue-active-${p.woo_id}`}>
                     <input type="checkbox" checked={!!p.active} onChange={() => toggleActive(p)} className="w-4 h-4 rounded border-stone-300 text-stone-900 focus:ring-stone-900" />
                     {p.active ? <span className="text-emerald-700 font-bold">Active</span> : <span className="text-stone-500">Hidden</span>}
@@ -175,6 +197,9 @@ function ProductPickerModal({ open, onClose, onAdded }) {
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState(null);
   const [err, setErr] = useState("");
+  // Default kind for new picks — flip to "signage_clothing" when adding
+  // a wave of t-shirts / stickers etc.
+  const [kind, setKind] = useState("shape_set");
 
   useEffect(() => {
     if (!open) { setQ(""); setResults([]); setErr(""); return; }
@@ -197,7 +222,7 @@ function ProductPickerModal({ open, onClose, onAdded }) {
   const add = async (wp) => {
     setAdding(wp.woo_id); setErr("");
     try {
-      const { data } = await api.post("/admin/shape-orders/products", { woo_id: wp.woo_id });
+      const { data } = await api.post("/admin/shape-orders/products", { woo_id: wp.woo_id, product_kind: kind });
       onAdded(data);
     } catch (e) {
       setErr(e?.response?.data?.detail || "Couldn't add product.");
@@ -216,7 +241,24 @@ function ProductPickerModal({ open, onClose, onAdded }) {
             <XIcon className="w-4 h-4" />
           </button>
         </div>
-        <div className="p-4">
+        <div className="p-4 space-y-3">
+          <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-stone-700">
+            <span>Add as:</span>
+            <div className="inline-flex rounded-lg overflow-hidden border border-stone-300" data-testid="shape-picker-kind">
+              <button
+                type="button"
+                onClick={() => setKind("shape_set")}
+                data-testid="shape-picker-kind-shape"
+                className={`px-3 py-1.5 text-[11px] ${kind === "shape_set" ? "bg-stone-950 text-[#dddd16]" : "bg-white text-stone-700 hover:bg-stone-50"}`}
+              >Shape Set</button>
+              <button
+                type="button"
+                onClick={() => setKind("signage_clothing")}
+                data-testid="shape-picker-kind-signage"
+                className={`px-3 py-1.5 text-[11px] border-l border-stone-300 ${kind === "signage_clothing" ? "bg-stone-950 text-[#dddd16]" : "bg-white text-stone-700 hover:bg-stone-50"}`}
+              >Signage &amp; Clothing</button>
+            </div>
+          </div>
           <div className="relative">
             <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
             <input
