@@ -263,11 +263,12 @@ export default function CalendarPage() {
       end: e.end,
       allDay: !!e.all_day,
       extendedProps: { ...e, _kind: "hq" },
-      // Solid green block (mirrors the yearly-events styling so the
-      // grid reads as a coherent pair of colour-coded sources).
-      backgroundColor: "#16A34A",
-      borderColor: "#14532D",
-      textColor: "#FFFFFF",
+      // Mojo brand lime — matches the [#dddd16] used in the portal
+      // header, Help modal, and franchisee Zoom chips. Dark olive
+      // border + near-black text for AA contrast on the lime fill.
+      backgroundColor: "#dddd16",
+      borderColor: "#7a7a0c",
+      textColor: "#1c1917",
       display: "block",
     }));
     // Yearly events get the same light-blue solid block the franchisee
@@ -463,7 +464,7 @@ export default function CalendarPage() {
                   a glance which colours map to which event source. */}
               <div className="flex items-center gap-4 mb-3 text-[11px] text-stone-600 flex-wrap" data-testid="cal-legend">
                 <span className="inline-flex items-center gap-1.5">
-                  <span className="w-3 h-3 rounded-sm" style={{ background: "#16A34A", border: "1px solid #14532D" }} />
+                  <span className="w-3 h-3 rounded-sm" style={{ background: "#dddd16", border: "1px solid #7a7a0c" }} />
                   Google Calendar events
                 </span>
                 <span className="inline-flex items-center gap-1.5">
