@@ -215,9 +215,13 @@ To swap from the legacy Airtable lookup to this:
 <script>
 (function () {
   // -----------------------------------------------------------------------
-  // CONFIG — update these two values for production
+  // CONFIG — set to the production admin API. Do NOT use the preview URL
+  // here; preview pods are ephemeral and will start returning 404 after
+  // a fork or redeploy, which then breaks the WordPress page silently.
+  // If you ever need to point at a staging environment, change this one
+  // line and re-copy the embed into WordPress.
   // -----------------------------------------------------------------------
-  var API_BASE = "https://licensee-vault.preview.emergentagent.com/api";
+  var API_BASE = "https://hub.creativemojo.co.uk/api";
   var MAPBOX_TOKEN = "pk.eyJ1IjoiY3JlYXRpdmVtb2pvbHRkIiwiYSI6ImNtcGNyeDhyZDAybGUycnF4cnVkNGJqdHIifQ.qWkZE0fIihU9Xxg7-J8k7Q";
 
   // -----------------------------------------------------------------------
