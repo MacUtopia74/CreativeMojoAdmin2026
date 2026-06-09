@@ -198,7 +198,14 @@ function InvoiceDetail() {
       const url = URL.createObjectURL(res.data);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `${invoice.invoice_number || "invoice"}.pdf`;
+      // Filename: ClientName_dd.MM.yy_INV-001.pdf — much friendlier than
+      // the raw invoice UUID we used to fall back to.
+      const safe = (s) => (s || "").toString().trim().replace(/[\\/:*?"<>|]+/g, "").replace(/\s+/g, "-").slice(0, 60);
+      const dateBit = invoice.issue_date
+        ? format(parseISO(invoice.issue_date), "dd.MM.yy")
+        : (invoice.created_at ? format(parseISO(invoice.created_at), "dd.MM.yy") : "");
+      const parts = [safe(invoice.client_name) || "client", dateBit, invoice.invoice_number || "draft"].filter(Boolean);
+      link.download = `${parts.join("_")}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

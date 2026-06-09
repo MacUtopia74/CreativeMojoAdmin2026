@@ -174,18 +174,30 @@ function InvoiceDetail() {
 
   const downloadPDF = async () => {
     try {
-      // Use direct URL approach for more reliable downloads
-      const downloadUrl = `${API_BASE}/invoices/${id}/pdf?download=true`;
+      // Fetch as a blob so we can dictate the filename ourselves rather
+      // than relying on Content-Disposition (which the browser ignores
+      // for `<a download>` on a fresh navigation in some setups).
+      const res = await api.get(`/invoices/${id}/pdf`, {
+        responseType: "blob",
+        params: { download: true },
+      });
+      const url = URL.createObjectURL(res.data);
       const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = `${invoice.invoice_number}.pdf`;
-      link.target = '_blank';
+      link.href = url;
+      // Filename: ClientName_dd.MM.yy_INV-001.pdf
+      const safe = (s) => (s || "").toString().trim().replace(/[\\/:*?"<>|]+/g, "").replace(/\s+/g, "-").slice(0, 60);
+      const dateBit = invoice.issue_date
+        ? format(parseISO(invoice.issue_date), "dd.MM.yy")
+        : (invoice.created_at ? format(parseISO(invoice.created_at), "dd.MM.yy") : "");
+      const parts = [safe(invoice.client_name) || "client", dateBit, invoice.invoice_number || "draft"].filter(Boolean);
+      link.download = `${parts.join("_")}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+
       toast.success("PDF download started");
-      
+
       // Refresh invoice to show updated status
       setTimeout(async () => {
         const updatedInvoice = await api.get(`/invoices/${id}`);
