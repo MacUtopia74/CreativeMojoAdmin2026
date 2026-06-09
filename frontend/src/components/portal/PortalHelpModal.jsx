@@ -1,19 +1,23 @@
 // Context-aware portal Help modal — clicking the Help button in the
-// sidebar opens a full-screen overlay showing whichever marked-up
-// screenshot HQ uploaded for the current page (under /admin/help-centre).
+// sidebar opens a full-screen overlay showing the carousel of marked-up
+// screenshots HQ uploaded for the current page.
+//
+// Multi-slide UX: big ◀ ▶ arrows on either side of the image, thumbnail
+// strip at the bottom for direct nav, keyboard arrows + ESC supported.
 //
 // Path resolution: walks the index returned by /api/portal/help/index
 // from the longest match_paths down so that "/portal/territory/basic"
 // resolves to "my-territory" not "my-territory-plus".
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useLocation } from "react-router-dom";
-import { X, Loader2, LifeBuoy, ImageOff } from "lucide-react";
+import { X, Loader2, LifeBuoy, ImageOff, ChevronLeft, ChevronRight } from "lucide-react";
 import api from "@/lib/api";
 
 export default function PortalHelpModal({ open, onClose }) {
   const { pathname } = useLocation();
   const [index, setIndex] = useState([]);
   const [page, setPage] = useState(null);
+  const [activeIdx, setActiveIdx] = useState(0);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
@@ -51,7 +55,7 @@ export default function PortalHelpModal({ open, onClose }) {
 
   const fetchPage = useCallback(async (slug) => {
     if (!slug) return;
-    setLoading(true); setErr("");
+    setLoading(true); setErr(""); setActiveIdx(0);
     try {
       const { data } = await api.get(`/portal/help/pages/${slug}`);
       setPage(data);
@@ -60,15 +64,32 @@ export default function PortalHelpModal({ open, onClose }) {
     } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { if (open && resolvedSlug) fetchPage(resolvedSlug); }, [open, resolvedSlug, fetchPage]);
+  useEffect(() => { if (open && resolvedSlug) fetchPage(resolvedSlug); }, [open, resolvedSlug, fetchPage]); // eslint-disable-line react-hooks/set-state-in-effect
 
-  // ESC closes — small UX nicety that costs nothing.
+  const slides = page?.slides || [];
+  const hasSlides = slides.length > 0;
+  const slide = hasSlides ? slides[Math.min(activeIdx, slides.length - 1)] : null;
+
+  const goPrev = useCallback(() => {
+    if (!hasSlides) return;
+    setActiveIdx((i) => (i - 1 + slides.length) % slides.length);
+  }, [hasSlides, slides.length]);
+  const goNext = useCallback(() => {
+    if (!hasSlides) return;
+    setActiveIdx((i) => (i + 1) % slides.length);
+  }, [hasSlides, slides.length]);
+
+  // ESC closes; arrow keys flip slides.
   useEffect(() => {
     if (!open) return undefined;
-    const onKey = (e) => { if (e.key === "Escape") onClose?.(); };
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose?.();
+      else if (e.key === "ArrowLeft") goPrev();
+      else if (e.key === "ArrowRight") goNext();
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [open, onClose, goPrev, goNext]);
 
   if (!open) return null;
 
@@ -91,6 +112,11 @@ export default function PortalHelpModal({ open, onClose }) {
                 {page?.title || "Loading…"}
               </div>
             </div>
+            {hasSlides && slides.length > 1 && (
+              <span className="ml-3 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-[#dddd16] rounded-md" data-testid="portal-help-slide-counter">
+                {activeIdx + 1} / {slides.length}
+              </span>
+            )}
           </div>
           <button onClick={onClose} className="p-2 hover:bg-stone-950/10 rounded-lg" data-testid="portal-help-close">
             <X className="w-4 h-4" />
@@ -116,13 +142,84 @@ export default function PortalHelpModal({ open, onClose }) {
                   {page.caption}
                 </p>
               )}
-              {page.image_url ? (
-                <img
-                  src={page.image_url}
-                  alt={`${page.title} help`}
-                  className="w-full rounded-lg border border-stone-200 shadow-sm bg-white"
-                  data-testid="portal-help-image"
-                />
+
+              {hasSlides ? (
+                <>
+                  {/* Big image + arrows */}
+                  <div className="relative bg-white rounded-lg border border-stone-200 shadow-sm overflow-hidden">
+                    {slide?.image_url ? (
+                      <img
+                        key={slide.id}
+                        src={slide.image_url}
+                        alt={`${page.title} step ${activeIdx + 1}`}
+                        className="w-full max-h-[60vh] object-contain bg-white"
+                        data-testid="portal-help-image"
+                      />
+                    ) : (
+                      <div className="w-full h-64 flex items-center justify-center text-stone-400">
+                        <ImageOff className="w-8 h-8" />
+                      </div>
+                    )}
+
+                    {slides.length > 1 && (
+                      <>
+                        <button
+                          onClick={goPrev}
+                          aria-label="Previous slide"
+                          data-testid="portal-help-prev"
+                          className="absolute left-3 top-1/2 -translate-y-1/2 w-11 h-11 flex items-center justify-center bg-stone-950/80 hover:bg-stone-950 text-white rounded-full shadow-lg transition"
+                        >
+                          <ChevronLeft className="w-6 h-6" />
+                        </button>
+                        <button
+                          onClick={goNext}
+                          aria-label="Next slide"
+                          data-testid="portal-help-next"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 w-11 h-11 flex items-center justify-center bg-stone-950/80 hover:bg-stone-950 text-white rounded-full shadow-lg transition"
+                        >
+                          <ChevronRight className="w-6 h-6" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Per-slide caption */}
+                  {slide?.caption && (
+                    <p
+                      className="text-sm text-stone-800 leading-relaxed mt-3 px-2 max-w-3xl"
+                      data-testid="portal-help-slide-caption"
+                    >
+                      <span className="font-bold mr-1">Step {activeIdx + 1}:</span>
+                      {slide.caption}
+                    </p>
+                  )}
+
+                  {/* Thumbnail strip */}
+                  {slides.length > 1 && (
+                    <div className="mt-4 flex gap-2 overflow-x-auto pb-1" data-testid="portal-help-thumbs">
+                      {slides.map((s, i) => (
+                        <button
+                          key={s.id}
+                          onClick={() => setActiveIdx(i)}
+                          data-testid={`portal-help-thumb-${i}`}
+                          className={`relative shrink-0 w-24 h-16 rounded-md overflow-hidden border-2 transition ${i === activeIdx ? "border-stone-950 ring-2 ring-[#dddd16]" : "border-stone-200 hover:border-stone-400"}`}
+                          title={s.caption || `Step ${i + 1}`}
+                        >
+                          {s.image_url ? (
+                            <img src={s.image_url} alt={`thumb ${i + 1}`} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-stone-100 text-stone-400">
+                              <ImageOff className="w-3 h-3" />
+                            </div>
+                          )}
+                          <span className="absolute bottom-0.5 left-0.5 px-1 text-[9px] font-bold bg-stone-950/80 text-white rounded">
+                            {i + 1}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
               ) : (
                 <div className="text-center py-10 text-stone-500 border-2 border-dashed border-stone-200 rounded-xl bg-white">
                   <ImageOff className="w-8 h-8 mx-auto mb-2 text-stone-300" />
