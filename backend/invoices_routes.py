@@ -39,7 +39,32 @@ from reportlab.platypus import (
     Table,
     TableStyle,
 )
+import re
 import uuid
+
+
+# Filename helper — keeps the PDF metadata title, Save-As default and
+# Content-Disposition all in lock-step. Chrome's PDF viewer pulls its
+# default "Save As…" filename from the PDF's /Title metadata when no
+# Content-Disposition is present (which is the case for blob: URLs the
+# frontend uses to open in a new tab).
+def _invoice_filename(invoice: dict) -> str:
+    raw_client = (invoice.get("client_name") or "").strip()
+    safe_client = re.sub(r"[\\/:*?\"<>|]+", "", raw_client)
+    safe_client = re.sub(r"\s+", "-", safe_client)[:60] or "client"
+    date_bit = ""
+    iso = invoice.get("issue_date") or invoice.get("created_at") or ""
+    try:
+        d = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+        date_bit = d.strftime("%d.%m.%y")
+    except (ValueError, TypeError):
+        date_bit = ""
+    number_bit = (invoice.get("invoice_number") or "draft").strip()
+    parts = [safe_client]
+    if date_bit:
+        parts.append(date_bit)
+    parts.append(number_bit)
+    return "_".join(parts)
 
 
 # =========================== MODELS ===========================
@@ -665,11 +690,11 @@ def build_invoices_router(db, require_role):
             )
         ) or DEFAULT_SETTINGS
         pdf_bytes = _render_invoice_pdf(invoice, settings)
-        filename = f"{invoice['invoice_number']}.pdf"
+        filename = f"{_invoice_filename(invoice)}.pdf"
         disposition = (
-            f"attachment; filename={filename}"
+            f'attachment; filename="{filename}"'
             if download
-            else f"inline; filename={filename}"
+            else f'inline; filename="{filename}"'
         )
         return Response(
             content=pdf_bytes,
@@ -687,8 +712,10 @@ def build_invoices_router(db, require_role):
             {"id": "app_settings"}, {"_id": 0}
         )
         if not s:
-            await db.invoice_settings.insert_one(DEFAULT_SETTINGS)
-            return DEFAULT_SETTINGS
+            seed = {**DEFAULT_SETTINGS}
+            await db.invoice_settings.insert_one(seed)
+            seed.pop("_id", None)
+            return seed
         return s
 
     @router.put("/settings/me", response_model=InvoiceSettings)
@@ -704,6 +731,7 @@ def build_invoices_router(db, require_role):
         if not existing:
             new_settings = {**DEFAULT_SETTINGS, **update}
             await db.invoice_settings.insert_one(new_settings)
+            new_settings.pop("_id", None)
             return new_settings
         await db.invoice_settings.update_one(
             {"id": "app_settings"}, {"$set": update}
@@ -728,6 +756,10 @@ def _render_invoice_pdf(invoice: dict, settings: dict) -> bytes:
         leftMargin=30 * mm,
         topMargin=30 * mm,
         bottomMargin=30 * mm,
+        # Sets the PDF's /Title metadata — Chrome / Safari / Firefox use
+        # this as the default "Save As" filename when the file is opened
+        # inline (no Content-Disposition, e.g. via a blob: URL).
+        title=_invoice_filename(invoice),
     )
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(

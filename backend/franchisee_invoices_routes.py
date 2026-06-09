@@ -49,9 +49,33 @@ from reportlab.platypus import (
     TableStyle,
 )
 from pathlib import Path as _Path
+import re
 
 # Brand logo embedded at the top-left of every generated invoice.
 _LOGO_PATH = _Path(__file__).resolve().parent / "assets" / "cm-invoice-logo.png"
+
+
+# Filename helper — keeps the PDF metadata title and the Save-As default
+# (and Content-Disposition) all aligned. Chrome's PDF viewer pulls its
+# default filename from the PDF's /Title metadata when the file is
+# opened inline (e.g. via a blob: URL the frontend uses).
+def _invoice_filename(invoice: dict) -> str:
+    raw_client = (invoice.get("client_name") or "").strip()
+    safe_client = re.sub(r"[\\/:*?\"<>|]+", "", raw_client)
+    safe_client = re.sub(r"\s+", "-", safe_client)[:60] or "client"
+    date_bit = ""
+    iso = invoice.get("issue_date") or invoice.get("created_at") or ""
+    try:
+        d = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+        date_bit = d.strftime("%d.%m.%y")
+    except (ValueError, TypeError):
+        date_bit = ""
+    number_bit = (invoice.get("invoice_number") or "draft").strip()
+    parts = [safe_client]
+    if date_bit:
+        parts.append(date_bit)
+    parts.append(number_bit)
+    return "_".join(parts)
 
 
 # =========================== MODELS ===========================
@@ -553,7 +577,7 @@ def build_franchisee_invoices_router(db, require_role):
 
     # ----------------------------- PDF
     @router.get("/{invoice_id}/pdf")
-    async def invoice_pdf(invoice_id: str, user: dict = franchisee):
+    async def invoice_pdf(invoice_id: str, download: bool = False, user: dict = franchisee):
         fid = await _fid(user)
         inv = await db.franchisee_invoices.find_one(
             {"id": invoice_id, "franchisee_id": fid}, {"_id": 0, "franchisee_id": 0},
@@ -568,10 +592,16 @@ def build_franchisee_invoices_router(db, require_role):
             f = await db.franchisees.find_one({"id": fid}, {"_id": 0})
             settings = _default_settings_from_franchisee(f) if f else {}
         pdf_bytes = _render_invoice_pdf(inv, settings)
+        filename = f"{_invoice_filename(inv)}.pdf"
+        disposition = (
+            f'attachment; filename="{filename}"'
+            if download
+            else f'inline; filename="{filename}"'
+        )
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename=invoice-{inv['invoice_number']}.pdf"},
+            headers={"Content-Disposition": disposition},
         )
 
     # ----------------------------- INVOICE → PAYMENT linking
@@ -983,6 +1013,10 @@ def _render_invoice_pdf(invoice: dict, settings: dict) -> bytes:
         buf, pagesize=A4,
         leftMargin=18 * mm, rightMargin=18 * mm,
         topMargin=18 * mm, bottomMargin=18 * mm,
+        # Sets the PDF's /Title metadata — Chrome / Safari / Firefox use
+        # this as the default "Save As" filename when the file is opened
+        # inline (no Content-Disposition, e.g. via a blob: URL).
+        title=_invoice_filename(invoice),
     )
     styles = getSampleStyleSheet()
     h_left = ParagraphStyle("hl", parent=styles["Normal"], fontSize=10, leading=12)

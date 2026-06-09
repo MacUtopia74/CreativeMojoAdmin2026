@@ -169,8 +169,20 @@ function InvoiceDetail() {
     try {
       const res = await api.get(`/portal/invoices/${id}/pdf`, { responseType: "blob" });
       const url = URL.createObjectURL(res.data);
-      if (tabRef) tabRef.location.href = url;
-      else window.open(url, "_blank");
+      // Friendly fallback for Cmd+S: also tag the new tab's title with
+      // the same filename so it doesn't read "about:blank" in the tab
+      // strip while the PDF loads.
+      const safe = (s) => (s || "").toString().trim().replace(/[\\/:*?"<>|]+/g, "").replace(/\s+/g, "-").slice(0, 60);
+      const dateBit = invoice.issue_date
+        ? format(parseISO(invoice.issue_date), "dd.MM.yy")
+        : (invoice.created_at ? format(parseISO(invoice.created_at), "dd.MM.yy") : "");
+      const niceName = [safe(invoice.client_name) || "client", dateBit, invoice.invoice_number || "draft"].filter(Boolean).join("_");
+      if (tabRef) {
+        try { tabRef.document.title = niceName; } catch (_) { /* cross-origin */ }
+        tabRef.location.href = url;
+      } else {
+        window.open(url, "_blank");
+      }
       // Revoke after the new tab has had a chance to load.
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
       toast.success("PDF opened in new tab");
