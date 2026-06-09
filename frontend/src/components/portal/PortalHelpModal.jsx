@@ -110,26 +110,31 @@ export default function PortalHelpModal({ open, onClose }) {
       data-testid="portal-help-modal"
     >
       <div
-        className="bg-white shadow-2xl w-full h-full flex flex-col overflow-hidden"
+        className="bg-white shadow-2xl h-full flex flex-col overflow-hidden min-w-[420px] max-w-[98vw]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-5 py-3 flex items-center justify-between border-b border-stone-200 bg-[#dddd16] shrink-0">
-          <div className="flex items-center gap-2 text-stone-950">
-            <LifeBuoy className="w-4 h-4" />
-            <div>
+        <div className="px-5 py-3 flex items-center justify-between gap-4 border-b border-stone-200 bg-[#dddd16] shrink-0">
+          <div className="flex items-center gap-2 text-stone-950 min-w-0">
+            <LifeBuoy className="w-4 h-4 shrink-0" />
+            <div className="min-w-0">
               <div className="text-[10px] uppercase tracking-[0.3em] font-bold opacity-70">Help guide</div>
-              <div className="font-display text-lg font-black leading-tight" data-testid="portal-help-title">
+              <div className="font-display text-lg font-black leading-tight truncate" data-testid="portal-help-title">
                 {page?.title || "Loading…"}
               </div>
             </div>
             {hasSlides && slides.length > 1 && (
-              <span className="ml-3 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-[#dddd16] rounded-md" data-testid="portal-help-slide-counter">
+              <span className="ml-3 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-[#dddd16] rounded-md shrink-0" data-testid="portal-help-slide-counter">
                 {activeIdx + 1} / {slides.length}
               </span>
             )}
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-stone-950/10 rounded-lg" data-testid="portal-help-close">
-            <X className="w-5 h-5" />
+          <button
+            onClick={onClose}
+            data-testid="portal-help-close"
+            className="shrink-0 inline-flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-[0.15em] bg-stone-950 hover:bg-stone-800 text-[#dddd16] rounded-lg transition"
+          >
+            <X className="w-3.5 h-3.5" />
+            Close Help
           </button>
         </div>
 
@@ -152,10 +157,10 @@ export default function PortalHelpModal({ open, onClose }) {
             </div>
           )}
           {!loading && !err && resolvedSlug && page && (
-            <div className="max-w-6xl mx-auto flex flex-col h-full">
+            <div className="flex flex-col h-full">
               {page.caption && (
                 <p
-                  className="text-sm text-stone-700 leading-relaxed mb-4"
+                  className="text-sm text-stone-700 leading-relaxed mb-4 max-w-3xl"
                   data-testid="portal-help-caption"
                 >
                   {page.caption}
@@ -164,14 +169,19 @@ export default function PortalHelpModal({ open, onClose }) {
 
               {hasSlides ? (
                 <>
-                  {/* Big image + arrows */}
-                  <div className="relative bg-white rounded-lg border border-stone-200 shadow-sm overflow-hidden flex-1 min-h-0">
+                  {/* Image area — width is determined by the image at
+                      full height. The modal's outer container has no
+                      explicit width, so when the slide is portrait the
+                      whole modal narrows to fit; when it's landscape
+                      the modal caps at max-w-[98vw] and the image
+                      letterboxes top/bottom (still maximum height). */}
+                  <div className="relative bg-white rounded-lg border border-stone-200 shadow-sm overflow-hidden flex-1 min-h-0 flex items-center justify-center">
                     {slide?.image_url ? (
                       <img
                         key={slide.id}
                         src={slide.image_url}
                         alt={`${page.title} step ${activeIdx + 1}`}
-                        className="w-full h-full object-contain bg-white"
+                        className="h-full w-auto max-w-full object-contain bg-white"
                         data-testid="portal-help-image"
                       />
                     ) : (
