@@ -26,21 +26,6 @@ import PortalPageHeading from "@/components/portal/PortalPageHeading";
 // (added as recurring lines to their Xero invoice on admin approval).
 const BOLT_ONS = [
   {
-    key: "invoicing",
-    title: "Invoicing+",
-    icon: Receipt,
-    price: 10,
-    accent: "#10b981",
-    blurb: "Issue, send and reconcile your own customer invoices — linked to your contacts list.",
-    features: [
-      "Create, save and send invoices from inside the portal",
-      "Linked to your customer contacts",
-      "Branded invoice PDFs with your franchise details",
-      "Add tax rates and discount rates",
-      "Save / download as PDF in one click",
-    ],
-  },
-  {
     key: "territory_plus",
     title: "My Territory+",
     icon: MapPin,
@@ -54,6 +39,21 @@ const BOLT_ONS = [
       "Basic CRM — notes, statuses, follow-up reminders",
       "Edit existing CQC database client info",
       "Group by care home group within your territory",
+    ],
+  },
+  {
+    key: "invoicing",
+    title: "Invoicing+",
+    icon: Receipt,
+    price: 10,
+    accent: "#10b981",
+    blurb: "Issue, send and reconcile your own customer invoices — linked to your contacts list.",
+    features: [
+      "Create, save and send invoices from inside the portal",
+      "Linked to your customer contacts",
+      "Branded invoice PDFs with your franchise details",
+      "Add tax rates and discount rates",
+      "Save / download as PDF in one click",
     ],
   },
   {
@@ -147,13 +147,54 @@ export default function PortalSubscriptionsPage() {
   }, []);
   useEffect(() => { loadPending(); }, [loadPending]);
 
+  // When a franchisee tries to add Invoicing+, Marketing+ or
+  // Bookings+ without Territory+ already selected (or already
+  // active), we surface a popup explaining the dependency. They can
+  // then confirm and we'll auto-add Territory+ alongside their
+  // requested module so the bundle is internally consistent.
+  const [dependencyPrompt, setDependencyPrompt] = useState(null); // { addonKey, addonTitle }
+
   const toggle = (key) => {
     if (pendingKeys.has(key) || modules[key]) return; // can't reselect
+    // Deselecting is always allowed.
+    if (selected.has(key)) {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        // Cascade: if Territory+ is being removed, drop any dependent
+        // bolt-ons too so the selection stays internally consistent.
+        if (key === "territory_plus") {
+          ["invoicing", "marketing", "bookings"].forEach((k) => next.delete(k));
+        }
+        return next;
+      });
+      return;
+    }
+    // Adding a "needs Territory+" module without Territory+? Prompt.
+    const NEEDS_TERRITORY = new Set(["invoicing", "marketing", "bookings"]);
+    if (NEEDS_TERRITORY.has(key) && !selected.has("territory_plus") && !modules.territory_plus) {
+      const meta = BOLT_ONS.find((b) => b.key === key);
+      setDependencyPrompt({ addonKey: key, addonTitle: meta?.title || key });
+      return;
+    }
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key); else next.add(key);
+      next.add(key);
       return next;
     });
+  };
+
+  // Called from the popup's "Add both" button — bundles Territory+
+  // with the originally-requested addon in one go.
+  const acceptDependencyPrompt = () => {
+    if (!dependencyPrompt) return;
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.add("territory_plus");
+      next.add(dependencyPrompt.addonKey);
+      return next;
+    });
+    setDependencyPrompt(null);
   };
 
   const selectedCount = selected.size;
@@ -490,6 +531,66 @@ export default function PortalSubscriptionsPage() {
       {/* Confirmation modal — single source of truth for explaining the
           DD-mandate payment mechanism so the franchisee has no
           surprises later. */}
+      {/* Dependency prompt — when the franchisee tries to add
+          Invoicing+ / Marketing+ / Bookings+ without Territory+ in
+          the basket, this explains the dependency and offers to
+          bundle Territory+ in for them. Cancel just leaves their
+          selection untouched. */}
+      {dependencyPrompt && (
+        <div
+          onClick={() => setDependencyPrompt(null)}
+          className="fixed inset-0 z-[130] bg-stone-950/60 backdrop-blur-sm flex items-center justify-center p-4"
+          data-testid="subs-dependency-modal"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden"
+          >
+            <div className="px-5 py-3 flex items-center justify-between border-b border-stone-200 bg-[#0ea5e9] text-white">
+              <div className="font-display text-xl font-black flex items-center gap-2">
+                <MapPin className="w-5 h-5" />
+                My Territory+ required
+              </div>
+              <button
+                onClick={() => setDependencyPrompt(null)}
+                className="p-1.5 hover:bg-white/15 rounded-lg"
+                data-testid="subs-dependency-close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="px-6 py-5 space-y-4 text-sm text-stone-700 leading-relaxed">
+              <p>
+                <strong>{dependencyPrompt.addonTitle}</strong> sits on top of <strong>My Territory+</strong> —
+                it&apos;s the bolt-on that holds your claimed customers, your map markers and your CRM data,
+                which the other modules read from.
+              </p>
+              <p>
+                You&apos;ll need <strong>My Territory+</strong> first before adding any other module. Would
+                you like to add both together? At this size, your bundle becomes <strong>£15 / month
+                (Any 2)</strong> — a £5 saving versus buying them individually.
+              </p>
+              <div className="flex flex-col-reverse sm:flex-row gap-2 justify-end pt-2">
+                <button
+                  onClick={() => setDependencyPrompt(null)}
+                  data-testid="subs-dependency-cancel"
+                  className="px-4 py-2 text-sm font-bold uppercase tracking-wider border border-stone-300 hover:bg-stone-50 rounded-lg"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={acceptDependencyPrompt}
+                  data-testid="subs-dependency-accept"
+                  className="px-4 py-2 text-sm font-bold uppercase tracking-wider bg-stone-950 hover:bg-stone-800 text-[#dddd16] rounded-lg"
+                >
+                  Add both — £15 / month
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {confirmAddons.length > 0 && (
         <div
           onClick={() => !confirming && setConfirmFor(null)}
