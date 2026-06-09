@@ -199,7 +199,7 @@ export default function PortalDetailsPage() {
           <FolderOpen className="w-6 h-6 text-stone-700 shrink-0" />
           <h1 className="font-display text-2xl sm:text-3xl font-black text-stone-950 tracking-tight">My Own Franchise Documents</h1>
         </div>
-        <FranchiseeFilesPanel franchisee={profile} lockedTab="own" />
+        <FranchiseeFilesPanel franchisee={profile} lockedTab="own" hideZipAll />
       </section>
     </div>
   );

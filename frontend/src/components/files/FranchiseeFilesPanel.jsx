@@ -32,7 +32,7 @@ function fmtBytes(b) {
 
 const BRAND_ROOT = "shared/files-for-all-franchisees/";
 
-export default function FranchiseeFilesPanel({ franchisee, canUpload = true, lockedTab = null }) {
+export default function FranchiseeFilesPanel({ franchisee, canUpload = true, lockedTab = null, hideZipAll = false }) {
   // ``lockedTab`` — when "own" or "brand", the panel renders ONLY that tab and
   // hides the tab strip. Used by the portal which splits the two scopes
   // across two physical sections (own files inside the YOUR FRANCHISE DETAILS
@@ -194,7 +194,7 @@ export default function FranchiseeFilesPanel({ franchisee, canUpload = true, loc
             <LayoutGrid className="w-3.5 h-3.5" /> Grid
           </button>
         </div>
-        {tab === "own" && rootPrefix && !search && (
+        {tab === "own" && rootPrefix && !search && !hideZipAll && (
           <button onClick={zipAll} data-testid="franchisee-files-zip"
             className="touch-target px-3 text-xs font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-xl flex items-center gap-1.5">
             <Package className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Download all as ZIP</span><span className="sm:hidden">ZIP</span>
