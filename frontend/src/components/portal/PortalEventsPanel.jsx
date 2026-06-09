@@ -35,6 +35,20 @@ const COLOUR_MINE = { bg: "#9333EA", border: "#6B21A8", text: "#FFFFFF" };
 const isZoomUrl = (u) => !!u && /(^|\W)zoom\.(us|com)\b/i.test(u);
 const isTeamsUrl = (u) => !!u && /teams\.(microsoft|live)\.com/i.test(u);
 
+// FullCalendar `eventContent` renderer — title on top, time below,
+// styled via `.portal-cal-chip*` rules in /src/index.css. Lives at
+// module scope so React doesn't treat it as a new component each
+// render (no remount thrash).
+function renderCalChip(arg) {
+  const timeText = arg.event.allDay ? "" : arg.timeText;
+  return (
+    <div className="portal-cal-chip">
+      <div className="portal-cal-chip-title">{arg.event.title}</div>
+      {timeText && <div className="portal-cal-chip-time">{timeText}</div>}
+    </div>
+  );
+}
+
 function ukDate(iso) {
   if (!iso) return "—";
   try {
@@ -197,6 +211,11 @@ export default function PortalEventsPanel({ open, onToggle, alwaysOpen = false, 
         backgroundColor: palette.bg,
         borderColor: palette.border,
         textColor: palette.text,
+        // Force a solid filled chip in Month view (FullCalendar
+        // defaults to a "list-item" dot for timed events otherwise,
+        // which is what made Zoom meetings look like a one-pixel
+        // splat next to "04:00 Mojo Matters Meeting").
+        display: "block",
       });
     });
     yearlyEvents.forEach((e) => {
@@ -435,7 +454,7 @@ export default function PortalEventsPanel({ open, onToggle, alwaysOpen = false, 
             </div>
           ) : viewMode === "calendar" ? (
             <>
-              <div className="border border-stone-200 rounded-xl overflow-hidden bg-white" data-testid="portal-events-grid">
+              <div className="border border-stone-200 rounded-xl overflow-hidden bg-white portal-cal-wrap" data-testid="portal-events-grid">
                 <FullCalendar
                   ref={fcRef}
                   plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
@@ -454,6 +473,11 @@ export default function PortalEventsPanel({ open, onToggle, alwaysOpen = false, 
                   buttonText={{ today: "Today", month: "Month", week: "Week", day: "Day" }}
                   eventTimeFormat={{ hour: "2-digit", minute: "2-digit", meridiem: false }}
                   slotLabelFormat={{ hour: "2-digit", minute: "2-digit", meridiem: false }}
+                  // Custom chip layout — title on top, time underneath
+                  // so the franchisee can read the full title even when
+                  // the cell is narrow. Wrapping is enabled via the
+                  // portal-cal-wrap CSS rules below.
+                  eventContent={renderCalChip}
                   // Track external view changes (toolbar nav doesn't fire
                   // a direct button event for us; this keeps the local
                   // "calView" state in sync if FC ever switches views).

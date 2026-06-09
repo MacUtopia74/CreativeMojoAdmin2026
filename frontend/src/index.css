@@ -136,3 +136,49 @@ html, body {
 ::-webkit-scrollbar-thumb:hover { background: #a8a29e; }
 
 ::selection { background: #dddd16; color: #0c0a09; }
+
+/* ─────────────────────────────────────────────────────────────────
+   Franchisee portal calendar (FullCalendar) — chip layout overrides.
+   - Override FC's default `white-space: nowrap` so event titles wrap
+     onto two lines instead of being truncated mid-word ("Learning
+     Disability Wee" → "Learning Disability Week").
+   - Stack title above the time (eventContent in PortalEventsPanel
+     emits `.portal-cal-chip` with `-title` and `-time` children).
+   ───────────────────────────────────────────────────────────────── */
+.portal-cal-wrap .fc-event,
+.portal-cal-wrap .fc-event-main,
+.portal-cal-wrap .fc-event-main-frame,
+.portal-cal-wrap .fc-event-title,
+.portal-cal-wrap .fc-event-title-container,
+.portal-cal-wrap .fc-h-event,
+.portal-cal-wrap .fc-daygrid-event {
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  word-break: break-word;
+  line-height: 1.2;
+}
+.portal-cal-wrap .fc-daygrid-event-harness {
+  height: auto !important;
+}
+.portal-cal-wrap .portal-cal-chip {
+  padding: 2px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+}
+.portal-cal-wrap .portal-cal-chip-title {
+  font-weight: 600;
+  font-size: 11px;
+  line-height: 1.25;
+  white-space: normal;
+  word-break: break-word;
+}
+.portal-cal-wrap .portal-cal-chip-time {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+  line-height: 1.1;
+}
+
