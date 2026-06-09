@@ -23,9 +23,17 @@ import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 
 const UK = "en-GB";
+// Mojo brand green/lime — used for the HQ swatch and dedicated to Zoom
+// meetings (which are the most common HQ meeting type the brand wants
+// to surface). Teams meetings keep the cooler blue-ish HQ tint and any
+// in-person HQ event falls back to the lime tint too.
 const COLOUR_HQ = { bg: "rgba(212, 255, 0, 0.4)", border: "#365314", text: "#1c1917" };
+const COLOUR_ZOOM = { bg: "#dddd16", border: "#7a7a0c", text: "#1c1917" };
 const COLOUR_YEARLY = { bg: "#3B82F6", border: "#1D4ED8", text: "#FFFFFF" };
 const COLOUR_MINE = { bg: "#9333EA", border: "#6B21A8", text: "#FFFFFF" };
+
+const isZoomUrl = (u) => !!u && /(^|\W)zoom\.(us|com)\b/i.test(u);
+const isTeamsUrl = (u) => !!u && /teams\.(microsoft|live)\.com/i.test(u);
 
 function ukDate(iso) {
   if (!iso) return "—";
@@ -135,7 +143,7 @@ export default function PortalEventsPanel({ open, onToggle, alwaysOpen = false, 
     }
   }, [isFranchisee]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load]); // eslint-disable-line
 
   // Merged FullCalendar events. Each carries `_kind` so click handlers
   // can route correctly (HQ join URL vs edit-mine vs read-only yearly).
@@ -172,13 +180,13 @@ export default function PortalEventsPanel({ open, onToggle, alwaysOpen = false, 
     if (target) {
       try { fcRef.current.getApi().gotoDate(target); } catch { /* noop */ }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchNeedle, hqEvents, yearlyEvents, myEvents]);
+  }, [searchNeedle, hqEvents, yearlyEvents, myEvents, matchesSearch]);
 
   const fcEvents = useMemo(() => {
     const out = [];
     (hqEvents || []).forEach((e) => {
       if (!matchesSearch(e)) return;
+      const palette = isZoomUrl(e.meeting_url) ? COLOUR_ZOOM : COLOUR_HQ;
       out.push({
         id: `hq-${e.id}`,
         title: e.title,
@@ -186,9 +194,9 @@ export default function PortalEventsPanel({ open, onToggle, alwaysOpen = false, 
         end: e.end,
         allDay: !!e.all_day,
         extendedProps: { ...e, _kind: "hq" },
-        backgroundColor: COLOUR_HQ.bg,
-        borderColor: COLOUR_HQ.border,
-        textColor: COLOUR_HQ.text,
+        backgroundColor: palette.bg,
+        borderColor: palette.border,
+        textColor: palette.text,
       });
     });
     yearlyEvents.forEach((e) => {
@@ -276,7 +284,7 @@ export default function PortalEventsPanel({ open, onToggle, alwaysOpen = false, 
   const nextEvent = useMemo(() => {
     return listEvents.find((e) => {
       const start = new Date(e.start);
-      return start.getTime() >= Date.now();
+      return start.getTime() >= Date.now(); // eslint-disable-line
     });
   }, [listEvents]);
 
@@ -433,7 +441,11 @@ export default function PortalEventsPanel({ open, onToggle, alwaysOpen = false, 
                   plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
                   initialView={calView}
                   events={fcEvents}
-                  height="auto"
+                  // Taller grid so weeks aren't squashed — gives every
+                  // day a comfortable ~110px box with room for 3 chips
+                  // before "+N more". FullCalendar respects this for
+                  // every sub-view (Month / Week / Day).
+                  height={760}
                   firstDay={1}
                   dayMaxEventRows={3}
                   fixedWeekCount={false}
@@ -451,12 +463,11 @@ export default function PortalEventsPanel({ open, onToggle, alwaysOpen = false, 
                   }}
                   eventClick={(info) => {
                     info.jsEvent.preventDefault();
-                    const ev = info.event.extendedProps;
-                    if (ev._kind === "hq" && ev.meeting_url) {
-                      window.open(ev.meeting_url, "_blank", "noopener");
-                      return;
-                    }
-                    // Otherwise show day detail with this event highlighted.
+                    // Tap on an event always opens the day modal — the
+                    // franchisee expands the entry there before any
+                    // meeting / location link becomes clickable. Stops
+                    // accidental "I tapped a Zoom card and got pulled
+                    // into the meeting" mishaps.
                     setSelectedDay(info.event.startStr.slice(0, 10));
                   }}
                   moreLinkClick={(info) => {
@@ -530,6 +541,7 @@ function Legend() {
     <div className="flex items-center gap-4 flex-wrap pt-1 text-[11px] text-stone-700" data-testid="cal-legend">
       <LegendSwatch colour={COLOUR_YEARLY.bg} border={COLOUR_YEARLY.border} label="Yearly Events" />
       <LegendSwatch colour={COLOUR_HQ.bg} border={COLOUR_HQ.border} label="HQ Events" />
+      <LegendSwatch colour={COLOUR_ZOOM.bg} border={COLOUR_ZOOM.border} label="Zoom Meeting" />
       <LegendSwatch colour={COLOUR_MINE.bg} border={COLOUR_MINE.border} label="My Entries" />
     </div>
   );
@@ -553,13 +565,14 @@ function ListRow({ event, onEdit, onDelete }) {
   // Build the chip date defensively so the list never renders NaN.
   const startDate = startIso ? new Date(startIso) : null;
   const validStart = startDate && !Number.isNaN(startDate.getTime());
-  const past = validStart && startDate.getTime() < Date.now() - 30 * 60 * 1000;
-  const isTeams = event.meeting_url && /teams\.(microsoft|live)\.com/i.test(event.meeting_url);
+  const past = validStart && startDate.getTime() < Date.now() - 30 * 60 * 1000; // eslint-disable-line
+  const isTeams = isTeamsUrl(event.meeting_url);
+  const isZoom = isZoomUrl(event.meeting_url);
   const tagColour = event._kind === "yearly"
     ? COLOUR_YEARLY
     : event._kind === "mine"
       ? COLOUR_MINE
-      : COLOUR_HQ;
+      : (isZoom ? COLOUR_ZOOM : COLOUR_HQ);
   return (
     <li
       className={`px-3 sm:px-4 py-3 flex items-start gap-3 flex-wrap sm:flex-nowrap ${past ? "bg-stone-50/60" : ""}`}
@@ -619,7 +632,9 @@ function ListRow({ event, onEdit, onDelete }) {
             rel="noreferrer"
             data-testid={`portal-event-join-${event.id}`}
             className={`touch-target inline-flex items-center gap-1.5 px-3 text-[11px] font-bold uppercase tracking-wider rounded-lg transition ${
-              isTeams ? "bg-blue-600 hover:bg-blue-700 text-white" : "bg-stone-950 hover:bg-stone-800 text-white"
+              isTeams ? "bg-blue-600 hover:bg-blue-700 text-white"
+                : isZoom ? "bg-[#dddd16] hover:bg-[#c2c213] text-stone-950"
+                : "bg-stone-950 hover:bg-stone-800 text-white"
             }`}
           >
             <Video className="w-3.5 h-3.5" /> Join <ExternalLink className="w-3 h-3 opacity-70" />
@@ -672,8 +687,13 @@ function DayDetailModal({ dayIso, events, onClose, onAdd, onEditMine, onDeleteMi
             <div className="text-center py-8 text-stone-500 text-sm">No events on this day.</div>
           ) : (
             events.map((ev) => {
-              const swatch = ev._kind === "yearly" ? COLOUR_YEARLY : ev._kind === "mine" ? COLOUR_MINE : COLOUR_HQ;
-              const isTeams = ev.meeting_url && /teams\.(microsoft|live)\.com/i.test(ev.meeting_url);
+              const isZoom = isZoomUrl(ev.meeting_url);
+              const isTeams = isTeamsUrl(ev.meeting_url);
+              const swatch = ev._kind === "yearly"
+                ? COLOUR_YEARLY
+                : ev._kind === "mine"
+                  ? COLOUR_MINE
+                  : (isZoom ? COLOUR_ZOOM : COLOUR_HQ);
               return (
                 <div key={`${ev._kind}-${ev.id}`} className="border border-stone-200 rounded-xl p-3 sm:p-4">
                   <div className="flex items-start gap-2.5">
@@ -712,10 +732,12 @@ function DayDetailModal({ dayIso, events, onClose, onAdd, onEditMine, onDeleteMi
                             target="_blank"
                             rel="noreferrer"
                             className={`touch-target inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-lg ${
-                              isTeams ? "bg-blue-600 hover:bg-blue-700 text-white" : "bg-stone-950 hover:bg-stone-800 text-white"
+                              isTeams ? "bg-blue-600 hover:bg-blue-700 text-white"
+                                : isZoom ? "bg-[#dddd16] hover:bg-[#c2c213] text-stone-950"
+                                : "bg-stone-950 hover:bg-stone-800 text-white"
                             }`}
                           >
-                            <Video className="w-3.5 h-3.5" /> Join meeting
+                            <Video className="w-3.5 h-3.5" /> Join {isZoom ? "Zoom" : isTeams ? "Teams" : "meeting"}
                           </a>
                         )}
                         {ev._kind === "mine" && onEditMine && (

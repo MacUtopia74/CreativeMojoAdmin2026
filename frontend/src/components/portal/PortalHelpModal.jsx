@@ -64,7 +64,7 @@ export default function PortalHelpModal({ open, onClose }) {
     } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { if (open && resolvedSlug) fetchPage(resolvedSlug); }, [open, resolvedSlug, fetchPage]); // eslint-disable-line react-hooks/set-state-in-effect
+  useEffect(() => { if (open && resolvedSlug) fetchPage(resolvedSlug); }, [open, resolvedSlug, fetchPage]); // eslint-disable-line
 
   const slides = page?.slides || [];
   const hasSlides = slides.length > 0;

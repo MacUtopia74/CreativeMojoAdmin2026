@@ -52,7 +52,7 @@ export default function AdminHelpCentrePage() {
     } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { load(); }, [load]); // eslint-disable-line react-hooks/set-state-in-effect
+  useEffect(() => { load(); }, [load]); // eslint-disable-line
 
   const flash = (msg) => { setErr(msg); setTimeout(() => setErr(""), 3500); };
 
