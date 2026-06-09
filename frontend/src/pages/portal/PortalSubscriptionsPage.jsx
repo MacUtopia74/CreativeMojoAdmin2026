@@ -89,13 +89,19 @@ const BOLT_ONS = [
 ];
 
 // Tiered bundle pricing — automatically applied based on how many
-// bolt-ons the franchisee ticks. Index = count selected.
+// bolt-ons the franchisee ticks. Index = count selected. Bundles
+// increment by £5 each step so the perceived value of "add another
+// bolt-on" stays consistent across tiers.
+//   • 1 bolt-on  → £10/mo (single, no bundle saving)
+//   • 2 bolt-ons → £15/mo (saves £5  vs. 2×£10)
+//   • 3 bolt-ons → £20/mo (saves £10 vs. 3×£10)
+//   • 4 bolt-ons → £25/mo (saves £15 vs. 4×£10) — "All four" bundle
 const BUNDLE_PRICES = {
   0: 0,
-  1: 10,  // single bolt-on
-  2: 18,  // "Pick any 2" bundle — saves £2
-  3: 25,  // "Pick any 3" bundle — saves £5
-  4: 30,  // "All four" bundle — saves £10
+  1: 10,
+  2: 15,
+  3: 20,
+  4: 25,
 };
 const SINGLE_PRICE = 10;
 
@@ -203,16 +209,38 @@ export default function PortalSubscriptionsPage() {
         </h2>
         <p className="text-stone-600 mt-2 text-sm sm:text-base leading-relaxed max-w-3xl">
           Add any of the optional modules below to your monthly Creative Mojo subscription. Each bolt-on is just £10 a
-          month — pick any two for £18, any three for £25, or grab all four for £30. Billed via your existing
+          month — pick any two for £15, any three for £20, or grab all four for £25. Billed via your existing
           GoCardless mandate and appears as a separate line on your Xero invoice. Cancel any time, no minimum term.
           All prices include VAT.
         </p>
-        {/* Bundle ladder — shows the franchisee the tier discounts at a glance. */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-5" data-testid="subs-bundle-ladder">
-          <TierBadge label="Any 1"            price="£10" active={selectedCount === 1} />
-          <TierBadge label="Any 2 (save £2)"  price="£18" active={selectedCount === 2} highlight />
-          <TierBadge label="Any 3 (save £5)"  price="£25" active={selectedCount === 3} highlight />
-          <TierBadge label="All 4 (save £10)" price="£30" active={selectedCount === 4} highlight />
+        {/* Bundle ladder — shows the franchisee the tier discounts at
+            a glance. Wrapped in a heavier, Mojo-lime-tinted panel with
+            its own header so it can't be mistaken for the page intro;
+            the tiles inside step up in scale + intensity so the eye
+            naturally lands on "All 4 — best saving". */}
+        <div
+          className="mt-6 p-4 sm:p-5 rounded-2xl border-2 border-[#dddd16] bg-[#dddd16]/10 shadow-sm"
+          data-testid="subs-bundle-ladder-wrap"
+        >
+          <div className="flex items-baseline justify-between gap-3 flex-wrap mb-3">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.25em] font-bold text-stone-600">
+                Bundle pricing
+              </div>
+              <div className="font-display text-xl sm:text-2xl font-black text-stone-950 leading-tight">
+                The more you add, the more you save
+              </div>
+            </div>
+            <div className="text-xs font-bold text-stone-700 px-2.5 py-1 bg-white border border-stone-300 rounded-full">
+              All prices /month, inc VAT
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3" data-testid="subs-bundle-ladder">
+            <TierBadge label="Any 1"             price="£10" active={selectedCount === 1} />
+            <TierBadge label="Any 2 — save £5"   price="£15" active={selectedCount === 2} highlight />
+            <TierBadge label="Any 3 — save £10"  price="£20" active={selectedCount === 3} highlight />
+            <TierBadge label="All 4 — save £15"  price="£25" active={selectedCount === 4} highlight bestValue />
+          </div>
         </div>
       </div>
 
@@ -542,20 +570,40 @@ export default function PortalSubscriptionsPage() {
     </div>
   );
 }
-function TierBadge({ label, price, active, highlight }) {
+function TierBadge({ label, price, active, highlight, bestValue }) {
   return (
     <div
       data-testid={`tier-badge-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
-      className={`px-3 py-2 rounded-lg border text-center transition-all ${
+      className={`relative px-3 py-4 rounded-xl border-2 text-center transition-all ${
         active
-          ? "bg-stone-950 text-white border-stone-950 shadow-md"
+          ? "bg-stone-950 text-white border-stone-950 shadow-lg scale-[1.04]"
+          : bestValue
+          ? "bg-white border-stone-900 shadow-md"
           : highlight
-          ? "bg-[#dedd0a]/15 border-[#dedd0a]/60 text-stone-800"
-          : "bg-stone-50 border-stone-200 text-stone-700"
+          ? "bg-white border-[#dddd16] shadow-sm"
+          : "bg-white border-stone-300"
       }`}
     >
-      <div className="font-display text-lg font-black leading-none">{price}</div>
-      <div className={`text-[10px] uppercase tracking-wider font-bold mt-1 ${active ? "text-stone-300" : "text-stone-500"}`}>{label}</div>
+      {bestValue && (
+        <span
+          className={`absolute -top-2.5 left-1/2 -translate-x-1/2 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.15em] rounded-full shadow-sm ${
+            active ? "bg-[#dddd16] text-stone-950" : "bg-stone-950 text-[#dddd16]"
+          }`}
+          data-testid="tier-badge-best-value"
+        >
+          Best value
+        </span>
+      )}
+      <div className={`font-display text-2xl sm:text-3xl font-black leading-none ${active ? "text-white" : "text-stone-950"}`}>
+        {price}
+      </div>
+      <div
+        className={`text-[10px] sm:text-[11px] uppercase tracking-wider font-bold mt-2 ${
+          active ? "text-stone-200" : "text-stone-700"
+        }`}
+      >
+        {label}
+      </div>
     </div>
   );
 }
