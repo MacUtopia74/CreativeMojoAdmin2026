@@ -60,8 +60,6 @@ HELP_PAGES: list[dict] = [
     {"slug": "franchise-store", "title": "Franchise Store", "match_paths": ["/portal/shape-orders"]},
     {"slug": "change-password", "title": "Change password", "match_paths": ["/portal/account/password"]},
     {"slug": "subscriptions", "title": "Subscriptions", "match_paths": ["/portal/account/subscriptions"]},
-    # Catch-all for "I clicked Help and don't match any of the above"
-    {"slug": "home",          "title": "Portal home",   "match_paths": ["/portal", "/portal/home"]},
 ]
 _SLUG_SET = {p["slug"] for p in HELP_PAGES}
 
@@ -81,7 +79,6 @@ SUGGESTED_CAPTIONS: dict[str, str] = {
     "franchise-store":  "Order shape sets (free, ship in pairs) and signage / clothing (charged at Woo prices). Tick the personalisation options each product requires before hitting Finalise.",
     "change-password":  "Set a new password for your portal account. The strength meter helps you pick something secure; you'll be signed out elsewhere once saved.",
     "subscriptions":    "Your active subscription tier and any bolt-on modules (Marketing+, Bookings+, etc.). Use this page to view your invoice history and to add/remove bolt-ons.",
-    "home":             "The Portal home screen — at-a-glance KPIs, recent bookings, last marketing send, and shortcuts to the modules you use most.",
 }
 
 

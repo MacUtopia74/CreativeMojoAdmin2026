@@ -22,7 +22,10 @@ import logging
 import os
 import secrets
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta, date as date_cls
+# date.fromisoformat — pulled out for clarity since we use it just for
+# input validation on `pinned_until`.
+date_fromisoformat = date_cls.fromisoformat
 from typing import Optional
 
 from fastapi import Depends, HTTPException, UploadFile, File, Request
@@ -457,6 +460,25 @@ def attach(api, db, require_role):
             raise HTTPException(400, "At least one panel is required")
         intro = body.get("intro") or ""
 
+        # Pin-to-top metadata. Backend stores `pinned_until` as an ISO
+        # date (YYYY-MM-DD) — when set and >= today, the portal lists
+        # the announcement above the regular timeline. After the date
+        # passes, it falls back into the normal newest-first list. A
+        # truthy `pinned` flag without an explicit date defaults to a
+        # 14-day window from today (covers a typical "this week's Zoom"
+        # scenario plus a bit of slack).
+        pinned_until = (body.get("pinned_until") or "").strip() or None
+        if not pinned_until and body.get("pinned"):
+            pinned_until = (datetime.now(timezone.utc).date()
+                            + timedelta(days=14)).isoformat()
+        if pinned_until:
+            # Validate the date — refuse silently-broken values that
+            # would otherwise sort weirdly forever.
+            try:
+                date_fromisoformat(pinned_until[:10])
+            except ValueError as exc:
+                raise HTTPException(400, "pinned_until must be YYYY-MM-DD") from exc
+
         # Resolve recipients
         recipient_ids = body.get("recipient_ids") or None
 
@@ -541,6 +563,7 @@ def attach(api, db, require_role):
             "created_by": user.get("email"),
             "sent_to": [r["id"] for r in recipients],
             "recipient_count": len(recipients),
+            "pinned_until": pinned_until,
             "delivery": {"status": "pending", "succeeded": 0, "failed": 0, "errors": []},
         }
         await db.announcements.insert_one(ann)
@@ -671,12 +694,25 @@ def attach(api, db, require_role):
             if auto_thumb and not p.get("thumbnail_url"):
                 p["thumbnail_url"] = auto_thumb
 
+        # Pin metadata — same handling as POST. None clears any
+        # existing pin; explicit YYYY-MM-DD sets a new expiry.
+        pinned_until = (body.get("pinned_until") or "").strip() or None
+        if not pinned_until and body.get("pinned"):
+            pinned_until = (datetime.now(timezone.utc).date()
+                            + timedelta(days=14)).isoformat()
+        if pinned_until:
+            try:
+                date_fromisoformat(pinned_until[:10])
+            except ValueError as exc:
+                raise HTTPException(400, "pinned_until must be YYYY-MM-DD") from exc
+
         updated = {
             "title": title, "intro": intro, "panels": panels,
             "sent_to": [r["id"] for r in recipients],
             "recipient_count": len(recipients),
             "edited_at": _now_iso(),
             "edited_by": user.get("email"),
+            "pinned_until": pinned_until,
             "delivery": {"status": "pending", "succeeded": 0, "failed": 0, "errors": []},
         }
         await db.announcements.update_one({"id": ann_id}, {"$set": updated})
@@ -729,6 +765,10 @@ def attach(api, db, require_role):
     async def list_announcements(_: dict = Depends(require_role("admin"))):
         items = await db.announcements.find({}, {"_id": 0}) \
             .sort("created_at", -1).limit(200).to_list(200)
+        today = datetime.now(timezone.utc).date().isoformat()
+        for it in items:
+            pu = (it.get("pinned_until") or "")[:10]
+            it["is_pinned"] = bool(pu and pu >= today)
         return {"items": items, "total": len(items)}
 
     # ---- Admin read/open log. Returns who opened which announcement
@@ -951,9 +991,14 @@ def attach(api, db, require_role):
     @api.get("/portal/announcements")
     async def portal_list(user: dict = Depends(require_role("franchisee", "admin"))):
         """Past announcements the logged-in franchisee was a recipient of.
-        Admins see everything (handy for QA). Sorted newest first.
+        Admins see everything (handy for QA). Sorted newest first, with
+        currently-pinned items lifted to the top of the list. An item
+        counts as pinned while ``pinned_until`` (an ISO date) is in the
+        future; the moment it slips into the past, the item naturally
+        falls back into its place in the newest-first ordering.
         Each item is annotated with ``is_unread=True`` until the user
-        opens it on the portal (POST .../read clears the flag).
+        opens it on the portal (POST .../read clears the flag) and
+        ``is_pinned=True`` for the convenience of the portal renderer.
         """
         if user.get("role") == "admin":
             items = await db.announcements.find({}, {"_id": 0}) \
@@ -964,12 +1009,19 @@ def attach(api, db, require_role):
                 {"sent_to": fid}, {"_id": 0},
             ).sort("created_at", -1).limit(200).to_list(200)
 
-        # Annotate with unread flag.
+        # Annotate + sort.
         user_key = await _user_key(user)
         ann_ids = [it.get("id") for it in items if it.get("id")]
         read = await _read_set(user_key, ann_ids)
+        today = datetime.now(timezone.utc).date().isoformat()
         for it in items:
             it["is_unread"] = it.get("id") not in read
+            pu = (it.get("pinned_until") or "")[:10]
+            it["is_pinned"] = bool(pu and pu >= today)
+        # Stable sort: True ahead of False, ties broken by created_at (already
+        # in descending order from Mongo). Python's sort is stable so this
+        # preserves the newest-first ordering within each group.
+        items.sort(key=lambda x: 0 if x.get("is_pinned") else 1)
         return {"items": items, "total": len(items)}
 
     @api.get("/portal/announcements/unread-count")

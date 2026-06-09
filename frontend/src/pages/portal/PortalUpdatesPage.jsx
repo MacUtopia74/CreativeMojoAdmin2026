@@ -133,7 +133,9 @@ export default function PortalUpdatesPage() {
               <div
                 key={it.id}
                 className={`bg-white border rounded-2xl overflow-hidden ${
-                  isUnread ? "border-rose-300 ring-1 ring-rose-100" : "border-stone-200"
+                  it.is_pinned ? "border-amber-400 ring-2 ring-amber-200"
+                    : isUnread ? "border-rose-300 ring-1 ring-rose-100"
+                    : "border-stone-200"
                 }`}
                 data-testid={`portal-update-${it.id}`}
               >
@@ -143,12 +145,23 @@ export default function PortalUpdatesPage() {
                   className="w-full flex items-center gap-4 px-5 py-4 hover:bg-stone-50/60 text-left transition-colors"
                 >
                   <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
-                    isUnread ? "bg-rose-100 text-rose-700" : "bg-[#dddd16]/20 text-stone-900"
+                    it.is_pinned ? "bg-amber-100 text-amber-800"
+                      : isUnread ? "bg-rose-100 text-rose-700"
+                      : "bg-[#dddd16]/20 text-stone-900"
                   }`}>
                     <Megaphone className="w-4 h-4" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
+                      {it.is_pinned && (
+                        <span
+                          data-testid={`portal-update-pinned-${it.id}`}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-amber-400 text-stone-950 rounded-full shadow-sm"
+                          title={`Pinned until ${(it.pinned_until || "").slice(0, 10)}`}
+                        >
+                          📌 Pinned
+                        </span>
+                      )}
                       <div className="font-display text-xl font-bold text-stone-950 truncate">{it.title}</div>
                       {isUnread && (
                         <span

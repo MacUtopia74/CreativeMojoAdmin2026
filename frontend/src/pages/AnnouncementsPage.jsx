@@ -97,7 +97,20 @@ function AnnouncementsList({ onCompose, onView, refresh }) {
                 : "bg-rose-50 text-rose-900 border-rose-200";
               return (
                 <tr key={it.id} className="border-t border-stone-100 hover:bg-stone-50/50 cursor-pointer" onClick={() => onView(it)} data-testid={`announcement-row-${it.id}`}>
-                  <td className="px-4 py-3 font-medium text-stone-950">{it.title}</td>
+                  <td className="px-4 py-3 font-medium text-stone-950">
+                    <div className="flex items-center gap-2">
+                      {it.is_pinned && (
+                        <span
+                          data-testid={`announcement-pinned-badge-${it.id}`}
+                          title={`Pinned until ${(it.pinned_until || "").slice(0, 10)}`}
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300 rounded"
+                        >
+                          📌 Pinned
+                        </span>
+                      )}
+                      <span>{it.title}</span>
+                    </div>
+                  </td>
                   <td className="px-3 py-3 text-stone-700 whitespace-nowrap">{fmtDate(it.sent_at || it.created_at)}</td>
                   <td className="px-3 py-3 text-stone-700">{(it.panels || []).length}</td>
                   <td className="px-3 py-3 text-stone-700">{it.recipient_count}</td>
@@ -272,6 +285,13 @@ function ComposeModal({ open, onClose, onSent, seed }) {
   const [info, setInfo] = useState("");
 
   const [previewHtml, setPreviewHtml] = useState("");
+  // Pin-to-top: a tick + date input on the composer. Defaults to a
+  // 14-day window from today when the admin ticks the box, but they
+  // can shorten/extend it (e.g. set it to the day of an upcoming Zoom).
+  // Empty = not pinned. Once the date is past, the portal naturally
+  // drops the announcement back into the chronological list.
+  const [pinned, setPinned] = useState(false);
+  const [pinnedUntil, setPinnedUntil] = useState("");
 
   // Mode: 'new' (default), 'edit' (PATCH replaces the original), or
   // 'duplicate' (POST creates a fresh announcement).
@@ -287,6 +307,16 @@ function ComposeModal({ open, onClose, onSent, seed }) {
     if (seededAnn) {
       setTitle(seededAnn.title || "");
       setIntro(seededAnn.intro || "");
+      // Seed pin state from the original. The composer treats blank /
+      // past dates as "not pinned" so re-editing a stale pin doesn't
+      // accidentally resurrect it.
+      const seededPin = (seededAnn.pinned_until || "").slice(0, 10);
+      const today = new Date().toISOString().slice(0, 10);
+      if (seededPin && seededPin >= today) {
+        setPinned(true); setPinnedUntil(seededPin);
+      } else {
+        setPinned(false); setPinnedUntil("");
+      }
       // Strip server-minted resolved_url + thumbnail_url so a fresh send
       // re-mints them (avoids re-using a revoked or stale share token).
       setPanels((seededAnn.panels || []).map((p) => ({
@@ -310,6 +340,7 @@ function ComposeModal({ open, onClose, onSent, seed }) {
     } else {
       setTitle(""); setIntro(""); setPanels([]); setSelectedRecipients(new Set());
       setRecipientFilter("all");
+      setPinned(false); setPinnedUntil("");
     }
     api.get("/admin/announcements/recipients").then(({ data }) => setRecipients(data.items || []));
   }, [open, seededAnn, mode]);
@@ -392,6 +423,11 @@ function ComposeModal({ open, onClose, onSent, seed }) {
       thumbnail_key: p.thumbnail_key || undefined,
     })),
     recipient_ids: recipientFilter === "subset" ? Array.from(selectedRecipients) : null,
+    // Pin metadata — admin sets the date via the composer; backend
+    // treats `pinned: true` without an explicit `pinned_until` as a
+    // 14-day default.
+    pinned: pinned,
+    pinned_until: pinned ? (pinnedUntil || null) : null,
     // Explicit acknowledgement that we mean to broadcast to everyone.
     // Backend rejects "send to all" without this flag — guardrail against
     // accidental fan-outs from curl tests or stale UI state.
@@ -480,6 +516,46 @@ function ComposeModal({ open, onClose, onSent, seed }) {
                 data-testid="announcement-intro"
                 className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg" />
             </label>
+
+            {/* Pin-to-top: tick the box to lift this announcement to
+                the top of the portal HQ Updates list. Once the date
+                passes the announcement slides back into the regular
+                chronological list — no admin action required. */}
+            <div className="mb-4 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={pinned}
+                  onChange={(e) => {
+                    setPinned(e.target.checked);
+                    if (e.target.checked && !pinnedUntil) {
+                      // Default the unpin date to 14 days from today so
+                      // ticking the box has a sensible auto-expiry.
+                      const d = new Date();
+                      d.setDate(d.getDate() + 14);
+                      setPinnedUntil(d.toISOString().slice(0, 10));
+                    }
+                  }}
+                  data-testid="announcement-pinned"
+                  className="w-4 h-4 accent-amber-500"
+                />
+                <span className="text-xs font-bold uppercase tracking-wider text-amber-900">📌 Pin to top of HQ Updates</span>
+              </label>
+              {pinned && (
+                <div className="mt-2 flex items-center gap-2 text-xs text-amber-900">
+                  <span>Unpin on:</span>
+                  <input
+                    type="date"
+                    value={pinnedUntil}
+                    min={new Date().toISOString().slice(0, 10)}
+                    onChange={(e) => setPinnedUntil(e.target.value)}
+                    data-testid="announcement-pinned-until"
+                    className="px-2 py-1 text-xs bg-white border border-amber-300 rounded-md"
+                  />
+                  <span className="text-amber-700">— stays at the top until this date passes.</span>
+                </div>
+              )}
+            </div>
 
             {/* Panels */}
             <div className="mb-4">

@@ -50,7 +50,10 @@ export default function PortalHelpModal({ open, onClose }) {
         }
       }
     }
-    return "home";
+    // No match — return null so the modal shows the friendly
+    // "help guide coming soon" empty state instead of looking up a
+    // non-existent "home" page.
+    return null;
   }, [index, pathname]);
 
   const fetchPage = useCallback(async (slug) => {
@@ -64,7 +67,14 @@ export default function PortalHelpModal({ open, onClose }) {
     } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { if (open && resolvedSlug) fetchPage(resolvedSlug); }, [open, resolvedSlug, fetchPage]); // eslint-disable-line
+  useEffect(() => {
+    if (open && resolvedSlug) fetchPage(resolvedSlug);
+  }, [open, resolvedSlug, fetchPage]);
+
+  // If no path-to-slug match was found, show a "no help" empty state
+  // without touching state. This avoids the React 19 lint rule against
+  // resetting state inside an effect. Stale `page` from a previous
+  // open is masked by the `resolvedSlug` guard in render.
 
   const slides = page?.slides || [];
   const hasSlides = slides.length > 0;
@@ -132,7 +142,16 @@ export default function PortalHelpModal({ open, onClose }) {
           {!loading && err && (
             <div className="text-center py-10 text-amber-700">{err}</div>
           )}
-          {!loading && !err && page && (
+          {!loading && !err && !resolvedSlug && (
+            <div className="max-w-6xl mx-auto h-full flex items-center justify-center">
+              <div className="text-center py-10 text-stone-500 border-2 border-dashed border-stone-200 rounded-xl bg-white px-10">
+                <ImageOff className="w-8 h-8 mx-auto mb-2 text-stone-300" />
+                <p className="font-semibold text-stone-700">No help guide for this page</p>
+                <p className="text-xs mt-1">There&apos;s no marked-up walkthrough for this section yet — speak to your franchise manager if you need a hand.</p>
+              </div>
+            </div>
+          )}
+          {!loading && !err && resolvedSlug && page && (
             <div className="max-w-6xl mx-auto flex flex-col h-full">
               {page.caption && (
                 <p
