@@ -539,8 +539,12 @@ def attach(api, db, require_role):
                 "sku": c.get("sku"),
                 "name": c.get("name"),
                 "quantity": 1,
+                # Shape sets are free (the pair = one box, charged
+                # separately by HQ). Mirror Woo's field names so the
+                # OrderDetailPage renders £0 cleanly.
+                "subtotal": "0.00",
                 "price": 0.0,
-                "total": 0.0,
+                "total": "0.00",
                 "image_url": c.get("image_url"),
                 "product_kind": "shape_set",
             })
@@ -561,13 +565,19 @@ def attach(api, db, require_role):
                         label = c.get("name") or ex["woo_id"]
                         nice = {"text_input": "personalisation text", "size": "size", "colour": "colour"}[field]
                         raise HTTPException(400, detail=f"Please pick a {nice} for {label}.")
+            # Mirror Woo's line_items shape — `subtotal` holds the
+            # unit price (string), `total` holds the line total. Both
+            # are what the admin Orders UI + Xero invoice generator
+            # read, so writing them here is what makes the £ amounts
+            # show up on the Orders page.
             line_items.append({
                 "product_id": c["woo_id"],
                 "sku": c.get("sku"),
                 "name": c.get("name"),
                 "quantity": ex["quantity"],
+                "subtotal": f"{unit:.2f}",
                 "price": unit,
-                "total": line_total,
+                "total": f"{line_total:.2f}",
                 "image_url": c.get("image_url"),
                 "product_kind": "signage_clothing",
                 "options": opts,
@@ -639,6 +649,11 @@ async def heal_legacy_shape_statuses(db) -> dict:
     non-completed status to ``"active"`` so it appears in the Orders >
     ACTIVE tab. Safe to run on every backend startup; only writes when
     there's drift to repair.
+
+    Also back-fills the ``subtotal`` field on franchise-store line
+    items so legacy orders (created before subtotal was mirrored)
+    render their £ amounts on the OrderDetailPage. Pre-2026 docs only
+    carried ``price``/``total`` floats; the UI reads ``subtotal``.
     """
     r = await db.woo_orders.update_many(
         {"order_kind": "shape_order",
@@ -650,4 +665,45 @@ async def heal_legacy_shape_statuses(db) -> dict:
             "shape_orders.heal_legacy_shape_statuses: repaired %s legacy doc(s)",
             r.modified_count,
         )
-    return {"matched": r.matched_count, "updated": r.modified_count}
+
+    # Back-fill subtotal/total on franchise-store line items where it's
+    # missing. We rewrite the array in-place; safe to run repeatedly.
+    fixed = 0
+    async for doc in db.woo_orders.find(
+        {"order_kind": "shape_order"},
+        {"_id": 0, "id": 1, "line_items": 1},
+    ):
+        changed = False
+        new_lines: list[dict] = []
+        for li in (doc.get("line_items") or []):
+            new = dict(li)
+            # Coerce price/total to strings on the canonical Woo fields
+            # if they're missing. We use the existing ``price`` (float)
+            # as the source of truth.
+            unit = new.get("price")
+            try:
+                unit_f = float(unit) if unit is not None else 0.0
+            except (TypeError, ValueError):
+                unit_f = 0.0
+            qty = int(new.get("quantity") or 1)
+            if "subtotal" not in new or new.get("subtotal") in (None, ""):
+                new["subtotal"] = f"{unit_f:.2f}"
+                changed = True
+            # total -> string formatting so Woo + franchise lines look
+            # identical to the renderer.
+            cur_total = new.get("total")
+            if not isinstance(cur_total, str):
+                new["total"] = f"{unit_f * qty:.2f}"
+                changed = True
+            new_lines.append(new)
+        if changed:
+            await db.woo_orders.update_one(
+                {"id": doc["id"]}, {"$set": {"line_items": new_lines}},
+            )
+            fixed += 1
+    if fixed:
+        logger.info(
+            "shape_orders.heal_legacy_shape_statuses: back-filled subtotals on %s order(s)",
+            fixed,
+        )
+    return {"matched": r.matched_count, "updated": r.modified_count, "subtotals_fixed": fixed}
