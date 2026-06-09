@@ -416,6 +416,7 @@ export default function FranchiseeDetailPage() {
       address: f.address || f.address_street || "", city: f.city || "", county: f.county || "", postcode: f.postcode || "",
       country: f.country || "", notes: f.notes || "",
       website: f.website || "", facebook: f.facebook || "",
+      bio_url: f.bio_url || "",
     });
     setEditing(true);
   };
@@ -687,6 +688,7 @@ export default function FranchiseeDetailPage() {
               <EditField field="mobile_phone" label="Mobile" value={f.mobile_phone} editing={editing} draft={draft} setDraft={setDraft} mono />
               <EditField field="website" label="Website" value={f.website} editing={editing} draft={draft} setDraft={setDraft} mono />
               <EditField field="facebook" label="Facebook" value={f.facebook} editing={editing} draft={draft} setDraft={setDraft} mono />
+              <EditField field="bio_url" label="Mojo biography page" value={f.bio_url} editing={editing} draft={draft} setDraft={setDraft} mono />
             </div>
             {!editing && (f.website || f.facebook) && (
               <div className="flex flex-wrap gap-4 pt-4 mt-4 border-t border-stone-100 text-xs">

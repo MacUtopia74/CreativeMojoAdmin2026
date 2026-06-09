@@ -166,6 +166,42 @@ export default function PortalDetailsPage() {
               </div>
             );
           })()}
+          {/* Mojo public biography page — the franchisee's profile on
+              creativemojo.com. Sits flush below the Facebook card so
+              the two "public-facing me" links cluster visually. Mojo
+              brand lime so it doesn't blend in with the Facebook blue. */}
+          {(() => {
+            const bioUrl = profile.bio_url;
+            if (!bioUrl) return null;
+            const display = String(bioUrl).replace(/^https?:\/\/(www\.)?/, "");
+            return (
+              <div className="sm:col-span-2 lg:col-span-3" data-testid="portal-my-bio">
+                <a
+                  href={bioUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group flex items-center gap-4 px-4 py-4 sm:px-5 sm:py-5 rounded-2xl border border-[#dddd16]/60 bg-[#dddd16]/15 hover:bg-[#dddd16]/30 transition-colors"
+                  data-testid="portal-visit-my-bio"
+                >
+                  <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-[#dddd16] flex items-center justify-center shrink-0 shadow-sm">
+                    <UserIcon className="w-6 h-6 sm:w-7 sm:h-7 text-stone-950" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[10px] sm:text-[11px] uppercase tracking-[0.2em] font-bold text-stone-800">
+                      My Mojo biography page
+                    </div>
+                    <div className="text-sm sm:text-base text-stone-900 font-medium truncate">{display}</div>
+                  </div>
+                  <div className="hidden sm:flex items-center gap-2 px-4 py-2.5 rounded-lg bg-stone-950 text-[#dddd16] text-xs font-bold uppercase tracking-wider group-hover:bg-stone-800 transition-colors">
+                    Visit My Mojo Biography
+                  </div>
+                  <div className="sm:hidden px-3 py-2 rounded-lg bg-stone-950 text-[#dddd16] text-[10px] font-bold uppercase tracking-wider">
+                    Visit
+                  </div>
+                </a>
+              </div>
+            );
+          })()}
           {profile.current_contract && (
             <div className="sm:col-span-2 lg:col-span-3 mt-2 pt-4 border-t border-stone-200">
               <div className="flex items-center gap-2 mb-3">
@@ -199,7 +235,7 @@ export default function PortalDetailsPage() {
           <FolderOpen className="w-6 h-6 text-stone-700 shrink-0" />
           <h1 className="font-display text-2xl sm:text-3xl font-black text-stone-950 tracking-tight">My Own Franchise Documents</h1>
         </div>
-        <FranchiseeFilesPanel franchisee={profile} lockedTab="own" hideZipAll />
+        <FranchiseeFilesPanel franchisee={profile} lockedTab="own" hideZipAll hideRootBreadcrumb />
       </section>
     </div>
   );

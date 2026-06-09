@@ -32,7 +32,7 @@ function fmtBytes(b) {
 
 const BRAND_ROOT = "shared/files-for-all-franchisees/";
 
-export default function FranchiseeFilesPanel({ franchisee, canUpload = true, lockedTab = null, hideZipAll = false }) {
+export default function FranchiseeFilesPanel({ franchisee, canUpload = true, lockedTab = null, hideZipAll = false, hideRootBreadcrumb = false }) {
   // ``lockedTab`` — when "own" or "brand", the panel renders ONLY that tab and
   // hides the tab strip. Used by the portal which splits the two scopes
   // across two physical sections (own files inside the YOUR FRANCHISE DETAILS
@@ -203,8 +203,11 @@ export default function FranchiseeFilesPanel({ franchisee, canUpload = true, loc
       </div>
 
       {/* Breadcrumb (hidden in search mode) — pill buttons so it's clear
-          each segment is a clickable shortcut back up the tree. */}
-      {!search && (
+          each segment is a clickable shortcut back up the tree. The
+          host page can also pass `hideRootBreadcrumb` so the breadcrumb
+          disappears at the root (it only carries information once the
+          user has drilled into a subfolder). */}
+      {!search && !(hideRootBreadcrumb && segs.length === 0) && (
         <nav
           aria-label="Folder path"
           data-testid="franchisee-files-breadcrumb"

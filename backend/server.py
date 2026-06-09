@@ -1279,7 +1279,7 @@ FRANCHISEE_EDITABLE_FIELDS = {
     "telephone", "mobile_phone", "address", "city", "county", "postcode", "country",
     "potential", "fee_paid", "anniversary_reminder", "notes",
     "status", "staying_leaving",
-    "website", "facebook",
+    "website", "facebook", "bio_url",
 }
 
 
@@ -1425,9 +1425,12 @@ async def admin_seed_demo_franchisee(
     # Copy Sandra's profile photo onto the demo franchisee so the portal
     # demo page shows a real headshot (rather than an empty avatar).
     # Sandra is the canonical "happy franchisee" for demo purposes.
+    # Demo carries Sandra's facebook + bio URL so the public-facing
+    # cards render in the portal walk-through (otherwise the panels
+    # disappear and the demo looks half-empty).
     sandra = await db.franchisees.find_one(
         {"mojo_email": "sandra@creativemojo.co.uk"},
-        {"_id": 0, "photo_url": 1, "photos": 1},
+        {"_id": 0, "photo_url": 1, "photos": 1, "facebook": 1, "bio_url": 1},
     ) or {}
     demo_franchisee = {
         "first_name": "Creative Mojo",
@@ -1438,6 +1441,8 @@ async def admin_seed_demo_franchisee(
         "phone": "01884 303606",
         "mobile_phone": "07886 374959",
         "website": "https://www.creativemojo.com",
+        "facebook": sandra.get("facebook") or "https://www.facebook.com/creativemojoltd",
+        "bio_url": sandra.get("bio_url") or "https://www.creativemojo.com/blog/franchise/crowthorne-wokingham-bracknell-reading/",
         "address_street": "Channings, Brithem Bottom",
         "city": "Cullompton",
         "county": "Devon",
@@ -1764,7 +1769,7 @@ async def portal_me(user: dict = Depends(require_role("franchisee"))):
         # We expose both so the dashboard can fall back cleanly.
         "address", "address_street", "address_line2",
         "city", "town", "county", "postcode", "country",
-        "website", "facebook_url", "facebook",
+        "website", "facebook_url", "facebook", "bio_url",
         "date_added",  # legacy "started with us" date — fallback for tenure
         "start_date", "end_date", "lifecycle_status",
         "gocardless_mandate_status", "gocardless_last_payment_at",
