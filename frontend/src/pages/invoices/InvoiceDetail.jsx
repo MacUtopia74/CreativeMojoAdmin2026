@@ -156,11 +156,24 @@ function InvoiceDetail() {
     } catch (err) { toast.error("Failed to update status"); }
   };
 
-  const viewPDF = () => {
-    // Open PDF directly in new tab
-    window.open(`${API_BASE}/invoices/${id}/pdf`, '_blank');
-    toast.success("PDF opened in new tab");
-    
+  const viewPDF = async () => {
+    // Use a signed URL so the new tab can hit a real HTTP endpoint
+    // (Bearer auth can't ride along on window.open). Safari uses the
+    // URL path's last segment + Content-Disposition as the Save-As
+    // default — both are now the friendly filename, so there's no
+    // way for a UUID to surface as the filename.
+    try {
+      const { data } = await api.get(`/invoices/${id}/pdf-url`);
+      // `API_BASE` already ends in /api; backend returns /api/...
+      // — strip the duplicate prefix to avoid /api/api/...
+      const base = API_BASE.replace(/\/api$/, "");
+      window.open(`${base}${data.url}`, "_blank");
+      toast.success("PDF opened in new tab");
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Couldn't open the PDF");
+      return;
+    }
+
     // Refresh invoice status after a short delay (auto-marked as sent)
     setTimeout(async () => {
       try {

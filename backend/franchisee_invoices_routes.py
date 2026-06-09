@@ -78,6 +78,40 @@ def _invoice_filename(invoice: dict) -> str:
     return "_".join(parts)
 
 
+# Signed URL helpers for the inline-view flow. Safari's PDF viewer
+# ignores PDF /Title metadata when the file is opened from a blob URL —
+# the "Save As…" dialog defaults to the blob's auto-UUID, which is why
+# franchisees kept seeing UUID filenames. The fix is to serve the PDF
+# from a real signed URL (no blob) so the browser can use the URL's
+# last path segment + the Content-Disposition header.
+#
+# The token covers ``{invoice_id}:{exp}``, signed with the existing
+# JWT secret. Short TTL (10 minutes) because tokens are minted on every
+# click and the link is single-use in practice.
+import hmac as _hmac
+import hashlib as _hashlib
+import time as _time
+
+
+def _sign_pdf_link(invoice_id: str, ttl_seconds: int = 600) -> tuple[str, int]:
+    # Local import avoids a circular import at module load; server.py
+    # imports the invoice router, and we import the secret back.
+    from server import JWT_SECRET as _secret
+    exp = int(_time.time()) + ttl_seconds
+    payload = f"{invoice_id}:{exp}".encode("utf-8")
+    sig = _hmac.new(_secret.encode("utf-8"), payload, _hashlib.sha256).hexdigest()[:32]
+    return sig, exp
+
+
+def _verify_pdf_link(invoice_id: str, exp: int, sig: str) -> bool:
+    from server import JWT_SECRET as _secret
+    if exp < int(_time.time()):
+        return False
+    payload = f"{invoice_id}:{exp}".encode("utf-8")
+    expected = _hmac.new(_secret.encode("utf-8"), payload, _hashlib.sha256).hexdigest()[:32]
+    return _hmac.compare_digest(expected, sig)
+
+
 # =========================== MODELS ===========================
 
 class LineItem(BaseModel):
@@ -597,6 +631,73 @@ def build_franchisee_invoices_router(db, require_role):
             f'attachment; filename="{filename}"'
             if download
             else f'inline; filename="{filename}"'
+        )
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": disposition},
+        )
+
+    # Signed URL for the inline-view flow. Returns a short-lived URL
+    # whose last path segment is the friendly filename — that's what
+    # Safari uses as the "Save As…" default when the user views the
+    # PDF in a new tab. We can't just `window.open()` the regular
+    # /pdf endpoint because the browser can't carry the Bearer header
+    # through a new tab; signing the URL lets us auth without one.
+    @router.get("/{invoice_id}/pdf-url")
+    async def invoice_pdf_url(invoice_id: str, user: dict = franchisee):
+        fid = await _fid(user)
+        inv = await db.franchisee_invoices.find_one(
+            {"id": invoice_id, "franchisee_id": fid},
+            {"_id": 0, "invoice_number": 1, "client_name": 1,
+             "issue_date": 1, "created_at": 1, "id": 1},
+        )
+        if not inv:
+            raise HTTPException(404, "Invoice not found")
+        sig, exp = _sign_pdf_link(invoice_id)
+        filename = f"{_invoice_filename(inv)}.pdf"
+        # Path-segment filename so the browser uses it as Save-As
+        # fallback even if Content-Disposition is stripped by a proxy.
+        url = (
+            f"/api/portal/invoices/pdf-share/{filename}"
+            f"?inv={invoice_id}&exp={exp}&sig={sig}"
+        )
+        return {"url": url, "filename": filename, "expires_at": exp}
+
+    # Public-ish endpoint — auth is by HMAC signature, not Bearer
+    # token. Verifies the signature, fetches the invoice, returns the
+    # PDF with the friendly filename in Content-Disposition.
+    @router.get("/pdf-share/{filename:path}")
+    async def invoice_pdf_share(
+        filename: str,
+        inv: str,
+        exp: int,
+        sig: str,
+        download: bool = False,
+    ):
+        if not _verify_pdf_link(inv, exp, sig):
+            raise HTTPException(403, "Invalid or expired link")
+        invoice = await db.franchisee_invoices.find_one(
+            {"id": inv}, {"_id": 0, "franchisee_id": 0},
+        )
+        if not invoice:
+            raise HTTPException(404, "Invoice not found")
+        fid = (await db.franchisee_invoices.find_one(
+            {"id": inv}, {"_id": 0, "franchisee_id": 1}
+        ) or {}).get("franchisee_id")
+        settings = await db.franchisee_invoice_settings.find_one({"_id": fid}) if fid else None
+        if not settings and fid:
+            f = await db.franchisees.find_one({"id": fid}, {"_id": 0})
+            settings = _default_settings_from_franchisee(f) if f else {}
+        pdf_bytes = _render_invoice_pdf(invoice, settings or {})
+        # Strip any path components from the filename to avoid an
+        # attacker crafting a Content-Disposition with embedded
+        # newlines (`filename:path` would let `..` through otherwise).
+        safe_filename = filename.replace("\r", "").replace("\n", "").split("/")[-1]
+        disposition = (
+            f'attachment; filename="{safe_filename}"'
+            if download
+            else f'inline; filename="{safe_filename}"'
         )
         return Response(
             content=pdf_bytes,
