@@ -294,46 +294,6 @@ export default function PortalShell() {
                   return (
                     <div key={sIdx}>
                       <div className="my-3 border-t border-stone-200" data-testid={`portal-nav-divider-${sIdx}`} />
-                      {/* Demo-only toggle — flipping it on swaps the
-                          sidebar to the Hub+ bolt-on view (Territory+,
-                          Bookings+, Marketing+, Invoicing+). Lives just
-                          above Comfort Zone so it's easy to spot but
-                          not in the way of the core nav. Off by default
-                          so first impressions show the standard pages. */}
-                      {isDemo && (
-                        <button
-                          type="button"
-                          onClick={() => setDemoShowPlus((v) => !v)}
-                          data-testid="portal-nav-demo-show-plus"
-                          aria-pressed={demoShowPlus}
-                          title={demoShowPlus
-                            ? "Currently showing the Hub+ bolt-on pages. Click to switch back to the standard pages."
-                            : "Click to reveal the Hub+ bolt-on pages (Territory+, Bookings+, Marketing+, Invoicing+)."}
-                          className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 text-sm rounded-lg font-medium border transition-colors ${
-                            demoShowPlus
-                              ? "bg-stone-950 border-stone-950 text-[#dddd16] hover:bg-stone-800"
-                              : "bg-[#dddd16]/15 border-[#dddd16]/60 text-stone-900 hover:bg-[#dddd16]/30"
-                          }`}
-                        >
-                          <span className="flex items-center gap-3 min-w-0">
-                            <Sparkles className="w-4 h-4 shrink-0" />
-                            <span className="truncate">
-                              {demoShowPlus ? "Hide Hub+ pages" : "Show all Hub+ pages"}
-                            </span>
-                          </span>
-                          <span
-                            className={`shrink-0 inline-flex items-center w-9 h-5 rounded-full transition-colors ${
-                              demoShowPlus ? "bg-[#dddd16] justify-end" : "bg-stone-300 justify-start"
-                            }`}
-                            aria-hidden="true"
-                          >
-                            <span className="w-4 h-4 mx-0.5 bg-white rounded-full shadow-sm" />
-                          </span>
-                        </button>
-                      )}
-                      {isDemo && (
-                        <div className="my-3 border-t border-stone-200" data-testid={`portal-nav-divider-${sIdx}-demo-toggle`} />
-                      )}
                       {/* Creative Mojo Comfort Zone — Facebook group
                           link sitting between Franchise Store and the
                           Account dropdown, framed by the regular
@@ -437,6 +397,49 @@ export default function PortalShell() {
                   </div>
                 );
               })}
+              {/* Demo-only toggle — pinned at the very bottom of the
+                  sidebar so it sits outside the real-page nav rows.
+                  Off by default; flipping it on swaps the standard
+                  pages for the Hub+ bolt-on view (Territory+,
+                  Bookings+, Marketing+, Invoicing+) so prospective
+                  franchisees visiting the demo URL can preview the
+                  upgrade. */}
+              {isDemo && (
+                <div className="mt-6 pt-4 border-t-2 border-stone-200">
+                  <button
+                    type="button"
+                    onClick={() => setDemoShowPlus((v) => !v)}
+                    data-testid="portal-nav-demo-show-plus"
+                    aria-pressed={demoShowPlus}
+                    title={demoShowPlus
+                      ? "Currently showing the Hub+ bolt-on pages. Click to switch back to the standard pages."
+                      : "Click to reveal the Hub+ bolt-on pages (Territory+, Bookings+, Marketing+, Invoicing+)."}
+                    className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 text-sm rounded-lg font-medium border transition-colors ${
+                      demoShowPlus
+                        ? "bg-stone-950 border-stone-950 text-[#dddd16] hover:bg-stone-800"
+                        : "bg-[#dddd16]/15 border-[#dddd16]/60 text-stone-900 hover:bg-[#dddd16]/30"
+                    }`}
+                  >
+                    <span className="flex items-center gap-3 min-w-0">
+                      <Sparkles className="w-4 h-4 shrink-0" />
+                      <span className="truncate">
+                        {demoShowPlus ? "Hide Hub+ pages" : "Show all Hub+ pages"}
+                      </span>
+                    </span>
+                    <span
+                      className={`shrink-0 inline-flex items-center w-9 h-5 rounded-full transition-colors ${
+                        demoShowPlus ? "bg-[#dddd16] justify-end" : "bg-stone-300 justify-start"
+                      }`}
+                      aria-hidden="true"
+                    >
+                      <span className="w-4 h-4 mx-0.5 bg-white rounded-full shadow-sm" />
+                    </span>
+                  </button>
+                  <p className="mt-2 px-1 text-[10px] uppercase tracking-wider font-bold text-stone-500" data-testid="portal-nav-demo-show-plus-hint">
+                    Demo preview toggle
+                  </p>
+                </div>
+              )}
             </nav>
           </aside>
 
@@ -520,35 +523,6 @@ function PortalMobileDrawer({
               return (
                 <div key={sIdx}>
                   <div className="my-3 border-t border-stone-200" />
-                  {isDemo && onToggleDemoShowPlus && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={onToggleDemoShowPlus}
-                        aria-pressed={demoShowPlus}
-                        data-testid="portal-mobile-demo-show-plus"
-                        className={`w-full flex items-center justify-between gap-3 px-3 py-3 text-base rounded-lg font-medium border transition-colors ${
-                          demoShowPlus
-                            ? "bg-stone-950 border-stone-950 text-[#dddd16] hover:bg-stone-800"
-                            : "bg-[#dddd16]/15 border-[#dddd16]/60 text-stone-900 hover:bg-[#dddd16]/30"
-                        }`}
-                      >
-                        <span className="flex items-center gap-3 min-w-0">
-                          <Sparkles className="w-5 h-5 shrink-0" />
-                          <span>{demoShowPlus ? "Hide Hub+ pages" : "Show all Hub+ pages"}</span>
-                        </span>
-                        <span
-                          className={`shrink-0 inline-flex items-center w-10 h-6 rounded-full transition-colors ${
-                            demoShowPlus ? "bg-[#dddd16] justify-end" : "bg-stone-300 justify-start"
-                          }`}
-                          aria-hidden="true"
-                        >
-                          <span className="w-5 h-5 mx-0.5 bg-white rounded-full shadow-sm" />
-                        </span>
-                      </button>
-                      <div className="my-3 border-t border-stone-200" />
-                    </>
-                  )}
                   <a
                     href={COMFORT_ZONE_FB_URL}
                     target="_blank"
@@ -644,6 +618,39 @@ function PortalMobileDrawer({
               </div>
             );
           })}
+          {/* Demo-only toggle pinned at the bottom of the drawer — same
+              behaviour and styling as the desktop sidebar version. */}
+          {isDemo && onToggleDemoShowPlus && (
+            <div className="mt-6 pt-4 border-t-2 border-stone-200">
+              <button
+                type="button"
+                onClick={onToggleDemoShowPlus}
+                aria-pressed={demoShowPlus}
+                data-testid="portal-mobile-demo-show-plus"
+                className={`w-full flex items-center justify-between gap-3 px-3 py-3 text-base rounded-lg font-medium border transition-colors ${
+                  demoShowPlus
+                    ? "bg-stone-950 border-stone-950 text-[#dddd16] hover:bg-stone-800"
+                    : "bg-[#dddd16]/15 border-[#dddd16]/60 text-stone-900 hover:bg-[#dddd16]/30"
+                }`}
+              >
+                <span className="flex items-center gap-3 min-w-0">
+                  <Sparkles className="w-5 h-5 shrink-0" />
+                  <span>{demoShowPlus ? "Hide Hub+ pages" : "Show all Hub+ pages"}</span>
+                </span>
+                <span
+                  className={`shrink-0 inline-flex items-center w-10 h-6 rounded-full transition-colors ${
+                    demoShowPlus ? "bg-[#dddd16] justify-end" : "bg-stone-300 justify-start"
+                  }`}
+                  aria-hidden="true"
+                >
+                  <span className="w-5 h-5 mx-0.5 bg-white rounded-full shadow-sm" />
+                </span>
+              </button>
+              <p className="mt-2 px-1 text-[10px] uppercase tracking-wider font-bold text-stone-500">
+                Demo preview toggle
+              </p>
+            </div>
+          )}
         </nav>
       </div>
 
