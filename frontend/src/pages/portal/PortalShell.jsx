@@ -49,25 +49,22 @@ const FONT_SCALES = {
 //   • territory_plus  → label becomes "My Territory+"
 //   • marketing       → adds "Marketing" item
 //   • invoicing       → adds "Invoicing" item
-function buildTabs({ modules, isDemo }) {
+//
+// Demo accounts get a single toggle ("Show all Hub+ pages") which the
+// visitor can flip on or off — the demo's `portal_modules` flags are
+// ignored in favour of the toggle so the experience is consistent for
+// every person who lands on the demo URL.
+function buildTabs({ modules, isDemo, demoShowPlus }) {
   const sections = [];
   // ---- Section 1: identity, territory, marketing, invoicing ----
   const s1 = [
     { to: "/portal/details", label: "My Franchise", icon: UserIcon, end: true, testid: "portal-nav-profile" },
   ];
-  if (modules.map !== false) {
-    if (isDemo) {
-      // Demo account — render BOTH nav entries side-by-side so the user
-      // can flip between vanilla and the upgraded view to demonstrate
-      // what the bolt-on adds. The "basic" route forces the widget out
-      // of Territory+ mode regardless of the demo's portal_modules flag.
-      s1.push({
-        to: "/portal/territory/basic",
-        label: "My Territory",
-        icon: MapPin,
-        end: true,
-        testid: "portal-nav-territory",
-      });
+  if (isDemo) {
+    // Demo: render exactly one Territory row at a time. With the
+    // toggle OFF we show the basic vanilla view; with it ON we show
+    // the Territory+ upgrade and the other +bolt-ons.
+    if (demoShowPlus) {
       s1.push({
         to: "/portal/territory",
         label: "My Territory+",
@@ -75,7 +72,20 @@ function buildTabs({ modules, isDemo }) {
         end: true,
         testid: "portal-nav-territory-plus",
       });
+      s1.push({ to: "/portal/bookings", label: "Bookings+", icon: CalendarClock, testid: "portal-nav-bookings" });
+      s1.push({ to: "/portal/marketing", label: "Marketing+", icon: Megaphone, testid: "portal-nav-marketing" });
+      s1.push({ to: "/portal/invoices", label: "Invoicing+", icon: Receipt, testid: "portal-nav-invoices" });
     } else {
+      s1.push({
+        to: "/portal/territory/basic",
+        label: "My Territory",
+        icon: MapPin,
+        end: true,
+        testid: "portal-nav-territory",
+      });
+    }
+  } else {
+    if (modules.map !== false) {
       s1.push({
         to: "/portal/territory",
         label: modules.territory_plus ? "My Territory+" : "My Territory",
@@ -83,16 +93,16 @@ function buildTabs({ modules, isDemo }) {
         testid: "portal-nav-territory",
       });
     }
-  }
-  // Bookings — placeholder for now, ships behind a "coming soon" page.
-  // Available to all franchisees so they can register interest. Branded
-  // with the trailing "+" to match the other bolt-ons.
-  s1.push({ to: "/portal/bookings", label: "Bookings+", icon: CalendarClock, testid: "portal-nav-bookings" });
-  if (modules.marketing === true) {
-    s1.push({ to: "/portal/marketing", label: "Marketing+", icon: Megaphone, testid: "portal-nav-marketing" });
-  }
-  if (modules.invoicing === true) {
-    s1.push({ to: "/portal/invoices", label: "Invoicing+", icon: Receipt, testid: "portal-nav-invoices" });
+    // Bookings — placeholder for now, ships behind a "coming soon" page.
+    // Available to all franchisees so they can register interest. Branded
+    // with the trailing "+" to match the other bolt-ons.
+    s1.push({ to: "/portal/bookings", label: "Bookings+", icon: CalendarClock, testid: "portal-nav-bookings" });
+    if (modules.marketing === true) {
+      s1.push({ to: "/portal/marketing", label: "Marketing+", icon: Megaphone, testid: "portal-nav-marketing" });
+    }
+    if (modules.invoicing === true) {
+      s1.push({ to: "/portal/invoices", label: "Invoicing+", icon: Receipt, testid: "portal-nav-invoices" });
+    }
   }
   sections.push(s1);
   // ---- Section 2: comms + scheduling ----
@@ -157,7 +167,21 @@ export default function PortalShell() {
   // prospective franchisees.
   const tags = profile?.profile?.tags || [];
   const isDemo = tags.some((t) => String(t).trim().toLowerCase() === "demo");
-  const sections = buildTabs({ modules, isDemo });
+
+  // Demo-only toggle: visitors land on the vanilla view; flipping
+  // this on switches the sidebar to the Hub+ bolt-on view (and
+  // swaps the basic Territory for Territory+). Persisted per-browser
+  // in localStorage so the toggle survives across tabs / refreshes.
+  const [demoShowPlus, setDemoShowPlus] = useState(() => {
+    try { return localStorage.getItem("portal.demo.showPlus") === "1"; }
+    catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("portal.demo.showPlus", demoShowPlus ? "1" : "0"); }
+    catch (e) { console.debug("[PortalShell] demo toggle persist failed", e); }
+  }, [demoShowPlus]);
+
+  const sections = buildTabs({ modules, isDemo, demoShowPlus });
 
   // HQ Updates unread badge — visible on the sidebar + bottom-nav.
   // Polls every 60s and on focus; refresh() is also called explicitly
@@ -270,6 +294,46 @@ export default function PortalShell() {
                   return (
                     <div key={sIdx}>
                       <div className="my-3 border-t border-stone-200" data-testid={`portal-nav-divider-${sIdx}`} />
+                      {/* Demo-only toggle — flipping it on swaps the
+                          sidebar to the Hub+ bolt-on view (Territory+,
+                          Bookings+, Marketing+, Invoicing+). Lives just
+                          above Comfort Zone so it's easy to spot but
+                          not in the way of the core nav. Off by default
+                          so first impressions show the standard pages. */}
+                      {isDemo && (
+                        <button
+                          type="button"
+                          onClick={() => setDemoShowPlus((v) => !v)}
+                          data-testid="portal-nav-demo-show-plus"
+                          aria-pressed={demoShowPlus}
+                          title={demoShowPlus
+                            ? "Currently showing the Hub+ bolt-on pages. Click to switch back to the standard pages."
+                            : "Click to reveal the Hub+ bolt-on pages (Territory+, Bookings+, Marketing+, Invoicing+)."}
+                          className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 text-sm rounded-lg font-medium border transition-colors ${
+                            demoShowPlus
+                              ? "bg-stone-950 border-stone-950 text-[#dddd16] hover:bg-stone-800"
+                              : "bg-[#dddd16]/15 border-[#dddd16]/60 text-stone-900 hover:bg-[#dddd16]/30"
+                          }`}
+                        >
+                          <span className="flex items-center gap-3 min-w-0">
+                            <Sparkles className="w-4 h-4 shrink-0" />
+                            <span className="truncate">
+                              {demoShowPlus ? "Hide Hub+ pages" : "Show all Hub+ pages"}
+                            </span>
+                          </span>
+                          <span
+                            className={`shrink-0 inline-flex items-center w-9 h-5 rounded-full transition-colors ${
+                              demoShowPlus ? "bg-[#dddd16] justify-end" : "bg-stone-300 justify-start"
+                            }`}
+                            aria-hidden="true"
+                          >
+                            <span className="w-4 h-4 mx-0.5 bg-white rounded-full shadow-sm" />
+                          </span>
+                        </button>
+                      )}
+                      {isDemo && (
+                        <div className="my-3 border-t border-stone-200" data-testid={`portal-nav-divider-${sIdx}-demo-toggle`} />
+                      )}
                       {/* Creative Mojo Comfort Zone — Facebook group
                           link sitting between Franchise Store and the
                           Account dropdown, framed by the regular
@@ -402,6 +466,9 @@ export default function PortalShell() {
         onLogout={logout}
         userEmail={user?.email}
         unreadUpdates={unreadUpdates}
+        isDemo={isDemo}
+        demoShowPlus={demoShowPlus}
+        onToggleDemoShowPlus={() => setDemoShowPlus((v) => !v)}
       />
       <PortalHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
@@ -413,6 +480,7 @@ export default function PortalShell() {
 function PortalMobileDrawer({
   open, onClose, sections, accountOpen, onToggleAccount, onLogout, userEmail,
   unreadUpdates = 0,
+  isDemo = false, demoShowPlus = false, onToggleDemoShowPlus = null,
 }) {
   if (!open) return null;
   return (
@@ -452,6 +520,35 @@ function PortalMobileDrawer({
               return (
                 <div key={sIdx}>
                   <div className="my-3 border-t border-stone-200" />
+                  {isDemo && onToggleDemoShowPlus && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={onToggleDemoShowPlus}
+                        aria-pressed={demoShowPlus}
+                        data-testid="portal-mobile-demo-show-plus"
+                        className={`w-full flex items-center justify-between gap-3 px-3 py-3 text-base rounded-lg font-medium border transition-colors ${
+                          demoShowPlus
+                            ? "bg-stone-950 border-stone-950 text-[#dddd16] hover:bg-stone-800"
+                            : "bg-[#dddd16]/15 border-[#dddd16]/60 text-stone-900 hover:bg-[#dddd16]/30"
+                        }`}
+                      >
+                        <span className="flex items-center gap-3 min-w-0">
+                          <Sparkles className="w-5 h-5 shrink-0" />
+                          <span>{demoShowPlus ? "Hide Hub+ pages" : "Show all Hub+ pages"}</span>
+                        </span>
+                        <span
+                          className={`shrink-0 inline-flex items-center w-10 h-6 rounded-full transition-colors ${
+                            demoShowPlus ? "bg-[#dddd16] justify-end" : "bg-stone-300 justify-start"
+                          }`}
+                          aria-hidden="true"
+                        >
+                          <span className="w-5 h-5 mx-0.5 bg-white rounded-full shadow-sm" />
+                        </span>
+                      </button>
+                      <div className="my-3 border-t border-stone-200" />
+                    </>
+                  )}
                   <a
                     href={COMFORT_ZONE_FB_URL}
                     target="_blank"
