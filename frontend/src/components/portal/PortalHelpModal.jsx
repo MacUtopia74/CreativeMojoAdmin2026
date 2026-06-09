@@ -95,15 +95,15 @@ export default function PortalHelpModal({ open, onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-[120] bg-stone-950/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
+      className="fixed inset-0 z-[120] bg-stone-950/80 backdrop-blur-sm flex flex-col"
       onClick={onClose}
       data-testid="portal-help-modal"
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full overflow-hidden my-8"
+        className="bg-white shadow-2xl w-full h-full flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-5 py-3 flex items-center justify-between border-b border-stone-200 bg-[#dddd16]">
+        <div className="px-5 py-3 flex items-center justify-between border-b border-stone-200 bg-[#dddd16] shrink-0">
           <div className="flex items-center gap-2 text-stone-950">
             <LifeBuoy className="w-4 h-4" />
             <div>
@@ -119,11 +119,11 @@ export default function PortalHelpModal({ open, onClose }) {
             )}
           </div>
           <button onClick={onClose} className="p-2 hover:bg-stone-950/10 rounded-lg" data-testid="portal-help-close">
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="px-5 py-4 bg-stone-50 max-h-[80vh] overflow-y-auto">
+        <div className="flex-1 px-5 py-4 bg-stone-50 overflow-y-auto">
           {loading && (
             <div className="flex items-center justify-center py-10 text-stone-500">
               <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading help guide…
@@ -133,10 +133,10 @@ export default function PortalHelpModal({ open, onClose }) {
             <div className="text-center py-10 text-amber-700">{err}</div>
           )}
           {!loading && !err && page && (
-            <>
+            <div className="max-w-6xl mx-auto flex flex-col h-full">
               {page.caption && (
                 <p
-                  className="text-sm text-stone-700 leading-relaxed mb-4 max-w-3xl"
+                  className="text-sm text-stone-700 leading-relaxed mb-4"
                   data-testid="portal-help-caption"
                 >
                   {page.caption}
@@ -146,17 +146,17 @@ export default function PortalHelpModal({ open, onClose }) {
               {hasSlides ? (
                 <>
                   {/* Big image + arrows */}
-                  <div className="relative bg-white rounded-lg border border-stone-200 shadow-sm overflow-hidden">
+                  <div className="relative bg-white rounded-lg border border-stone-200 shadow-sm overflow-hidden flex-1 min-h-0">
                     {slide?.image_url ? (
                       <img
                         key={slide.id}
                         src={slide.image_url}
                         alt={`${page.title} step ${activeIdx + 1}`}
-                        className="w-full max-h-[60vh] object-contain bg-white"
+                        className="w-full h-full object-contain bg-white"
                         data-testid="portal-help-image"
                       />
                     ) : (
-                      <div className="w-full h-64 flex items-center justify-center text-stone-400">
+                      <div className="w-full h-full flex items-center justify-center text-stone-400">
                         <ImageOff className="w-8 h-8" />
                       </div>
                     )}
@@ -167,17 +167,17 @@ export default function PortalHelpModal({ open, onClose }) {
                           onClick={goPrev}
                           aria-label="Previous slide"
                           data-testid="portal-help-prev"
-                          className="absolute left-3 top-1/2 -translate-y-1/2 w-11 h-11 flex items-center justify-center bg-stone-950/80 hover:bg-stone-950 text-white rounded-full shadow-lg transition"
+                          className="absolute left-3 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center bg-stone-950/80 hover:bg-stone-950 text-white rounded-full shadow-lg transition"
                         >
-                          <ChevronLeft className="w-6 h-6" />
+                          <ChevronLeft className="w-7 h-7" />
                         </button>
                         <button
                           onClick={goNext}
                           aria-label="Next slide"
                           data-testid="portal-help-next"
-                          className="absolute right-3 top-1/2 -translate-y-1/2 w-11 h-11 flex items-center justify-center bg-stone-950/80 hover:bg-stone-950 text-white rounded-full shadow-lg transition"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center bg-stone-950/80 hover:bg-stone-950 text-white rounded-full shadow-lg transition"
                         >
-                          <ChevronRight className="w-6 h-6" />
+                          <ChevronRight className="w-7 h-7" />
                         </button>
                       </>
                     )}
@@ -186,7 +186,7 @@ export default function PortalHelpModal({ open, onClose }) {
                   {/* Per-slide caption */}
                   {slide?.caption && (
                     <p
-                      className="text-sm text-stone-800 leading-relaxed mt-3 px-2 max-w-3xl"
+                      className="text-sm text-stone-800 leading-relaxed mt-3 px-2"
                       data-testid="portal-help-slide-caption"
                     >
                       <span className="font-bold mr-1">Step {activeIdx + 1}:</span>
@@ -196,13 +196,13 @@ export default function PortalHelpModal({ open, onClose }) {
 
                   {/* Thumbnail strip */}
                   {slides.length > 1 && (
-                    <div className="mt-4 flex gap-2 overflow-x-auto pb-1" data-testid="portal-help-thumbs">
+                    <div className="mt-4 flex gap-2 overflow-x-auto pb-1 shrink-0" data-testid="portal-help-thumbs">
                       {slides.map((s, i) => (
                         <button
                           key={s.id}
                           onClick={() => setActiveIdx(i)}
                           data-testid={`portal-help-thumb-${i}`}
-                          className={`relative shrink-0 w-24 h-16 rounded-md overflow-hidden border-2 transition ${i === activeIdx ? "border-stone-950 ring-2 ring-[#dddd16]" : "border-stone-200 hover:border-stone-400"}`}
+                          className={`relative shrink-0 w-28 h-20 rounded-md overflow-hidden border-2 transition ${i === activeIdx ? "border-stone-950 ring-2 ring-[#dddd16]" : "border-stone-200 hover:border-stone-400"}`}
                           title={s.caption || `Step ${i + 1}`}
                         >
                           {s.image_url ? (
@@ -221,13 +221,15 @@ export default function PortalHelpModal({ open, onClose }) {
                   )}
                 </>
               ) : (
-                <div className="text-center py-10 text-stone-500 border-2 border-dashed border-stone-200 rounded-xl bg-white">
-                  <ImageOff className="w-8 h-8 mx-auto mb-2 text-stone-300" />
-                  <p className="font-semibold text-stone-700">Help guide coming soon</p>
-                  <p className="text-xs mt-1">HQ hasn&apos;t uploaded a marked-up screenshot for this page yet — speak to your franchise manager if you need a hand.</p>
+                <div className="flex-1 flex items-center justify-center">
+                  <div className="text-center py-10 text-stone-500 border-2 border-dashed border-stone-200 rounded-xl bg-white px-10">
+                    <ImageOff className="w-8 h-8 mx-auto mb-2 text-stone-300" />
+                    <p className="font-semibold text-stone-700">Help guide coming soon</p>
+                    <p className="text-xs mt-1">HQ hasn&apos;t uploaded a marked-up screenshot for this page yet — speak to your franchise manager if you need a hand.</p>
+                  </div>
                 </div>
               )}
-            </>
+            </div>
           )}
         </div>
       </div>
