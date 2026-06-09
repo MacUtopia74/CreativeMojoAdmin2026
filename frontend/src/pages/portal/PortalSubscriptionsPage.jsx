@@ -108,7 +108,14 @@ const SINGLE_PRICE = 10;
 export default function PortalSubscriptionsPage() {
   const ctx = useOutletContext() || {};
   const profile = ctx.profile || {};
-  const modules = profile?.profile?.portal_modules || {};
+  const tags = profile?.profile?.tags || [];
+  const isDemo = tags.some((t) => String(t).trim().toLowerCase() === "demo");
+  // Real franchisees: render the bolt-ons they actually own as ACTIVE
+  // (so the page shows their current plan). Demo: pretend nothing is
+  // enabled so visitors can click each bolt-on and see the "Build
+  // your bundle" total tick up from £10 → £15 → £20 → £25 live.
+  const realModules = profile?.profile?.portal_modules || {};
+  const modules = isDemo ? {} : realModules;
   // Visual-only selection state. Resets on each visit; not persisted.
   const [selected, setSelected] = useState(() => new Set());
 
@@ -207,7 +214,7 @@ export default function PortalSubscriptionsPage() {
         <h2 className="font-display text-2xl sm:text-3xl font-black text-stone-950 tracking-tight">
           Supercharge your franchise with bolt-ons
         </h2>
-        <p className="text-stone-600 mt-2 text-sm sm:text-base leading-relaxed max-w-3xl">
+        <p className="text-stone-600 mt-2 text-sm sm:text-base leading-relaxed">
           Add any of the optional modules below to your monthly Creative Mojo subscription. Each bolt-on is just £10 a
           month — pick any two for £15, any three for £20, or grab all four for £25. Billed via your existing
           GoCardless mandate and appears as a separate line on your Xero invoice. Cancel any time, no minimum term.
@@ -296,16 +303,23 @@ export default function PortalSubscriptionsPage() {
                 )}
               </div>
 
-              {/* Price */}
-              <div className="px-5 py-6 text-center border-b border-stone-100">
-                <div className="flex items-start justify-center gap-0.5">
-                  <span className="text-2xl font-black text-stone-950 mt-2">£</span>
-                  <span className="font-display text-6xl font-black text-stone-950 leading-none tracking-tight">{b.price}</span>
+              {/* Price — left-aligned compact row to keep the card
+                  short. £ + price on the left, "Per month inc VAT"
+                  next to it. The longer descriptive blurb that used
+                  to sit underneath is gone (the feature bullets below
+                  already explain what each module does) — without it
+                  the four panels are noticeably shorter and the
+                  Build-your-bundle ladder doesn't get hidden below
+                  the fold. */}
+              <div className="px-5 py-3 border-b border-stone-100">
+                <div className="flex items-baseline gap-3">
+                  <span className="font-display text-3xl font-black text-stone-950 leading-none tracking-tight">
+                    £{b.price}
+                  </span>
+                  <span className="text-[10px] text-stone-500 uppercase tracking-wider font-bold leading-tight">
+                    Per month<br />inc VAT
+                  </span>
                 </div>
-                <div className="text-xs text-stone-500 mt-2 uppercase tracking-wider font-bold">
-                  per month <span className="text-stone-400">inc VAT</span>
-                </div>
-                <div className="mt-3 text-[11px] text-stone-500 leading-relaxed">{b.blurb}</div>
               </div>
 
               {/* Feature list */}
