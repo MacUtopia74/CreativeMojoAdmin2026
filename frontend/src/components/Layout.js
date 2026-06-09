@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import Logo from "@/components/Logo";
+import PortalNewVersionBanner from "@/components/portal/PortalNewVersionBanner";
 import api from "@/lib/api";
 import {
   LayoutDashboard,
@@ -437,6 +438,7 @@ export default function Layout() {
 
       {/* Main */}
       <main className="flex-1 min-w-0">
+        <PortalNewVersionBanner />
         <Outlet />
       </main>
     </div>

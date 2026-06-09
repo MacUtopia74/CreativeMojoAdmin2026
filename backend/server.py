@@ -4021,6 +4021,23 @@ async def health():
     return {"ok": True}
 
 
+# Build version stamp — set on module import. Every container restart
+# produces a new value, so the frontend can poll this endpoint to
+# detect when a fresh deploy is live and prompt the franchisee to
+# refresh. We use the process start timestamp (ms) as the version;
+# good enough since two deploys can't share the same millisecond.
+import time as _time_for_version
+
+BUILD_VERSION = str(int(_time_for_version.time() * 1000))
+
+
+@api.get("/version")
+async def get_version():
+    """Returns the current backend build identifier. Public — every
+    portal page polls this so we don't add an auth dependency."""
+    return {"version": BUILD_VERSION, "started_at": BUILD_VERSION}
+
+
 # ----------------------------------------------------------------------------
 # Startup: seed admin + indexes
 # ----------------------------------------------------------------------------

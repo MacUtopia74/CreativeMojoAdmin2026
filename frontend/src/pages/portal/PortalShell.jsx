@@ -24,6 +24,7 @@ import {
   Menu, X, Facebook, LifeBuoy,
 } from "lucide-react";
 import PortalHelpModal from "@/components/portal/PortalHelpModal";
+import PortalNewVersionBanner from "@/components/portal/PortalNewVersionBanner";
 
 // Private community Facebook group — every franchisee gets the same
 // button to keep the link consistent and visible across every portal
@@ -217,6 +218,11 @@ export default function PortalShell() {
       style={{ zoom: FONT_SCALES[fontScale].zoom }}
       data-testid="portal-shell"
     >
+      {/* Banner that appears when a new backend build is detected.
+          Sits above the sticky header so it pushes the rest of the
+          layout down a couple of lines until the franchisee
+          refreshes or dismisses. */}
+      <PortalNewVersionBanner />
       {/* Top bar — logo, font-size, sign-out (desktop). Always sticky. */}
       <header className="bg-white border-b border-stone-200 sticky top-0 z-30 pt-safe">
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 py-2 sm:py-3 flex items-center justify-between gap-2">
