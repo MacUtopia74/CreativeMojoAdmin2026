@@ -142,7 +142,11 @@ export default function PortalSubscriptionsPage() {
           .map((r) => r.addon),
       );
       setPendingKeys(keys);
-    } catch { /* silent — empty pending state is the safe fallback */ }
+    } catch (err) {
+      // Empty pending state is the safe fallback — but log so dev
+      // tooling surfaces the network error rather than burying it.
+      console.error("Failed to load pending subscription requests:", err);
+    }
     finally { setPendingLoaded(true); }
   }, []);
   useEffect(() => { loadPending(); }, [loadPending]);
@@ -362,8 +366,8 @@ export default function PortalSubscriptionsPage() {
               {/* Feature list */}
               <div className="px-5 py-5 flex-1">
                 <ul className="space-y-2.5">
-                  {b.features.map((f, i) => (
-                    <li key={i} className="flex items-start gap-2.5 text-sm text-stone-700">
+                  {b.features.map((f) => (
+                    <li key={f} className="flex items-start gap-2.5 text-sm text-stone-700">
                       <span
                         className="w-4 h-4 rounded-full flex items-center justify-center shrink-0 mt-0.5"
                         style={{ backgroundColor: `${b.accent}26`, color: b.accent }}

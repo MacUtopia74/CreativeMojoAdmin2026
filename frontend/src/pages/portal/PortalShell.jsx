@@ -296,9 +296,13 @@ export default function PortalShell() {
             <nav className="sticky top-24 space-y-1">
               {sections.map((tabs, sIdx) => {
                 const isAccount = sIdx === sections.length - 1;
+                // Section identity = the first tab's path (each section has
+                // a unique opening route). Falls back to "account" for the
+                // dropdown section which lives at the end.
+                const sectionKey = isAccount ? "account" : (tabs[0]?.to || `section-${sIdx}`);
                 if (isAccount) {
                   return (
-                    <div key={sIdx}>
+                    <div key={sectionKey}>
                       <div className="my-3 border-t border-stone-200" data-testid={`portal-nav-divider-${sIdx}`} />
                       {/* Creative Mojo Comfort Zone — Facebook group
                           link sitting between Franchise Store and the
@@ -368,7 +372,7 @@ export default function PortalShell() {
                   );
                 }
                 return (
-                  <div key={sIdx}>
+                  <div key={sectionKey}>
                     {sIdx > 0 && <div className="my-3 border-t border-stone-200" data-testid={`portal-nav-divider-${sIdx}`} />}
                     {tabs.map(({ to, label, icon: Icon, end, testid }) => {
                       const showBadge = to === "/portal/updates" && unreadUpdates > 0;
@@ -525,9 +529,10 @@ function PortalMobileDrawer({
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
           {sections.map((tabs, sIdx) => {
             const isAccount = sIdx === sections.length - 1;
+            const sectionKey = isAccount ? "account" : (tabs[0]?.to || `section-${sIdx}`);
             if (isAccount) {
               return (
-                <div key={sIdx}>
+                <div key={sectionKey}>
                   <div className="my-3 border-t border-stone-200" />
                   <a
                     href={COMFORT_ZONE_FB_URL}
@@ -590,7 +595,7 @@ function PortalMobileDrawer({
               );
             }
             return (
-              <div key={sIdx}>
+              <div key={sectionKey}>
                 {sIdx > 0 && <div className="my-3 border-t border-stone-200" />}
                 {tabs.map(({ to, label, icon: Icon, end, testid }) => {
                   const showBadge = to === "/portal/updates" && unreadUpdates > 0;

@@ -89,8 +89,11 @@ export default function PortalUpdatesPage() {
     try {
       await api.post(`/portal/announcements/${id}/read`);
       refreshUnreadUpdates?.();
-    } catch {
-      // Swallow — non-critical, retry happens next mount.
+    } catch (err) {
+      // Non-critical — the read state will re-derive from the server on
+      // the next page mount. Logged so it's visible in dev tooling
+      // rather than disappearing into thin air.
+      console.error("Failed to mark announcement as read:", err);
     }
   };
 
@@ -192,7 +195,9 @@ export default function PortalUpdatesPage() {
                   <div className="px-5 pb-5 border-t border-stone-100">
                     {it.intro && <p className="text-sm text-stone-700 whitespace-pre-line mt-3 mb-4">{it.intro}</p>}
                     {(it.panels || []).map((p, i) => (
-                      <div key={i} className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-4 mb-4 last:mb-0">
+                      <div
+                        key={`${p.kind || "panel"}-${p.key || p.folder_key || p.resolved_url || i}`}
+                        className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-4 mb-4 last:mb-0">
                         <div className="rounded-lg overflow-hidden border border-stone-200 bg-stone-50 aspect-video sm:aspect-square">
                           <PanelThumb panel={p} />
                         </div>
