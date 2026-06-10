@@ -353,7 +353,7 @@ export default function PortalSubscriptionsPage() {
                   <span className="font-display text-4xl sm:text-5xl font-black text-stone-950 leading-none tracking-tight">
                     £{b.price}
                   </span>
-                  <span className="text-[10px] text-stone-500 uppercase tracking-wider font-bold leading-tight text-left">
+                  <span className="text-[10px] text-stone-500 uppercase tracking-wider font-bold leading-tight text-center">
                     Per month<br />inc VAT
                   </span>
                 </div>
