@@ -311,12 +311,15 @@ function PreviewModal({ file, onClose }) {
 
 // ---------------------------------------------------------------------------
 // Share modal — creates a stable app-side share token that resolves to a
-// fresh signed R2 URL on each click. Lets us offer up to 30 days even
-// though R2's underlying signed URLs cap at 7 days. Use for ad-hoc external
-// sharing (e-shots, sales PDFs to prospects). For franchisees, they get
-// their own portal login (permanent access).
+// fresh signed R2 URL on each click. Offers two durations matching how
+// admins actually share files: a 6-month link for time-bounded campaigns
+// (e-shots, sales PDFs to prospects) and a permanent "Forever" link for
+// reference documents pinned into the Updates feed or shared with
+// franchisees as a stable URL. R2's underlying signed URLs cap at 7 days
+// so the redirect endpoint re-signs on every click.
 function ShareModal({ file, onClose }) {
-  const [days, setDays] = useState(30);
+  // Default to 6 months; "0" means lifetime / forever.
+  const [days, setDays] = useState(180);
   const [url, setUrl] = useState(null);
   const [expiresAt, setExpiresAt] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -357,12 +360,14 @@ function ShareModal({ file, onClose }) {
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Expires in</span>
-            {[1, 7, 14, 30].map((d) => (
-              <button key={d} onClick={() => { setDays(d); generate(d); }} data-testid={`share-days-${d}`}
-                className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md border ${days === d ? "bg-stone-950 text-white border-stone-950" : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"}`}>
-                {d} {d === 1 ? "day" : "days"}
-              </button>
-            ))}
+            <button onClick={() => { setDays(180); generate(180); }} data-testid="share-days-180"
+              className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md border ${days === 180 ? "bg-stone-950 text-white border-stone-950" : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"}`}>
+              6 months
+            </button>
+            <button onClick={() => { setDays(0); generate(0); }} data-testid="share-days-lifetime"
+              className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md border ${days === 0 ? "bg-stone-950 text-white border-stone-950" : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"}`}>
+              Forever
+            </button>
           </div>
           {busy && <div className="text-sm text-stone-500 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Generating…</div>}
           {err && <div className="text-xs text-red-700 bg-red-50 border border-red-200 px-3 py-2 rounded-lg">{err}</div>}
@@ -378,7 +383,9 @@ function ShareModal({ file, onClose }) {
               </div>
               <div className="text-[11px] text-stone-500">
                 Paste into an email or e-shot. Anyone with the link can open or download — no login required.
-                {expiresAt ? ` Auto-expires ${new Date(expiresAt).toLocaleString()}.` : ""}
+                {expiresAt
+                  ? ` Auto-expires ${new Date(expiresAt).toLocaleString()}.`
+                  : " This link never expires."}
               </div>
             </div>
           )}
