@@ -344,18 +344,18 @@ export default function PortalSubscriptionsPage() {
                 )}
               </div>
 
-              {/* Price — centred row, larger £10 so it reads as the
-                  hero number on the card without dragging the whole
-                  panel taller. "Per month / inc VAT" sits inline next
-                  to the price, both items centred together. */}
-              <div className="px-5 py-3 border-b border-stone-100">
-                <div className="flex items-baseline justify-center gap-3">
-                  <span className="font-display text-4xl sm:text-5xl font-black text-stone-950 leading-none tracking-tight">
-                    £{b.price}
-                  </span>
-                  <span className="text-[10px] text-stone-500 uppercase tracking-wider font-bold leading-tight text-center">
-                    Per month<br />inc VAT
-                  </span>
+              {/* Price — £10 sits dead-centre in the card with the
+                  "PER MONTH / INC VAT" caption directly underneath.
+                  The previous side-by-side layout was pushing the £10
+                  off-centre because the caption took horizontal space
+                  to the right; stacking solves it without making the
+                  card any taller (the caption text is tiny). */}
+              <div className="px-5 py-3 border-b border-stone-100 text-center">
+                <div className="font-display text-4xl sm:text-5xl font-black text-stone-950 leading-none tracking-tight">
+                  £{b.price}
+                </div>
+                <div className="text-[10px] text-stone-500 uppercase tracking-wider font-bold leading-tight mt-2">
+                  Per month<br />inc VAT
                 </div>
               </div>
 
