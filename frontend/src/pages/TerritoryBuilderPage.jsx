@@ -15,7 +15,7 @@ import {
   Search, Loader2, Target, Save, Trash2, MapPin, Plus, RotateCcw,
   Users, AlertCircle, CheckCircle2, Pencil, ChevronRight, ArrowLeft,
   ClipboardPaste, Layers, Eye, EyeOff, ChevronDown, ChevronUp,
-  Share2, Copy, Link as LinkIcon, FolderOpen, History,
+  Share2, Copy, Link as LinkIcon, FolderOpen, History, X,
 } from "lucide-react";
 
 const TARGET_HOMES = 150;
@@ -495,6 +495,30 @@ export default function TerritoryBuilderPage() {
 
   const sortedSelected = useMemo(() => [...selected].sort(), [selected]);
 
+  // ---- per-panel sector filters & nearby sort ---------------------------
+  // Sectors are listed in distance order for "Nearby" and alphabetically
+  // for "Selected", but both panels can get long and the chip layout makes
+  // visual scanning painful. A prefix filter in each panel + an A-Z toggle
+  // on Nearby lets you home in on "all LE16* sectors" instantly.
+  const [selectedFilter, setSelectedFilter] = useState("");
+  const [nearbyFilter, setNearbyFilter] = useState("");
+  const [nearbySort, setNearbySort] = useState("distance"); // "distance" | "alpha"
+
+  const filteredSelected = useMemo(() => {
+    const q = selectedFilter.trim().toUpperCase();
+    if (!q) return sortedSelected;
+    return sortedSelected.filter((s) => s.toUpperCase().startsWith(q));
+  }, [sortedSelected, selectedFilter]);
+
+  const filteredNearby = useMemo(() => {
+    const q = nearbyFilter.trim().toUpperCase();
+    let arr = q ? sectors.filter((s) => (s.sector || "").toUpperCase().startsWith(q)) : sectors;
+    if (nearbySort === "alpha") {
+      arr = [...arr].sort((a, b) => (a.sector || "").localeCompare(b.sector || ""));
+    }
+    return arr;
+  }, [sectors, nearbyFilter, nearbySort]);
+
   return (
     <div className="p-6 max-w-[1600px] mx-auto space-y-5" data-testid="territory-builder">
       <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -701,16 +725,46 @@ export default function TerritoryBuilderPage() {
               </button>
               {selectedListOpen && (
                 <div className="px-4 pb-4">
-                  {!sortedSelected.length && <div className="text-xs text-stone-500">Click sectors on the map to add them here.</div>}
-                  <div className="flex flex-wrap gap-1.5 max-h-72 overflow-auto">
-                    {sortedSelected.map((s) => (
-                      <button key={s} onClick={() => toggleSector(s)} data-testid={`chip-selected-${s}`}
-                        className="group inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-red-700 rounded-md">
-                        {s} · {homeCount.per_sector?.[s] || 0}
-                        <Trash2 className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </button>
-                    ))}
-                  </div>
+                  {!sortedSelected.length ? (
+                    <div className="text-xs text-stone-500">Click sectors on the map to add them here.</div>
+                  ) : (
+                    <>
+                      {/* Prefix filter — typing "LE16" narrows to all LE16* sectors. */}
+                      <div className="flex items-center gap-1.5 mb-2.5 px-2 py-1.5 bg-stone-50 border border-stone-200 rounded-lg">
+                        <Search className="w-3 h-3 text-stone-400 shrink-0" />
+                        <input
+                          value={selectedFilter}
+                          onChange={(e) => setSelectedFilter(e.target.value)}
+                          placeholder="Filter (e.g. LE16)"
+                          data-testid="filter-selected-sectors"
+                          className="flex-1 min-w-0 bg-transparent text-[11px] outline-none placeholder:text-stone-400"
+                        />
+                        {selectedFilter && (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedFilter("")}
+                            data-testid="filter-selected-clear"
+                            className="text-stone-400 hover:text-stone-700 shrink-0"
+                            aria-label="Clear filter"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 max-h-72 overflow-auto">
+                        {filteredSelected.length === 0 && (
+                          <div className="text-[11px] text-stone-500 italic">No selected sectors match “{selectedFilter}”.</div>
+                        )}
+                        {filteredSelected.map((s) => (
+                          <button key={s} onClick={() => toggleSector(s)} data-testid={`chip-selected-${s}`}
+                            className="group inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-red-700 rounded-md">
+                            {s} · {homeCount.per_sector?.[s] || 0}
+                            <Trash2 className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -730,18 +784,69 @@ export default function TerritoryBuilderPage() {
                 {nearbyListOpen ? <ChevronUp className="w-4 h-4 text-stone-500" /> : <ChevronDown className="w-4 h-4 text-stone-500" />}
               </button>
               {nearbyListOpen && (
-                <div className="px-4 pb-4 max-h-72 overflow-auto space-y-1">
-                  {sectors.map((s) => {
-                    const isSel = selected.includes(s.sector);
-                    return (
-                      <button key={s.sector} onClick={() => toggleSector(s.sector)} data-testid={`chip-near-${s.sector}`}
-                        className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 text-xs rounded-lg text-left ${isSel ? "bg-stone-950 text-white" : "hover:bg-stone-50 text-stone-800"}`}>
-                        <span className="font-bold">{s.sector}</span>
-                        <span className="tabular-nums">{s.home_count} homes · {(s.distance_km / KM_PER_MI).toFixed(1)} mi</span>
-                        {isSel ? <CheckCircle2 className="w-3.5 h-3.5 text-[#dddd16] shrink-0" /> : <Plus className="w-3.5 h-3.5 text-stone-400 shrink-0" />}
+                <div className="px-4 pb-4">
+                  {/* Filter + sort row. Sort defaults to distance (current
+                      behaviour). Switching to A-Z is useful when scanning
+                      for a specific outcode while ignoring radius. */}
+                  <div className="flex items-center gap-2 mb-2.5">
+                    <div className="flex items-center gap-1.5 flex-1 px-2 py-1.5 bg-stone-50 border border-stone-200 rounded-lg">
+                      <Search className="w-3 h-3 text-stone-400 shrink-0" />
+                      <input
+                        value={nearbyFilter}
+                        onChange={(e) => setNearbyFilter(e.target.value)}
+                        placeholder="Filter (e.g. LE16)"
+                        data-testid="filter-nearby-sectors"
+                        className="flex-1 min-w-0 bg-transparent text-[11px] outline-none placeholder:text-stone-400"
+                      />
+                      {nearbyFilter && (
+                        <button
+                          type="button"
+                          onClick={() => setNearbyFilter("")}
+                          data-testid="filter-nearby-clear"
+                          className="text-stone-400 hover:text-stone-700 shrink-0"
+                          aria-label="Clear filter"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex items-center bg-stone-50 border border-stone-200 rounded-lg p-0.5" role="tablist" aria-label="Sort nearby sectors">
+                      <button
+                        type="button"
+                        onClick={() => setNearbySort("distance")}
+                        data-testid="sort-nearby-distance"
+                        aria-pressed={nearbySort === "distance"}
+                        className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md ${nearbySort === "distance" ? "bg-stone-950 text-white" : "text-stone-600 hover:text-stone-900"}`}
+                      >
+                        Distance
                       </button>
-                    );
-                  })}
+                      <button
+                        type="button"
+                        onClick={() => setNearbySort("alpha")}
+                        data-testid="sort-nearby-alpha"
+                        aria-pressed={nearbySort === "alpha"}
+                        className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md ${nearbySort === "alpha" ? "bg-stone-950 text-white" : "text-stone-600 hover:text-stone-900"}`}
+                      >
+                        A–Z
+                      </button>
+                    </div>
+                  </div>
+                  <div className="max-h-72 overflow-auto space-y-1">
+                    {filteredNearby.length === 0 && (
+                      <div className="text-[11px] text-stone-500 italic px-1">No nearby sectors match “{nearbyFilter}”.</div>
+                    )}
+                    {filteredNearby.map((s) => {
+                      const isSel = selected.includes(s.sector);
+                      return (
+                        <button key={s.sector} onClick={() => toggleSector(s.sector)} data-testid={`chip-near-${s.sector}`}
+                          className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 text-xs rounded-lg text-left ${isSel ? "bg-stone-950 text-white" : "hover:bg-stone-50 text-stone-800"}`}>
+                          <span className="font-bold">{s.sector}</span>
+                          <span className="tabular-nums">{s.home_count} homes · {(s.distance_km / KM_PER_MI).toFixed(1)} mi</span>
+                          {isSel ? <CheckCircle2 className="w-3.5 h-3.5 text-[#dddd16] shrink-0" /> : <Plus className="w-3.5 h-3.5 text-stone-400 shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>
