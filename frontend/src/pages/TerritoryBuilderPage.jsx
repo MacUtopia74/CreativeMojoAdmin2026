@@ -456,6 +456,43 @@ export default function TerritoryBuilderPage() {
     }
   };
 
+  // ---- in-map search pin -----------------------------------------------
+  // Floating search box in the top-right of the map. Lets the admin
+  // drop a temporary blue pin for any UK town/city or postcode sector
+  // (purely visual — does NOT change the territory centre or load new
+  // sectors). Clearing the search removes the pin.
+  const [mapSearch, setMapSearch] = useState("");
+  const [searchPin, setSearchPin] = useState(null);   // { lat, lng, label } | null
+  const [searching, setSearching] = useState(false);
+  const [searchErr, setSearchErr] = useState("");
+
+  const runMapSearch = async () => {
+    const q = mapSearch.trim();
+    if (!q) return;
+    setSearching(true);
+    setSearchErr("");
+    try {
+      const { data } = await api.get("/territory/postcode-lookup", { params: { postcode: q } });
+      if (data.latitude == null || data.longitude == null) {
+        throw new Error("No match");
+      }
+      const label = data.matched_place
+        ? `${data.matched_place} · ${data.postcode || ""}`.replace(/ · $/, "")
+        : (data.postcode || q);
+      setSearchPin({ lat: data.latitude, lng: data.longitude, label });
+    } catch (e) {
+      setSearchErr(e?.response?.data?.detail || "No UK postcode or town/city match.");
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const clearMapSearch = () => {
+    setMapSearch("");
+    setSearchPin(null);
+    setSearchErr("");
+  };
+
   const sortedSelected = useMemo(() => [...selected].sort(), [selected]);
 
   return (
@@ -709,15 +746,71 @@ export default function TerritoryBuilderPage() {
               )}
             </div>
           </div>
-          <TerritoryMap
-            sectors={sectors}
-            selected={selected}
-            centre={centre}
-            centreLabel={centreLabel}
-            onToggleSector={toggleSector}
-            height={820}
-            franchiseeOverlay={showOverlay ? overlay : null}
-          />
+          <div className="relative">
+            <TerritoryMap
+              sectors={sectors}
+              selected={selected}
+              centre={centre}
+              centreLabel={centreLabel}
+              onToggleSector={toggleSector}
+              height={820}
+              franchiseeOverlay={showOverlay ? overlay : null}
+              searchPin={searchPin}
+            />
+            {/* Floating search box — sits over the top-right corner of
+                the map. Purpose: lets the admin drop a temporary blue
+                pin for any UK town or postcode sector when scoping out
+                where a prospective franchisee says they'd like to be
+                based. Does NOT change the territory centre or reload
+                sectors — purely a visual guide. */}
+            <div
+              className="absolute top-3 right-14 z-10 bg-white/95 backdrop-blur border border-stone-300 rounded-xl shadow-lg p-2 flex items-center gap-1.5"
+              style={{ width: "min(330px, calc(100% - 88px))" }}
+              data-testid="map-search-box"
+            >
+              <Search className="w-3.5 h-3.5 text-stone-500 shrink-0 ml-1" />
+              <input
+                value={mapSearch}
+                onChange={(e) => { setMapSearch(e.target.value); if (searchErr) setSearchErr(""); }}
+                onKeyDown={(e) => { if (e.key === "Enter") runMapSearch(); }}
+                placeholder="Search town or postcode (e.g. Bath, RG40 1)"
+                data-testid="map-search-input"
+                className="flex-1 min-w-0 px-1.5 py-1.5 text-xs bg-transparent outline-none placeholder:text-stone-400"
+              />
+              {(mapSearch || searchPin) && (
+                <button
+                  type="button"
+                  onClick={clearMapSearch}
+                  data-testid="map-search-clear"
+                  className="px-2 py-1.5 text-stone-500 hover:text-stone-900 hover:bg-stone-100 rounded-md shrink-0"
+                  title="Clear search and remove pin"
+                  aria-label="Clear search"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={runMapSearch}
+                disabled={searching || !mapSearch.trim()}
+                data-testid="map-search-go"
+                className="px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 disabled:opacity-40 rounded-md shrink-0 flex items-center gap-1"
+              >
+                {searching ? <Loader2 className="w-3 h-3 animate-spin" /> : <MapPin className="w-3 h-3" />}
+                Drop pin
+              </button>
+            </div>
+            {searchErr && (
+              <div
+                className="absolute top-16 right-14 z-10 bg-amber-50/95 backdrop-blur border border-amber-300 text-amber-900 text-[11px] px-3 py-1.5 rounded-lg shadow-sm flex items-center gap-1.5"
+                style={{ width: "min(330px, calc(100% - 88px))" }}
+                data-testid="map-search-error"
+              >
+                <AlertCircle className="w-3 h-3 shrink-0" />
+                <span className="flex-1">{searchErr}</span>
+              </div>
+            )}
+          </div>
           {/* Live homes-count bar — sits directly below the map so the
               number is in the user's eyeline as they click sectors. Sticky
               to the bottom of the viewport so it stays visible even while

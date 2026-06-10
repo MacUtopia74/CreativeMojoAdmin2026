@@ -62,12 +62,18 @@ export default function TerritoryMap({
                             //   numbered markers are rendered at low opacity
                             //   so they read as background context while the
                             //   gold client markers pop.
+  searchPin = null,         // { lat, lng, label } — purely-visual blue pin
+                            //   dropped via the on-map search box. Independent
+                            //   of ``pinnedPostcode`` (which carries the
+                            //   inside/outside-territory verdict). Setting
+                            //   to ``null`` removes the pin.
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const centreMarkerRef = useRef(null);
   const homeMarkersRef = useRef([]);
   const pinnedMarkerRef = useRef(null);
+  const searchMarkerRef = useRef(null);
   const franchiseeHqMarkersRef = useRef([]);
   const [ready, setReady] = useState(false);
   // Bumped each time the basemap finishes (re)loading so the data effects
@@ -617,6 +623,41 @@ export default function TerritoryMap({
     pinnedMarkerRef.current = marker;
     mapRef.current.flyTo({ center: [pinnedPostcode.lng, pinnedPostcode.lat], zoom: 12, speed: 1.4 });
   }, [pinnedPostcode, ready]);
+
+  // ----------------- search-box pin -----------------------------------
+  // Purely-visual marker dropped via the in-map "Search town/postcode"
+  // box. A distinct blue teardrop so admins can tell at a glance it's a
+  // scratch pad pin, not part of the territory data (sectors, HQ pins,
+  // or the inside/outside ``pinnedPostcode`` verdict). Removed when the
+  // parent passes ``searchPin = null``.
+  useEffect(() => {
+    if (!ready || !mapRef.current) return;
+    if (searchMarkerRef.current) { searchMarkerRef.current.remove(); searchMarkerRef.current = null; }
+    if (!searchPin || searchPin.lat == null || searchPin.lng == null) return;
+    const el = document.createElement("div");
+    el.style.cssText = "width:34px;height:42px;position:relative;cursor:pointer;";
+    const pin = document.createElement("div");
+    // Sky-blue so it can't be confused with the green/red inside/outside
+    // pin or the dark indigo franchisee HQ pins already on the map.
+    pin.style.cssText = "position:absolute;inset:0;background:#0284c7;border:3px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 3px 8px rgba(0,0,0,.4);";
+    const dot = document.createElement("div");
+    dot.style.cssText = "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:14px;font-family:Inter,system-ui,sans-serif;padding-bottom:6px;";
+    dot.textContent = "📍";
+    el.appendChild(pin);
+    el.appendChild(dot);
+    const popupHtml = searchPin.label
+      ? `<div style="font-family:Inter,system-ui;font-size:12px;line-height:1.35;text-align:center"><strong>${(searchPin.label || "").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</strong></div>`
+      : null;
+    const m = new mapboxgl.Marker({ element: el, anchor: "bottom" })
+      .setLngLat([searchPin.lng, searchPin.lat]);
+    if (popupHtml) {
+      m.setPopup(new mapboxgl.Popup({ offset: 24, closeButton: false }).setHTML(popupHtml));
+    }
+    m.addTo(mapRef.current);
+    if (popupHtml) m.togglePopup();
+    searchMarkerRef.current = m;
+    mapRef.current.flyTo({ center: [searchPin.lng, searchPin.lat], zoom: 11, speed: 1.2 });
+  }, [searchPin, ready]);
 
   // ----------------- franchisee overlay: territory polygons + HQ pins -----
   useEffect(() => {
