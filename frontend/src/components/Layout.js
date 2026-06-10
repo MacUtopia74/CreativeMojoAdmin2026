@@ -125,6 +125,67 @@ const SIDEBAR = [
   },
 ];
 
+// New 2026 layout — top-level rows flattened (no more Franchises group),
+// every "back-office" administrative tool collapsed into a single Admin
+// group with three sub-groups (Mapping, Content, Settings). Sandra
+// continues to see the original SIDEBAR (her muscle memory is built
+// around the old layout); everyone else gets this revised structure.
+const SIDEBAR_V2 = [
+  { kind: "item", to: "/",                       label: "Dashboard",            icon: LayoutDashboard, testid: "nav-dashboard",            permKey: "dashboard" },
+  { kind: "divider" },
+  { kind: "item", to: "/orders",                 label: "Orders",               icon: ShoppingBag,     testid: "nav-orders",                permKey: "orders" },
+  { kind: "divider" },
+  { kind: "item", to: "/franchisees",            label: "Franchises / Licences", icon: Users,         testid: "nav-franchisees",           permKey: "franchisees", alertBadge: "missing_mandate" },
+  { kind: "item", to: "/renewals",               label: "Renewals",             icon: BellRing,        testid: "nav-renewals",              permKey: "renewals" },
+  { kind: "item", to: "/territory-builder",      label: "Territory Builder",    icon: Target,          testid: "nav-territory-builder",     permKey: "territory-builder" },
+  { kind: "divider" },
+  { kind: "item", to: "/contacts",               label: "Sales & Contacts",     icon: Contact,         testid: "nav-contacts",              permKey: "contacts" },
+  { kind: "item", to: "/files",                  label: "Files",                icon: FolderOpen,      testid: "nav-files",                 permKey: "files" },
+  { kind: "item", to: "/admin/announcements",    label: "HQ Updates",           icon: Megaphone,       testid: "nav-admin-announcements",   permKey: "admin-announcements" },
+  { kind: "item", to: "/calendar",               label: "Calendar",             icon: CalendarDays,    testid: "nav-calendar",              permKey: "calendar" },
+  { kind: "item", to: "/admin/subscription-requests", label: "Subscription Requests", icon: Sparkles,  testid: "nav-subscription-requests", permKey: "subscription-requests" },
+  { kind: "divider" },
+  {
+    kind: "group", key: "admin", label: "Admin", icon: Wrench, testid: "nav-admin-group",
+    children: [
+      {
+        kind: "subgroup", key: "mapping", label: "Mapping", icon: MapPin,
+        children: [
+          { kind: "item", to: "/find-class",          label: "Find-a-Class",                icon: MapPin,      testid: "nav-find-class",          permKey: "find-class" },
+          { kind: "item", to: "/cqc-definitions",     label: "CQC",                         icon: Stethoscope, testid: "nav-cqc-definitions",     permKey: "cqc-definitions" },
+          { kind: "item", to: "/scotland-definitions", label: "Scotland",                   icon: Stethoscope, testid: "nav-scotland-definitions", permKey: "scotland-definitions" },
+          { kind: "item", to: "/ni-definitions",      label: "Northern Ireland",            icon: Stethoscope, testid: "nav-ni-definitions",      permKey: "ni-definitions" },
+        ],
+      },
+      {
+        kind: "subgroup", key: "content", label: "Content", icon: FolderOpen,
+        children: [
+          { kind: "item", to: "/admin/help-centre",   label: "Help Centre",                 icon: LifeBuoy,    testid: "nav-help-centre",         permKey: "help-centre" },
+          { kind: "item", to: "/admin/shape-orders",  label: "Franchise Store",             icon: ShoppingBag, testid: "nav-admin-shape-orders",  permKey: "admin-shape-orders" },
+          { kind: "item", to: "/admin/youtube",       label: "YouTube Playlists",           icon: Youtube,     testid: "nav-admin-youtube",       permKey: "admin-youtube" },
+          { kind: "item", to: "/invoices",            label: "Sandra's Invoice Admin",      icon: Receipt,     testid: "nav-invoices",            permKey: "invoices" },
+        ],
+      },
+      {
+        kind: "subgroup", key: "settings", label: "Settings", icon: Cog,
+        children: [
+          { kind: "item", to: "/admin/users",           label: "Users",                     icon: KeyRound,    testid: "nav-admin-users",          permKey: "admin-users" },
+          { kind: "item", to: "/admin/xero",            label: "Xero",                      icon: Calculator,  testid: "nav-admin-xero",           permKey: "admin-xero" },
+          { kind: "item", to: "/form-intake",           label: "Form Intake",               icon: Inbox,       testid: "nav-form-intake",          permKey: "form-intake" },
+          { kind: "item", to: "/admin/email-templates", label: "Email Templates",           icon: Mail,        testid: "nav-admin-email-templates", permKey: "admin-email-templates" },
+          { kind: "item", to: "/banking",               label: "Invoice Banking Feed",      icon: Banknote,    testid: "nav-banking",              permKey: "banking" },
+          { kind: "item", to: "/admin/logs",            label: "Logs",                      icon: ClipboardList, testid: "nav-admin-logs",         permKey: "admin-logs" },
+        ],
+      },
+    ],
+  },
+];
+
+// Sandra's account opts out of the V2 sidebar — she's used the
+// original layout for a year and rolling her over would mean re-training
+// muscle memory mid-business-quarter.
+const SANDRA_EMAIL = "sandracaldeiradunkerley77@gmail.com";
+
 // Single source-of-truth for permission key → human label and the route
 // prefix it gates. Used by the Admin Users permissions modal and the
 // Layout's page-guard effect. Order here drives display order in the
@@ -262,11 +323,19 @@ export default function Layout() {
   // their routes are reachable — direct URL access gets redirected.
   const navPermissions = user?.role === "admin" ? (user.nav_permissions ?? null) : null;
 
+  // Choose the sidebar shape: Sandra keeps the legacy layout; everyone
+  // else gets the new V2 structure (flatter top-level + Admin roll-up).
+  // The decision is memoised so it doesn't churn on every re-render.
+  const sidebarTemplate = useMemo(
+    () => (String(user?.email || "").trim().toLowerCase() === SANDRA_EMAIL ? SIDEBAR : SIDEBAR_V2),
+    [user?.email],
+  );
+
   // Filter the SIDEBAR tree to only branches that actually contain at
   // least one allowed leaf. Groups/subgroups vanish entirely once empty
   // so we don't leave dangling headers.
   const filteredSidebar = useMemo(() => {
-    if (navPermissions == null) return SIDEBAR;
+    if (navPermissions == null) return sidebarTemplate;
     const allowed = new Set(navPermissions);
     const walk = (nodes) => {
       const out = [];
@@ -290,8 +359,8 @@ export default function Layout() {
       while (trimmed.length && trimmed[trimmed.length - 1].kind === "divider") trimmed.pop();
       return trimmed;
     };
-    return walk(SIDEBAR);
-  }, [navPermissions]);
+    return walk(sidebarTemplate);
+  }, [navPermissions, sidebarTemplate]);
 
   // Page guard — when the user navigates (or refreshes) to a route they
   // can't access, push them to their first allowed page instead. Skip
