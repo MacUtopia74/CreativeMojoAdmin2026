@@ -22,6 +22,7 @@ home counter lines up exactly with imported data.
 from __future__ import annotations
 
 import logging
+import os
 import re
 import uuid
 from datetime import datetime, timezone
@@ -317,28 +318,95 @@ def build_territory_router(db, require_role):  # noqa: D401
         if not _UK_POSTCODE_RE.match(raw):
             async with httpx.AsyncClient(timeout=10.0) as client:
                 try:
-                    # places.io needs at least 2 chars; we've already enforced that.
+                    # ---------- 1. postcodes.io /places (fast, free) ----------
                     rp = await client.get(
                         "https://api.postcodes.io/places",
                         params={"q": raw, "limit": 5},
                     )
                     places = (rp.json() or {}).get("result") if rp.status_code == 200 else None
-                    if not places:
-                        raise HTTPException(404, detail=f"No UK place or postcode matched “{raw}”.")
-                    p = places[0]
-                    lat = p.get("latitude")
-                    lon = p.get("longitude")
+                    matched_name = None
+                    lat = None
+                    lon = None
+                    if places:
+                        p = places[0]
+                        lat = p.get("latitude")
+                        lon = p.get("longitude")
+                        matched_name = p.get("name_1") or p.get("name") or raw
+
+                    # ---------- 2. Mapbox geocoding fallback ----------
+                    # postcodes.io only carries ~50k "notable" UK places, so
+                    # small villages and suburbs (Lubbesthorpe, etc.) come back
+                    # empty. Mapbox's geocoder is backed by OSM + OS data and
+                    # picks them up. We use the public `pk.*` token via the
+                    # backend env (domain-restricted client-side, fine to use
+                    # server-side for a low-volume admin lookup).
                     if lat is None or lon is None:
-                        raise HTTPException(404, detail=f"No coordinates for place “{raw}”.")
-                    # Reverse-geocode to the nearest postcode.
-                    rr = await client.get(
-                        "https://api.postcodes.io/postcodes",
-                        params={"lat": lat, "lon": lon, "limit": 1, "radius": 2000},
-                    )
-                    rr_result = (rr.json() or {}).get("result") if rr.status_code == 200 else None
-                    if not rr_result:
-                        raise HTTPException(404, detail=f"No nearby postcode found for “{raw}”.")
-                    nearest = rr_result[0]
+                        mb_token = os.environ.get("MAPBOX_TOKEN")
+                        if mb_token:
+                            import urllib.parse as _up
+                            q_enc = _up.quote(raw)
+                            mb_url = (
+                                f"https://api.mapbox.com/geocoding/v5/mapbox.places/{q_enc}.json"
+                                f"?access_token={mb_token}&country=gb&limit=3"
+                                # Widened types — small villages like
+                                # Lubbesthorpe only show up in Mapbox as
+                                # ``address`` (a road name) rather than
+                                # ``place``/``locality``. We still bias
+                                # towards proper place names if returned.
+                                f"&types=place,locality,neighborhood,district,region,postcode,address,poi"
+                            )
+                            mr = await client.get(mb_url)
+                            if mr.status_code == 200:
+                                feats = (mr.json() or {}).get("features") or []
+                                if feats:
+                                    f0 = feats[0]
+                                    centre = f0.get("center") or []
+                                    if len(centre) == 2:
+                                        lon, lat = centre[0], centre[1]
+                                        # If Mapbox only had this as a road
+                                        # (``address`` type), prefer the
+                                        # user's query as the label — the
+                                        # admin searched for the village name,
+                                        # not the street that happened to
+                                        # share it.
+                                        f_types = f0.get("place_type") or []
+                                        if "address" in f_types:
+                                            matched_name = raw
+                                        else:
+                                            matched_name = f0.get("text") or f0.get("place_name") or raw
+
+                    if lat is None or lon is None:
+                        raise HTTPException(404, detail=f"No UK place or postcode matched “{raw}”.")
+
+                    # Reverse-geocode to the nearest postcode (postcodes.io
+                    # widening radius so rural matches like Lubbesthorpe still
+                    # resolve — its default search radius is only 100m).
+                    nearest = None
+                    for radius in (2000, 5000, 10000):
+                        rr = await client.get(
+                            "https://api.postcodes.io/postcodes",
+                            params={"lat": lat, "lon": lon, "limit": 1, "radius": radius},
+                        )
+                        rr_result = (rr.json() or {}).get("result") if rr.status_code == 200 else None
+                        if rr_result:
+                            nearest = rr_result[0]
+                            break
+                    if not nearest:
+                        # As a last resort just return the coords with no postcode.
+                        # The frontend uses lat/lng to drop the pin anyway and the
+                        # postcode field is informational.
+                        doc = {
+                            "postcode": None,
+                            "sector": None,
+                            "district": None,
+                            "latitude": lat,
+                            "longitude": lon,
+                            "admin_district": None,
+                            "region": None,
+                            "country": "England",
+                            "matched_place": matched_name or raw,
+                        }
+                        return doc
                     doc = {
                         "postcode": nearest.get("postcode"),
                         "sector": parse_postcode(nearest.get("postcode") or "")[1],
@@ -351,13 +419,13 @@ def build_territory_router(db, require_role):  # noqa: D401
                         # Echo the place name we matched so the UI can
                         # display "Wokingham · Berkshire" instead of
                         # the resolved postcode label only.
-                        "matched_place": p.get("name_1") or p.get("name") or raw,
+                        "matched_place": matched_name or raw,
                     }
                     return doc
                 except HTTPException:
                     raise
                 except httpx.HTTPError as exc:
-                    raise HTTPException(502, detail=f"postcodes.io call failed: {exc}") from exc
+                    raise HTTPException(502, detail=f"geocoding call failed: {exc}") from exc
 
         norm_full, sector, district = parse_postcode(raw)
         if not sector:
