@@ -141,19 +141,68 @@ def attach(api, db, require_role):
         return await _get_hq()
 
     # -------------------- The main lookup -------------------------------------
+    # Loose UK-postcode regex. If the input doesn't match, we treat the
+    # value as a town/city name and ask postcodes.io's `/places` to
+    # resolve it to coordinates, then reverse-geocode to a postcode.
+    _UK_PCODE = re.compile(
+        r"^\s*[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\s*$"
+        r"|^\s*[A-Z]{1,2}\d[A-Z\d]?\s*\d?\s*$",
+        re.IGNORECASE,
+    )
+
+    async def _resolve_place_to_postcode(place: str) -> Optional[tuple[str, str, dict]]:
+        """Free-text place → (postcode_full, sector, pin). Returns None
+        when nothing matches. We pick postcodes.io's first place result
+        then reverse-geocode that lat/lng to the closest postcode."""
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            try:
+                rp = await client.get("https://api.postcodes.io/places",
+                                       params={"q": place, "limit": 5})
+                places = (rp.json() or {}).get("result") if rp.status_code == 200 else None
+                if not places:
+                    return None
+                p = places[0]
+                lat = p.get("latitude")
+                lon = p.get("longitude")
+                if lat is None or lon is None:
+                    return None
+                rr = await client.get("https://api.postcodes.io/postcodes",
+                                       params={"lat": lat, "lon": lon,
+                                               "limit": 1, "radius": 2000})
+                nearest = ((rr.json() or {}).get("result") or [None])[0]
+                if not nearest:
+                    return None
+                full, sec = parse_uk_postcode(nearest.get("postcode") or "")
+                return (full, sec, {"lat": nearest.get("latitude"),
+                                    "lng": nearest.get("longitude")})
+            except (httpx.HTTPError, ValueError):
+                return None
+
     @router.get("/public/find-class", response_model=FindClassResult)
     async def find_class(
         request: Request,
-        postcode: str = Query(..., min_length=2, max_length=10),
+        postcode: str = Query(..., min_length=2, max_length=120),
     ):
         # Best-effort client IP (X-Forwarded-For when behind ingress).
         ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "?")
         ip = ip.split(",")[0].strip() if ip else "?"
         _rate_check(ip)
 
-        full, sector = parse_uk_postcode(postcode)
-        if not sector:
-            raise HTTPException(400, detail="Please enter a valid UK postcode (e.g. RG1 2DG).")
+        raw = postcode.strip()
+        pin = None
+        if _UK_PCODE.match(raw):
+            full, sector = parse_uk_postcode(raw)
+            if not sector:
+                raise HTTPException(400, detail="Please enter a valid UK postcode or town/city.")
+        else:
+            # Free-text place name path.
+            resolved = await _resolve_place_to_postcode(raw)
+            if not resolved:
+                raise HTTPException(
+                    400,
+                    detail=f"Couldn’t find “{raw}”. Try a UK town, city or postcode.",
+                )
+            full, sector, pin = resolved
 
         # Geocode the postcode (lat/lng for the pin). Skip when only sector
         # was provided — pin will be omitted.

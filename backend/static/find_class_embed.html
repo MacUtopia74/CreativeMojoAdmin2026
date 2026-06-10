@@ -199,7 +199,7 @@ To swap from the legacy Airtable lookup to this:
     <h2>Find your nearest Creative Mojo representative</h2>
     <p>Enter your post code in the search box to find your nearest Creative Mojo representative.</p>
     <form class="cm-find__form" id="cm-find-form" autocomplete="off">
-      <input id="cm-find-input" type="text" placeholder="Enter postcode" required aria-label="Postcode" />
+      <input id="cm-find-input" type="text" placeholder="Postcode or UK town/city (e.g. RG1 2DG or Wokingham)" required aria-label="Postcode or town" />
       <button id="cm-find-submit" type="submit">show me</button>
     </form>
     <div class="cm-find__error" id="cm-find-error" role="alert"></div>
@@ -384,7 +384,7 @@ To swap from the legacy Airtable lookup to this:
     clearPopup();
     clearTerritory();
     if (!postcode || postcode.length < 2) {
-      errEl.textContent = "Please enter a postcode.";
+      errEl.textContent = "Please enter a UK postcode or town/city.";
       return;
     }
     loadingEl.style.display = "flex";

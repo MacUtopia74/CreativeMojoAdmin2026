@@ -293,12 +293,73 @@ def build_territory_router(db, require_role):  # noqa: D401
         return out
 
     # ------------------------------------------------------------- geocoding
+    # UK-postcode regex (loose — postcodes.io itself does strict validation).
+    _UK_POSTCODE_RE = re.compile(
+        r"^\s*[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\s*$"
+        r"|^\s*[A-Z]{1,2}\d[A-Z\d]?\s*\d?\s*$",  # outcode-only e.g. "RG1"
+        re.IGNORECASE,
+    )
+
     @router.get("/territory/postcode-lookup")
     async def postcode_lookup(
         postcode: str = Query(..., min_length=2),
         _user: dict = Depends(require_role("admin", "franchisee")),
     ):
-        norm_full, sector, district = parse_postcode(postcode)
+        """Accepts either a UK postcode (preferred) or a town/city name.
+        For free-text place names we hit postcodes.io's ``/places``
+        endpoint, take the top match's coordinates, then reverse-geocode
+        them to the nearest real postcode — keeping the response shape
+        identical to a direct postcode lookup so the frontend doesn't
+        care which path was taken.
+        """
+        raw = postcode.strip()
+        # If it doesn't look like a postcode, try the place-name path.
+        if not _UK_POSTCODE_RE.match(raw):
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                try:
+                    # places.io needs at least 2 chars; we've already enforced that.
+                    rp = await client.get(
+                        "https://api.postcodes.io/places",
+                        params={"q": raw, "limit": 5},
+                    )
+                    places = (rp.json() or {}).get("result") if rp.status_code == 200 else None
+                    if not places:
+                        raise HTTPException(404, detail=f"No UK place or postcode matched “{raw}”.")
+                    p = places[0]
+                    lat = p.get("latitude")
+                    lon = p.get("longitude")
+                    if lat is None or lon is None:
+                        raise HTTPException(404, detail=f"No coordinates for place “{raw}”.")
+                    # Reverse-geocode to the nearest postcode.
+                    rr = await client.get(
+                        "https://api.postcodes.io/postcodes",
+                        params={"lat": lat, "lon": lon, "limit": 1, "radius": 2000},
+                    )
+                    rr_result = (rr.json() or {}).get("result") if rr.status_code == 200 else None
+                    if not rr_result:
+                        raise HTTPException(404, detail=f"No nearby postcode found for “{raw}”.")
+                    nearest = rr_result[0]
+                    doc = {
+                        "postcode": nearest.get("postcode"),
+                        "sector": parse_postcode(nearest.get("postcode") or "")[1],
+                        "district": parse_postcode(nearest.get("postcode") or "")[2],
+                        "latitude": nearest.get("latitude"),
+                        "longitude": nearest.get("longitude"),
+                        "admin_district": nearest.get("admin_district"),
+                        "region": nearest.get("region"),
+                        "country": nearest.get("country"),
+                        # Echo the place name we matched so the UI can
+                        # display "Wokingham · Berkshire" instead of
+                        # the resolved postcode label only.
+                        "matched_place": p.get("name_1") or p.get("name") or raw,
+                    }
+                    return doc
+                except HTTPException:
+                    raise
+                except httpx.HTTPError as exc:
+                    raise HTTPException(502, detail=f"postcodes.io call failed: {exc}") from exc
+
+        norm_full, sector, district = parse_postcode(raw)
         if not sector:
             raise HTTPException(400, detail="Could not parse UK postcode")
         # Local cache first

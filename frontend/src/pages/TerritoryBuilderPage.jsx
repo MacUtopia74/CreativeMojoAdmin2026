@@ -294,9 +294,14 @@ export default function TerritoryBuilderPage() {
       const { data } = await api.get("/territory/postcode-lookup", { params: { postcode: postcode.trim() } });
       if (data.latitude == null) throw new Error("No coordinates");
       setCentre({ lat: data.latitude, lng: data.longitude });
-      setCentreLabel(`${data.postcode} · ${data.admin_district || data.region || ""}`);
+      // When the lookup resolved a town/city name, surface that in the
+      // label so the admin sees "Wokingham · RG40 1LX" rather than just
+      // the looked-up postcode (which can feel unrelated to what they typed).
+      const placeBit = data.matched_place ? `${data.matched_place} · ` : "";
+      setCentreLabel(`${placeBit}${data.postcode} · ${data.admin_district || data.region || ""}`);
+      setPostcode(data.postcode); // pin the resolved postcode in the input
     } catch (e) {
-      setErr(e?.response?.data?.detail || "Postcode not found");
+      setErr(e?.response?.data?.detail || "No matching UK postcode or place name");
     } finally { setLoading(false); }
   };
 
@@ -512,7 +517,7 @@ export default function TerritoryBuilderPage() {
           <Search className="w-4 h-4 text-stone-400" />
           <input value={postcode} onChange={(e) => setPostcode(e.target.value)} data-testid="postcode-input"
             onKeyDown={(e) => { if (e.key === "Enter") lookupPostcode(); }}
-            placeholder="Type the contact's postcode (e.g. EX15 1NB)"
+            placeholder="Postcode or UK town/city (e.g. EX15 1NB or Wokingham)"
             className="flex-1 px-2 py-1.5 text-sm bg-transparent outline-none placeholder:text-stone-400" />
           <button onClick={lookupPostcode} disabled={loading || !postcode.trim()} data-testid="lookup-postcode"
             className="px-3 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-lg disabled:opacity-50 flex items-center gap-1.5">
