@@ -136,20 +136,26 @@ const SIDEBAR_V2 = [
   { kind: "item", to: "/orders",                 label: "Orders",               icon: ShoppingBag,     testid: "nav-orders",                permKey: "orders" },
   { kind: "divider" },
   { kind: "item", to: "/franchisees",            label: "Franchises / Licences", icon: Users,         testid: "nav-franchisees",           permKey: "franchisees", alertBadge: "missing_mandate" },
+  { kind: "divider" },
   { kind: "item", to: "/renewals",               label: "Renewals",             icon: BellRing,        testid: "nav-renewals",              permKey: "renewals" },
+  { kind: "divider" },
   { kind: "item", to: "/territory-builder",      label: "Territory Builder",    icon: Target,          testid: "nav-territory-builder",     permKey: "territory-builder" },
   { kind: "divider" },
   { kind: "item", to: "/contacts",               label: "Sales & Contacts",     icon: Contact,         testid: "nav-contacts",              permKey: "contacts" },
+  { kind: "divider" },
   { kind: "item", to: "/files",                  label: "Files",                icon: FolderOpen,      testid: "nav-files",                 permKey: "files" },
+  { kind: "divider" },
   { kind: "item", to: "/admin/announcements",    label: "HQ Updates",           icon: Megaphone,       testid: "nav-admin-announcements",   permKey: "admin-announcements" },
+  { kind: "divider" },
   { kind: "item", to: "/calendar",               label: "Calendar",             icon: CalendarDays,    testid: "nav-calendar",              permKey: "calendar" },
+  { kind: "divider" },
   { kind: "item", to: "/admin/subscription-requests", label: "Subscription Requests", icon: Sparkles,  testid: "nav-subscription-requests", permKey: "subscription-requests" },
   { kind: "divider" },
   {
     kind: "group", key: "admin", label: "Admin", icon: Wrench, testid: "nav-admin-group",
     children: [
       {
-        kind: "subgroup", key: "mapping", label: "Mapping", icon: MapPin,
+        kind: "group", key: "mapping", label: "Mapping", icon: MapPin, testid: "nav-mapping-group",
         children: [
           { kind: "item", to: "/find-class",          label: "Find-a-Class",                icon: MapPin,      testid: "nav-find-class",          permKey: "find-class" },
           { kind: "item", to: "/cqc-definitions",     label: "CQC",                         icon: Stethoscope, testid: "nav-cqc-definitions",     permKey: "cqc-definitions" },
@@ -158,7 +164,7 @@ const SIDEBAR_V2 = [
         ],
       },
       {
-        kind: "subgroup", key: "content", label: "Content", icon: FolderOpen,
+        kind: "group", key: "content", label: "Content", icon: FolderOpen, testid: "nav-content-group",
         children: [
           { kind: "item", to: "/admin/help-centre",   label: "Help Centre",                 icon: LifeBuoy,    testid: "nav-help-centre",         permKey: "help-centre" },
           { kind: "item", to: "/admin/shape-orders",  label: "Franchise Store",             icon: ShoppingBag, testid: "nav-admin-shape-orders",  permKey: "admin-shape-orders" },
@@ -167,7 +173,7 @@ const SIDEBAR_V2 = [
         ],
       },
       {
-        kind: "subgroup", key: "settings", label: "Settings", icon: Cog,
+        kind: "group", key: "settings", label: "Settings", icon: Cog, testid: "nav-settings-group",
         children: [
           { kind: "item", to: "/admin/users",           label: "Users",                     icon: KeyRound,    testid: "nav-admin-users",          permKey: "admin-users" },
           { kind: "item", to: "/admin/xero",            label: "Xero",                      icon: Calculator,  testid: "nav-admin-xero",           permKey: "admin-xero" },
@@ -281,18 +287,28 @@ function NavItem({ to, label, icon: Icon, testid, badge, depth = 0 }) {
 // ---------------------------------------------------------------------------
 // Expandable group header (Franchises, Admin)
 // ---------------------------------------------------------------------------
-function GroupHeader({ label, icon: Icon, open, onToggle, testid }) {
+function GroupHeader({ label, icon: Icon, open, onToggle, testid, depth = 0 }) {
+  // Nested groups (Mapping/Content/Settings inside Admin) sit one indent
+  // level deeper and use the small-caps tracking treatment so they read
+  // as section headings, not duplicate top-level entries.
+  const isNested = depth > 0;
+  const padLeft = depth === 0 ? "px-6" : "pl-10 pr-6";
+  const textCls = isNested
+    ? "text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 hover:text-stone-800"
+    : "text-sm font-bold text-stone-700 hover:text-stone-950";
+  const iconCls = isNested ? "w-3 h-3" : "w-4 h-4";
+  const chevCls = isNested ? "w-3 h-3" : "w-3.5 h-3.5";
   return (
     <button
       type="button"
       onClick={onToggle}
       data-testid={testid}
       aria-expanded={open}
-      className="w-full flex items-center gap-3 px-6 py-2 text-sm font-bold text-stone-700 hover:text-stone-950 transition-colors"
+      className={`w-full flex items-center gap-2 ${padLeft} py-2 transition-colors ${textCls}`}
     >
-      {Icon && <Icon className="w-4 h-4 shrink-0" strokeWidth={2} />}
+      {Icon && <Icon className={`${iconCls} shrink-0`} strokeWidth={2} />}
       <span className="flex-1 text-left">{label}</span>
-      <ChevronDown className={`w-3.5 h-3.5 transition-transform ${open ? "rotate-180" : ""}`} strokeWidth={2} />
+      <ChevronDown className={`${chevCls} transition-transform ${open ? "rotate-180" : ""}`} strokeWidth={2} />
     </button>
   );
 }
@@ -375,44 +391,61 @@ export default function Layout() {
     }
   }, [location.pathname, navPermissions, navigate]);
 
-  // Track which expandable groups are open. Persisted in localStorage so
-  // power-users keep their preferred layout across sessions.
-  const [openGroups, setOpenGroups] = useState(() => {
+  // Two-piece open-group model. `userOverrides` tracks explicit toggle
+  // actions ("open"/"closed"), persisted across sessions. `autoOpen` is
+  // derived from the active path on every render — any group containing
+  // the current route auto-expands so direct deep-links don't leave the
+  // sidebar showing a collapsed parent. Final open state = autoOpen ∪
+  // userOverrides==="open", minus userOverrides==="closed".
+  const [userOverrides, setUserOverrides] = useState(() => {
     try {
-      const raw = localStorage.getItem("cm.sidebar.openGroups");
-      if (raw) return new Set(JSON.parse(raw));
+      const raw = localStorage.getItem("cm.sidebar.openGroups.v2");
+      if (raw) return new Map(JSON.parse(raw));
     } catch {/* ignore */}
-    return new Set();
+    return new Map();
   });
-  const toggleGroup = (key) => {
-    setOpenGroups((s) => {
-      const n = new Set(s);
-      if (n.has(key)) n.delete(key); else n.add(key);
-      try { localStorage.setItem("cm.sidebar.openGroups", JSON.stringify(Array.from(n))); } catch {/* ignore */}
-      return n;
-    });
-  };
 
-  // Auto-open whichever group contains the currently active path — so a
-  // direct deep-link to /admin/xero opens the Admin group on load. Also
-  // auto-open groups for nav-restricted users where the only entry is
-  // inside one (otherwise Sandra logs in and sees an empty-looking
-  // sidebar with a collapsed Admin section).
-  useEffect(() => {
+  const autoOpen = useMemo(() => {
     const path = location.pathname;
-    setOpenGroups((s) => {
-      const n = new Set(s);
-      for (const node of filteredSidebar) {
+    const out = new Set();
+    const visit = (nodes) => {
+      for (const node of nodes) {
         if (node.kind !== "group") continue;
         const has = (children) => children.some((c) =>
-          (c.kind === "item" && (path === c.to || path.startsWith(c.to + "/")))
-          || (c.kind === "subgroup" && has(c.children))
+          (c.kind === "item" && (path === c.to || (c.to !== "/" && path.startsWith(c.to + "/"))))
+          || ((c.kind === "group" || c.kind === "subgroup") && has(c.children))
         );
-        if (has(node.children) || navPermissions != null) n.add(node.key);
+        if (has(node.children) || navPermissions != null) out.add(node.key);
+        visit(node.children);
       }
-      return n;
-    });
+    };
+    visit(filteredSidebar);
+    return out;
   }, [location.pathname, filteredSidebar, navPermissions]);
+
+  const isGroupOpen = (key) => {
+    const ov = userOverrides.get(key);
+    if (ov === "open") return true;
+    if (ov === "closed") return false;
+    return autoOpen.has(key);
+  };
+
+  const toggleGroup = (key) => {
+    setUserOverrides((m) => {
+      const next = new Map(m);
+      const currentlyOpen = (() => {
+        const ov = m.get(key);
+        if (ov === "open") return true;
+        if (ov === "closed") return false;
+        return autoOpen.has(key);
+      })();
+      next.set(key, currentlyOpen ? "closed" : "open");
+      try {
+        localStorage.setItem("cm.sidebar.openGroups.v2", JSON.stringify(Array.from(next.entries())));
+      } catch {/* ignore */}
+      return next;
+    });
+  };
 
   const handleLogout = async () => {
     await logout();
@@ -447,7 +480,7 @@ export default function Layout() {
       return <NavItem key={node.to} {...node} depth={depth} badge={resolveBadge(node)} />;
     }
     if (node.kind === "group") {
-      const open = openGroups.has(node.key);
+      const open = isGroupOpen(node.key);
       return (
         <div key={node.key} data-testid={node.testid}>
           <GroupHeader
@@ -456,6 +489,7 @@ export default function Layout() {
             open={open}
             onToggle={() => toggleGroup(node.key)}
             testid={`${node.testid}-toggle`}
+            depth={depth}
           />
           {open && (
             <div className="pb-1">
