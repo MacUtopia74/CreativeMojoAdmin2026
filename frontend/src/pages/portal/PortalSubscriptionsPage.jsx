@@ -344,20 +344,16 @@ export default function PortalSubscriptionsPage() {
                 )}
               </div>
 
-              {/* Price — left-aligned compact row to keep the card
-                  short. £ + price on the left, "Per month inc VAT"
-                  next to it. The longer descriptive blurb that used
-                  to sit underneath is gone (the feature bullets below
-                  already explain what each module does) — without it
-                  the four panels are noticeably shorter and the
-                  Build-your-bundle ladder doesn't get hidden below
-                  the fold. */}
+              {/* Price — centred row, larger £10 so it reads as the
+                  hero number on the card without dragging the whole
+                  panel taller. "Per month / inc VAT" sits inline next
+                  to the price, both items centred together. */}
               <div className="px-5 py-3 border-b border-stone-100">
-                <div className="flex items-baseline gap-3">
-                  <span className="font-display text-3xl font-black text-stone-950 leading-none tracking-tight">
+                <div className="flex items-baseline justify-center gap-3">
+                  <span className="font-display text-4xl sm:text-5xl font-black text-stone-950 leading-none tracking-tight">
                     £{b.price}
                   </span>
-                  <span className="text-[10px] text-stone-500 uppercase tracking-wider font-bold leading-tight">
+                  <span className="text-[10px] text-stone-500 uppercase tracking-wider font-bold leading-tight text-left">
                     Per month<br />inc VAT
                   </span>
                 </div>
