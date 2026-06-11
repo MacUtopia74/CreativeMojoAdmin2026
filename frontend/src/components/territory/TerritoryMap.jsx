@@ -191,26 +191,32 @@ export default function TerritoryMap({
 
       // Register a diagonal-stripe pattern image used by the suggested-
       // removals overlay layer. Generated as an inline canvas (so we don't
-      // bundle a PNG asset) — soft red, semi-transparent so the underlying
-      // selected (yellow) fill still reads through. Re-registered on every
-      // style swap because Mapbox sprites are scoped to a single style.
+      // bundle a PNG asset). Transparent background + bold red diagonal
+      // stripes so the underlying yellow selected fill still reads
+      // through *between* stripes but the red is clearly visible. Re-
+      // registered on every style swap because Mapbox sprites are
+      // scoped to a single style.
       try {
         if (!map.hasImage("removal-stripe")) {
-          const sz = 12;
+          const sz = 16;
           const cv = document.createElement("canvas");
           cv.width = sz; cv.height = sz;
           const ctx = cv.getContext("2d");
           if (ctx) {
-            ctx.fillStyle = "rgba(248,113,113,0.18)";  // very soft red wash
-            ctx.fillRect(0, 0, sz, sz);
-            ctx.strokeStyle = "rgba(220,38,38,0.55)";  // red stripe
-            ctx.lineWidth = 2.2;
-            // Two parallel 45° stripes for a tight repeat.
+            ctx.clearRect(0, 0, sz, sz);
+            ctx.strokeStyle = "rgba(220, 38, 38, 0.85)";
+            ctx.lineWidth = 3;
+            ctx.lineCap = "square";
             ctx.beginPath();
-            ctx.moveTo(-2, sz / 2); ctx.lineTo(sz / 2, -2);
-            ctx.moveTo(sz / 2, sz + 2); ctx.lineTo(sz + 2, sz / 2);
+            ctx.moveTo(-4, sz / 2 + 2); ctx.lineTo(sz / 2 + 2, -4);
+            ctx.moveTo(sz / 2 - 2, sz + 4); ctx.lineTo(sz + 4, sz / 2 - 2);
             ctx.stroke();
-            map.addImage("removal-stripe", cv, { pixelRatio: 2 });
+            // Mapbox addImage only accepts ImageData / ImageBitmap /
+            // HTMLImageElement / {width,height,data}. A bare canvas is
+            // NOT supported and was silently rejected (this is why the
+            // overlay didn't paint). Convert to ImageData for safe ingest.
+            const imageData = ctx.getImageData(0, 0, sz, sz);
+            map.addImage("removal-stripe", imageData, { pixelRatio: 1 });
           }
         }
       } catch (e) { /* pattern add is best-effort */ }
