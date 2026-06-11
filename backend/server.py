@@ -3957,7 +3957,13 @@ async def anniversaries_today(
 ):
     """Returns contracts whose anniversary falls today, optionally extended
     with the next `upcoming_days` calendar days. The dashboard panel uses
-    `upcoming_days=14` to fill its full-width strip with two weeks ahead."""
+    `upcoming_days=14` to fill its full-width strip with two weeks ahead.
+
+    Deduplicates by franchisee — a franchisee with multiple contract rows
+    (renewal, extension, etc.) sharing the same anniversary mm-dd would
+    otherwise show up once per contract. We keep the row with the
+    EARLIEST ``anniversary_reminder`` year so the "X years today" badge
+    reflects the original franchise start, not a recent renewal."""
     now = datetime.now(timezone.utc)
     today = now.date()
     contracts = await db.contracts.find(
@@ -3970,8 +3976,11 @@ async def anniversaries_today(
         if not anniv:
             continue
         try:
-            mmdd = str(anniv)[5:10]  # "MM-DD"
+            anniv_str = str(anniv)
+            year_part = anniv_str[0:4]
+            mmdd = anniv_str[5:10]  # "MM-DD"
             month, day = int(mmdd[:2]), int(mmdd[3:5])
+            anniv_year = int(year_part) if year_part.isdigit() else None
             # Find the next occurrence ≥ today (this year or next)
             try:
                 this_year = today.replace(month=month, day=day)
@@ -3987,33 +3996,168 @@ async def anniversaries_today(
                 {"_id": 0, "first_name": 1, "last_name": 1, "organisation": 1,
                  "mojo_email": 1, "id": 1, "lifecycle_status": 1, "tags": 1},
             )
-            # Skip ex-franchisees — their contract anniversaries are historic
-            # and shouldn't clutter the active dashboard.
             if not f:
                 continue
             if f.get("lifecycle_status") == "ex_franchisee":
                 continue
             if "Franchisee" not in (f.get("tags") or []):
                 continue
-            # Strip the internal flags from the response — UI doesn't need them.
             f.pop("lifecycle_status", None)
             f.pop("tags", None)
+            # Number of years this anniversary represents (next_anniv year
+            # minus the franchise start year). When the start year is
+            # unknown we just omit it.
+            years = (next_anniv.year - anniv_year) if anniv_year else None
             out.append({
                 "contract": c,
                 "franchisee": f,
                 "anniversary_date": next_anniv.isoformat(),
+                "anniversary_year": anniv_year,
+                "years": years,
                 "days_until": days_until,
             })
         except Exception:
             continue
+
+    # Dedupe by franchisee_id — keep the entry with the earliest
+    # ``anniversary_year`` (original franchise start). Falls back to the
+    # latest start if the year is missing on every row.
+    by_franchisee: dict[str, dict] = {}
+    for entry in out:
+        fid = (entry.get("franchisee") or {}).get("id")
+        if not fid:
+            continue
+        prev = by_franchisee.get(fid)
+        if (prev is None
+            or ((entry.get("anniversary_year") or 9999) < (prev.get("anniversary_year") or 9999))):
+            by_franchisee[fid] = entry
+    out = list(by_franchisee.values())
     out.sort(key=lambda x: x["days_until"])
+
+    # Hydrate ``email_sent`` for today's entries so the UI can show
+    # "Sent ✓" instead of the Send button on a second visit. We key the
+    # log row by (franchisee_id, anniversary_year_being_celebrated).
+    sent_keys = set()
+    today_iso = today.isoformat()
+    if out:
+        sent_rows = await db.anniversary_emails_sent.find(
+            {"anniversary_date": today_iso},
+            {"_id": 0, "franchisee_id": 1, "anniversary_date": 1},
+        ).to_list(1000)
+        sent_keys = {r.get("franchisee_id") for r in sent_rows if r.get("franchisee_id")}
+    for entry in out:
+        fid = (entry.get("franchisee") or {}).get("id")
+        entry["email_sent"] = bool(entry["days_until"] == 0 and fid in sent_keys)
+
     today_count = sum(1 for x in out if x["days_until"] == 0)
+    today_pending_email = sum(1 for x in out if x["days_until"] == 0 and not x["email_sent"])
     return {
         "today": today.strftime("%m-%d"),
-        "count": today_count,           # backwards-compat: today-only count
+        "count": today_count,
+        "today_pending_email_count": today_pending_email,
         "upcoming_count": len(out),
         "anniversaries": out,
     }
+
+
+@api.post("/anniversaries/{franchisee_id}/send-email")
+async def send_anniversary_email(
+    franchisee_id: str,
+    actor: dict = Depends(require_role("admin")),
+):
+    """Send the "Happy Mojo anniversary" email to a specific franchisee
+    today. Idempotent — re-sending the same day for the same franchisee
+    is rejected so accidental double-clicks don't fire two messages.
+    Records the send in ``anniversary_emails_sent`` so the dashboard
+    Send button flips to "Sent ✓" and the nav-bar reminder badge
+    decrements without a refresh dance."""
+    today = datetime.now(timezone.utc).date()
+    today_iso = today.isoformat()
+
+    # Idempotency check.
+    existing = await db.anniversary_emails_sent.find_one(
+        {"franchisee_id": franchisee_id, "anniversary_date": today_iso},
+        {"_id": 0},
+    )
+    if existing:
+        raise HTTPException(409, detail="Anniversary email already sent today for this franchisee.")
+
+    franchisee = await db.franchisees.find_one(
+        {"id": franchisee_id},
+        {"_id": 0, "first_name": 1, "last_name": 1, "organisation": 1, "mojo_email": 1, "id": 1},
+    )
+    if not franchisee:
+        raise HTTPException(404, detail="Franchisee not found.")
+    to_email = franchisee.get("mojo_email")
+    if not to_email:
+        raise HTTPException(400, detail="Franchisee has no email address on file.")
+
+    # Compute years — pull the earliest anniversary_reminder row for this
+    # franchisee, the same way the listing endpoint does.
+    contracts = await db.contracts.find(
+        {"franchisee_id": franchisee_id, "anniversary_reminder": {"$exists": True, "$ne": None},
+         "cancelled_early": {"$ne": True}},
+        {"_id": 0, "anniversary_reminder": 1},
+    ).to_list(100)
+    earliest_year = None
+    for c in contracts:
+        raw = str(c.get("anniversary_reminder") or "")
+        if not raw[:4].isdigit():
+            continue
+        y = int(raw[:4])
+        if earliest_year is None or y < earliest_year:
+            earliest_year = y
+    years = (today.year - earliest_year) if earliest_year else None
+
+    fname = (franchisee.get("first_name") or "").strip() or (franchisee.get("organisation") or "").strip() or "there"
+    years_phrase = f"{years} years today" if years else "today"
+
+    body_html = (
+        f"<p>Hi {fname},</p>"
+        f"<p>Just thought we'd send out an email to say happy Mojo anniversary, {years_phrase}!</p>"
+        f"<p>Thanks,<br>Sandra &amp; Paul</p>"
+    )
+    body_text = (
+        f"Hi {fname},\n\n"
+        f"Just thought we'd send out an email to say happy Mojo anniversary, {years_phrase}!\n\n"
+        f"Thanks,\nSandra & Paul"
+    )
+
+    # Send via Resend.
+    try:
+        from resend_routes import RESEND_API_KEY, RESEND_FROM_EMAIL, RESEND_FROM_NAME
+        if not RESEND_API_KEY:
+            raise RuntimeError("Resend API key not configured.")
+        import resend as _resend
+        _resend.api_key = RESEND_API_KEY
+        result = _resend.Emails.send({
+            "from": f"{RESEND_FROM_NAME} <{RESEND_FROM_EMAIL}>",
+            "to": [to_email],
+            "bcc": ["sandra@creativemojo.co.uk", "paul@creativemojo.co.uk"],
+            "subject": f"Happy Mojo anniversary{f' — {years} years!' if years else ''}",
+            "html": body_html,
+            "text": body_text,
+            "tags": [{"name": "kind", "value": "anniversary"}],
+        })
+        message_id = (result or {}).get("id") if isinstance(result, dict) else None
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Anniversary email send failed: %s", exc)
+        raise HTTPException(502, detail=f"Email send failed: {exc}")
+
+    # Record the send for idempotency + dashboard state.
+    await db.anniversary_emails_sent.insert_one({
+        "id": str(uuid.uuid4()),
+        "franchisee_id": franchisee_id,
+        "anniversary_date": today_iso,
+        "years": years,
+        "to_email": to_email,
+        "sent_at": datetime.now(timezone.utc).isoformat(),
+        "sent_by": actor.get("email"),
+        "resend_id": message_id,
+    })
+    return {"ok": True, "years": years, "to_email": to_email}
 
 
 @api.get("/health")

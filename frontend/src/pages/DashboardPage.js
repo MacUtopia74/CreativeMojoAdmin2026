@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import api from "@/lib/api";
-import { RefreshCw, AlertCircle, Calendar, ArrowRight, Activity, TrendingUp, Users, FileText, Contact, MapPin, CreditCard, AlertTriangle, CheckCircle2, BellRing, Mail, CalendarDays, Cake, Video, Clock } from "lucide-react";
+import { RefreshCw, AlertCircle, Calendar, ArrowRight, Activity, TrendingUp, Users, FileText, Contact, MapPin, CreditCard, AlertTriangle, CheckCircle2, BellRing, Mail, CalendarDays, Cake, Video, Clock, Send, Loader2 } from "lucide-react";
 
 const PIPELINE_STAGES = [
   { key: "new", label: "New", color: "bg-stone-400" },
@@ -42,6 +42,76 @@ function Panel({ icon: Icon, title, action, children, testid }) {
       </div>
       <div className="p-5">{children}</div>
     </div>
+  );
+}
+
+// Card for a single anniversary entry on the dashboard. When the
+// anniversary is *today*, exposes a "Send anniversary email" action that
+// fires a templated Resend email to the franchisee. Idempotent on the
+// backend; UI optimistically flips to "Sent ✓" so accidentally hitting
+// the button twice is a no-op.
+function AnniversaryCard({ contract, franchisee, isToday, dateLabel, daysUntil, fname, years, initialSent, onSent }) {
+  const [sent, setSent] = useState(initialSent);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const sendEmail = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (sent || busy) return;
+    setBusy(true); setErr("");
+    try {
+      await api.post(`/anniversaries/${franchisee?.id}/send-email`);
+      setSent(true);
+      try { window.dispatchEvent(new Event("anniversary:email-sent")); } catch { /* SSR safety */ }
+      onSent?.();
+    } catch (ex) {
+      // 409 = already sent today (race). Treat as success.
+      if (ex?.response?.status === 409) { setSent(true); onSent?.(); }
+      else setErr(ex?.response?.data?.detail || "Send failed");
+    } finally { setBusy(false); }
+  };
+  const yearsLabel = years && years > 0 ? `${years} ${years === 1 ? "year" : "years"}` : null;
+  return (
+    <Link to={`/franchisees/${franchisee?.id || ""}`} data-testid={`anniversary-card-${franchisee?.id || contract.id}`}
+      className={`block border rounded-xl p-3 hover:shadow-md transition-all ${isToday ? "bg-[#dddd16]/10 border-[#14532D]/40" : "bg-white border-stone-200 hover:border-stone-400"}`}>
+      <div className="flex items-center gap-2 mb-1 flex-wrap">
+        <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md tabular-nums ${
+          isToday ? "bg-[#dddd16] text-stone-950" : "bg-stone-100 text-stone-700"
+        }`}>
+          {isToday ? "Today" : `In ${daysUntil} ${daysUntil === 1 ? "Day" : "Days"}`}
+        </span>
+        <span className="text-[11px] text-stone-500 tabular-nums">{dateLabel}</span>
+        {yearsLabel && (
+          <span className="ml-auto text-[10px] font-bold uppercase tracking-wider text-[#14532D] tabular-nums">
+            {yearsLabel}
+          </span>
+        )}
+      </div>
+      <div className="text-sm font-semibold text-stone-950 truncate">{franchisee?.organisation || "—"}</div>
+      {fname && <div className="text-xs text-stone-500 truncate">{fname}</div>}
+      {isToday && (
+        <div className="mt-2">
+          {sent ? (
+            <span className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 rounded-md"
+              data-testid={`anniversary-sent-${franchisee?.id}`}>
+              <CheckCircle2 className="w-3 h-3" /> Email sent
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={sendEmail}
+              disabled={busy || !franchisee?.id}
+              data-testid={`anniversary-send-${franchisee?.id}`}
+              className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 disabled:opacity-40 rounded-md"
+            >
+              {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+              {busy ? "Sending…" : "Send email"}
+            </button>
+          )}
+          {err && <div className="mt-1 text-[10px] text-red-700">{err}</div>}
+        </div>
+      )}
+    </Link>
   );
 }
 
@@ -260,26 +330,25 @@ export default function DashboardPage() {
             <div className="text-sm text-stone-500">No franchise anniversaries in the next 30 days.</div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3" data-testid="anniversaries-list">
-              {anniversaries.anniversaries.slice(0, 8).map(({ contract, franchisee, anniversary_date, days_until }) => {
+              {anniversaries.anniversaries.slice(0, 8).map(({ contract, franchisee, anniversary_date, days_until, years, email_sent }) => {
                 const isToday = days_until === 0;
                 const dateLabel = anniversary_date
                   ? new Date(anniversary_date).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })
                   : "";
                 const fname = [franchisee?.first_name, franchisee?.last_name].filter(Boolean).join(" ");
                 return (
-                  <Link key={contract.id} to={`/franchisees/${franchisee?.id || ""}`}
-                    className={`block border rounded-xl p-3 hover:shadow-md transition-all ${isToday ? "bg-[#dddd16]/10 border-[#14532D]/40" : "bg-white border-stone-200 hover:border-stone-400"}`}>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md tabular-nums ${
-                        isToday ? "bg-[#dddd16] text-stone-950" : "bg-stone-100 text-stone-700"
-                      }`}>
-                        {isToday ? "Today" : `In ${days_until} ${days_until === 1 ? "Day" : "Days"}`}
-                      </span>
-                      <span className="text-[11px] text-stone-500 tabular-nums">{dateLabel}</span>
-                    </div>
-                    <div className="text-sm font-semibold text-stone-950 truncate">{franchisee?.organisation || "—"}</div>
-                    {fname && <div className="text-xs text-stone-500 truncate">{fname}</div>}
-                  </Link>
+                  <AnniversaryCard
+                    key={`${franchisee?.id || contract.id}-${anniversary_date}`}
+                    contract={contract}
+                    franchisee={franchisee}
+                    isToday={isToday}
+                    dateLabel={dateLabel}
+                    daysUntil={days_until}
+                    fname={fname}
+                    years={years}
+                    initialSent={!!email_sent}
+                    onSent={() => refresh()}
+                  />
                 );
               })}
               {anniversaries.anniversaries.length > 8 && (

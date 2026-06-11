@@ -51,7 +51,7 @@ import { useEffect, useMemo, useState } from "react";
 // suffix without the "nav-" prefix) so granular per-user nav permissions
 // can hide/show items individually.
 const SIDEBAR = [
-  { kind: "item", to: "/", label: "Dashboard", icon: LayoutDashboard, testid: "nav-dashboard", permKey: "dashboard" },
+  { kind: "item", to: "/", label: "Dashboard", icon: LayoutDashboard, testid: "nav-dashboard", permKey: "dashboard", alertBadge: "anniversary_today" },
   { kind: "divider" },
 
   { kind: "item", to: "/orders", label: "Orders", icon: ShoppingBag, testid: "nav-orders", permKey: "orders" },
@@ -131,7 +131,7 @@ const SIDEBAR = [
 // continues to see the original SIDEBAR (her muscle memory is built
 // around the old layout); everyone else gets this revised structure.
 const SIDEBAR_V2 = [
-  { kind: "item", to: "/",                       label: "Dashboard",            icon: LayoutDashboard, testid: "nav-dashboard",            permKey: "dashboard" },
+  { kind: "item", to: "/",                       label: "Dashboard",            icon: LayoutDashboard, testid: "nav-dashboard",            permKey: "dashboard", alertBadge: "anniversary_today" },
   { kind: "divider" },
   { kind: "item", to: "/orders",                 label: "Orders",               icon: ShoppingBag,     testid: "nav-orders",                permKey: "orders" },
   { kind: "divider" },
@@ -467,9 +467,33 @@ export default function Layout() {
     return () => { active = false; clearInterval(id); };
   }, [user?.email]);
 
+  // Poll for "anniversaries today still needing an email" — drives the
+  // round badge next to the Dashboard nav item so Sandra remembers to
+  // hit Send on the day. Decrements live when she sends from the
+  // dashboard (the dashboard already broadcasts via window event).
+  const [anniversaryPending, setAnniversaryPending] = useState(0);
+  useEffect(() => {
+    let active = true;
+    const fetchAnniv = async () => {
+      try {
+        const { data } = await api.get("/anniversaries/today", { params: { upcoming_days: 0 } });
+        if (active) setAnniversaryPending(data?.today_pending_email_count || 0);
+      } catch {/* ignore — admin role required, non-admins just see 0 */}
+    };
+    if (user?.role === "admin") {
+      fetchAnniv();
+      const id = setInterval(fetchAnniv, 10 * 60 * 1000);
+      const handler = () => fetchAnniv();
+      window.addEventListener("anniversary:email-sent", handler);
+      return () => { active = false; clearInterval(id); window.removeEventListener("anniversary:email-sent", handler); };
+    }
+    return () => { active = false; };
+  }, [user?.email, user?.role]);
+
   // Resolve a dynamic badge value for a given item.
   const resolveBadge = (item) => {
     if (item.alertBadge === "missing_mandate") return missingMandateCount;
+    if (item.alertBadge === "anniversary_today") return anniversaryPending;
     return undefined;
   };
 
