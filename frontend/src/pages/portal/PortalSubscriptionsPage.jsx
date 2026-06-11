@@ -16,12 +16,12 @@ import api from "@/lib/api";
 import PortalPageHeading from "@/components/portal/PortalPageHeading";
 
 // PRICING — confirmed by Paul:
-//   Every bolt-on is £10 / month INC VAT. Tiered bundles kick in
+//   Every bolt-on is £9 / month INC VAT. Tiered bundles kick in
 //   automatically when multiple are selected:
-//     • Any 1  →  £10 / month  (single bolt-on, no bundle)
-//     • Any 2  →  £18 / month  (saves £2)
-//     • Any 3  →  £25 / month  (saves £5)
-//     • All 4  →  £30 / month  (saves £10)
+//     • Any 1  →  £9  / month  (single bolt-on, no bundle saving)
+//     • Any 2  →  £16 / month  (saves £2)
+//     • Any 3  →  £22 / month  (saves £5)
+//     • All 4  →  £27 / month  (saves £9)
 // Billed monthly via the franchisee's existing GoCardless mandate
 // (added as recurring lines to their Xero invoice on admin approval).
 const BOLT_ONS = [
@@ -29,7 +29,7 @@ const BOLT_ONS = [
     key: "territory_plus",
     title: "My Territory+",
     icon: MapPin,
-    price: 10,
+    price: 9,
     accent: "#0ea5e9",
     recommended: true,
     blurb: "Claim customers as yours, plot them on the map, and run a light CRM on top.",
@@ -45,7 +45,7 @@ const BOLT_ONS = [
     key: "invoicing",
     title: "Invoicing+",
     icon: Receipt,
-    price: 10,
+    price: 9,
     accent: "#10b981",
     blurb: "Issue, send and reconcile your own customer invoices — linked to your contacts list.",
     features: [
@@ -60,7 +60,7 @@ const BOLT_ONS = [
     key: "marketing",
     title: "Marketing+",
     icon: Megaphone,
-    price: 10,
+    price: 9,
     accent: "#f97316",
     blurb: "Send branded e-shots to your own customers from inside the portal.",
     features: [
@@ -74,7 +74,7 @@ const BOLT_ONS = [
     key: "bookings",
     title: "Bookings+",
     icon: CalendarClock,
-    price: 10,
+    price: 9,
     accent: "#dedd0a",
     comingSoon: true,
     blurb: "Log and manage bookings inside your own calendar — and let customers self-book.",
@@ -92,18 +92,18 @@ const BOLT_ONS = [
 // bolt-ons the franchisee ticks. Index = count selected. Bundles
 // increment by £5 each step so the perceived value of "add another
 // bolt-on" stays consistent across tiers.
-//   • 1 bolt-on  → £10/mo (single, no bundle saving)
-//   • 2 bolt-ons → £15/mo (saves £5  vs. 2×£10)
-//   • 3 bolt-ons → £20/mo (saves £10 vs. 3×£10)
-//   • 4 bolt-ons → £25/mo (saves £15 vs. 4×£10) — "All four" bundle
+//   • 1 bolt-on  → £9/mo  (single, no bundle saving)
+//   • 2 bolt-ons → £16/mo (saves £2 vs. 2×£9)
+//   • 3 bolt-ons → £22/mo (saves £5 vs. 3×£9)
+//   • 4 bolt-ons → £27/mo (saves £9 vs. 4×£9) — "All four" bundle
 const BUNDLE_PRICES = {
   0: 0,
-  1: 10,
-  2: 15,
-  3: 20,
-  4: 25,
+  1: 9,
+  2: 16,
+  3: 22,
+  4: 27,
 };
-const SINGLE_PRICE = 10;
+const SINGLE_PRICE = 9;
 
 export default function PortalSubscriptionsPage() {
   const ctx = useOutletContext() || {};
@@ -113,7 +113,7 @@ export default function PortalSubscriptionsPage() {
   // Real franchisees: render the bolt-ons they actually own as ACTIVE
   // (so the page shows their current plan). Demo: pretend nothing is
   // enabled so visitors can click each bolt-on and see the "Build
-  // your bundle" total tick up from £10 → £15 → £20 → £25 live.
+  // your bundle" total tick up from £9 → £16 → £22 → £27 live.
   const realModules = profile?.profile?.portal_modules || {};
   const modules = isDemo ? {} : realModules;
   // Visual-only selection state. Resets on each visit; not persisted.
@@ -247,12 +247,17 @@ export default function PortalSubscriptionsPage() {
 
   return (
     <div className="space-y-8" data-testid="portal-subscriptions-page">
-      <PortalPageHeading
-        eyebrow="Account"
-        icon={Sparkles}
-        title="Subscriptions"
-        subtitle="Add optional bolt-ons to your monthly subscription — billed via your existing GoCardless mandate."
-      />
+      <div className="flex flex-col lg:flex-row lg:items-start lg:gap-6">
+        <div className="flex-1 min-w-0">
+          <PortalPageHeading
+            eyebrow="Account"
+            icon={Sparkles}
+            title="Subscriptions"
+            subtitle="Add optional bolt-ons to your monthly subscription — billed via your existing GoCardless mandate."
+          />
+        </div>
+        <PromoRoundel />
+      </div>
 
       {/* Intro */}
       <div className="bg-white border border-stone-200 rounded-2xl px-6 py-6 sm:px-8 sm:py-7">
@@ -260,8 +265,8 @@ export default function PortalSubscriptionsPage() {
           Supercharge your franchise with bolt-ons
         </h2>
         <p className="text-stone-600 mt-2 text-sm sm:text-base leading-relaxed">
-          Add any of the optional modules below to your monthly Creative Mojo subscription. Each bolt-on is just £10 a
-          month — pick any two for £15, any three for £20, or grab all four for £25. Billed via your existing
+          Add any of the optional modules below to your monthly Creative Mojo subscription. Each bolt-on is just £9 a
+          month — pick any two for £16, any three for £22, or grab all four for £27. Billed via your existing
           GoCardless mandate and appears as a separate line on your Xero invoice. Cancel any time, no minimum term.
           All prices include VAT.
         </p>
@@ -288,10 +293,10 @@ export default function PortalSubscriptionsPage() {
             </div>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3" data-testid="subs-bundle-ladder">
-            <TierBadge label="Any 1"             price="£10" active={selectedCount === 1} />
-            <TierBadge label="Any 2 — save £5"   price="£15" active={selectedCount === 2} highlight />
-            <TierBadge label="Any 3 — save £10"  price="£20" active={selectedCount === 3} highlight />
-            <TierBadge label="All 4 — save £15"  price="£25" active={selectedCount === 4} highlight bestValue />
+            <TierBadge label="Any 1"             price="£9"  active={selectedCount === 1} />
+            <TierBadge label="Any 2 — save £2"   price="£16" active={selectedCount === 2} highlight />
+            <TierBadge label="Any 3 — save £5"   price="£22" active={selectedCount === 3} highlight />
+            <TierBadge label="All 4 — save £9"   price="£27" active={selectedCount === 4} highlight bestValue />
           </div>
         </div>
       </div>
@@ -448,13 +453,13 @@ export default function PortalSubscriptionsPage() {
           </h3>
           <p className="text-stone-300 mt-1.5 text-sm sm:text-base leading-relaxed max-w-2xl">
             {selectedCount === 0
-              ? "Tick any of the bolt-ons above. Pick any three for £25 a month or grab all four for £35 — discounts apply automatically."
+              ? "Tick any of the bolt-ons above. Pick any three for £22 a month or grab all four for £27 — discounts apply automatically."
               : selectedCount === 1
-              ? "Add two more bolt-ons to unlock our £25 bundle (any 3) or all four for £35 — discounts apply automatically."
+              ? "Add two more bolt-ons to unlock our £22 bundle (any 3) or all four for £27 — discounts apply automatically."
               : selectedCount === 2
-              ? "Add one more to unlock the 3-bolt-on bundle at £25 a month — save £5."
+              ? "Add one more to unlock the 3-bolt-on bundle at £22 a month — save £5."
               : selectedCount === 3
-              ? "Nice — add the fourth bolt-on for just £10 more and we'll lock in the £35 all-four bundle."
+              ? "Nice — add the fourth bolt-on for just £5 more and we'll lock in the £27 all-four bundle."
               : "You've selected the full Creative Mojo toolkit at the best price we offer."}
           </p>
           <div className="flex flex-wrap gap-2 mt-4">
@@ -567,8 +572,8 @@ export default function PortalSubscriptionsPage() {
               </p>
               <p>
                 You&apos;ll need <strong>My Territory+</strong> first before adding any other module. Would
-                you like to add both together? At this size, your bundle becomes <strong>£15 / month
-                (Any 2)</strong> — a £5 saving versus buying them individually.
+                you like to add both together? At this size, your bundle becomes <strong>£16 / month
+                (Any 2)</strong> — a £2 saving versus buying them individually.
               </p>
               <div className="flex flex-col-reverse sm:flex-row gap-2 justify-end pt-2">
                 <button
@@ -718,6 +723,44 @@ function TierBadge({ label, price, active, highlight, bestValue }) {
         }`}
       >
         {label}
+      </div>
+    </div>
+  );
+}
+
+// 60-day launch-promo roundel pinned to the top-right of the page.
+// Designed to read at a glance: brand-yellow circle, headline + body,
+// with "60 days at no cost" punched out inside a dark pill so it's the
+// piece the eye lands on first. Sits in the page header row, stacks
+// below the heading on narrow screens.
+function PromoRoundel() {
+  return (
+    <div
+      data-testid="subs-promo-roundel"
+      className="self-center lg:self-start shrink-0 mt-4 lg:mt-0"
+      aria-label="60-day launch offer"
+    >
+      <div
+        className="relative w-[260px] h-[260px] sm:w-[280px] sm:h-[280px] rounded-full flex items-center justify-center text-center px-7 sm:px-8 shadow-xl ring-1 ring-stone-900/10 -rotate-2 hover:rotate-0 transition-transform duration-300"
+        style={{ background: "radial-gradient(circle at 30% 25%, #f5f316 0%, #dddd16 55%, #c9c811 100%)" }}
+      >
+        {/* subtle sparkle accent in the corner */}
+        <Sparkles className="absolute top-5 right-6 w-4 h-4 text-stone-900/40" strokeWidth={2.5} />
+        <Sparkles className="absolute bottom-7 left-5 w-3 h-3 text-stone-900/30" strokeWidth={2.5} />
+        <div className="flex flex-col items-center gap-2">
+          <div className="font-display text-[15px] sm:text-base font-black uppercase tracking-wide text-stone-950 leading-tight">
+            A Little Extra<br />from Us!
+          </div>
+          <div className="text-[10px] sm:text-[10.5px] leading-snug text-stone-800 max-w-[200px]">
+            To celebrate the launch of the new Franchise Portal, every franchisee gets full access to all advanced modules for
+          </div>
+          <div className="px-2.5 py-1 rounded-full bg-stone-950 text-[#dddd16] text-[11px] sm:text-xs font-black uppercase tracking-wider shadow">
+            60 days at no cost
+          </div>
+          <div className="text-[10px] sm:text-[10.5px] leading-snug text-stone-800 max-w-[200px]">
+            Explore the features, then simply keep the modules you love.
+          </div>
+        </div>
       </div>
     </div>
   );
