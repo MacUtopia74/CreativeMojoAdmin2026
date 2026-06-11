@@ -136,7 +136,16 @@ export default function PublicTerritorySharePage() {
             height={820}
             interactive={false}
             basemap={basemap}
+            suggestedRemovals={data.suggested_removals || []}
           />
+          {data.show_removal_overlay && (data.suggested_removals?.length || 0) > 0 && (
+            <div className="mt-3 px-3 py-2 bg-red-50/80 border border-red-200 rounded-lg text-[12px] text-red-900 flex items-start gap-2">
+              <span className="inline-block w-3.5 h-3.5 mt-0.5 rounded-sm shrink-0" style={{ backgroundImage: "repeating-linear-gradient(45deg, rgba(220,38,38,0.55) 0 2px, rgba(248,113,113,0.18) 2px 6px)" }} />
+              <span>
+                <strong>Red-striped sectors</strong> are areas suggested for possible removal from this proposed territory. The home count above still includes them — they will only be removed if both parties agree.
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Below-map info */}

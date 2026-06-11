@@ -67,6 +67,17 @@ export default function TerritoryMap({
                             //   of ``pinnedPostcode`` (which carries the
                             //   inside/outside-territory verdict). Setting
                             //   to ``null`` removes the pin.
+  suggestedRemovals = [],   // array of sector codes painted with a soft
+                            //   red diagonal-stripe overlay so the admin
+                            //   can visually flag "areas that could come
+                            //   out" without modifying the territory.
+  overlayMode = false,      // when true, clicking a sector calls
+                            //   ``onToggleRemoval`` (overlay-edit mode)
+                            //   instead of ``onToggleSector``. Lets the
+                            //   admin paint the suggested-removals layer
+                            //   using the same map-click UX.
+  onToggleRemoval = null,   // (sector: string) => void — called in
+                            //   overlay-edit mode.
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -75,6 +86,14 @@ export default function TerritoryMap({
   const pinnedMarkerRef = useRef(null);
   const searchMarkerRef = useRef(null);
   const franchiseeHqMarkersRef = useRef([]);
+  // Click handler captures `onToggleSector` / `overlayMode` at style.load
+  // time (Mapbox event listeners aren't re-bound per render). Stash the
+  // live values in a ref so the click logic always reads the current
+  // mode / callbacks without re-subscribing.
+  const clickModeRef = useRef({ overlayMode: false, onToggleSector: () => {}, onToggleRemoval: null });
+  useEffect(() => {
+    clickModeRef.current = { overlayMode, onToggleSector, onToggleRemoval };
+  }, [overlayMode, onToggleSector, onToggleRemoval]);
   const [ready, setReady] = useState(false);
   // Bumped each time the basemap finishes (re)loading so the data effects
   // re-run and repopulate the freshly-created sources.
@@ -170,6 +189,32 @@ export default function TerritoryMap({
         data: { type: "FeatureCollection", features: [] },
       });
 
+      // Register a diagonal-stripe pattern image used by the suggested-
+      // removals overlay layer. Generated as an inline canvas (so we don't
+      // bundle a PNG asset) — soft red, semi-transparent so the underlying
+      // selected (yellow) fill still reads through. Re-registered on every
+      // style swap because Mapbox sprites are scoped to a single style.
+      try {
+        if (!map.hasImage("removal-stripe")) {
+          const sz = 12;
+          const cv = document.createElement("canvas");
+          cv.width = sz; cv.height = sz;
+          const ctx = cv.getContext("2d");
+          if (ctx) {
+            ctx.fillStyle = "rgba(248,113,113,0.18)";  // very soft red wash
+            ctx.fillRect(0, 0, sz, sz);
+            ctx.strokeStyle = "rgba(220,38,38,0.55)";  // red stripe
+            ctx.lineWidth = 2.2;
+            // Two parallel 45° stripes for a tight repeat.
+            ctx.beginPath();
+            ctx.moveTo(-2, sz / 2); ctx.lineTo(sz / 2, -2);
+            ctx.moveTo(sz / 2, sz + 2); ctx.lineTo(sz + 2, sz / 2);
+            ctx.stroke();
+            map.addImage("removal-stripe", cv, { pixelRatio: 2 });
+          }
+        }
+      } catch (e) { /* pattern add is best-effort */ }
+
       // Fill — translucent for available, brand-yellow translucent for owned
       map.addLayer({
         id: "sectors-fill",
@@ -187,6 +232,21 @@ export default function TerritoryMap({
             ["boolean", ["feature-state", "hover"], false], 0.55,
             0.18,
           ],
+        },
+      });
+
+      // Suggested-removals overlay — diagonal red stripes painted on
+      // sectors flagged for potential removal. Filtered to the
+      // ``removalFlag`` property which the React layer toggles on/off
+      // via ``suggestedRemovals`` + ``overlayMode``.
+      map.addLayer({
+        id: "sectors-removal-overlay",
+        type: "fill",
+        source: "sectors",
+        filter: ["==", ["get", "removalFlag"], true],
+        paint: {
+          "fill-pattern": "removal-stripe",
+          "fill-opacity": 0.95,
         },
       });
 
@@ -299,7 +359,14 @@ export default function TerritoryMap({
         map.on("click", "sectors-fill", (e) => {
           const f = e.features?.[0];
           if (!f) return;
-          onToggleSector(f.properties.sector);
+          // Route by current mode (ref-backed so prop changes take
+          // effect without rebinding the Mapbox listener).
+          const { overlayMode: om, onToggleSector: ts, onToggleRemoval: tr } = clickModeRef.current;
+          if (om && tr) {
+            tr(f.properties.sector);
+          } else {
+            ts(f.properties.sector);
+          }
         });
       }
 
@@ -353,6 +420,7 @@ export default function TerritoryMap({
     const src = mapRef.current.getSource("sectors");
     if (!src) return;
     const sel = new Set(selected);
+    const removals = new Set(suggestedRemovals || []);
     const features = sectors
       .filter((s) => s && s.geometry)
       .map((s, i) => ({
@@ -363,6 +431,7 @@ export default function TerritoryMap({
           sector: s.sector,
           home_count: s.home_count || 0,
           selected: sel.has(s.sector),
+          removalFlag: removals.has(s.sector),
         },
       }));
     src.setData({ type: "FeatureCollection", features });
@@ -391,7 +460,7 @@ export default function TerritoryMap({
         );
       }
     }
-  }, [sectors, selected, ready, interactive, styleVersion]);
+  }, [sectors, selected, suggestedRemovals, ready, interactive, styleVersion]);
 
   // ----------------- HQ marker -----------------
   // Renders the franchisee's home postcode as a small "Me" pill so it's

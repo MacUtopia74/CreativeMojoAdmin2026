@@ -96,6 +96,16 @@ class TerritoryPlanIn(BaseModel):
     sectors: List[str] = Field(default_factory=list)
     home_count: Optional[int] = None
     notes: Optional[str] = None
+    # Visual-only "suggested removals" overlay. Sectors listed here are
+    # *not* removed from the live territory or the home count — they are
+    # painted with a red stripe pattern on the map so the admin can show
+    # a prospective franchisee which areas could be dropped if they want
+    # to reshape the territory. Persisted with the plan so the suggestion
+    # survives a refresh; ``show_removal_overlay`` controls whether the
+    # layer is currently rendered (and whether the franchisee share link
+    # exposes it).
+    suggested_removals: List[str] = Field(default_factory=list)
+    show_removal_overlay: Optional[bool] = None
 
 
 class FranchiseeTerritoryIn(BaseModel):
@@ -811,6 +821,15 @@ def build_territory_router(db, require_role):  # noqa: D401
                 if plan.get("centre_lat") is not None else None
             ),
             "centre_postcode": plan.get("centre_postcode"),
+            # Suggested-removal overlay — only echoed when the admin has
+            # explicitly turned the overlay on (so the franchisee can see
+            # the same red-stripe layer the admin demoed). Admin toggling
+            # off → overlay vanishes from the share link instantly.
+            "suggested_removals": (
+                plan.get("suggested_removals") or []
+                if plan.get("show_removal_overlay") else []
+            ),
+            "show_removal_overlay": bool(plan.get("show_removal_overlay")),
         }
 
     @router.post("/franchisees/{franchisee_id}/territory/parse")

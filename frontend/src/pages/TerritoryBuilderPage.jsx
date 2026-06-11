@@ -218,6 +218,8 @@ export default function TerritoryBuilderPage() {
         setName(found.name || "");
         setNotes(found.notes || "");
         setSelected(found.sectors || []);
+        setSuggestedRemovals(found.suggested_removals || []);
+        setShowRemovalOverlay(!!found.show_removal_overlay);
         if (found.centre_lat && found.centre_lng) {
           setCentre({ lat: found.centre_lat, lng: found.centre_lng });
           setCentreLabel(found.centre_postcode || "");
@@ -356,6 +358,8 @@ export default function TerritoryBuilderPage() {
           sectors: selected,
           home_count: homeCount.count,
           notes,
+          suggested_removals: suggestedRemovals,
+          show_removal_overlay: showRemovalOverlay,
         };
         if (savedPlan?.id) {
           const { data } = await api.patch(`/territory-plans/${savedPlan.id}`, body);
@@ -396,6 +400,8 @@ export default function TerritoryBuilderPage() {
     await api.delete(`/territory-plans/${savedPlan.id}`);
     setSavedPlan(null);
     setSelected([]);
+    setSuggestedRemovals([]);
+    setShowRemovalOverlay(false);
     setName("");
     setNotes("");
     reloadAllPlans();
@@ -455,6 +461,20 @@ export default function TerritoryBuilderPage() {
       setErr(e?.response?.data?.detail || "Delete failed");
     }
   };
+
+  // ---- suggested removals overlay ---------------------------------------
+  // Visual-only red-stripe overlay the admin can paint on top of selected
+  // sectors when reviewing a territory with a prospective franchisee.
+  // Persisted on the plan so it survives a refresh; the share link only
+  // exposes it while ``showRemovalOverlay`` is true. Does NOT alter the
+  // territory's actual sectors or the home count.
+  const [suggestedRemovals, setSuggestedRemovals] = useState([]);
+  const [showRemovalOverlay, setShowRemovalOverlay] = useState(false);
+  const toggleRemoval = useCallback((sec) => {
+    setSuggestedRemovals((cur) => (
+      cur.includes(sec) ? cur.filter((s) => s !== sec) : [...cur, sec]
+    ));
+  }, []);
 
   // ---- in-map search pin -----------------------------------------------
   // Floating search box in the top-right of the map. Lets the admin
@@ -861,6 +881,9 @@ export default function TerritoryBuilderPage() {
               height={820}
               franchiseeOverlay={showOverlay ? overlay : null}
               searchPin={searchPin}
+              suggestedRemovals={showRemovalOverlay ? suggestedRemovals : []}
+              overlayMode={showRemovalOverlay}
+              onToggleRemoval={toggleRemoval}
             />
             {/* Floating search box — sits over the top-right corner of
                 the map. Purpose: lets the admin drop a temporary blue
@@ -976,6 +999,44 @@ export default function TerritoryBuilderPage() {
                 <textarea value={notes} onChange={(e) => setNotes(e.target.value)} data-testid="plan-notes"
                   rows={3} placeholder="Notes (optional)"
                   className="w-full px-3 py-2 text-sm bg-stone-50 border border-stone-200 rounded-lg" />
+                {/* Suggested removals overlay — visual-only red-stripe
+                    layer over selected sectors. When ON, clicking the
+                    map paints/clears the flag on a sector. Toggling
+                    OFF hides the layer (but preserves the flags) and
+                    removes it from the share-link view. Does not
+                    change the territory's selected sectors or counts. */}
+                <div className="mt-3 px-3 py-2.5 bg-stone-50 border border-stone-200 rounded-lg">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={showRemovalOverlay}
+                      onChange={(e) => setShowRemovalOverlay(e.target.checked)}
+                      data-testid="toggle-removal-overlay"
+                      className="mt-0.5 accent-red-600"
+                    />
+                    <div className="flex-1">
+                      <div className="text-[11px] uppercase tracking-[0.2em] font-bold text-stone-700 flex items-center gap-2">
+                        Allow edit overlay
+                        {showRemovalOverlay && (
+                          <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-red-600 text-white rounded">On</span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-stone-500 mt-0.5 leading-snug">
+                        Paint sectors with a red-stripe overlay to suggest areas to drop. Visual only — won't change selection or counts. Visible on the share link while on.
+                      </div>
+                      {showRemovalOverlay && suggestedRemovals.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setSuggestedRemovals([])}
+                          data-testid="clear-removal-overlay"
+                          className="mt-2 text-[10px] font-bold uppercase tracking-wider text-red-700 hover:text-red-900"
+                        >
+                          Clear {suggestedRemovals.length} flagged
+                        </button>
+                      )}
+                    </div>
+                  </label>
+                </div>
               </>
             )}
             {franchiseeId && (
