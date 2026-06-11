@@ -247,29 +247,31 @@ export default function PortalSubscriptionsPage() {
 
   return (
     <div className="space-y-8" data-testid="portal-subscriptions-page">
-      <div className="flex flex-col lg:flex-row lg:items-start lg:gap-6">
-        <div className="flex-1 min-w-0">
-          <PortalPageHeading
-            eyebrow="Account"
-            icon={Sparkles}
-            title="Subscriptions"
-            subtitle="Add optional bolt-ons to your monthly subscription — billed via your existing GoCardless mandate."
-          />
-        </div>
-        <PromoRoundel />
-      </div>
+      <PortalPageHeading
+        eyebrow="Account"
+        icon={Sparkles}
+        title="Subscriptions"
+        subtitle="Add optional bolt-ons to your monthly subscription — billed via your existing GoCardless mandate."
+      />
 
       {/* Intro */}
       <div className="bg-white border border-stone-200 rounded-2xl px-6 py-6 sm:px-8 sm:py-7">
         <h2 className="font-display text-2xl sm:text-3xl font-black text-stone-950 tracking-tight">
           Supercharge your franchise with bolt-ons
         </h2>
-        <p className="text-stone-600 mt-2 text-sm sm:text-base leading-relaxed">
-          Add any of the optional modules below to your monthly Creative Mojo subscription. Each bolt-on is just £9 a
-          month — pick any two for £16, any three for £22, or grab all four for £27. Billed via your existing
-          GoCardless mandate and appears as a separate line on your Xero invoice. Cancel any time, no minimum term.
-          All prices include VAT.
-        </p>
+        {/* Side-by-side intro: paragraph on the left, promo roundel on the right.
+            On narrow screens the roundel stacks below. */}
+        <div className="mt-3 flex flex-col lg:flex-row lg:items-center lg:gap-6">
+          <p className="text-stone-600 text-sm sm:text-base leading-relaxed flex-1">
+            Add any of the optional modules below to your monthly Creative Mojo subscription. Each bolt-on is just £9 a
+            month — pick any two for £16, any three for £22, or grab all four for £27. Billed via your existing
+            GoCardless mandate and appears as a separate line on your Xero invoice. Cancel any time, no minimum term.
+            All prices include VAT.
+          </p>
+          <div className="mt-4 lg:mt-0 lg:shrink-0 self-center lg:self-auto">
+            <PromoRoundel />
+          </div>
+        </div>
         {/* Bundle ladder — shows the franchisee the tier discounts at
             a glance. Wrapped in a heavier, Mojo-lime-tinted panel with
             its own header so it can't be mistaken for the page intro;
@@ -737,11 +739,11 @@ function PromoRoundel() {
   return (
     <div
       data-testid="subs-promo-roundel"
-      className="self-center lg:self-start shrink-0 mt-4 lg:mt-0"
+      className="shrink-0"
       aria-label="60-day launch offer"
     >
       <div
-        className="relative w-[260px] h-[260px] sm:w-[280px] sm:h-[280px] rounded-full flex items-center justify-center text-center px-7 sm:px-8 shadow-xl ring-1 ring-stone-900/10 -rotate-2 hover:rotate-0 transition-transform duration-300"
+        className="relative w-[260px] h-[260px] sm:w-[290px] sm:h-[290px] rounded-full flex items-center justify-center text-center px-7 sm:px-8 shadow-xl ring-1 ring-stone-900/10 -rotate-2 hover:rotate-0 transition-transform duration-300"
         style={{ background: "radial-gradient(circle at 30% 25%, #f5f316 0%, #dddd16 55%, #c9c811 100%)" }}
       >
         {/* subtle sparkle accent in the corner */}
@@ -751,13 +753,13 @@ function PromoRoundel() {
           <div className="font-display text-[15px] sm:text-base font-black uppercase tracking-wide text-stone-950 leading-tight">
             A Little Extra<br />from Us!
           </div>
-          <div className="text-[10px] sm:text-[10.5px] leading-snug text-stone-800 max-w-[200px]">
+          <div className="text-[12px] sm:text-[13px] leading-snug text-stone-800 max-w-[210px]">
             To celebrate the launch of the new Franchise Portal, every franchisee gets full access to all advanced modules for
           </div>
           <div className="px-2.5 py-1 rounded-full bg-stone-950 text-[#dddd16] text-[11px] sm:text-xs font-black uppercase tracking-wider shadow">
             60 days at no cost
           </div>
-          <div className="text-[10px] sm:text-[10.5px] leading-snug text-stone-800 max-w-[200px]">
+          <div className="text-[12px] sm:text-[13px] leading-snug text-stone-800 max-w-[210px]">
             Explore the features, then simply keep the modules you love.
           </div>
         </div>
