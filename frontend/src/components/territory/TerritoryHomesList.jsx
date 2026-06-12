@@ -328,6 +328,7 @@ export default function TerritoryHomesList({
   onUnmarkHomeClient = null,// (home) — fire when "Unmark" tapped
   onAddClient = null,       // () — opens the add-client modal
   onEditClient = null,      // (client) — opens the edit-client modal
+  onOpenDetail = null,      // (home) — open rich modal instead of concertina
   onPlanRoute = null,       // () — currently a no-op (coming soon)
   providers = [],           // [{ name, count }] — for the filter buttons
   providerFilter = null,
@@ -401,7 +402,7 @@ export default function TerritoryHomesList({
             <div className="text-sm text-stone-950 mt-0.5 truncate">
               <strong>{filtered.length}</strong>
               {filtered.length !== homes.length && <span className="text-stone-950/60"> of {homes.length}</span>} homes
-              <span className="text-stone-950/60"> · click any row to expand</span>
+              <span className="text-stone-950/60"> · click any row to {onOpenDetail ? "open" : "expand"}</span>
             </div>
           </div>
         </div>
@@ -429,6 +430,7 @@ export default function TerritoryHomesList({
             <HomeRow key={h.locationId || h._id || i} home={h} idx={realIdx}
               isOpen={open === realIdx}
               onToggle={() => setOpen(open === realIdx ? null : realIdx)}
+              onOpenDetail={onOpenDetail}
               onZoom={onZoomHome}
               isMyClient={isMine}
               onMarkClient={onMarkHomeClient}

@@ -1,6 +1,27 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## Territory+ CQC row → modal fix + non-client editing (Feb 12 2026)
+
+**Bug fixed**: clicking a "Homes in My Territory · From CQC Database" row was opening the inline concertina instead of the rich `TerritoryClientModal`, despite multiple prior attempts.
+
+**Root cause**: three separate but compounding wiring bugs in `FranchiseeTerritoryWidget.jsx` + `TerritoryHomesList.jsx`:
+1. `onOpenDetail` was passed from the widget but **never destructured** in `TerritoryHomesList`'s prop list (line 314), so it silently dropped.
+2. `openClientForHome` looked up the home key via `home.locationId || home._id` whereas the actual CQC home objects expose `home.id` — so when a marked client did exist, the lookup missed.
+3. The seed object passed `__new: true`, which the modal wrapper translated to `initial=null`, **discarding the seed**. The CQC field mapping (`home.address`, `home.phone`, `home.manager`) was also wrong — should be `home.fullAddress`, `home.mainPhoneNumber`, `home.registrationManagerName`.
+
+**Fix** (3 files / ~30 LOC):
+- Added `onOpenDetail = null` to `TerritoryHomesList` destructured props and forwarded it into `<HomeRow>`.
+- Unified the home-key lookup to `home.id || home.locationId || home._id`.
+- Re-seeded the modal with correct CQC fields (fullAddress, mainPhoneNumber, registrationManagerName, lastInspection.date, currentRatings.overall.rating) and removed the `__new` flag so the seed survives.
+- Updated the subtitle from "click any row to expand" → "click any row to open".
+- Basic (non-Plus) layout no longer passes `onOpenDetail` — those users keep the concertina because they don't have the modal mounted.
+
+**Verified on Preview** by Playwright JS-dispatched click: modal opens with `name='Chelfham House Residential Home'`, `address='Chelfham House, Chelfham, Barnstaple, Devon, EX31 4RP'`, `phone='01271850373'`. **User must Save-to-GitHub and re-deploy to Production for this to land on hub.creativemojo.co.uk**.
+
+**Side benefit**: any unmarked CQC home is now editable. Saving creates a Custom client doc with notes/contacts that the franchisee can build up before deciding to "Mark as my client".
+
+
 ## NI postcode sectors switched to real boundaries (Jun 08 2026)
 
 **Replaced** the temporary Voronoi-derived BT polygons with **real postcode sector boundaries** from Doogal's whole-UK KML (https://www.doogal.co.uk/kml/PostcodeSectors.kml). Methodology now identical to GB:

@@ -197,7 +197,7 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
   // it's already a saved client, open the rich edit modal instead of
   // the inline concertina so the CQC panel mirrors the My Clients UX.
   const openClientForHome = (home) => {
-    const key = home.locationId || home._id;
+    const key = home.id || home.locationId || home._id;
     if (!key) return;
     const client = clientByHomeKey.get(`cqc:${key}`) || clientByHomeKey.get(`scotland:${key}`);
     if (client) {
@@ -210,15 +210,20 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
     // without first having to commit to "Mark as my client". Saving
     // creates a custom client row (no gold-star marker — they can hit
     // "Mark as my client" later if they want it on the marker map).
+    const fullAddress = home.fullAddress
+      || [home.postalAddressLine1, home.postalAddressLine2, home.postalAddressTownCity, home.postalAddressCounty, home.postalCode]
+          .filter(Boolean).join(", ");
     setEditingClient({
+      __seededFromHome: true,
       name: home.name || "",
-      address: home.address || "",
-      postcode: home.postalCode || "",
-      phone: home.phone || "",
+      address: fullAddress,
+      postcode: home.postalCode || home.postcode || "",
+      phone: home.mainPhoneNumber || "",
+      email: home.email || "",
       website: home.website || "",
       provider: home.providerName || "",
-      manager: home.manager || "",
-      latest_inspection: home.lastReport?.publicationDate || "",
+      manager: home.registrationManagerName || "",
+      latest_inspection: home.lastInspection?.date || home.currentRatings?.overall?.reportDate || "",
       cqc_rating: home.currentRatings?.overall?.rating || "",
       lat: home.latitude || null,
       lng: home.longitude || null,
@@ -586,7 +591,6 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
           expanded={homesListExpanded}
           onExpandedChange={setHomesListExpanded}
           onZoomHome={(h) => setFlyTo({ lat: h.latitude, lng: h.longitude, _t: Date.now() })}
-          onOpenDetail={openClientForHome}
         />
       )}
     </div>
