@@ -1,6 +1,31 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## Map markers tinted by Lead Status + status filter applied to map (Feb 12 2026)
+
+User asked for the map markers to reflect each tracked home's lead status colour, and for the existing status-filter dropdown to also filter the **map** (not just the list) — same way the "MY CLIENTS ONLY" toggle does.
+
+**Wiring**
+- Lifted `statusFilter` state from `MyClientsPanel` to `FranchiseeTerritoryWidget` (single source of truth). `MyClientsPanel` is now hybrid controlled/uncontrolled so older callers still work.
+- New `homeStatusByKey` memo in `FranchiseeTerritoryWidget` builds a `Map<"source:home_id", lead_status>` for every tracked CQC home (defaults to `not_contacted` when `lead_status` is null on legacy rows).
+- Both `homeStatusByKey` and `statusFilter` are now passed to `<TerritoryMap>` alongside `clientHomeKeys`.
+
+**Marker rendering** (`TerritoryMap.jsx`)
+- Added `markerBg` / `markerFg` hex pairs to `TONE_STYLES` in `leadStatus.js` so markers can use the same colour palette as the chips/rows (orange `#f97316`, sky `#38bdf8`, blue `#3b82f6`, purple `#a855f7`, yellow `#fbbf24`, green `#10b981`, red `#ef4444`, grey-fallback `#14532d`).
+- Numbered home markers now render with a **three-way decision**:
+  1. `yourClient` → gold ★ (unchanged)
+  2. `trackedStatus` truthy → tinted numbered circle (orange/sky/blue/purple/yellow/red/green per status)
+  3. otherwise → default dark-green numbered circle (untracked CQC home)
+- The tinted assignment is deferred onto `requestAnimationFrame` to win a race where a follow-up render was clobbering the cssText. Tints now stick on first render.
+- New early-return at the top of the marker loop: `if (statusFilter && trackedStatus !== statusFilter) skip` — only markers matching the active filter are drawn (mirrors the "My Clients Only" behaviour).
+- Marker effect deps updated to include `homeStatusByKey` and `statusFilter`.
+
+**Marketing+ tab removed** (paused, will revisit next week)
+- The "Open in Marketing+" header button and its "Save the client first…" hint were stripped from the `MarketingCrmPanel` in the territory modal.
+
+**Verified visually + via DOM inspection**: 5 tracked CQC homes now render with `rgb(249, 115, 22)` (orange) for "Not Contacted" status. Applying the Not Contacted filter from the Client Pool dropdown hides every untracked CQC marker on the map and leaves the 5 orange markers + the 2 custom-client ★ markers visible.
+
+
 ## Client Pool / Territory Pool rename + ★ reserved for true Clients (Feb 12 2026)
 
 User-requested CRM tightening — make the gold ★ semantically mean "Client" and rename the two list panels to "Client Pool" + "Territory Pool".

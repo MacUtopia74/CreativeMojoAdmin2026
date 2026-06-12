@@ -621,22 +621,9 @@ function MarketingCrmPanel({ form, set, marketingEnabled, onOpenMarketingPlus, c
       className="bg-white border border-stone-200 rounded-xl overflow-hidden"
       data-testid="t-plus-marketing-panel"
     >
-      <header className="px-4 py-3 bg-stone-950 text-[#dddd16] flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Megaphone className="w-4 h-4" />
-          <div className="text-[11px] uppercase tracking-[0.25em] font-black">Marketing</div>
-        </div>
-        {marketingEnabled && clientSaved && (
-          <button
-            type="button"
-            onClick={onOpenMarketingPlus}
-            data-testid="t-plus-marketing-open-plus"
-            className="inline-flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-yellow-300 rounded-md"
-            title="Open this client in Marketing+"
-          >
-            Open in Marketing+ <ExternalLink className="w-3 h-3" />
-          </button>
-        )}
+      <header className="px-4 py-3 bg-stone-950 text-[#dddd16] flex items-center gap-2">
+        <Megaphone className="w-4 h-4" />
+        <div className="text-[11px] uppercase tracking-[0.25em] font-black">Marketing</div>
       </header>
       <div className="p-4 space-y-3">
         {/* LEAD STATUS — coloured dropdown with chip */}
@@ -766,12 +753,6 @@ function MarketingCrmPanel({ form, set, marketingEnabled, onOpenMarketingPlus, c
               />
             </div>
           </>
-        )}
-
-        {marketingEnabled && !clientSaved && (
-          <div className="text-[11px] text-stone-500 italic">
-            Save this client first to enable the &ldquo;Open in Marketing+&rdquo; deep-link.
-          </div>
         )}
       </div>
     </section>

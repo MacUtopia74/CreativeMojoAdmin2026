@@ -54,10 +54,20 @@ export default function MyClientsPanel({
                               // franchisee. Defaults to off so any
                               // caller forgetting to pass it stays
                               // safe (no broken deep-link).
+  statusFilter: statusFilterProp = null,  // controlled (parent owns)
+  onStatusFilterChange = null,            // (next) => void; parent setter
 }) {
   const [q, setQ] = useState("");
   const [sortValue, setSortValue] = useState("name-asc");
-  const [statusFilter, setStatusFilter] = useState("");  // "" = all
+  // Lead-status filter — supports controlled OR uncontrolled use so
+  // the parent (FranchiseeTerritoryWidget) can mirror the filter on
+  // the map without breaking older standalone callers.
+  const [statusFilterLocal, setStatusFilterLocal] = useState("");
+  const statusFilter = statusFilterProp ?? statusFilterLocal;
+  const setStatusFilter = (next) => {
+    if (onStatusFilterChange) onStatusFilterChange(next);
+    else setStatusFilterLocal(next);
+  };
   const [page, setPage] = useState(0);
   const navigate = useNavigate();
 

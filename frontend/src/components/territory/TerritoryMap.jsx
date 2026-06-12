@@ -15,6 +15,7 @@
 import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
+import { getLeadStatusMeta } from "@/lib/leadStatus";
 
 const TOKEN = process.env.REACT_APP_MAPBOX_TOKEN;
 
@@ -47,6 +48,15 @@ export default function TerritoryMap({
                             //   when present, any matching ``home`` marker is
                             //   skinned in My Territory+ gold instead of green
                             //   to signal "this regulated home is My Client".
+  homeStatusByKey = null,   // optional Map "${source}:${home_id}" → lead_status
+                            //   string. When set, the matching home marker is
+                            //   tinted with that status's colour (orange for
+                            //   "Not Contacted", purple for "Interested", …).
+                            //   Clients (gold ★) still override the tint.
+  statusFilter = "",        // optional lead_status to filter markers by — when
+                            //   set, only markers whose tracked status matches
+                            //   are rendered (everything else hidden, including
+                            //   untracked CQC homes). "" = no filter.
   customClients = [],       // optional: [{id, name, lat, lng, ...}] — custom
                             //   clients added by the franchisee. Plotted with
                             //   a gold ★ marker, distinct from numbered homes.
@@ -519,9 +529,17 @@ export default function TerritoryMap({
       if (providerFilter && (home.providerName || "").toLowerCase() !== providerFilter.toLowerCase()) return;
       // Is THIS home flagged as "My Client"? Keyed by source:home_id so
       // we can light it up in My Territory+ gold instead of green.
+      const homeKey = home.id || home.locationId || "";
       const yourClient = clientHomeKeys
-        && (clientHomeKeys.has(`cqc:${home.id || home.locationId || ""}`)
-            || clientHomeKeys.has(`scotland:${home.id || home.locationId || ""}`));
+        && (clientHomeKeys.has(`cqc:${homeKey}`)
+            || clientHomeKeys.has(`scotland:${homeKey}`));
+      // Tracked lead-status for this home (prospect or client). Drives
+      // the per-marker tint AND the status-filter visibility check.
+      const trackedStatus = homeStatusByKey
+        ? (homeStatusByKey.get(`cqc:${homeKey}`)
+            || homeStatusByKey.get(`scotland:${homeKey}`)
+            || null)
+        : null;
       // "My clients only" filter: drop non-client markers entirely so the
       // map shows only your own client pins (the user said dimming was
       // confusing — full hide is clearer).
@@ -529,16 +547,43 @@ export default function TerritoryMap({
         homeMarkersRef.current.push(null);
         return;
       }
+      // Status-filter visibility: when the franchisee picks a single
+      // status from the Client Pool filter dropdown, the map mirrors
+      // it — only tracked homes whose status matches are rendered.
+      // Untracked CQC homes are also hidden (they have no status).
+      if (statusFilter && trackedStatus !== statusFilter) {
+        homeMarkersRef.current.push(null);
+        return;
+      }
       const el = document.createElement("div");
       el.className = "cm-home-marker";
       // Marked-as-mine homes render as a gold ★ on the map so they're
       // visually unmistakable (matches the My Clients panel iconography).
-      // Non-client homes stay as numbered green circles for indexing
-      // against the homes list below.
+      // Tracked prospects use a numbered circle tinted with their lead
+      // status colour. Untracked CQC homes keep the default dark-green
+      // numbered circle.
       el.textContent = yourClient ? "★" : String(i + 1);
-      el.style.cssText = yourClient
-        ? "background:#dddd16;color:#0c0a09;font-size:16px;font-weight:900;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #0c0a09;box-shadow:0 0 0 3px rgba(221,221,22,0.45),0 1px 3px rgba(0,0,0,.4);cursor:pointer;font-family:Inter,system-ui,sans-serif;line-height:1;"
-        : "background:#14532D;color:#fff;font-size:11px;font-weight:700;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);cursor:pointer;font-family:Inter,system-ui,sans-serif;";
+      if (yourClient) {
+        el.style.cssText = "background:#dddd16;color:#0c0a09;font-size:16px;font-weight:900;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #0c0a09;box-shadow:0 0 0 3px rgba(221,221,22,0.45),0 1px 3px rgba(0,0,0,.4);cursor:pointer;font-family:Inter,system-ui,sans-serif;line-height:1;";
+      } else if (trackedStatus) {
+        const meta = getLeadStatusMeta(trackedStatus);
+        const bg = meta.tone.markerBg || "#14532D";
+        const fg = meta.tone.markerFg || "#fff";
+        // Start from the default green baseline then re-apply the
+        // status tint on the next animation frame. Setting cssText
+        // alone was being clobbered by a follow-up render where
+        // ``yourClient`` / ``trackedStatus`` flickered to stale values
+        // — the rAF defers the colour-write past that flicker so the
+        // tint sticks.
+        el.style.cssText = `background:${bg};color:${fg};font-size:11px;font-weight:700;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);cursor:pointer;font-family:Inter,system-ui,sans-serif;`;
+        el.setAttribute("data-tracked-status", trackedStatus);
+        requestAnimationFrame(() => {
+          el.style.backgroundColor = bg;
+          el.style.color = fg;
+        });
+      } else {
+        el.style.cssText = "background:#14532D;color:#fff;font-size:11px;font-weight:700;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);cursor:pointer;font-family:Inter,system-ui,sans-serif;";
+      }
       const marker = new mapboxgl.Marker(el)
         .setLngLat([home.longitude, home.latitude])
         .setPopup(new mapboxgl.Popup({ offset: 16, closeButton: false }).setHTML(
@@ -566,7 +611,7 @@ export default function TerritoryMap({
       homeMarkersRef.current.forEach((m) => m && m.remove());
       homeMarkersRef.current = [];
     };
-  }, [homes, ready, onMarkerClick, onClientMarkerClick, clientHomeKeys, providerFilter, dimNonClients]);
+  }, [homes, ready, onMarkerClick, onClientMarkerClick, clientHomeKeys, providerFilter, dimNonClients, homeStatusByKey, statusFilter]);
 
   // ----------------- custom client markers (Territory+ "my clients") -----
   // Drawn separately from regulated homes — gold ★ markers, no number,

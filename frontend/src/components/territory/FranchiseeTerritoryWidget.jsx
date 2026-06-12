@@ -51,6 +51,10 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
   const [editingClient, setEditingClient] = useState(null); // {} = "new", obj = edit
   const [providerFilter, setProviderFilter] = useState(null);
   const [myClientsOnly, setMyClientsOnly] = useState(false);
+  // Single source of truth for the lead-status filter — drives BOTH the
+  // Client Pool list (in MyClientsPanel) AND the map markers. Empty
+  // string means "all statuses, no filter applied".
+  const [statusFilter, setStatusFilter] = useState("");
   // Sales-flow leads (per-franchisee personal CRM bookmark per home).
   // Keyed by "${source}:${home_id}" for O(1) lookup from list/map.
   const [leads, setLeads] = useState([]);
@@ -303,6 +307,20 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
     return s;
   }, [myClients]);
 
+  // "${source}:${home_id}" → lead_status string for every tracked CQC
+  // home. Drives the per-marker tint on the map (orange for "Not
+  // Contacted" rows, purple for "Interested", etc.) and the status-
+  // filter visibility check.
+  const homeStatusByKey = useMemo(() => {
+    const m = new Map();
+    myClients.forEach((c) => {
+      if (c.source !== "custom" && c.home_id) {
+        m.set(`${c.source}:${c.home_id}`, c.lead_status || "not_contacted");
+      }
+    });
+    return m;
+  }, [myClients]);
+
   // Map of "${source}:${home_id}" → franchisee_clients doc for marked
   // regulated homes — lets a marker click jump straight to the edit
   // modal instead of just expanding the row in the list below.
@@ -396,6 +414,8 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
       pinnedPostcode={pinnedPostcode}
       basemap={basemap}
       clientHomeKeys={plusOn ? clientHomeKeys : null}
+      homeStatusByKey={plusOn ? homeStatusByKey : null}
+      statusFilter={plusOn ? statusFilter : ""}
       customClients={plusOn ? customClients : []}
       onCustomClientClick={plusOn ? (c) => setEditingClient(c) : null}
       onClientMarkerClick={plusOn ? (home) => {
@@ -476,6 +496,8 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
               myClientsOnly={myClientsOnly}
               onMyClientsOnlyChange={setMyClientsOnly}
               marketingEnabled={marketingEnabled}
+              statusFilter={statusFilter}
+              onStatusFilterChange={setStatusFilter}
             />
           </div>
 

@@ -25,15 +25,18 @@ export const LEAD_STATUS_OPTIONS = [
 // classes — it has to be inline-styled with concrete colours).
 // ``rowBg`` is the very faint hover/row tint used on the My Clients
 // list so each row reads as the colour of its lead status at a glance.
+// ``markerBg`` / ``markerFg`` are the saturated hex pair used by the
+// Mapbox HTML markers — saturated background, contrasting text colour
+// so the number is still legible inside the round badge.
 export const TONE_STYLES = {
-  orange: { dot: "bg-orange-500",  chip: "bg-orange-50 border-orange-300 text-orange-900", border: "border-orange-400", fill: "bg-orange-50", rowBg: "#fff7ed", optionBg: "#fff7ed", optionFg: "#7c2d12" },
-  sky:    { dot: "bg-sky-400",     chip: "bg-sky-50 border-sky-300 text-sky-900",          border: "border-sky-400",    fill: "bg-sky-50",    rowBg: "#f0f9ff", optionBg: "#f0f9ff", optionFg: "#0c4a6e" },
-  blue:   { dot: "bg-blue-500",    chip: "bg-blue-50 border-blue-300 text-blue-900",       border: "border-blue-400",   fill: "bg-blue-50",   rowBg: "#eff6ff", optionBg: "#eff6ff", optionFg: "#1e3a8a" },
-  purple: { dot: "bg-purple-500",  chip: "bg-purple-50 border-purple-300 text-purple-900", border: "border-purple-400", fill: "bg-purple-50", rowBg: "#faf5ff", optionBg: "#faf5ff", optionFg: "#581c87" },
-  yellow: { dot: "bg-amber-400",   chip: "bg-amber-50 border-amber-300 text-amber-900",    border: "border-amber-400",  fill: "bg-amber-50",  rowBg: "#fffbeb", optionBg: "#fffbeb", optionFg: "#78350f" },
-  green:  { dot: "bg-emerald-500", chip: "bg-emerald-50 border-emerald-300 text-emerald-900", border: "border-emerald-400", fill: "bg-emerald-50", rowBg: "#ecfdf5", optionBg: "#ecfdf5", optionFg: "#064e3b" },
-  red:    { dot: "bg-red-500",     chip: "bg-red-50 border-red-300 text-red-900",          border: "border-red-400",    fill: "bg-red-50",    rowBg: "#fef2f2", optionBg: "#fef2f2", optionFg: "#7f1d1d" },
-  grey:   { dot: "bg-stone-300",   chip: "bg-stone-50 border-stone-300 text-stone-700",    border: "border-stone-300",  fill: "bg-stone-50",  rowBg: "transparent", optionBg: "#fafaf9", optionFg: "#44403c" },
+  orange: { dot: "bg-orange-500",  chip: "bg-orange-50 border-orange-300 text-orange-900", border: "border-orange-400", fill: "bg-orange-50", rowBg: "#fff7ed", optionBg: "#fff7ed", optionFg: "#7c2d12", markerBg: "#f97316", markerFg: "#ffffff" },
+  sky:    { dot: "bg-sky-400",     chip: "bg-sky-50 border-sky-300 text-sky-900",          border: "border-sky-400",    fill: "bg-sky-50",    rowBg: "#f0f9ff", optionBg: "#f0f9ff", optionFg: "#0c4a6e", markerBg: "#38bdf8", markerFg: "#0c4a6e" },
+  blue:   { dot: "bg-blue-500",    chip: "bg-blue-50 border-blue-300 text-blue-900",       border: "border-blue-400",   fill: "bg-blue-50",   rowBg: "#eff6ff", optionBg: "#eff6ff", optionFg: "#1e3a8a", markerBg: "#3b82f6", markerFg: "#ffffff" },
+  purple: { dot: "bg-purple-500",  chip: "bg-purple-50 border-purple-300 text-purple-900", border: "border-purple-400", fill: "bg-purple-50", rowBg: "#faf5ff", optionBg: "#faf5ff", optionFg: "#581c87", markerBg: "#a855f7", markerFg: "#ffffff" },
+  yellow: { dot: "bg-amber-400",   chip: "bg-amber-50 border-amber-300 text-amber-900",    border: "border-amber-400",  fill: "bg-amber-50",  rowBg: "#fffbeb", optionBg: "#fffbeb", optionFg: "#78350f", markerBg: "#fbbf24", markerFg: "#78350f" },
+  green:  { dot: "bg-emerald-500", chip: "bg-emerald-50 border-emerald-300 text-emerald-900", border: "border-emerald-400", fill: "bg-emerald-50", rowBg: "#ecfdf5", optionBg: "#ecfdf5", optionFg: "#064e3b", markerBg: "#10b981", markerFg: "#ffffff" },
+  red:    { dot: "bg-red-500",     chip: "bg-red-50 border-red-300 text-red-900",          border: "border-red-400",    fill: "bg-red-50",    rowBg: "#fef2f2", optionBg: "#fef2f2", optionFg: "#7f1d1d", markerBg: "#ef4444", markerFg: "#ffffff" },
+  grey:   { dot: "bg-stone-300",   chip: "bg-stone-50 border-stone-300 text-stone-700",    border: "border-stone-300",  fill: "bg-stone-50",  rowBg: "transparent", optionBg: "#fafaf9", optionFg: "#44403c", markerBg: "#14532d", markerFg: "#ffffff" },
 };
 
 // Resolve a stored ``lead_status`` value to its option + tone style.
