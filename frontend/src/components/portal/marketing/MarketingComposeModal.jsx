@@ -719,8 +719,13 @@ function PanelEditor({ idx, panel, canRemove, onChange, onRemove, onPickImage, o
           )}
         </label>
         {panel.image_url ? (
-          <div className="border border-stone-300 rounded-xl overflow-hidden bg-stone-100">
-            <img src={panel.image_url} alt="" className="w-full h-auto" data-testid={`marketing-image-preview-${idx}`} />
+          <div className="border border-stone-300 rounded-xl overflow-hidden bg-stone-100 inline-flex items-start max-w-[200px]">
+            <img
+              src={panel.image_url}
+              alt=""
+              className="block w-auto max-h-[200px] object-contain"
+              data-testid={`marketing-image-preview-${idx}`}
+            />
           </div>
         ) : (
           <label
