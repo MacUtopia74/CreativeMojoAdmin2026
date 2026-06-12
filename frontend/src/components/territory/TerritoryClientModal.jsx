@@ -119,6 +119,7 @@ export default function TerritoryClientModal({ initial, onClose, onSaved, onDele
         phone: (c.phone || "").trim() || null,
         email: (c.email || "").trim() || null,
         notes: (c.notes || "").trim() || null,
+        include_for_marketing: c.include_for_marketing !== false,
       }));
       const body = cleaned;
       let res;
@@ -269,6 +270,18 @@ export default function TerritoryClientModal({ initial, onClose, onSaved, onDele
               editing an existing client AND there's actually an email
               on file (no point unsubscribing nobody). The toggle calls
               the dedicated endpoint and updates immediately. */}
+          {(form.email || "").trim() && (
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.manager_include_for_marketing !== false}
+                onChange={(e) => set("manager_include_for_marketing", e.target.checked)}
+                data-testid="t-plus-primary-marketing"
+                className="w-4 h-4 rounded border-stone-300 accent-stone-950"
+              />
+              <span className="text-stone-700">Include manager / primary contact in Marketing+ e-shots</span>
+            </label>
+          )}
           {editing && (form.email || "").trim() && (
             <UnsubscribeRow
               label="Primary contact marketing"
@@ -344,14 +357,28 @@ export default function TerritoryClientModal({ initial, onClose, onSaved, onDele
                       data-testid={`t-plus-contact-phone-${i}`}
                       className="px-2.5 py-1.5 text-sm bg-white border border-stone-300 rounded focus:outline-none focus:border-stone-950"
                     />
-                    <input
-                      type="text"
-                      value={c.email || ""}
-                      onChange={(e) => updateContact(i, "email", e.target.value)}
-                      placeholder="Email"
-                      data-testid={`t-plus-contact-email-${i}`}
-                      className="px-2.5 py-1.5 text-sm bg-white border border-stone-300 rounded focus:outline-none focus:border-stone-950"
-                    />
+                    <div className="flex flex-col gap-1">
+                      <input
+                        type="text"
+                        value={c.email || ""}
+                        onChange={(e) => updateContact(i, "email", e.target.value)}
+                        placeholder="Email"
+                        data-testid={`t-plus-contact-email-${i}`}
+                        className="px-2.5 py-1.5 text-sm bg-white border border-stone-300 rounded focus:outline-none focus:border-stone-950"
+                      />
+                      {(c.email || "").trim() && (
+                        <label className="flex items-center gap-1.5 text-[11px] text-stone-600 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={c.include_for_marketing !== false}
+                            onChange={(e) => updateContact(i, "include_for_marketing", e.target.checked)}
+                            data-testid={`t-plus-contact-marketing-${i}`}
+                            className="w-3.5 h-3.5 rounded border-stone-300 accent-stone-950"
+                          />
+                          Include contact for e-shot marketing
+                        </label>
+                      )}
+                    </div>
                   </div>
                   <textarea
                     value={c.notes || ""}

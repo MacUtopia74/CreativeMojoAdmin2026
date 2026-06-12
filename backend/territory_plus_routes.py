@@ -43,7 +43,7 @@ CLIENT_SOURCES = {"custom", "cqc", "scotland"}
 PERMITTED_FIELDS = {
     "name", "address", "phone", "website", "provider", "manager", "email",
     "latest_inspection", "cqc_rating", "notes", "postcode", "lat", "lng",
-    "contacts",
+    "contacts", "manager_include_for_marketing",
 }
 
 
@@ -54,6 +54,12 @@ class Contact(BaseModel):
     phone: Optional[str] = Field(None, max_length=80)
     email: Optional[str] = Field(None, max_length=200)
     notes: Optional[str] = Field(None, max_length=1000)
+    # When True the contact's email is eligible to receive Marketing+
+    # e-shots. Default True so existing rows (pre-dating this field)
+    # keep their current "in recipients" behaviour. Toggle false to
+    # exclude a specific contact without removing them from the record.
+    include_for_marketing: Optional[bool] = True
+    marketing_unsubscribed: Optional[bool] = False
 
 
 class ClientIn(BaseModel):
@@ -73,6 +79,10 @@ class ClientIn(BaseModel):
     lng: Optional[float] = None
     # Up to ~20 additional contacts (deputy managers, sales contacts, etc.).
     contacts: Optional[List[Contact]] = None
+    # Manager / primary email marketing-eligibility flag. Mirrors
+    # ``include_for_marketing`` on a Contact but applies to the client
+    # row's own primary email. Defaults True for back-compat.
+    manager_include_for_marketing: Optional[bool] = True
 
 
 class MarkHomeIn(BaseModel):
@@ -225,6 +235,7 @@ def attach(api: APIRouter, db, require_role):
             "lat": lat,
             "lng": lng,
             "contacts": [c.model_dump() for c in (body.contacts or [])],
+            "manager_include_for_marketing": body.manager_include_for_marketing if body.manager_include_for_marketing is not None else True,
             "created_at": now,
             "updated_at": now,
         }

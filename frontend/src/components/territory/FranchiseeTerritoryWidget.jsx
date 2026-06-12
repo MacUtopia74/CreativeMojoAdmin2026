@@ -192,6 +192,17 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
     return s;
   }, [myClients]);
 
+  // CQC home → existing client doc lookup is computed below (see
+  // ``clientByHomeKey``). When a row in the CQC panel is clicked AND
+  // it's already a saved client, open the rich edit modal instead of
+  // the inline concertina so the CQC panel mirrors the My Clients UX.
+  const openClientForHome = (home) => {
+    const key = home.locationId || home._id;
+    if (!key) return;
+    const client = clientByHomeKey.get(`cqc:${key}`) || clientByHomeKey.get(`scotland:${key}`);
+    if (client) setEditingClient(client);
+  };
+
   const customClients = useMemo(
     () => myClients.filter((c) => c.source === "custom"),
     [myClients],
@@ -469,6 +480,7 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
               customClients={[]}
               onMarkHomeClient={handleMarkHomeClient}
               onUnmarkHomeClient={handleUnmarkHomeClient}
+              onOpenDetail={openClientForHome}
               onAddClient={() => setEditingClient({ __new: true })}
               onEditClient={(c) => setEditingClient(c)}
               providers={topProviders}

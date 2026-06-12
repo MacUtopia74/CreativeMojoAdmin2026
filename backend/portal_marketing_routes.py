@@ -989,7 +989,7 @@ def attach(api, db, require_role):
             # contact granularity — other contacts on the same client
             # row are unaffected).
             primary_unsub = bool(c.get("primary_marketing_unsubscribed"))
-            if c.get("email") and not primary_unsub:
+            if c.get("email") and not primary_unsub and c.get("manager_include_for_marketing", True):
                 out.append({
                     "client_id": c["id"],
                     "contact_index": -1,
@@ -1000,9 +1000,11 @@ def attach(api, db, require_role):
                     "phone": c.get("phone"),
                 })
             # Each secondary contact that has an email AND hasn't
-            # individually unsubscribed.
+            # individually unsubscribed AND has been ticked for marketing.
             for idx, ct in enumerate(c.get("contacts") or []):
-                if ct and ct.get("email") and not ct.get("marketing_unsubscribed"):
+                if (ct and ct.get("email")
+                        and not ct.get("marketing_unsubscribed")
+                        and ct.get("include_for_marketing", True)):
                     out.append({
                         "client_id": c["id"],
                         "contact_index": idx,

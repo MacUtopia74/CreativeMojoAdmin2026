@@ -14,7 +14,7 @@ function formatDateGB(iso) {
   catch { return iso; }
 }
 
-function HomeRow({ home, idx, isOpen, onToggle, onZoom, isMyClient, onMarkClient, onUnmarkClient, plus, lead, onSetLeadStatus, dimmed }) {
+function HomeRow({ home, idx, isOpen, onToggle, onOpenDetail, onZoom, isMyClient, onMarkClient, onUnmarkClient, plus, lead, onSetLeadStatus, dimmed }) {
   const address = home.fullAddress
     || [home.postalAddressLine1, home.postalAddressLine2, home.postalAddressTownCity, home.postalAddressCounty, home.postalCode].filter(Boolean).join(", ");
   const services = (home.gacServiceTypes || []).map((s) => s.name).filter(Boolean).join(" · ");
