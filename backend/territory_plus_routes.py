@@ -40,10 +40,26 @@ logger = logging.getLogger("creative-mojo-admin.territory_plus")
 
 
 CLIENT_SOURCES = {"custom", "cqc", "scotland"}
+# Lead-status taxonomy for the Marketing CRM panel on the territory modal.
+# Stored as the raw key on the doc; the UI maps to display label + colour.
+# (Kept distinct from the older 3-state ``LEAD_STATUSES`` further down,
+# which powers the homes-list sales-flow buttons.)
+CRM_LEAD_STATUSES = {
+    "not_contacted", "contact_attempted", "contacted", "interested",
+    "follow_up_required", "meeting_booked", "regular_client",
+    "not_interested", "do_not_contact",
+}
+CRM_CONTACT_METHODS = {
+    "phone", "email", "in_person", "facebook", "linkedin",
+    "website_enquiry", "other",
+}
 PERMITTED_FIELDS = {
     "name", "address", "phone", "website", "provider", "manager", "email",
     "latest_inspection", "cqc_rating", "notes", "postcode", "lat", "lng",
     "contacts", "manager_include_for_marketing",
+    # Marketing CRM block (per-client sales tracking)
+    "lead_status", "last_contact_date", "last_contact_method",
+    "follow_up_required", "follow_up_date", "follow_up_notes",
 }
 
 
@@ -83,6 +99,14 @@ class ClientIn(BaseModel):
     # ``include_for_marketing`` on a Contact but applies to the client
     # row's own primary email. Defaults True for back-compat.
     manager_include_for_marketing: Optional[bool] = True
+    # Marketing CRM block — per-client sales pipeline tracking surfaced
+    # in the right-column "Marketing" panel of the territory modal.
+    lead_status: Optional[str] = Field(None, max_length=40)
+    last_contact_date: Optional[str] = Field(None, max_length=40)
+    last_contact_method: Optional[str] = Field(None, max_length=40)
+    follow_up_required: Optional[bool] = None
+    follow_up_date: Optional[str] = Field(None, max_length=40)
+    follow_up_notes: Optional[str] = Field(None, max_length=2000)
 
 
 class MarkHomeIn(BaseModel):
@@ -236,6 +260,13 @@ def attach(api: APIRouter, db, require_role):
             "lng": lng,
             "contacts": [c.model_dump() for c in (body.contacts or [])],
             "manager_include_for_marketing": body.manager_include_for_marketing if body.manager_include_for_marketing is not None else True,
+            # Marketing CRM fields — None until the franchisee fills them in.
+            "lead_status": body.lead_status,
+            "last_contact_date": body.last_contact_date,
+            "last_contact_method": body.last_contact_method,
+            "follow_up_required": body.follow_up_required,
+            "follow_up_date": body.follow_up_date,
+            "follow_up_notes": body.follow_up_notes,
             "created_at": now,
             "updated_at": now,
         }

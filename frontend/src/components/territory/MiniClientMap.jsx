@@ -9,7 +9,7 @@ import { ExternalLink } from "lucide-react";
 
 const TOKEN = process.env.REACT_APP_MAPBOX_TOKEN;
 
-export default function MiniClientMap({ lat, lng, label = "", postcode = "" }) {
+export default function MiniClientMap({ lat, lng, label = "", postcode = "", heightClass = "h-48" }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
 
@@ -59,7 +59,7 @@ export default function MiniClientMap({ lat, lng, label = "", postcode = "" }) {
 
   return (
     <div className="space-y-2" data-testid="client-modal-mini-map">
-      <div ref={containerRef} className="w-full h-48 rounded-lg overflow-hidden border border-stone-200" />
+      <div ref={containerRef} className={`w-full ${heightClass} rounded-lg overflow-hidden border border-stone-200`} />
       <a
         href={gmaps}
         target="_blank"

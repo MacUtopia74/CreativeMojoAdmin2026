@@ -1,6 +1,32 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## Territory+ modal — two-column layout + Marketing CRM panel (Feb 12 2026)
+
+Per user request: relocated the map to the right column of the territory client modal and added a brand-new **Marketing** CRM panel below it.
+
+**Layout changes** (`TerritoryClientModal.jsx`)
+- Widened modal `max-w-2xl` → `max-w-5xl`.
+- Body restructured into `grid grid-cols-1 lg:grid-cols-12` (7-col form left, 5-col map+marketing right).
+- Amber "started from CQC" banner promoted to span full width above the grid.
+- Map (`MiniClientMap`) now always rendered in the right column; new `heightClass` prop (default `h-48`, modal passes `h-72`).
+- Additional contacts section moved into the left column under Notes.
+
+**New Marketing CRM panel** (right column, beneath map)
+- Yellow Megaphone header with optional "Open in Marketing+" deep-link (only when marketing bolt-on is enabled AND the client has been saved — links to `/portal/marketing?client_id=…`).
+- **Lead Status** dropdown — 9 values (Not Contacted, Contact Attempted, Contacted, Interested, Follow Up Required, Meeting Booked, Regular Client, Not Interested, Do Not Contact) with colour-coded dot + chip (green / yellow / blue / grey / red per the user's legend).
+- **Last Contact** date input + **Method** dropdown (Phone, Email, In Person, Facebook, LinkedIn, Website Enquiry, Other).
+- **Follow Up Required?** Yes/No segmented toggle (yellow=Yes, black=No). Selecting No auto-clears the follow-up date + notes.
+- **Follow Up Date** date picker + **Follow Up Notes** textarea (both only shown when Yes).
+
+**Backend additions** (`territory_plus_routes.py`)
+- `ClientIn` model extended with `lead_status`, `last_contact_date`, `last_contact_method`, `follow_up_required`, `follow_up_date`, `follow_up_notes`.
+- `PERMITTED_FIELDS` extended for PATCH passthrough.
+- `create_client` doc body persists the new fields. Verified via curl on POST + PATCH + GET round-trip.
+
+**Verified**: visual two-column layout renders correctly, Lead Status "Regular Client" shows green dot/chip, Follow Up Yes shows date/notes fields, backend persists all 6 fields end-to-end.
+
+
 ## Territory+ CQC row → modal fix + non-client editing (Feb 12 2026)
 
 **Bug fixed**: clicking a "Homes in My Territory · From CQC Database" row was opening the inline concertina instead of the rich `TerritoryClientModal`, despite multiple prior attempts.

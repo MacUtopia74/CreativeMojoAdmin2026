@@ -7,7 +7,8 @@
 // dataset). The "View live CQC data" button opens a side-by-side popup
 // of the current live values so they can compare/reset to source.
 import { useEffect, useState } from "react";
-import { X, Loader2, Trash2, UserPlus, ExternalLink, Database, MailX, Mail } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { X, Loader2, Trash2, UserPlus, ExternalLink, Database, MailX, Mail, Megaphone, Check } from "lucide-react";
 import api from "@/lib/api";
 import MiniClientMap from "@/components/territory/MiniClientMap";
 
@@ -24,15 +25,66 @@ const FIELDS = [
   { key: "cqc_rating",        label: "CQC rating",        type: "text" },
 ];
 
-export default function TerritoryClientModal({ initial, onClose, onSaved, onDeleted, cqcSnapshot = null }) {
+// Lead status taxonomy + colour map. Stored values are the lowercase
+// keys; the dropdown shows the labels; the chip uses the colour.
+// Colours mirror the legend the user provided:
+//   green = Client (regular_client)
+//   yellow = Follow Up Required
+//   blue = Contacted family (contact_attempted, contacted, interested, meeting_booked)
+//   grey = Not Contacted (default / no status)
+//   red = Not Interested / Do Not Contact
+const LEAD_STATUS_OPTIONS = [
+  { value: "not_contacted",      label: "Not Contacted",      tone: "grey"   },
+  { value: "contact_attempted",  label: "Contact Attempted",  tone: "blue"   },
+  { value: "contacted",          label: "Contacted",          tone: "blue"   },
+  { value: "interested",         label: "Interested",         tone: "blue"   },
+  { value: "follow_up_required", label: "Follow Up Required", tone: "yellow" },
+  { value: "meeting_booked",     label: "Meeting Booked",     tone: "blue"   },
+  { value: "regular_client",     label: "Regular Client",     tone: "green"  },
+  { value: "not_interested",     label: "Not Interested",     tone: "red"    },
+  { value: "do_not_contact",     label: "Do Not Contact",     tone: "red"    },
+];
+
+const CONTACT_METHOD_OPTIONS = [
+  { value: "phone",           label: "Phone" },
+  { value: "email",           label: "Email" },
+  { value: "in_person",       label: "In Person" },
+  { value: "facebook",        label: "Facebook" },
+  { value: "linkedin",        label: "LinkedIn" },
+  { value: "website_enquiry", label: "Website Enquiry" },
+  { value: "other",           label: "Other" },
+];
+
+// Tailwind tokens per tone — kept in one place so the chip + the
+// border colour on the select stay in lockstep.
+const TONE_STYLES = {
+  green:  { dot: "bg-emerald-500", chip: "bg-emerald-50 border-emerald-300 text-emerald-900", border: "border-emerald-400" },
+  yellow: { dot: "bg-amber-400",   chip: "bg-amber-50 border-amber-300 text-amber-900",       border: "border-amber-400"   },
+  blue:   { dot: "bg-blue-500",    chip: "bg-blue-50 border-blue-300 text-blue-900",          border: "border-blue-400"    },
+  grey:   { dot: "bg-stone-300",   chip: "bg-stone-50 border-stone-300 text-stone-700",       border: "border-stone-300"   },
+  red:    { dot: "bg-red-500",     chip: "bg-red-50 border-red-300 text-red-900",             border: "border-red-400"     },
+};
+
+export default function TerritoryClientModal({ initial, onClose, onSaved, onDeleted, cqcSnapshot = null, marketingEnabled = false }) {
+  const navigate = useNavigate();
   const [form, setForm] = useState(() => {
     const empty = Object.fromEntries(FIELDS.map((f) => [f.key, ""]));
-    if (!initial) return { ...empty, notes: "", contacts: [] };
+    if (!initial) return { ...empty, notes: "", contacts: [], lead_status: "", last_contact_date: "", last_contact_method: "", follow_up_required: false, follow_up_date: "", follow_up_notes: "" };
     return {
       ...empty,
-      ...Object.fromEntries(Object.entries(initial).map(([k, v]) => [k, v ?? ""])),
+      lead_status: "",
+      last_contact_date: "",
+      last_contact_method: "",
+      follow_up_date: "",
+      follow_up_notes: "",
+      ...Object.fromEntries(
+        Object.entries(initial)
+          .filter(([k]) => k !== "follow_up_required")
+          .map(([k, v]) => [k, v ?? ""]),
+      ),
       notes: initial.notes || "",
       contacts: Array.isArray(initial.contacts) ? initial.contacts : [],
+      follow_up_required: !!initial.follow_up_required,
     };
   });
   const [busy, setBusy] = useState(false);
@@ -173,7 +225,7 @@ export default function TerritoryClientModal({ initial, onClose, onSaved, onDele
       data-testid="t-plus-client-modal"
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-hidden flex flex-col"
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[92vh] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-5 sm:px-6 py-4 border-b border-stone-200 flex items-center justify-between gap-3">
@@ -191,22 +243,6 @@ export default function TerritoryClientModal({ initial, onClose, onSaved, onDele
         </div>
 
         <form onSubmit={save} className="flex-1 overflow-y-auto px-5 sm:px-6 py-5 space-y-4">
-          {editing && (() => {
-            // Resolve coords for the embedded map. Marked CQC clients
-            // pick up live coords from the snapshot; custom clients
-            // carry their own lat/lng. Falls back gracefully if neither
-            // is available (renders a "no location" placeholder).
-            const lat = cqcSnapshot?.latitude ?? initial?.lat ?? null;
-            const lng = cqcSnapshot?.longitude ?? initial?.lng ?? null;
-            return (
-              <MiniClientMap
-                lat={lat}
-                lng={lng}
-                label={form.name}
-                postcode={form.postcode || cqcSnapshot?.postalCode || ""}
-              />
-            );
-          })()}
           {isLinked && (
             <div className="px-3 py-2.5 bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-lg flex items-start gap-3">
               <div className="flex-1">
@@ -229,185 +265,218 @@ export default function TerritoryClientModal({ initial, onClose, onSaved, onDele
           {err && (
             <div className="px-3 py-2 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg">{err}</div>
           )}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {FIELDS.map((f) => (
-              <div key={f.key} className={f.type === "textarea" ? "sm:col-span-2" : ""}>
-                <label className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1 block">{f.label}</label>
-                {f.type === "textarea" ? (
-                  <textarea
-                    value={form[f.key] ?? ""}
-                    onChange={(e) => set(f.key, e.target.value)}
-                    rows={2}
-                    data-testid={`t-plus-field-${f.key}`}
-                    className="w-full px-3 py-2 text-sm bg-stone-50 border border-stone-300 rounded-lg focus:outline-none focus:border-stone-950"
-                  />
-                ) : (
-                  <input
-                    type="text"
-                    value={form[f.key] ?? ""}
-                    onChange={(e) => set(f.key, e.target.value)}
-                    required={f.required}
-                    data-testid={`t-plus-field-${f.key}`}
-                    className="w-full px-3 py-2 text-sm bg-stone-50 border border-stone-300 rounded-lg focus:outline-none focus:border-stone-950"
-                  />
-                )}
-                {f.hint && <div className="text-[11px] text-stone-500 mt-1">{f.hint}</div>}
-              </div>
-            ))}
-          </div>
-          <div>
-            <label className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1 block">Notes</label>
-            <textarea
-              value={form.notes || ""}
-              onChange={(e) => set("notes", e.target.value)}
-              rows={3}
-              data-testid="t-plus-field-notes"
-              className="w-full px-3 py-2 text-sm bg-stone-50 border border-stone-300 rounded-lg focus:outline-none focus:border-stone-950"
-            />
-          </div>
 
-          {/* Marketing status for the primary contact. Only shown when
-              editing an existing client AND there's actually an email
-              on file (no point unsubscribing nobody). The toggle calls
-              the dedicated endpoint and updates immediately. */}
-          {(form.email || "").trim() && (
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                checked={form.manager_include_for_marketing !== false}
-                onChange={(e) => set("manager_include_for_marketing", e.target.checked)}
-                data-testid="t-plus-primary-marketing"
-                className="w-4 h-4 rounded border-stone-300 accent-stone-950"
-              />
-              <span className="text-stone-700">Include manager / primary contact in Marketing+ e-shots</span>
-            </label>
-          )}
-          {editing && (form.email || "").trim() && (
-            <UnsubscribeRow
-              label="Primary contact marketing"
-              email={form.email}
-              unsubscribed={!!form.primary_marketing_unsubscribed}
-              unsubscribedAt={form.primary_marketing_unsubscribed_at}
-              source={form.primary_marketing_unsubscribed_source}
-              onToggle={() => toggleUnsubscribed(-1, !!form.primary_marketing_unsubscribed)}
-              busy={busy}
-              testid="t-plus-primary-unsub"
-            />
-          )}
-
-          {/* Additional contacts — sales lead, deputy manager, activities
-              coordinator, etc. Each row is a mini-card with a delete button. */}
-          <div data-testid="t-plus-contacts-section">
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <div>
-                <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Additional contacts</div>
-                <div className="text-[11px] text-stone-500">Extra people you deal with at this client beyond the main manager.</div>
-              </div>
-              <button
-                type="button"
-                onClick={addContact}
-                data-testid="t-plus-add-contact"
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-stone-100 hover:bg-stone-200 text-stone-900 rounded-md border border-stone-300"
-              >
-                <UserPlus className="w-3.5 h-3.5" /> Add contact
-              </button>
-            </div>
-            {(form.contacts || []).length === 0 && (
-              <div className="px-4 py-5 text-center text-[11px] text-stone-500 bg-stone-50 border border-dashed border-stone-300 rounded-lg">
-                No additional contacts yet.
-              </div>
-            )}
-            <div className="space-y-2">
-              {(form.contacts || []).map((c, i) => (
-                <div key={i} className="bg-stone-50 border border-stone-200 rounded-lg p-3" data-testid={`t-plus-contact-row-${i}`}>
-                  <div className="flex items-center justify-between gap-2 mb-2">
-                    <div className="text-[10px] uppercase tracking-wider font-bold text-stone-500">Contact #{i + 1}</div>
-                    <button
-                      type="button"
-                      onClick={() => removeContact(i)}
-                      data-testid={`t-plus-remove-contact-${i}`}
-                      className="p-1 text-stone-500 hover:text-red-700 hover:bg-red-50 rounded"
-                      aria-label="Remove contact"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <input
-                      type="text"
-                      value={c.name || ""}
-                      onChange={(e) => updateContact(i, "name", e.target.value)}
-                      placeholder="Name"
-                      data-testid={`t-plus-contact-name-${i}`}
-                      className="px-2.5 py-1.5 text-sm bg-white border border-stone-300 rounded focus:outline-none focus:border-stone-950"
-                    />
-                    <input
-                      type="text"
-                      value={c.role || ""}
-                      onChange={(e) => updateContact(i, "role", e.target.value)}
-                      placeholder="Role (e.g. Deputy Manager)"
-                      data-testid={`t-plus-contact-role-${i}`}
-                      className="px-2.5 py-1.5 text-sm bg-white border border-stone-300 rounded focus:outline-none focus:border-stone-950"
-                    />
-                    <input
-                      type="text"
-                      value={c.phone || ""}
-                      onChange={(e) => updateContact(i, "phone", e.target.value)}
-                      placeholder="Phone"
-                      data-testid={`t-plus-contact-phone-${i}`}
-                      className="px-2.5 py-1.5 text-sm bg-white border border-stone-300 rounded focus:outline-none focus:border-stone-950"
-                    />
-                    <div className="flex flex-col gap-1">
+          {/* TWO-COLUMN GRID — fields on the left, map + marketing on the right.
+              Collapses to a single column under lg: so phones still get the
+              same form-then-map-then-marketing flow.                              */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+            {/* LEFT COLUMN — name, address, contact details, notes, contacts */}
+            <div className="lg:col-span-7 space-y-4 min-w-0">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {FIELDS.map((f) => (
+                  <div key={f.key} className={f.type === "textarea" ? "sm:col-span-2" : ""}>
+                    <label className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1 block">{f.label}</label>
+                    {f.type === "textarea" ? (
+                      <textarea
+                        value={form[f.key] ?? ""}
+                        onChange={(e) => set(f.key, e.target.value)}
+                        rows={2}
+                        data-testid={`t-plus-field-${f.key}`}
+                        className="w-full px-3 py-2 text-sm bg-stone-50 border border-stone-300 rounded-lg focus:outline-none focus:border-stone-950"
+                      />
+                    ) : (
                       <input
                         type="text"
-                        value={c.email || ""}
-                        onChange={(e) => updateContact(i, "email", e.target.value)}
-                        placeholder="Email"
-                        data-testid={`t-plus-contact-email-${i}`}
-                        className="px-2.5 py-1.5 text-sm bg-white border border-stone-300 rounded focus:outline-none focus:border-stone-950"
+                        value={form[f.key] ?? ""}
+                        onChange={(e) => set(f.key, e.target.value)}
+                        required={f.required}
+                        data-testid={`t-plus-field-${f.key}`}
+                        className="w-full px-3 py-2 text-sm bg-stone-50 border border-stone-300 rounded-lg focus:outline-none focus:border-stone-950"
                       />
-                      {(c.email || "").trim() && (
-                        <label className="flex items-center gap-1.5 text-[11px] text-stone-600 cursor-pointer">
+                    )}
+                    {f.hint && <div className="text-[11px] text-stone-500 mt-1">{f.hint}</div>}
+                  </div>
+                ))}
+              </div>
+              <div>
+                <label className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1 block">Notes</label>
+                <textarea
+                  value={form.notes || ""}
+                  onChange={(e) => set("notes", e.target.value)}
+                  rows={3}
+                  data-testid="t-plus-field-notes"
+                  className="w-full px-3 py-2 text-sm bg-stone-50 border border-stone-300 rounded-lg focus:outline-none focus:border-stone-950"
+                />
+              </div>
+
+              {(form.email || "").trim() && (
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={form.manager_include_for_marketing !== false}
+                    onChange={(e) => set("manager_include_for_marketing", e.target.checked)}
+                    data-testid="t-plus-primary-marketing"
+                    className="w-4 h-4 rounded border-stone-300 accent-stone-950"
+                  />
+                  <span className="text-stone-700">Include manager / primary contact in Marketing+ e-shots</span>
+                </label>
+              )}
+              {editing && (form.email || "").trim() && (
+                <UnsubscribeRow
+                  label="Primary contact marketing"
+                  email={form.email}
+                  unsubscribed={!!form.primary_marketing_unsubscribed}
+                  unsubscribedAt={form.primary_marketing_unsubscribed_at}
+                  source={form.primary_marketing_unsubscribed_source}
+                  onToggle={() => toggleUnsubscribed(-1, !!form.primary_marketing_unsubscribed)}
+                  busy={busy}
+                  testid="t-plus-primary-unsub"
+                />
+              )}
+
+              {/* Additional contacts moved into the left column */}
+              <div data-testid="t-plus-contacts-section">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Additional contacts</div>
+                    <div className="text-[11px] text-stone-500">Extra people you deal with at this client beyond the main manager.</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addContact}
+                    data-testid="t-plus-add-contact"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-stone-100 hover:bg-stone-200 text-stone-900 rounded-md border border-stone-300"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" /> Add contact
+                  </button>
+                </div>
+                {(form.contacts || []).length === 0 && (
+                  <div className="px-4 py-5 text-center text-[11px] text-stone-500 bg-stone-50 border border-dashed border-stone-300 rounded-lg">
+                    No additional contacts yet.
+                  </div>
+                )}
+                <div className="space-y-2">
+                  {(form.contacts || []).map((c, i) => (
+                    <div key={i} className="bg-stone-50 border border-stone-200 rounded-lg p-3" data-testid={`t-plus-contact-row-${i}`}>
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <div className="text-[10px] uppercase tracking-wider font-bold text-stone-500">Contact #{i + 1}</div>
+                        <button
+                          type="button"
+                          onClick={() => removeContact(i)}
+                          data-testid={`t-plus-remove-contact-${i}`}
+                          className="p-1 text-stone-500 hover:text-red-700 hover:bg-red-50 rounded"
+                          aria-label="Remove contact"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <input
+                          type="text"
+                          value={c.name || ""}
+                          onChange={(e) => updateContact(i, "name", e.target.value)}
+                          placeholder="Name"
+                          data-testid={`t-plus-contact-name-${i}`}
+                          className="px-2.5 py-1.5 text-sm bg-white border border-stone-300 rounded focus:outline-none focus:border-stone-950"
+                        />
+                        <input
+                          type="text"
+                          value={c.role || ""}
+                          onChange={(e) => updateContact(i, "role", e.target.value)}
+                          placeholder="Role (e.g. Deputy Manager)"
+                          data-testid={`t-plus-contact-role-${i}`}
+                          className="px-2.5 py-1.5 text-sm bg-white border border-stone-300 rounded focus:outline-none focus:border-stone-950"
+                        />
+                        <input
+                          type="text"
+                          value={c.phone || ""}
+                          onChange={(e) => updateContact(i, "phone", e.target.value)}
+                          placeholder="Phone"
+                          data-testid={`t-plus-contact-phone-${i}`}
+                          className="px-2.5 py-1.5 text-sm bg-white border border-stone-300 rounded focus:outline-none focus:border-stone-950"
+                        />
+                        <div className="flex flex-col gap-1">
                           <input
-                            type="checkbox"
-                            checked={c.include_for_marketing !== false}
-                            onChange={(e) => updateContact(i, "include_for_marketing", e.target.checked)}
-                            data-testid={`t-plus-contact-marketing-${i}`}
-                            className="w-3.5 h-3.5 rounded border-stone-300 accent-stone-950"
+                            type="text"
+                            value={c.email || ""}
+                            onChange={(e) => updateContact(i, "email", e.target.value)}
+                            placeholder="Email"
+                            data-testid={`t-plus-contact-email-${i}`}
+                            className="px-2.5 py-1.5 text-sm bg-white border border-stone-300 rounded focus:outline-none focus:border-stone-950"
                           />
-                          Include contact for e-shot marketing
-                        </label>
+                          {(c.email || "").trim() && (
+                            <label className="flex items-center gap-1.5 text-[11px] text-stone-600 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={c.include_for_marketing !== false}
+                                onChange={(e) => updateContact(i, "include_for_marketing", e.target.checked)}
+                                data-testid={`t-plus-contact-marketing-${i}`}
+                                className="w-3.5 h-3.5 rounded border-stone-300 accent-stone-950"
+                              />
+                              Include contact for e-shot marketing
+                            </label>
+                          )}
+                        </div>
+                      </div>
+                      <textarea
+                        value={c.notes || ""}
+                        onChange={(e) => updateContact(i, "notes", e.target.value)}
+                        placeholder="Notes about this contact (optional)"
+                        rows={2}
+                        data-testid={`t-plus-contact-notes-${i}`}
+                        className="mt-2 w-full px-2.5 py-1.5 text-sm bg-white border border-stone-300 rounded focus:outline-none focus:border-stone-950"
+                      />
+                      {editing && (c.email || "").trim() && (
+                        <div className="mt-2">
+                          <UnsubscribeRow
+                            label="Marketing"
+                            email={c.email}
+                            unsubscribed={!!c.marketing_unsubscribed}
+                            unsubscribedAt={c.marketing_unsubscribed_at}
+                            source={c.marketing_unsubscribed_source}
+                            onToggle={() => toggleUnsubscribed(i, !!c.marketing_unsubscribed)}
+                            busy={busy}
+                            testid={`t-plus-contact-unsub-${i}`}
+                            compact
+                          />
+                        </div>
                       )}
                     </div>
-                  </div>
-                  <textarea
-                    value={c.notes || ""}
-                    onChange={(e) => updateContact(i, "notes", e.target.value)}
-                    placeholder="Notes about this contact (optional)"
-                    rows={2}
-                    data-testid={`t-plus-contact-notes-${i}`}
-                    className="mt-2 w-full px-2.5 py-1.5 text-sm bg-white border border-stone-300 rounded focus:outline-none focus:border-stone-950"
-                  />
-                  {/* Per-contact unsubscribe toggle. Shown only on
-                      saved clients that have an email — same logic
-                      as the primary row above. */}
-                  {editing && (c.email || "").trim() && (
-                    <div className="mt-2">
-                      <UnsubscribeRow
-                        label="Marketing"
-                        email={c.email}
-                        unsubscribed={!!c.marketing_unsubscribed}
-                        unsubscribedAt={c.marketing_unsubscribed_at}
-                        source={c.marketing_unsubscribed_source}
-                        onToggle={() => toggleUnsubscribed(i, !!c.marketing_unsubscribed)}
-                        busy={busy}
-                        testid={`t-plus-contact-unsub-${i}`}
-                        compact
-                      />
-                    </div>
-                  )}
+                  ))}
                 </div>
-              ))}
+              </div>
+            </div>
+
+            {/* RIGHT COLUMN — map (taller) + Marketing CRM panel */}
+            <div className="lg:col-span-5 space-y-4 min-w-0">
+              {(() => {
+                const lat = cqcSnapshot?.latitude ?? initial?.lat ?? null;
+                const lng = cqcSnapshot?.longitude ?? initial?.lng ?? null;
+                return (
+                  <MiniClientMap
+                    lat={lat}
+                    lng={lng}
+                    label={form.name}
+                    postcode={form.postcode || cqcSnapshot?.postalCode || ""}
+                    heightClass="h-72"
+                  />
+                );
+              })()}
+
+              <MarketingCrmPanel
+                form={form}
+                set={set}
+                marketingEnabled={marketingEnabled}
+                onOpenMarketingPlus={() => {
+                  // Deep-link to Marketing+ with this client pre-selected.
+                  // Only meaningful for saved clients (need an id).
+                  if (initial?.id) {
+                    navigate(`/portal/marketing?client_id=${encodeURIComponent(initial.id)}`);
+                    onClose?.();
+                  }
+                }}
+                clientSaved={!!initial?.id}
+              />
             </div>
           </div>
         </form>
@@ -533,7 +602,7 @@ function UnsubscribeRow({ label, email, unsubscribed, unsubscribedAt,
         </div>
         <div className="text-[11px] text-stone-500 truncate">
           {unsubscribed
-            ? <>Won't receive marketing e-shots{dateLabel ? ` · since ${dateLabel}` : ""}{sourceLabel ? ` · ${sourceLabel}` : ""}</>
+            ? <>Won&apos;t receive marketing e-shots{dateLabel ? ` · since ${dateLabel}` : ""}{sourceLabel ? ` · ${sourceLabel}` : ""}</>
             : <>{email} will be included in your next campaign</>}
         </div>
       </div>
@@ -554,3 +623,167 @@ function UnsubscribeRow({ label, email, unsubscribed, unsubscribedAt,
   );
 }
 
+
+// ----------------------------------------------------------------------------
+// MarketingCrmPanel — the right-column sales-pipeline tracker.
+// Lives inside this file because every field directly mutates the modal's
+// ``form`` state via the shared `set(k, v)` helper. Pure UI: persistence
+// happens when the user hits "Save changes" on the parent modal.
+// ----------------------------------------------------------------------------
+function MarketingCrmPanel({ form, set, marketingEnabled, onOpenMarketingPlus, clientSaved }) {
+  const status = form.lead_status || "";
+  const selectedOption = LEAD_STATUS_OPTIONS.find((o) => o.value === status);
+  const tone = selectedOption ? TONE_STYLES[selectedOption.tone] : TONE_STYLES.grey;
+  const followUpOn = !!form.follow_up_required;
+  return (
+    <section
+      className="bg-white border border-stone-200 rounded-xl overflow-hidden"
+      data-testid="t-plus-marketing-panel"
+    >
+      <header className="px-4 py-3 bg-stone-950 text-[#dddd16] flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Megaphone className="w-4 h-4" />
+          <div className="text-[11px] uppercase tracking-[0.25em] font-black">Marketing</div>
+        </div>
+        {marketingEnabled && clientSaved && (
+          <button
+            type="button"
+            onClick={onOpenMarketingPlus}
+            data-testid="t-plus-marketing-open-plus"
+            className="inline-flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-yellow-300 rounded-md"
+            title="Open this client in Marketing+"
+          >
+            Open in Marketing+ <ExternalLink className="w-3 h-3" />
+          </button>
+        )}
+      </header>
+      <div className="p-4 space-y-3">
+        {/* LEAD STATUS — coloured dropdown with chip */}
+        <div>
+          <label className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1 block">
+            Lead Status
+          </label>
+          <div className={`relative rounded-lg border ${tone.border} bg-white`}>
+            <span className={`absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full ${tone.dot} border border-stone-400`}></span>
+            <select
+              value={status}
+              onChange={(e) => set("lead_status", e.target.value)}
+              data-testid="t-plus-lead-status"
+              className="w-full pl-9 pr-3 py-2 text-sm bg-transparent appearance-none focus:outline-none cursor-pointer"
+            >
+              <option value="">— select status —</option>
+              {LEAD_STATUS_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+          {selectedOption && (
+            <div className={`mt-1 inline-flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border ${tone.chip}`}>
+              <span className={`w-2 h-2 rounded-full ${tone.dot}`}></span>
+              {selectedOption.label}
+            </div>
+          )}
+        </div>
+
+        {/* LAST CONTACT — date + method side by side */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1 block">
+              Last Contact
+            </label>
+            <input
+              type="date"
+              value={form.last_contact_date || ""}
+              onChange={(e) => set("last_contact_date", e.target.value)}
+              data-testid="t-plus-last-contact-date"
+              className="w-full px-3 py-2 text-sm bg-stone-50 border border-stone-300 rounded-lg focus:outline-none focus:border-stone-950"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1 block">
+              Method
+            </label>
+            <select
+              value={form.last_contact_method || ""}
+              onChange={(e) => set("last_contact_method", e.target.value)}
+              data-testid="t-plus-last-contact-method"
+              className="w-full px-3 py-2 text-sm bg-stone-50 border border-stone-300 rounded-lg focus:outline-none focus:border-stone-950"
+            >
+              <option value="">— select —</option>
+              {CONTACT_METHOD_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* FOLLOW UP — Yes/No toggle */}
+        <div>
+          <label className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1 block">
+            Follow Up Required?
+          </label>
+          <div className="inline-flex rounded-lg overflow-hidden border border-stone-300">
+            <button
+              type="button"
+              onClick={() => set("follow_up_required", true)}
+              data-testid="t-plus-follow-up-yes"
+              className={`px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-colors ${followUpOn ? "bg-amber-400 text-stone-950" : "bg-white text-stone-700 hover:bg-stone-50"}`}
+            >
+              {followUpOn && <Check className="inline-block w-3 h-3 mr-1 -mt-0.5" />}Yes
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                set("follow_up_required", false);
+                // Clear follow-up fields when toggled off — keeps the
+                // saved doc tidy and avoids ghost reminders.
+                set("follow_up_date", "");
+                set("follow_up_notes", "");
+              }}
+              data-testid="t-plus-follow-up-no"
+              className={`px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider border-l border-stone-300 transition-colors ${!followUpOn ? "bg-stone-950 text-white" : "bg-white text-stone-700 hover:bg-stone-50"}`}
+            >
+              {!followUpOn && <Check className="inline-block w-3 h-3 mr-1 -mt-0.5" />}No
+            </button>
+          </div>
+        </div>
+
+        {followUpOn && (
+          <>
+            <div>
+              <label className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1 block">
+                Follow Up Date
+              </label>
+              <input
+                type="date"
+                value={form.follow_up_date || ""}
+                onChange={(e) => set("follow_up_date", e.target.value)}
+                data-testid="t-plus-follow-up-date"
+                className="w-full px-3 py-2 text-sm bg-stone-50 border border-stone-300 rounded-lg focus:outline-none focus:border-stone-950"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1 block">
+                Follow Up Notes
+              </label>
+              <textarea
+                value={form.follow_up_notes || ""}
+                onChange={(e) => set("follow_up_notes", e.target.value)}
+                rows={3}
+                placeholder="What's the next step? Topics to discuss, agreed next call…"
+                data-testid="t-plus-follow-up-notes"
+                className="w-full px-3 py-2 text-sm bg-stone-50 border border-stone-300 rounded-lg focus:outline-none focus:border-stone-950"
+              />
+            </div>
+          </>
+        )}
+
+        {marketingEnabled && !clientSaved && (
+          <div className="text-[11px] text-stone-500 italic">
+            Save this client first to enable the &ldquo;Open in Marketing+&rdquo; deep-link.
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}

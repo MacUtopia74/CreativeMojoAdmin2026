@@ -549,6 +549,7 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
             cqcSnapshot={!editingClient.__new && editingClient.source !== "custom"
               ? homeById.get(editingClient.home_id) || null
               : null}
+            marketingEnabled={marketingEnabled}
             onClose={() => setEditingClient(null)}
             onSaved={() => { reloadClients(); }}
             onDeleted={() => { reloadClients(); }}
