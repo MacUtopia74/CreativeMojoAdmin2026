@@ -368,9 +368,9 @@ export default function PortalMarketingPage() {
                         onClick={() => saveAsTemplate(c)}
                         data-testid={`marketing-draft-save-template-${c.id}`}
                         title="Save as template"
-                        className="text-stone-400 hover:text-amber-600 p-2"
+                        className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider border border-amber-300 hover:bg-amber-50 text-amber-700 rounded-lg flex items-center gap-1.5"
                       >
-                        <Bookmark className="w-4 h-4" />
+                        <Bookmark className="w-3.5 h-3.5" /> Save as template
                       </button>
                       <button
                         onClick={() => deleteCampaign(c)}
@@ -447,9 +447,9 @@ export default function PortalMarketingPage() {
                         onClick={() => saveAsTemplate(c)}
                         data-testid={`marketing-campaign-save-template-${c.id}`}
                         title="Save as template"
-                        className="text-stone-400 hover:text-amber-600 p-2"
+                        className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider border border-amber-300 hover:bg-amber-50 text-amber-700 rounded-lg flex items-center gap-1.5"
                       >
-                        <Bookmark className="w-4 h-4" />
+                        <Bookmark className="w-3.5 h-3.5" /> Save as template
                       </button>
                     </li>
                   ))}
