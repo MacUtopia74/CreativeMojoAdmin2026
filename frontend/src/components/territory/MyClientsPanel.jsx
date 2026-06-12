@@ -18,8 +18,9 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Users, Plus, ChevronRight, Search, Star, BedDouble,
-  Maximize2, Minimize2, Eye, Megaphone,
+  Maximize2, Minimize2, Eye, Megaphone, Filter,
 } from "lucide-react";
+import { LEAD_STATUS_OPTIONS, getLeadStatusMeta } from "@/lib/leadStatus";
 
 const PAGE_SIZE = 10;
 const TYPE_FROM_HOME = (h) => {
@@ -34,7 +35,7 @@ const SORT_OPTIONS = [
   { value: "name-asc",     label: "Name A → Z",        key: "name", dir: "asc"  },
   { value: "name-desc",    label: "Name Z → A",        key: "name", dir: "desc" },
   { value: "location-asc", label: "Location A → Z",    key: "location", dir: "asc"  },
-  { value: "type-asc",     label: "Type",              key: "type", dir: "asc"  },
+  { value: "status-asc",   label: "Status",            key: "status", dir: "asc"  },
   { value: "beds-desc",    label: "Beds (high → low)", key: "beds", dir: "desc" },
   { value: "beds-asc",     label: "Beds (low → high)", key: "beds", dir: "asc"  },
 ];
@@ -56,6 +57,7 @@ export default function MyClientsPanel({
 }) {
   const [q, setQ] = useState("");
   const [sortValue, setSortValue] = useState("name-asc");
+  const [statusFilter, setStatusFilter] = useState("");  // "" = all
   const [page, setPage] = useState(0);
   const navigate = useNavigate();
 
@@ -78,6 +80,10 @@ export default function MyClientsPanel({
         _location: (linked?.postalAddressTownCity || c.address || "").trim(),
         _type: TYPE_FROM_HOME(linked) || (c.source === "custom" ? "Custom" : "—"),
         _beds: linked?.numberOfBeds ?? null,
+        // Lead status drives the row chip + the tinted row background.
+        // Falls back to "not_contacted" so the "at a glance" colour
+        // coding works even for legacy rows that never had the field set.
+        _status: c.lead_status || "not_contacted",
       };
     });
   }, [clients, homeById]);
@@ -94,6 +100,9 @@ export default function MyClientsPanel({
         || (c.provider || "").toLowerCase().includes(needle),
       );
     }
+    if (statusFilter) {
+      base = base.filter((c) => c._status === statusFilter);
+    }
     const opt = SORT_OPTIONS.find((o) => o.value === sortValue) || SORT_OPTIONS[0];
     const sorted = [...base].sort((a, b) => {
       const av = a[`_${opt.key}`] ?? a[opt.key] ?? "";
@@ -104,7 +113,7 @@ export default function MyClientsPanel({
         : String(bv || "").localeCompare(String(av || ""));
     });
     return sorted;
-  }, [rows, q, sortValue]);
+  }, [rows, q, statusFilter, sortValue]);
 
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageRows = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
@@ -179,6 +188,34 @@ export default function MyClientsPanel({
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
+            {/* Lead-status filter — narrows the list to a single
+                pipeline bucket. Each option is colour-tinted via
+                inline style so the dropdown reads at a glance.
+                "All statuses" leaves the list untouched. */}
+            <div className="relative">
+              <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-stone-500 pointer-events-none" />
+              <select
+                value={statusFilter}
+                onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}
+                data-testid="my-clients-status-filter"
+                title="Filter by lead status"
+                className="pl-7 pr-2.5 py-2 ios-no-zoom text-xs bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:bg-white focus:border-stone-400"
+              >
+                <option value="">All statuses</option>
+                {LEAD_STATUS_OPTIONS.map((o) => {
+                  const meta = getLeadStatusMeta(o.value);
+                  return (
+                    <option
+                      key={o.value}
+                      value={o.value}
+                      style={{ backgroundColor: meta.tone.optionBg, color: meta.tone.optionFg, fontWeight: 600 }}
+                    >
+                      {o.label}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
             <button
               onClick={onAddClient}
               data-testid="my-clients-add"
@@ -196,7 +233,7 @@ export default function MyClientsPanel({
               <span className="w-7" />
               <span className="flex-[2] min-w-0">Client name</span>
               <span className="flex-1 min-w-0">Location</span>
-              <span className="hidden lg:block w-28">Type</span>
+              <span className="hidden lg:block w-32">Status</span>
               <span className="hidden lg:block w-20 text-right">Beds</span>
               <span className="w-4" />
             </div>
@@ -208,18 +245,22 @@ export default function MyClientsPanel({
           {filtered.length === 0 ? (
             <div className="px-4 py-10 text-center text-sm text-stone-500 flex-1 flex flex-col items-center justify-center gap-2">
               <Users className="w-8 h-8 text-stone-300" />
-              {q ? "No clients match your search." : "No clients yet — mark a CQC home as 'My Client' or add a custom one."}
+              {q || statusFilter ? "No clients match your filters." : "No clients yet — mark a CQC home as 'My Client' or add a custom one."}
             </div>
           ) : (
             <div className="flex-1 overflow-y-auto divide-y divide-stone-100">
-              {pageRows.map((c) => (
+              {pageRows.map((c) => {
+                const meta = getLeadStatusMeta(c._status);
+                const rowBg = meta.tone.rowBg;
+                return (
                 <div
                   key={c.id}
                   onClick={() => onEditClient?.(c)}
                   onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onEditClient?.(c); } }}
                   role="button"
                   tabIndex={0}
-                  className="px-4 py-3 hover:bg-stone-50 cursor-pointer group flex items-center gap-3"
+                  className="px-4 py-3 hover:bg-stone-50 cursor-pointer group flex items-center gap-3 transition-colors"
+                  style={rowBg && rowBg !== "transparent" ? { backgroundColor: rowBg } : undefined}
                   data-testid={`my-clients-row-${c.id}`}
                 >
                   <span className="shrink-0 w-7 h-7 rounded-full bg-[#dedd0a] text-stone-950 border border-stone-950 flex items-center justify-center">
@@ -238,14 +279,17 @@ export default function MyClientsPanel({
                       <div className="hidden md:block flex-1 min-w-0 text-sm text-stone-700 truncate">
                         {c._location || "—"}
                       </div>
-                      <div className="hidden lg:flex shrink-0 w-28">
-                        <span className="inline-flex px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded bg-stone-100 text-stone-700 border border-stone-200">
-                          {c._type}
-                        </span>
+                      <div className="hidden lg:flex shrink-0 w-32">
+                        {meta.option && (
+                          <span className={`inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded border ${meta.tone.chip}`}>
+                            <span className={`w-2 h-2 rounded-full ${meta.tone.dot}`}></span>
+                            {meta.label}
+                          </span>
+                        )}
                       </div>
                       <div className="hidden lg:flex shrink-0 w-20 justify-end">
                         {c._beds != null && (
-                          <span className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded bg-stone-100 text-stone-700 border border-stone-200">
+                          <span className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded bg-white/70 text-stone-700 border border-stone-200">
                             <BedDouble className="w-3 h-3" /> {c._beds}
                           </span>
                         )}
@@ -313,11 +357,14 @@ export default function MyClientsPanel({
                           {c.manager && <span>· {c.manager}</span>}
                         </div>
                         <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
-                          <span className="inline-flex px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded bg-stone-100 text-stone-700 border border-stone-200">
-                            {c._type}
-                          </span>
+                          {meta.option && (
+                            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded border ${meta.tone.chip}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${meta.tone.dot}`}></span>
+                              {meta.label}
+                            </span>
+                          )}
                           {c._beds != null && (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded bg-stone-100 text-stone-700 border border-stone-200">
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded bg-white/70 text-stone-700 border border-stone-200">
                               <BedDouble className="w-2.5 h-2.5" /> {c._beds} beds
                             </span>
                           )}
@@ -326,7 +373,8 @@ export default function MyClientsPanel({
                     </>
                   )}
                 </div>
-              ))}
+              );
+              })}
             </div>
           )}
 

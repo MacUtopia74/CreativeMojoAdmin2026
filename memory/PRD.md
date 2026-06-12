@@ -1,6 +1,30 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## Lead Status palette refresh + My Clients list as at-a-glance pipeline (Feb 12 2026)
+
+User-requested CRM upgrades.
+
+**Palette**
+- Reordered + recoloured lead statuses (Meeting Booked removed):
+  1. Not Contacted — 🟠 orange (was grey)
+  2. Contact Attempted — 🔵 light blue / sky (was blue)
+  3. Contacted — 🔵 blue (unchanged)
+  4. Interested — 🟣 purple (was blue)
+  5. Follow Up Required — 🟡 yellow (unchanged)
+  6. Not Interested — 🔴 red (unchanged)
+  7. Do Not Contact — 🔴 red (unchanged)
+  8. Regular Client — 🟢 green (moved to bottom — graduation state)
+- Tone tokens centralised in a new shared module `/app/frontend/src/lib/leadStatus.js` exporting `LEAD_STATUS_OPTIONS`, `TONE_STYLES` and `getLeadStatusMeta(value)`. Imported by both the modal and the My Clients panel.
+
+**My Clients panel ("at a glance")**
+- TYPE chip (RESIDENTIAL / NURSING / CUSTOM) replaced with the lead-status chip in both narrow + expanded layouts.
+- Each row is now tinted with the row-bg colour of its status (orange for "Not Contacted", sky for "Contact Attempted", etc.).
+- New "All statuses" filter dropdown next to the Sort dropdown — `data-testid="my-clients-status-filter"` — with each option inline-styled with its status colour. Setting a filter re-renders the list to only show clients in that bucket.
+- Sort options updated: "Type" replaced with "Status".
+- Empty-state copy updated for the combined search + status filter case.
+
+
 ## Territory+ modal — two-column layout + Marketing CRM panel (Feb 12 2026)
 
 Per user request: relocated the map to the right column of the territory client modal and added a brand-new **Marketing** CRM panel below it.

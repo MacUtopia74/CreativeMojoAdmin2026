@@ -11,6 +11,7 @@ import { useNavigate } from "react-router-dom";
 import { X, Loader2, Trash2, UserPlus, ExternalLink, Database, MailX, Mail, Megaphone, Check } from "lucide-react";
 import api from "@/lib/api";
 import MiniClientMap from "@/components/territory/MiniClientMap";
+import { LEAD_STATUS_OPTIONS, TONE_STYLES, getLeadStatusMeta } from "@/lib/leadStatus";
 
 const FIELDS = [
   { key: "name",              label: "Name *",            type: "text", required: true },
@@ -25,26 +26,6 @@ const FIELDS = [
   { key: "cqc_rating",        label: "CQC rating",        type: "text" },
 ];
 
-// Lead status taxonomy + colour map. Stored values are the lowercase
-// keys; the dropdown shows the labels; the chip uses the colour.
-// Colours mirror the legend the user provided:
-//   green = Client (regular_client)
-//   yellow = Follow Up Required
-//   blue = Contacted family (contact_attempted, contacted, interested, meeting_booked)
-//   grey = Not Contacted (default / no status)
-//   red = Not Interested / Do Not Contact
-const LEAD_STATUS_OPTIONS = [
-  { value: "not_contacted",      label: "Not Contacted",      tone: "grey"   },
-  { value: "contact_attempted",  label: "Contact Attempted",  tone: "blue"   },
-  { value: "contacted",          label: "Contacted",          tone: "blue"   },
-  { value: "interested",         label: "Interested",         tone: "blue"   },
-  { value: "follow_up_required", label: "Follow Up Required", tone: "yellow" },
-  { value: "meeting_booked",     label: "Meeting Booked",     tone: "blue"   },
-  { value: "regular_client",     label: "Regular Client",     tone: "green"  },
-  { value: "not_interested",     label: "Not Interested",     tone: "red"    },
-  { value: "do_not_contact",     label: "Do Not Contact",     tone: "red"    },
-];
-
 const CONTACT_METHOD_OPTIONS = [
   { value: "phone",           label: "Phone" },
   { value: "email",           label: "Email" },
@@ -54,19 +35,6 @@ const CONTACT_METHOD_OPTIONS = [
   { value: "website_enquiry", label: "Website Enquiry" },
   { value: "other",           label: "Other" },
 ];
-
-// Tailwind tokens per tone — kept in one place so the chip + the
-// border colour on the select stay in lockstep.
-// ``optionBg`` is the actual hex colour the native <option> element
-// uses for its background (native <option> can't be styled via Tailwind
-// classes — it has to be inline-styled with concrete colours).
-const TONE_STYLES = {
-  green:  { dot: "bg-emerald-500", chip: "bg-emerald-50 border-emerald-300 text-emerald-900", border: "border-emerald-400", fill: "bg-emerald-50",  optionBg: "#ecfdf5", optionFg: "#064e3b" },
-  yellow: { dot: "bg-amber-400",   chip: "bg-amber-50 border-amber-300 text-amber-900",       border: "border-amber-400",   fill: "bg-amber-50",    optionBg: "#fffbeb", optionFg: "#78350f" },
-  blue:   { dot: "bg-blue-500",    chip: "bg-blue-50 border-blue-300 text-blue-900",          border: "border-blue-400",    fill: "bg-blue-50",     optionBg: "#eff6ff", optionFg: "#1e3a8a" },
-  grey:   { dot: "bg-stone-300",   chip: "bg-stone-50 border-stone-300 text-stone-700",       border: "border-stone-300",   fill: "bg-stone-50",    optionBg: "#fafaf9", optionFg: "#44403c" },
-  red:    { dot: "bg-red-500",     chip: "bg-red-50 border-red-300 text-red-900",             border: "border-red-400",     fill: "bg-red-50",      optionBg: "#fef2f2", optionFg: "#7f1d1d" },
-};
 
 export default function TerritoryClientModal({ initial, onClose, onSaved, onDeleted, cqcSnapshot = null, marketingEnabled = false }) {
   const navigate = useNavigate();
