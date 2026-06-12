@@ -200,7 +200,31 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
     const key = home.locationId || home._id;
     if (!key) return;
     const client = clientByHomeKey.get(`cqc:${key}`) || clientByHomeKey.get(`scotland:${key}`);
-    if (client) setEditingClient(client);
+    if (client) {
+      // Already a saved client — open its existing record for editing.
+      setEditingClient(client);
+      return;
+    }
+    // Not yet a client. Open the modal pre-seeded from the CQC home so
+    // the franchisee can add notes / extra contacts / amend details
+    // without first having to commit to "Mark as my client". Saving
+    // creates a custom client row (no gold-star marker — they can hit
+    // "Mark as my client" later if they want it on the marker map).
+    setEditingClient({
+      name: home.name || "",
+      address: home.address || "",
+      postcode: home.postalCode || "",
+      phone: home.phone || "",
+      website: home.website || "",
+      provider: home.providerName || "",
+      manager: home.manager || "",
+      latest_inspection: home.lastReport?.publicationDate || "",
+      cqc_rating: home.currentRatings?.overall?.rating || "",
+      lat: home.latitude || null,
+      lng: home.longitude || null,
+      contacts: [],
+      notes: "",
+    });
   };
 
   const customClients = useMemo(

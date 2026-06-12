@@ -31,8 +31,13 @@ function HomeRow({ home, idx, isOpen, onToggle, onOpenDetail, onZoom, isMyClient
       data-testid={`home-row-${idx + 1}`}
     >
       <div
-        onClick={onToggle}
-        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); } }}
+        onClick={() => { if (onOpenDetail) onOpenDetail(home); else onToggle(); }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            if (onOpenDetail) onOpenDetail(home); else onToggle();
+          }
+        }}
         role="button"
         tabIndex={0}
         className={`w-full flex items-center gap-3 px-3 py-3 text-left group transition-colors cursor-pointer ${isOpen ? "" : "hover:bg-stone-50"}`}
