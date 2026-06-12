@@ -586,6 +586,7 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
           expanded={homesListExpanded}
           onExpandedChange={setHomesListExpanded}
           onZoomHome={(h) => setFlyTo({ lat: h.latitude, lng: h.longitude, _t: Date.now() })}
+          onOpenDetail={openClientForHome}
         />
       )}
     </div>
