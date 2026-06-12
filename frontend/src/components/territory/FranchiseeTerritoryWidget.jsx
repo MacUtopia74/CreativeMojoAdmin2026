@@ -241,13 +241,12 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
     });
   };
 
-  // Custom clients shown as ★ markers on the map. Mirrors the
-  // ``clientHomeKeys`` rule: only TRUE clients (lead_status ===
-  // "regular_client") get the gold star treatment — prospects in
-  // earlier pipeline stages live in the Client Pool list but stay
-  // off the map until the franchisee marks them as "Client".
+  // Custom clients shown as markers on the map. Tinted by lead status
+  // (gold ★ only when lead_status === "regular_client"). The map's
+  // status-filter visibility is applied inside <TerritoryMap>, so we
+  // pass every custom entry through and let the map decide.
   const customClients = useMemo(
-    () => myClients.filter((c) => c.source === "custom" && c.lead_status === "regular_client"),
+    () => myClients.filter((c) => c.source === "custom"),
     [myClients],
   );
 

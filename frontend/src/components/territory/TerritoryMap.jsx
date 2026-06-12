@@ -624,16 +624,38 @@ export default function TerritoryMap({
     if (!customClients.length) return;
     customClients.forEach((c) => {
       if (c.lat == null || c.lng == null) return;
+      const status = c.lead_status || "not_contacted";
+      // Status filter mirrors the home-marker behaviour — when set,
+      // only matching custom entries render on the map.
+      if (statusFilter && status !== statusFilter) return;
+      const isClient = status === "regular_client";
       const el = document.createElement("div");
       el.className = "cm-client-marker";
-      el.innerHTML = "★";
-      el.style.cssText = "background:#dddd16;color:#0c0a09;font-size:14px;font-weight:900;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #0c0a09;box-shadow:0 0 0 2px rgba(221,221,22,0.4),0 2px 4px rgba(0,0,0,.4);cursor:pointer;line-height:1;";
+      if (isClient) {
+        // True client → gold ★ (unchanged).
+        el.innerHTML = "★";
+        el.style.cssText = "background:#dddd16;color:#0c0a09;font-size:14px;font-weight:900;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #0c0a09;box-shadow:0 0 0 2px rgba(221,221,22,0.4),0 2px 4px rgba(0,0,0,.4);cursor:pointer;line-height:1;";
+      } else {
+        // Prospect → small coloured circle tinted with the status colour.
+        // No number (custom entries aren't in the numbered CQC list).
+        const meta = getLeadStatusMeta(status);
+        const bg = meta.tone.markerBg || "#14532D";
+        const fg = meta.tone.markerFg || "#fff";
+        el.innerHTML = "";
+        el.style.cssText = `background:${bg};color:${fg};width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);cursor:pointer;`;
+        el.setAttribute("data-tracked-status", status);
+        const _bg = bg, _fg = fg;
+        requestAnimationFrame(() => {
+          el.style.backgroundColor = _bg;
+          el.style.color = _fg;
+        });
+      }
       const m = new mapboxgl.Marker(el)
         .setLngLat([c.lng, c.lat])
         .setPopup(new mapboxgl.Popup({ offset: 18, closeButton: false }).setHTML(
           `<div style="font-family:Inter,system-ui;font-size:12px;line-height:1.35">
-            <strong>★ ${(c.name || "").replace(/</g, "&lt;")}</strong><br/>
-            <span style="color:#57534e">My client${c.provider ? ` · ${(c.provider || "").replace(/</g, "&lt;")}` : ""}</span>
+            <strong>${isClient ? "★ " : ""}${(c.name || "").replace(/</g, "&lt;")}</strong><br/>
+            <span style="color:#57534e">${isClient ? "My client" : "Prospect"}${c.provider ? ` · ${(c.provider || "").replace(/</g, "&lt;")}` : ""}</span>
           </div>`,
         ))
         .addTo(mapRef.current);
@@ -646,7 +668,7 @@ export default function TerritoryMap({
       customClientsRef.current.forEach((m) => m.remove());
       customClientsRef.current = [];
     };
-  }, [customClients, ready, onCustomClientClick]);
+  }, [customClients, ready, onCustomClientClick, statusFilter]);
 
   // ----------------- highlight the active home marker -----------------
   // When the user opens a row in the homes list below the map, we re-skin

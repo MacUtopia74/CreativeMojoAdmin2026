@@ -1,6 +1,21 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## Bugfix: custom clients now render on map with status tint (Feb 12 2026)
+
+User reported 21 entries in the pool but only ~7 markers visible on the map, with most prospect statuses (Contacted / Do Not Contact / Contact Attempted) showing zero markers when their filter was selected.
+
+**Root cause**: `customClients` memo in `FranchiseeTerritoryWidget` was filtered to `lead_status === "regular_client"` only (a stale residue from when the gold ★ rule was tightened). Result: every custom prospect — Rouse, Sydenham, The Lodge, Tracey House etc. — was excluded from the map regardless of having lat/lng on file.
+
+**Fix**:
+- `customClients` memo now returns every `source === "custom"` entry; status-based visibility is handled inside the map layer (single source of truth).
+- Custom client marker rendering in `TerritoryMap` re-worked to a three-way decision: `regular_client` → gold ★ (unchanged) · any other tracked status → coloured dot tinted per `markerBg`/`markerFg` from `leadStatus.js` · null → defaults to "Not Contacted" orange.
+- Status-filter visibility now also applied to custom markers, mirroring the CQC home marker behaviour. Picking "Contacted" in the dropdown shows only the blue custom dots; picking "All statuses" lights up the full rainbow.
+- Marker effect deps include `statusFilter`.
+
+**Verified end-to-end on Preview** (DOM marker counts, sandra@): post-fix the map renders 4 purple (Interested), 4 yellow (Follow Up), 2 sky (Contact Attempted), 2 blue (Contacted), 2 orange (Not Contacted), 2 red (Do Not Contact / Not Interested) and 8 gold ★ (Client) custom markers — exactly matching the pool composition.
+
+
 ## Map markers tinted by Lead Status + status filter applied to map (Feb 12 2026)
 
 User asked for the map markers to reflect each tracked home's lead status colour, and for the existing status-filter dropdown to also filter the **map** (not just the list) — same way the "MY CLIENTS ONLY" toggle does.
