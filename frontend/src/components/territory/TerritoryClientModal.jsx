@@ -57,12 +57,15 @@ const CONTACT_METHOD_OPTIONS = [
 
 // Tailwind tokens per tone — kept in one place so the chip + the
 // border colour on the select stay in lockstep.
+// ``optionBg`` is the actual hex colour the native <option> element
+// uses for its background (native <option> can't be styled via Tailwind
+// classes — it has to be inline-styled with concrete colours).
 const TONE_STYLES = {
-  green:  { dot: "bg-emerald-500", chip: "bg-emerald-50 border-emerald-300 text-emerald-900", border: "border-emerald-400" },
-  yellow: { dot: "bg-amber-400",   chip: "bg-amber-50 border-amber-300 text-amber-900",       border: "border-amber-400"   },
-  blue:   { dot: "bg-blue-500",    chip: "bg-blue-50 border-blue-300 text-blue-900",          border: "border-blue-400"    },
-  grey:   { dot: "bg-stone-300",   chip: "bg-stone-50 border-stone-300 text-stone-700",       border: "border-stone-300"   },
-  red:    { dot: "bg-red-500",     chip: "bg-red-50 border-red-300 text-red-900",             border: "border-red-400"     },
+  green:  { dot: "bg-emerald-500", chip: "bg-emerald-50 border-emerald-300 text-emerald-900", border: "border-emerald-400", fill: "bg-emerald-50",  optionBg: "#ecfdf5", optionFg: "#064e3b" },
+  yellow: { dot: "bg-amber-400",   chip: "bg-amber-50 border-amber-300 text-amber-900",       border: "border-amber-400",   fill: "bg-amber-50",    optionBg: "#fffbeb", optionFg: "#78350f" },
+  blue:   { dot: "bg-blue-500",    chip: "bg-blue-50 border-blue-300 text-blue-900",          border: "border-blue-400",    fill: "bg-blue-50",     optionBg: "#eff6ff", optionFg: "#1e3a8a" },
+  grey:   { dot: "bg-stone-300",   chip: "bg-stone-50 border-stone-300 text-stone-700",       border: "border-stone-300",   fill: "bg-stone-50",    optionBg: "#fafaf9", optionFg: "#44403c" },
+  red:    { dot: "bg-red-500",     chip: "bg-red-50 border-red-300 text-red-900",             border: "border-red-400",     fill: "bg-red-50",      optionBg: "#fef2f2", optionFg: "#7f1d1d" },
 };
 
 export default function TerritoryClientModal({ initial, onClose, onSaved, onDeleted, cqcSnapshot = null, marketingEnabled = false }) {
@@ -94,6 +97,10 @@ export default function TerritoryClientModal({ initial, onClose, onSaved, onDele
   const editing = !!initial?.id;
   const isCustom = !initial || initial.source === "custom";
   const isLinked = !!initial && initial.source !== "custom";
+  // A client only graduates from "Prospective" to "Client" once the
+  // franchisee bumps Lead Status to "Regular Client" in the Marketing
+  // panel. Drives the header label + the save-button copy below.
+  const isRegularClient = (form.lead_status || "") === "regular_client";
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -231,10 +238,12 @@ export default function TerritoryClientModal({ initial, onClose, onSaved, onDele
         <div className="px-5 sm:px-6 py-4 border-b border-stone-200 flex items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">
-              {isCustom ? (editing ? "Edit my client" : "Add a client") : "My client"}
+              {isRegularClient
+                ? (editing ? "My client" : "Add a client")
+                : (editing ? "My prospective client" : "Add a prospective client")}
             </div>
             <h2 className="font-display text-xl font-black text-stone-950 truncate">
-              {editing ? (form.name || "—") : "New client"}
+              {editing ? (form.name || "—") : (isRegularClient ? "New client" : "New prospect")}
             </h2>
           </div>
           <button onClick={onClose} data-testid="t-plus-client-close" className="p-2 -mr-1 text-stone-600 hover:bg-stone-100 rounded-lg shrink-0">
@@ -504,7 +513,11 @@ export default function TerritoryClientModal({ initial, onClose, onSaved, onDele
               data-testid="t-plus-client-save"
               className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-lg flex items-center gap-1.5 disabled:opacity-50"
             >
-              {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : (editing ? "Save changes" : "Add client")}
+              {busy
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : (isRegularClient
+                    ? (editing ? "Update Client" : "Save Client")
+                    : (editing ? "Update Prospective Client" : "Save Prospective Client"))}
             </button>
           </div>
         </div>
@@ -663,18 +676,27 @@ function MarketingCrmPanel({ form, set, marketingEnabled, onOpenMarketingPlus, c
           <label className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1 block">
             Lead Status
           </label>
-          <div className={`relative rounded-lg border ${tone.border} bg-white`}>
+          <div className={`relative rounded-lg border-2 ${tone.border} ${tone.fill}`}>
             <span className={`absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full ${tone.dot} border border-stone-400`}></span>
             <select
               value={status}
               onChange={(e) => set("lead_status", e.target.value)}
               data-testid="t-plus-lead-status"
-              className="w-full pl-9 pr-3 py-2 text-sm bg-transparent appearance-none focus:outline-none cursor-pointer"
+              className="w-full pl-9 pr-3 py-2 text-sm bg-transparent appearance-none focus:outline-none cursor-pointer font-medium"
             >
               <option value="">— select status —</option>
-              {LEAD_STATUS_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
+              {LEAD_STATUS_OPTIONS.map((o) => {
+                const t = TONE_STYLES[o.tone];
+                return (
+                  <option
+                    key={o.value}
+                    value={o.value}
+                    style={{ backgroundColor: t.optionBg, color: t.optionFg, fontWeight: 600 }}
+                  >
+                    {o.label}
+                  </option>
+                );
+              })}
             </select>
           </div>
           {selectedOption && (
