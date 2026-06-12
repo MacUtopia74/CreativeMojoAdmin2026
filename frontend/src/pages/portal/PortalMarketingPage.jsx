@@ -12,7 +12,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Link as RouterLink, useSearchParams } from "react-router-dom";
 import {
   Megaphone, Loader2, AlertCircle, Plus, Mail, Sparkles, RefreshCw,
-  Eye, Calendar, FileText, Pencil, Trash2, Settings,
+  Eye, Calendar, FileText, Pencil, Trash2, Settings, Copy, Bookmark, X,
 } from "lucide-react";
 import api from "@/lib/api";
 import PortalPageHeading from "@/components/portal/PortalPageHeading";
@@ -37,6 +37,10 @@ export default function PortalMarketingPage() {
   const [editingDraft, setEditingDraft] = useState(null);   // draft doc OR null for new
   const [preselectClientId, setPreselectClientId] = useState(null);
   const [reportId, setReportId] = useState(null);
+  const [templates, setTemplates] = useState([]);
+  const [previewingTemplate, setPreviewingTemplate] = useState(null);  // template doc | null
+  const [previewHtml, setPreviewHtml] = useState("");
+  const [previewBusy, setPreviewBusy] = useState(false);
   // Deep-link from My Territory+: ``?client_id=…`` opens the compose
   // modal with that client's recipients pre-ticked. We consume the
   // search param once on mount, then clear it so a page refresh
@@ -62,8 +66,15 @@ export default function PortalMarketingPage() {
     } finally { setLoading(false); }
   }, []);
 
+  const loadTemplates = useCallback(async () => {
+    try {
+      const { data } = await api.get("/portal/marketing/templates");
+      setTemplates(data.items || []);
+    } catch { setTemplates([]); }
+  }, []);
+
   useEffect(() => { loadAccess(); }, [loadAccess]);
-  useEffect(() => { if (access?.allowed) loadCampaigns(); }, [access?.allowed, loadCampaigns]);
+  useEffect(() => { if (access?.allowed) { loadCampaigns(); loadTemplates(); } }, [access?.allowed, loadCampaigns, loadTemplates]);
 
   // Auto-open the compose modal when arriving via /portal/marketing?client_id=…
   useEffect(() => {
@@ -93,6 +104,75 @@ export default function PortalMarketingPage() {
     } catch (e) {
       window.alert(e?.response?.data?.detail || "Couldn't delete.");
     }
+  };
+
+  // Duplicate any draft / sent / template into a fresh draft and pop
+  // open the compose modal on it so the franchisee can immediately
+  // edit the copy. Same flow for the template "Use Template" action.
+  const duplicateCampaign = async (c) => {
+    try {
+      const { data } = await api.post(`/portal/marketing/campaigns/${c.id}/duplicate`);
+      await loadCampaigns();
+      const draft = { id: data.id };
+      // Pull the freshly-duplicated draft so the modal opens with full content.
+      try {
+        const r = await api.get(`/portal/marketing/campaigns/${data.id}`);
+        Object.assign(draft, r.data);
+      } catch { /* fall back to id-only; modal will load on its own */ }
+      openCompose(draft);
+    } catch (e) {
+      window.alert(e?.response?.data?.detail || "Couldn't duplicate.");
+    }
+  };
+
+  const saveAsTemplate = async (c) => {
+    const name = window.prompt(
+      "Save this campaign as a reusable template. Give it a name:",
+      c.title || "Template",
+    );
+    if (!name || !name.trim()) return;
+    try {
+      await api.post(`/portal/marketing/campaigns/${c.id}/save-as-template`, {
+        template_name: name.trim(),
+      });
+      loadTemplates();
+    } catch (e) {
+      window.alert(e?.response?.data?.detail || "Couldn't save as template.");
+    }
+  };
+
+  const deleteTemplate = async (t) => {
+    if (!window.confirm(`Delete template "${t.template_name || t.title}"?`)) return;
+    try {
+      await api.delete(`/portal/marketing/templates/${t.id}`);
+      loadTemplates();
+    } catch (e) {
+      window.alert(e?.response?.data?.detail || "Couldn't delete template.");
+    }
+  };
+
+  // Preview a template — hit the live-preview endpoint to render the
+  // same HTML the franchisee would see in their inbox. Shown inside a
+  // modal so they can sanity-check before clicking Use Template.
+  const previewTemplate = async (t) => {
+    setPreviewingTemplate(t); setPreviewBusy(true); setPreviewHtml("");
+    try {
+      const { data } = await api.post("/portal/marketing/preview-html", {
+        title: t.title,
+        panels: t.panels || [],
+        intro_html: t.intro_html || "",
+        background_color: t.background_color || "",
+        include_bookings_link: !!t.include_bookings_link,
+        footer_show_phone: !!t.footer_show_phone,
+        footer_show_email: !!t.footer_show_email,
+        footer_show_facebook: !!t.footer_show_facebook,
+        footer_show_instagram: !!t.footer_show_instagram,
+        footer_show_custom: !!t.footer_show_custom,
+      });
+      setPreviewHtml(data.html || "");
+    } catch (e) {
+      setPreviewHtml(`<p style="padding:24px;color:#b91c1c">${e?.response?.data?.detail || "Couldn't render preview."}</p>`);
+    } finally { setPreviewBusy(false); }
   };
 
   if (!access) {
@@ -189,6 +269,63 @@ export default function PortalMarketingPage() {
         const sent = campaigns.filter((c) => (c.status || "sent") !== "draft");
         return (
           <>
+            {/* Templates strip — sits ABOVE drafts + past campaigns. Each
+                template is a horizontal card with Use Template + Preview +
+                Delete actions. Clicking the title opens a preview modal. */}
+            <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid="marketing-templates-strip">
+              <div className="px-5 py-3 border-b border-stone-200 flex items-center justify-between">
+                <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-700 flex items-center gap-1.5">
+                  <Bookmark className="w-3 h-3" /> Templates ({templates.length})
+                </div>
+                <span className="text-[10px] text-stone-500 italic">Save any draft or sent campaign as a template using the bookmark icon on its row.</span>
+              </div>
+              {templates.length === 0 ? (
+                <div className="px-5 py-5 text-xs text-stone-500">
+                  No templates yet. Save any campaign as a template to reuse it later.
+                </div>
+              ) : (
+                <ul className="divide-y divide-stone-100">
+                  {templates.map((t) => (
+                    <li key={t.id} className="px-5 py-3 flex items-center gap-3 flex-wrap" data-testid={`marketing-template-${t.id}`}>
+                      <button
+                        onClick={() => previewTemplate(t)}
+                        className="flex-1 min-w-0 text-left group"
+                        title="Click to preview"
+                      >
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Bookmark className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                          <span className="font-semibold text-stone-900 truncate group-hover:underline">
+                            {t.template_name || t.title || "(untitled template)"}
+                          </span>
+                        </div>
+                        <div className="text-xs text-stone-500 mt-1 flex items-center gap-3 flex-wrap">
+                          <span className="inline-flex items-center gap-1">
+                            <Calendar className="w-3 h-3" /> Saved {fmtDate(t.created_at)}
+                          </span>
+                          <span>· {(t.panels || []).length} section{(t.panels || []).length === 1 ? "" : "s"}</span>
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => duplicateCampaign(t)}
+                        data-testid={`marketing-template-use-${t.id}`}
+                        className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-stone-950 hover:bg-stone-800 text-[#dddd16] rounded-lg flex items-center gap-1.5"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Use Template
+                      </button>
+                      <button
+                        onClick={() => deleteTemplate(t)}
+                        className="text-stone-400 hover:text-red-600 p-2"
+                        title="Delete template"
+                        data-testid={`marketing-template-delete-${t.id}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
             {drafts.length > 0 && (
               <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden">
                 <div className="px-5 py-3 border-b border-stone-200 flex items-center justify-between">
@@ -218,6 +355,22 @@ export default function PortalMarketingPage() {
                         className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider border border-stone-300 hover:bg-stone-50 text-stone-700 rounded-lg flex items-center gap-1.5"
                       >
                         <Pencil className="w-3.5 h-3.5" /> Edit
+                      </button>
+                      <button
+                        onClick={() => duplicateCampaign(c)}
+                        data-testid={`marketing-draft-duplicate-${c.id}`}
+                        title="Duplicate to a new draft"
+                        className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider border border-stone-300 hover:bg-stone-50 text-stone-700 rounded-lg flex items-center gap-1.5"
+                      >
+                        <Copy className="w-3.5 h-3.5" /> Duplicate
+                      </button>
+                      <button
+                        onClick={() => saveAsTemplate(c)}
+                        data-testid={`marketing-draft-save-template-${c.id}`}
+                        title="Save as template"
+                        className="text-stone-400 hover:text-amber-600 p-2"
+                      >
+                        <Bookmark className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => deleteCampaign(c)}
@@ -282,6 +435,22 @@ export default function PortalMarketingPage() {
                       >
                         <Eye className="w-3.5 h-3.5" /> Report
                       </button>
+                      <button
+                        onClick={() => duplicateCampaign(c)}
+                        data-testid={`marketing-campaign-duplicate-${c.id}`}
+                        title="Duplicate to a new draft"
+                        className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider border border-stone-300 hover:bg-stone-50 text-stone-700 rounded-lg flex items-center gap-1.5"
+                      >
+                        <Copy className="w-3.5 h-3.5" /> Duplicate
+                      </button>
+                      <button
+                        onClick={() => saveAsTemplate(c)}
+                        data-testid={`marketing-campaign-save-template-${c.id}`}
+                        title="Save as template"
+                        className="text-stone-400 hover:text-amber-600 p-2"
+                      >
+                        <Bookmark className="w-4 h-4" />
+                      </button>
                     </li>
                   ))}
                 </ul>
@@ -305,6 +474,58 @@ export default function PortalMarketingPage() {
         campaignId={reportId}
         onClose={() => setReportId(null)}
       />
+
+      {/* Template preview modal — shows the rendered e-shot HTML in an
+          iframe so the franchisee can sanity-check before clicking
+          "Use Template" (which duplicates it into a new draft). */}
+      {previewingTemplate && (
+        <div
+          className="fixed inset-0 z-[100] bg-stone-950/60 backdrop-blur-sm flex items-center justify-center p-6"
+          data-testid="marketing-template-preview"
+          onClick={() => setPreviewingTemplate(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[88vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-3 border-b border-stone-200">
+              <div className="flex items-center gap-2">
+                <Bookmark className="w-4 h-4 text-amber-600" />
+                <span className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-700">Template preview</span>
+                <span className="text-sm font-semibold text-stone-900 ml-2 truncate max-w-[280px]">{previewingTemplate.template_name || previewingTemplate.title}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => { const t = previewingTemplate; setPreviewingTemplate(null); duplicateCampaign(t); }}
+                  data-testid="marketing-template-preview-use"
+                  className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-stone-950 hover:bg-stone-800 text-[#dddd16] rounded-lg flex items-center gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Use Template
+                </button>
+                <button
+                  onClick={() => setPreviewingTemplate(null)}
+                  className="w-9 h-9 flex items-center justify-center hover:bg-stone-100 rounded-lg"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-auto bg-stone-50">
+              {previewBusy ? (
+                <div className="flex items-center justify-center min-h-[300px] text-stone-500">
+                  <Loader2 className="w-5 h-5 animate-spin mr-2" /> Rendering preview…
+                </div>
+              ) : (
+                <iframe
+                  title="Template preview"
+                  srcDoc={previewHtml}
+                  className="w-full min-h-[600px] bg-white border-0"
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

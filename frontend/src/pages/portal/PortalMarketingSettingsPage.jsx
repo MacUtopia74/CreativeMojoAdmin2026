@@ -13,7 +13,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Sparkles, Loader2, AlertCircle, CheckCircle2, ArrowLeft,
-  Facebook, Globe, Phone, Mail,
+  Facebook, Globe, Phone, Mail, Instagram, Link as LinkIcon,
 } from "lucide-react";
 import api from "@/lib/api";
 import PortalPageHeading from "@/components/portal/PortalPageHeading";
@@ -45,6 +45,9 @@ export default function PortalMarketingSettingsPage() {
       const { data } = await api.patch("/portal/marketing/settings", {
         logo_target: settings.logo_target,
         facebook_url: settings.facebook_url || "",
+        instagram_url: settings.instagram_url || "",
+        custom_link_label: settings.custom_link_label || "",
+        custom_link_url: settings.custom_link_url || "",
       });
       setSettings((s) => ({ ...s, ...data.marketing_settings }));
       setSaved("Saved — your next e-shot will use these settings.");
@@ -147,6 +150,52 @@ export default function PortalMarketingSettingsPage() {
               data-testid="settings-facebook-url"
               className="w-full px-3 py-2 text-sm border border-stone-300 rounded-lg"
             />
+          </section>
+
+          {/* Instagram URL */}
+          <section className="bg-white border border-stone-200 rounded-2xl p-5">
+            <h2 className="font-display text-xl font-bold text-stone-950 mb-1 flex items-center gap-2">
+              <Instagram className="w-4 h-4 text-pink-600" /> Your Instagram URL
+            </h2>
+            <p className="text-sm text-stone-600 mb-3">
+              Shown in the footer of your e-shots when "Include Instagram" is ticked on the send.
+            </p>
+            <input
+              type="url"
+              placeholder="https://www.instagram.com/creativemojo_yourtown"
+              value={settings.instagram_url || ""}
+              onChange={(e) => setSettings((s) => ({ ...s, instagram_url: e.target.value }))}
+              data-testid="settings-instagram-url"
+              className="w-full px-3 py-2 text-sm border border-stone-300 rounded-lg"
+            />
+          </section>
+
+          {/* Custom footer link — anything you want to plug from your e-shot footer */}
+          <section className="bg-white border border-stone-200 rounded-2xl p-5">
+            <h2 className="font-display text-xl font-bold text-stone-950 mb-1 flex items-center gap-2">
+              <LinkIcon className="w-4 h-4 text-stone-600" /> One more footer link
+            </h2>
+            <p className="text-sm text-stone-600 mb-3">
+              A free-form footer link — handy for promoting your booking page, TikTok, a survey, anything you want.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-[1fr_2fr] gap-2">
+              <input
+                type="text"
+                placeholder="Label (e.g. Book a class)"
+                value={settings.custom_link_label || ""}
+                onChange={(e) => setSettings((s) => ({ ...s, custom_link_label: e.target.value }))}
+                data-testid="settings-custom-label"
+                className="px-3 py-2 text-sm border border-stone-300 rounded-lg"
+              />
+              <input
+                type="url"
+                placeholder="https://…"
+                value={settings.custom_link_url || ""}
+                onChange={(e) => setSettings((s) => ({ ...s, custom_link_url: e.target.value }))}
+                data-testid="settings-custom-url"
+                className="px-3 py-2 text-sm border border-stone-300 rounded-lg"
+              />
+            </div>
           </section>
 
           {/* Read-only info */}

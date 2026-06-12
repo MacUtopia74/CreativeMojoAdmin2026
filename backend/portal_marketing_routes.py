@@ -408,6 +408,9 @@ def _build_html(campaign: dict, first_name: str = "{{first_name}}",
     footer_phone = (campaign.get("footer_phone") or "").strip()
     footer_email = (campaign.get("footer_email") or "").strip()
     footer_facebook = (campaign.get("footer_facebook") or "").strip()
+    footer_instagram = (campaign.get("footer_instagram") or "").strip()
+    footer_custom_url = (campaign.get("footer_custom_url") or "").strip()
+    footer_custom_label = (campaign.get("footer_custom_label") or "Visit our website").strip()
     franchisee_address = (campaign.get("franchisee_address") or "").strip()
     # Email page background colour — picker on the composer. Defaults
     # to the existing soft-cream tone so existing/legacy drafts look
@@ -499,6 +502,17 @@ def _build_html(campaign: dict, first_name: str = "{{first_name}}",
         contact_lines.append(
             f'<a href="{footer_facebook}" target="_blank" rel="noopener" '
             f'style="color:#1a1a1a;text-decoration:none;">Find us on Facebook</a>'
+        )
+    if footer_instagram:
+        contact_lines.append(
+            f'<a href="{footer_instagram}" target="_blank" rel="noopener" '
+            f'style="color:#1a1a1a;text-decoration:none;">Find us on Instagram</a>'
+        )
+    if footer_custom_url:
+        from html import escape as _esc_lbl
+        contact_lines.append(
+            f'<a href="{footer_custom_url}" target="_blank" rel="noopener" '
+            f'style="color:#1a1a1a;text-decoration:none;">{_esc_lbl(footer_custom_label)}</a>'
         )
     contact_block = ""
     if contact_lines:
@@ -691,6 +705,9 @@ def _campaign_branding_from(fr: dict, body: dict | None = None) -> dict:
     marketing = fr.get("marketing_settings") or {}
     logo_choice = (marketing.get("logo_target") or "mojo_page").lower()
     fb_url = (marketing.get("facebook_url") or fr.get("facebook_url") or fr.get("facebook") or "").strip()
+    ig_url = (marketing.get("instagram_url") or "").strip()
+    custom_url = (marketing.get("custom_link_url") or "").strip()
+    custom_label = (marketing.get("custom_link_label") or "").strip() or "Visit our website"
     mojo_url = (marketing.get("mojo_page_url") or fr.get("wp_page_url") or "").strip()
     logo_target = fb_url if logo_choice == "facebook" else mojo_url
     addr = ", ".join([
@@ -708,6 +725,9 @@ def _campaign_branding_from(fr: dict, body: dict | None = None) -> dict:
         "footer_email": (fr.get("mojo_email") or "").strip()
             if body.get("footer_show_email") else "",
         "footer_facebook": fb_url if body.get("footer_show_facebook") else "",
+        "footer_instagram": ig_url if body.get("footer_show_instagram") else "",
+        "footer_custom_url": custom_url if body.get("footer_show_custom") else "",
+        "footer_custom_label": custom_label if body.get("footer_show_custom") else "",
     }
 
 
@@ -735,6 +755,10 @@ def attach(api, db, require_role):
                 "facebook_url": (marketing.get("facebook_url")
                                  or fr.get("facebook_url")
                                  or fr.get("facebook") or ""),
+                "instagram_url": marketing.get("instagram_url") or "",
+                "custom_link_url": marketing.get("custom_link_url") or "",
+                "custom_link_label": marketing.get("custom_link_label") or "",
+                "last_footer_selection": marketing.get("last_footer_selection") or None,
                 "mojo_page_url": (marketing.get("mojo_page_url")
                                   or fr.get("wp_page_url") or ""),
                 "logo_target": (marketing.get("logo_target") or "mojo_page"),
@@ -752,11 +776,19 @@ def attach(api, db, require_role):
         return {
             "logo_target": m.get("logo_target") or "mojo_page",
             "facebook_url": m.get("facebook_url") or fr.get("facebook_url") or fr.get("facebook") or "",
+            "instagram_url": m.get("instagram_url") or "",
+            "custom_link_label": m.get("custom_link_label") or "",
+            "custom_link_url": m.get("custom_link_url") or "",
             "mojo_page_url": m.get("mojo_page_url") or fr.get("wp_page_url") or "",
             # Read-only fields surfaced for the UI to render contextual
             # info next to each form input.
             "phone": fr.get("mobile_phone") or "",
             "email": fr.get("mojo_email") or "",
+            # Last set of footer toggles the franchisee ticked on a
+            # previous send. The compose modal pre-ticks these for new
+            # campaigns so franchisees aren't re-selecting the same
+            # boxes every time. ``None`` = never sent / no preference.
+            "last_footer_selection": m.get("last_footer_selection") or None,
         }
 
     @api.patch("/portal/marketing/settings")
@@ -773,6 +805,12 @@ def attach(api, db, require_role):
             update["logo_target"] = choice
         if "facebook_url" in body:
             update["facebook_url"] = (body.get("facebook_url") or "").strip() or None
+        if "instagram_url" in body:
+            update["instagram_url"] = (body.get("instagram_url") or "").strip() or None
+        if "custom_link_label" in body:
+            update["custom_link_label"] = (body.get("custom_link_label") or "").strip() or None
+        if "custom_link_url" in body:
+            update["custom_link_url"] = (body.get("custom_link_url") or "").strip() or None
         if "mojo_page_url" in body:
             update["mojo_page_url"] = (body.get("mojo_page_url") or "").strip() or None
         # Persist back onto the franchisee doc so the rest of the app
@@ -1227,6 +1265,8 @@ def attach(api, db, require_role):
             "footer_show_phone": bool(body.get("footer_show_phone")),
             "footer_show_email": bool(body.get("footer_show_email")),
             "footer_show_facebook": bool(body.get("footer_show_facebook")),
+            "footer_show_instagram": bool(body.get("footer_show_instagram")),
+            "footer_show_custom": bool(body.get("footer_show_custom")),
             "from_email": from_email,
             "franchisee_name": f"{fr.get('first_name','')} {fr.get('last_name','')}".strip()
                                or fr.get("organisation") or "Creative Mojo",
@@ -1330,6 +1370,26 @@ def attach(api, db, require_role):
             {"id": campaign_id, "franchisee_id": fr["id"]},
             campaign_doc, upsert=True,
         )
+        # Persist the franchisee's last footer selection so the compose
+        # modal can pre-tick the same boxes next time. Saved only when
+        # the send actually went out (so an aborted send doesn't
+        # mutate the remembered choice).
+        if succeeded > 0:
+            try:
+                marketing = (fr.get("marketing_settings") or {})
+                marketing["last_footer_selection"] = {
+                    "phone": bool(body.get("footer_show_phone")),
+                    "email": bool(body.get("footer_show_email")),
+                    "facebook": bool(body.get("footer_show_facebook")),
+                    "instagram": bool(body.get("footer_show_instagram")),
+                    "custom": bool(body.get("footer_show_custom")),
+                }
+                await db.franchisees.update_one(
+                    {"id": fr["id"]},
+                    {"$set": {"marketing_settings": marketing, "updated_at": _now_iso()}},
+                )
+            except Exception:
+                logger.warning("Failed to persist last_footer_selection", exc_info=True)
         return {"ok": succeeded > 0, "campaign_id": campaign_id, **campaign_doc["delivery"]}
 
     # ---- save / update a draft (no Resend send, no recipient validation)
@@ -1396,7 +1456,7 @@ def attach(api, db, require_role):
         fr = await _check_access(db, user)
         items: list[dict] = []
         async for doc in db.marketing_campaigns.find(
-            {"franchisee_id": fr["id"]}, {"_id": 0},
+            {"franchisee_id": fr["id"], "is_template": {"$ne": True}}, {"_id": 0},
         ).sort("created_at", -1).limit(200):
             # Roll up open/click counts for the table view.
             opens = sum(1 for r in (doc.get("recipients") or [])
@@ -1430,6 +1490,118 @@ def attach(api, db, require_role):
         if not r.deleted_count:
             raise HTTPException(404, detail="Campaign not found")
         return {"ok": True}
+
+    # ---- duplicate any campaign (draft, sent or template) into a new draft.
+    # The new doc gets a fresh id, status="draft", and the original's
+    # recipients / delivery / send-events are stripped — we only carry
+    # over the editorial content the franchisee actually composed.
+    @api.post("/portal/marketing/campaigns/{campaign_id}/duplicate")
+    async def duplicate_campaign(
+        campaign_id: str, user: dict = Depends(require_role("franchisee")),
+    ):
+        fr = await _check_access(db, user)
+        src = await db.marketing_campaigns.find_one(
+            {"id": campaign_id, "franchisee_id": fr["id"]}, {"_id": 0},
+        )
+        if not src:
+            raise HTTPException(404, detail="Campaign not found")
+        new_id = str(uuid.uuid4())
+        now = _now_iso()
+        base_title = (src.get("title") or "").strip() or "Untitled"
+        new_doc = {
+            "id": new_id,
+            "franchisee_id": fr["id"],
+            "status": "draft",
+            "is_template": False,
+            "title": f"Copy of {base_title}",
+            "panels": src.get("panels") or [],
+            "intro_html": src.get("intro_html") or "",
+            "background_color": src.get("background_color") or "",
+            "intro": src.get("intro") or "",
+            "image_url": src.get("image_url") or "",
+            "image_key": src.get("image_key") or "",
+            "link_url": src.get("link_url") or "",
+            "link_label": src.get("link_label") or "Find out more",
+            "include_bookings_link": bool(src.get("include_bookings_link")),
+            "footer_show_phone": bool(src.get("footer_show_phone")),
+            "footer_show_email": bool(src.get("footer_show_email")),
+            "footer_show_facebook": bool(src.get("footer_show_facebook")),
+            "footer_show_instagram": bool(src.get("footer_show_instagram")),
+            "footer_show_custom": bool(src.get("footer_show_custom")),
+            "franchisee_name": src.get("franchisee_name") or "",
+            "franchisee_organisation": src.get("franchisee_organisation") or "",
+            "created_at": now,
+            "updated_at": now,
+            "created_by": user.get("email"),
+            "recipients": [],
+            "delivery": {"status": "draft", "succeeded": 0, "failed": 0, "errors": []},
+        }
+        await db.marketing_campaigns.insert_one(new_doc)
+        return {"ok": True, "id": new_id, "status": "draft"}
+
+    # ---- save an existing campaign as a reusable template. Idempotent:
+    # if a template with this title already exists for the franchisee we
+    # update it in place; otherwise insert a new doc.
+    @api.post("/portal/marketing/campaigns/{campaign_id}/save-as-template")
+    async def save_as_template(
+        campaign_id: str,
+        body: dict | None = None,
+        user: dict = Depends(require_role("franchisee")),
+    ):
+        body = body or {}
+        fr = await _check_access(db, user)
+        src = await db.marketing_campaigns.find_one(
+            {"id": campaign_id, "franchisee_id": fr["id"]}, {"_id": 0},
+        )
+        if not src:
+            raise HTTPException(404, detail="Campaign not found")
+        template_name = (body.get("template_name") or src.get("title") or "Untitled template").strip()
+        template_id = str(uuid.uuid4())
+        now = _now_iso()
+        template_doc = {
+            "id": template_id,
+            "franchisee_id": fr["id"],
+            "status": "template",
+            "is_template": True,
+            "template_name": template_name,
+            "title": template_name,
+            "panels": src.get("panels") or [],
+            "intro_html": src.get("intro_html") or "",
+            "background_color": src.get("background_color") or "",
+            "include_bookings_link": bool(src.get("include_bookings_link")),
+            "footer_show_phone": bool(src.get("footer_show_phone")),
+            "footer_show_email": bool(src.get("footer_show_email")),
+            "footer_show_facebook": bool(src.get("footer_show_facebook")),
+            "footer_show_instagram": bool(src.get("footer_show_instagram")),
+            "footer_show_custom": bool(src.get("footer_show_custom")),
+            "created_at": now,
+            "updated_at": now,
+            "created_by": user.get("email"),
+        }
+        await db.marketing_campaigns.insert_one(template_doc)
+        return {"ok": True, "id": template_id}
+
+    # ---- delete a template
+    @api.delete("/portal/marketing/templates/{template_id}")
+    async def delete_template(template_id: str, user: dict = Depends(require_role("franchisee"))):
+        fr = await _check_access(db, user)
+        r = await db.marketing_campaigns.delete_one(
+            {"id": template_id, "franchisee_id": fr["id"], "is_template": True},
+        )
+        if not r.deleted_count:
+            raise HTTPException(404, detail="Template not found")
+        return {"ok": True}
+
+    # ---- list templates (separate from the main campaigns list)
+    @api.get("/portal/marketing/templates")
+    async def list_templates(user: dict = Depends(require_role("franchisee"))):
+        fr = await _check_access(db, user)
+        items: list[dict] = []
+        async for doc in db.marketing_campaigns.find(
+            {"franchisee_id": fr["id"], "is_template": True}, {"_id": 0},
+        ).sort("created_at", -1).limit(50):
+            items.append(doc)
+        return {"items": items, "total": len(items)}
 
     # ---- ADMIN AUDIT LOG ---------------------------------------------
     # Surfaces every campaign across every franchisee — admin-only.

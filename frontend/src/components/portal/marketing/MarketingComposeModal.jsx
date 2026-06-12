@@ -55,6 +55,8 @@ export default function MarketingComposeModal({ open, access, draft, preselectCl
   const [footerShowPhone, setFooterShowPhone] = useState(false);
   const [footerShowEmail, setFooterShowEmail] = useState(true);
   const [footerShowFacebook, setFooterShowFacebook] = useState(false);
+  const [footerShowInstagram, setFooterShowInstagram] = useState(false);
+  const [footerShowCustom, setFooterShowCustom] = useState(false);
 
   const [recipients, setRecipients] = useState([]);
   const [recipientSearch, setRecipientSearch] = useState("");
@@ -104,6 +106,8 @@ export default function MarketingComposeModal({ open, access, draft, preselectCl
       setFooterShowPhone(!!draft.footer_show_phone);
       setFooterShowEmail(draft.footer_show_email !== false);
       setFooterShowFacebook(!!draft.footer_show_facebook);
+      setFooterShowInstagram(!!draft.footer_show_instagram);
+      setFooterShowCustom(!!draft.footer_show_custom);
     } else {
       setDraftId(null);
       setTitle("");
@@ -111,9 +115,25 @@ export default function MarketingComposeModal({ open, access, draft, preselectCl
       setBackgroundColor(DEFAULT_BG);
       setPanels([emptyPanel()]);
       setIncludeBookings(false);
-      setFooterShowPhone(false);
-      setFooterShowEmail(true);
-      setFooterShowFacebook(false);
+      // Pre-tick footer toggles from the franchisee's most recently
+      // sent campaign so they don't keep re-ticking the same boxes.
+      // Falls back to historical defaults (Email only) for first-time
+      // senders. Boxes only stay ticked if the matching URL/field is
+      // actually configured — handled by the JSX's checked condition.
+      const last = access?.last_footer_selection || null;
+      if (last) {
+        setFooterShowPhone(!!last.phone);
+        setFooterShowEmail(last.email !== false);
+        setFooterShowFacebook(!!last.facebook);
+        setFooterShowInstagram(!!last.instagram);
+        setFooterShowCustom(!!last.custom);
+      } else {
+        setFooterShowPhone(false);
+        setFooterShowEmail(true);
+        setFooterShowFacebook(false);
+        setFooterShowInstagram(false);
+        setFooterShowCustom(false);
+      }
     }
     setRecipientSearch(""); setSelectedKeys(new Set());
     setPreviewHtml(""); setError(""); setInfo("");
@@ -156,13 +176,15 @@ export default function MarketingComposeModal({ open, access, draft, preselectCl
           footer_show_phone: footerShowPhone,
           footer_show_email: footerShowEmail,
           footer_show_facebook: footerShowFacebook,
+          footer_show_instagram: footerShowInstagram,
+          footer_show_custom: footerShowCustom,
         });
         setPreviewHtml(data.html || "");
       } catch { /* swallow — preview is best-effort */ }
     }, 300);
     return () => clearTimeout(t);
   }, [open, title, panels, introHtml, backgroundColor, includeBookings, access?.bookings_enabled,
-      footerShowPhone, footerShowEmail, footerShowFacebook]);
+      footerShowPhone, footerShowEmail, footerShowFacebook, footerShowInstagram, footerShowCustom]);
 
   const filteredRecipients = useMemo(() => {
     const needle = recipientSearch.trim().toLowerCase();
@@ -252,6 +274,8 @@ export default function MarketingComposeModal({ open, access, draft, preselectCl
     footer_show_phone: footerShowPhone,
     footer_show_email: footerShowEmail,
     footer_show_facebook: footerShowFacebook,
+    footer_show_instagram: footerShowInstagram,
+    footer_show_custom: footerShowCustom,
   });
   const sendBody = () => ({
     ...baseBody(),
@@ -300,7 +324,7 @@ export default function MarketingComposeModal({ open, access, draft, preselectCl
     }
     onClose?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, introHtml, backgroundColor, panels, sending, draftId, includeBookings, footerShowPhone, footerShowEmail, footerShowFacebook]);
+  }, [title, introHtml, backgroundColor, panels, sending, draftId, includeBookings, footerShowPhone, footerShowEmail, footerShowFacebook, footerShowInstagram, footerShowCustom]);
 
   const send = async () => {
     if (selectedRecipients.length === 0) {
@@ -518,6 +542,32 @@ export default function MarketingComposeModal({ open, access, draft, preselectCl
                     />
                     Facebook page — {access?.facebook_url
                       ? <span className="truncate max-w-[260px] inline-block align-bottom" title={access.facebook_url}>{access.facebook_url}</span>
+                      : <em className="text-stone-400">add a link in marketing settings</em>}
+                  </label>
+                  <label className={`flex items-center gap-2 text-sm ${access?.instagram_url ? "text-stone-800 cursor-pointer" : "text-stone-400 cursor-not-allowed"}`}>
+                    <input
+                      type="checkbox"
+                      checked={footerShowInstagram && !!access?.instagram_url}
+                      disabled={!access?.instagram_url}
+                      onChange={(e) => setFooterShowInstagram(e.target.checked)}
+                      data-testid="footer-show-instagram"
+                      className="w-4 h-4 rounded border-stone-300 text-stone-900"
+                    />
+                    Instagram — {access?.instagram_url
+                      ? <span className="truncate max-w-[260px] inline-block align-bottom" title={access.instagram_url}>{access.instagram_url}</span>
+                      : <em className="text-stone-400">add a link in marketing settings</em>}
+                  </label>
+                  <label className={`flex items-center gap-2 text-sm ${access?.custom_link_url ? "text-stone-800 cursor-pointer" : "text-stone-400 cursor-not-allowed"}`}>
+                    <input
+                      type="checkbox"
+                      checked={footerShowCustom && !!access?.custom_link_url}
+                      disabled={!access?.custom_link_url}
+                      onChange={(e) => setFooterShowCustom(e.target.checked)}
+                      data-testid="footer-show-custom"
+                      className="w-4 h-4 rounded border-stone-300 text-stone-900"
+                    />
+                    {access?.custom_link_label || "Custom link"} — {access?.custom_link_url
+                      ? <span className="truncate max-w-[260px] inline-block align-bottom" title={access.custom_link_url}>{access.custom_link_url}</span>
                       : <em className="text-stone-400">add a link in marketing settings</em>}
                   </label>
                 </div>
