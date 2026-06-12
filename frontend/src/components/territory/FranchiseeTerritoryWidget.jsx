@@ -183,11 +183,16 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
   const plusOn = !!plusAccess?.allowed;
 
   // Set of "source:home_id" keys for quick lookup when drawing markers
-  // and rendering rows. Custom clients (no home_id) are tracked separately.
+  // and rendering rows. Only TRUE clients (lead_status === "regular_client")
+  // count — prospects in earlier pipeline stages stay un-starred so the
+  // gold ★ on the map + the list strictly denotes a converted client.
+  // Custom clients (no home_id) are tracked separately by the row UI.
   const clientHomeKeys = useMemo(() => {
     const s = new Set();
     myClients.forEach((c) => {
-      if (c.source !== "custom" && c.home_id) s.add(`${c.source}:${c.home_id}`);
+      if (c.source !== "custom" && c.home_id && c.lead_status === "regular_client") {
+        s.add(`${c.source}:${c.home_id}`);
+      }
     });
     return s;
   }, [myClients]);
@@ -232,8 +237,13 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
     });
   };
 
+  // Custom clients shown as ★ markers on the map. Mirrors the
+  // ``clientHomeKeys`` rule: only TRUE clients (lead_status ===
+  // "regular_client") get the gold star treatment — prospects in
+  // earlier pipeline stages live in the Client Pool list but stay
+  // off the map until the franchisee marks them as "Client".
   const customClients = useMemo(
-    () => myClients.filter((c) => c.source === "custom"),
+    () => myClients.filter((c) => c.source === "custom" && c.lead_status === "regular_client"),
     [myClients],
   );
 
@@ -279,6 +289,19 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
     () => providers.reduce((a, p) => a + p.count, 0),
     [providers],
   );
+
+  // Set of "source:home_id" keys for ALL franchisee-tracked entries
+  // (clients + prospects). Used by the Territory Pool list to hide the
+  // "Add to pool" button on rows that already have a tracked record,
+  // avoiding accidental duplicates. Distinct from ``clientHomeKeys``
+  // above, which is the strict "is a regular client" set.
+  const trackedHomeKeys = useMemo(() => {
+    const s = new Set();
+    myClients.forEach((c) => {
+      if (c.source !== "custom" && c.home_id) s.add(`${c.source}:${c.home_id}`);
+    });
+    return s;
+  }, [myClients]);
 
   // Map of "${source}:${home_id}" → franchisee_clients doc for marked
   // regulated homes — lets a marker click jump straight to the edit
@@ -506,6 +529,7 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
               onZoomHome={(h) => setFlyTo({ lat: h.latitude, lng: h.longitude, _t: Date.now() })}
               plus={plusOn}
               clientHomeKeys={clientHomeKeys}
+              trackedHomeKeys={trackedHomeKeys}
               customClients={[]}
               onMarkHomeClient={handleMarkHomeClient}
               onUnmarkHomeClient={handleUnmarkHomeClient}

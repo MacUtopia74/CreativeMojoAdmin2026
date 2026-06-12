@@ -127,10 +127,10 @@ export default function MyClientsPanel({
           </span>
           <div className="min-w-0 flex-1">
             <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-900/70 truncate">
-              My Clients
+              Client Pool
             </div>
             <div className="text-sm text-stone-900 mt-0.5 truncate">
-              <strong>{clients.length}</strong> client{clients.length === 1 ? "" : "s"}
+              <strong>{clients.length}</strong> {clients.length === 1 ? "entry" : "entries"}
               <span className="text-stone-900/60"> · click any row to view details</span>
             </div>
           </div>
@@ -252,6 +252,7 @@ export default function MyClientsPanel({
               {pageRows.map((c) => {
                 const meta = getLeadStatusMeta(c._status);
                 const rowBg = meta.tone.rowBg;
+                const isClient = c._status === "regular_client";
                 return (
                 <div
                   key={c.id}
@@ -263,9 +264,23 @@ export default function MyClientsPanel({
                   style={rowBg && rowBg !== "transparent" ? { backgroundColor: rowBg } : undefined}
                   data-testid={`my-clients-row-${c.id}`}
                 >
-                  <span className="shrink-0 w-7 h-7 rounded-full bg-[#dedd0a] text-stone-950 border border-stone-950 flex items-center justify-center">
-                    <Star className="w-3.5 h-3.5 fill-current" />
-                  </span>
+                  {isClient ? (
+                    <span
+                      className="shrink-0 w-7 h-7 rounded-full bg-[#dedd0a] text-stone-950 border border-stone-950 flex items-center justify-center"
+                      title="Client"
+                      data-testid={`my-clients-star-${c.id}`}
+                    >
+                      <Star className="w-3.5 h-3.5 fill-current" />
+                    </span>
+                  ) : (
+                    <span
+                      className="shrink-0 w-7 h-7 rounded-full bg-white border border-stone-300 flex items-center justify-center"
+                      title={`Prospect — ${meta.label || "Not Contacted"}`}
+                      data-testid={`my-clients-dot-${c.id}`}
+                    >
+                      <span className={`w-3 h-3 rounded-full border border-stone-400 ${meta.tone.dot}`}></span>
+                    </span>
+                  )}
                   {expanded ? (
                     // ---- Expanded (wide) layout: spread across the row ----
                     <>

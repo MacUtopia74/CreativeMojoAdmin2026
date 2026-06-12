@@ -14,7 +14,7 @@ function formatDateGB(iso) {
   catch { return iso; }
 }
 
-function HomeRow({ home, idx, isOpen, onToggle, onOpenDetail, onZoom, isMyClient, onMarkClient, onUnmarkClient, plus, lead, onSetLeadStatus, dimmed }) {
+function HomeRow({ home, idx, isOpen, onToggle, onOpenDetail, onZoom, isMyClient, isTracked, onMarkClient, onUnmarkClient, plus, lead, onSetLeadStatus, dimmed }) {
   const address = home.fullAddress
     || [home.postalAddressLine1, home.postalAddressLine2, home.postalAddressTownCity, home.postalAddressCounty, home.postalCode].filter(Boolean).join(", ");
   const services = (home.gacServiceTypes || []).map((s) => s.name).filter(Boolean).join(" · ");
@@ -138,13 +138,17 @@ function HomeRow({ home, idx, isOpen, onToggle, onOpenDetail, onZoom, isMyClient
             {/* Territory+ — Mark this regulated home as "My Client".
                 Only rendered when the franchisee has Territory+ enabled
                 (the parent gates ``plus`` accordingly). */}
-            {plus && !isMyClient && onMarkClient && (
+            {/* "Add to pool" — quick-add a CQC home as a tracked prospect.
+                Hidden once the home is already tracked (prospect OR client)
+                to avoid duplicate entries. Open the row's modal to change
+                status / promote a prospect to "Client".                  */}
+            {plus && !isTracked && onMarkClient && (
               <button
                 onClick={(e) => { e.stopPropagation(); onMarkClient(home); }}
                 data-testid={`home-mark-client-${idx + 1}`}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-[#dddd16] hover:bg-stone-800 rounded-md"
               >
-                <Star className="w-3 h-3" /> Mark as my client
+                <Star className="w-3 h-3" /> Add to pool
               </button>
             )}
             {plus && isMyClient && onUnmarkClient && (
@@ -322,7 +326,11 @@ export default function TerritoryHomesList({
   plus = false,             // enables the My Territory+ UI (Mark-as-client,
                             //   Add Client, provider buttons, etc.)
   clientHomeKeys = null,    // Set of "${source}:${home_id}" — which regulated
-                            //   homes the franchisee has flagged as Mine
+                            //   homes the franchisee has flagged as a true
+                            //   Client (lead_status === "regular_client")
+  trackedHomeKeys = null,   // Set — ALL franchisee-tracked entries
+                            //   (clients + prospects). Drives whether the
+                            //   "Add to pool" button is offered on a row.
   customClients = [],       // custom client docs (source: "custom")
   onMarkHomeClient = null,  // (home) — fire when "Mark as my client" tapped
   onUnmarkHomeClient = null,// (home) — fire when "Unmark" tapped
@@ -397,7 +405,7 @@ export default function TerritoryHomesList({
           </span>
           <div className="min-w-0 flex-1">
             <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-950/70 truncate">
-              {plus ? "Homes in My Territory · From CQC Database" : "Homes in your territory"}
+              {plus ? "Territory Pool" : "Homes in your territory"}
             </div>
             <div className="text-sm text-stone-950 mt-0.5 truncate">
               <strong>{filtered.length}</strong>
@@ -423,6 +431,10 @@ export default function TerritoryHomesList({
             clientHomeKeys.has(`cqc:${homeKey}`) ||
             clientHomeKeys.has(`scotland:${homeKey}`)
           ));
+          const isTracked = !!(trackedHomeKeys && (
+            trackedHomeKeys.has(`cqc:${homeKey}`) ||
+            trackedHomeKeys.has(`scotland:${homeKey}`)
+          ));
           const leadKey = `cqc:${homeKey}`;
           const altKey = `scotland:${homeKey}`;
           const lead = leadsByKey ? (leadsByKey.get(leadKey) || leadsByKey.get(altKey) || null) : null;
@@ -433,6 +445,7 @@ export default function TerritoryHomesList({
               onOpenDetail={onOpenDetail}
               onZoom={onZoomHome}
               isMyClient={isMine}
+              isTracked={isTracked}
               onMarkClient={onMarkHomeClient}
               onUnmarkClient={onUnmarkHomeClient}
               plus={plus}

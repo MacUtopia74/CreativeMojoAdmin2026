@@ -1,6 +1,28 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## Client Pool / Territory Pool rename + ★ reserved for true Clients (Feb 12 2026)
+
+User-requested CRM tightening — make the gold ★ semantically mean "Client" and rename the two list panels to "Client Pool" + "Territory Pool".
+
+**Renames**
+- "Regular Client" → **"Client"** in the Lead Status dropdown (value remains `regular_client`).
+- "MY CLIENTS" panel header → **"CLIENT POOL"** (subtitle reads "N entries · click any row…").
+- "HOMES IN MY TERRITORY · FROM CQC DATABASE" → **"TERRITORY POOL"** (kept the bed-count + CQC seeding behaviour underneath).
+- "Mark as my client" quick-action button on Territory Pool rows → **"Add to pool"** (semantically correct — adds the home as a prospect, not as a client).
+
+**Gold ★ now strictly means "Client"** (lead_status === "regular_client")
+- `clientHomeKeys` memo in `FranchiseeTerritoryWidget` filters by `lead_status === "regular_client"` so map ★ markers + the "isMyClient" row highlight + the "My Clients Only" map filter all match the strict interpretation.
+- `customClients` (renders ★ on map) likewise filtered to `regular_client` only — custom prospects stop showing as ★ on the map until promoted.
+- `MyClientsPanel` rows: ★ shown only for `regular_client` rows; prospects show a coloured dot inside a neutral round badge instead (with a tooltip "Prospect — {status}").
+- New `trackedHomeKeys` memo (separate from `clientHomeKeys`) used by `TerritoryHomesList`'s `isTracked` prop to hide the "Add to pool" button when the home already has a tracked franchisee_clients doc — prevents duplicates.
+
+**Flow** (post-change)
+1. Franchisee clicks a CQC row → modal opens pre-seeded → save → entry lands in Client Pool as a prospect (lead_status defaults to "Not Contacted" colour-coded).
+2. Franchisee works the pipeline: Contact Attempted → Contacted → Interested → (optional Follow Up Required) → finally **Client**.
+3. Only at the "Client" status does the row's ★ light up AND the map marker turn gold AND the "My Clients Only" filter include it.
+
+
 ## Lead Status palette refresh + My Clients list as at-a-glance pipeline (Feb 12 2026)
 
 User-requested CRM upgrades.

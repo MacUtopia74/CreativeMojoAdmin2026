@@ -15,7 +15,7 @@ export const LEAD_STATUS_OPTIONS = [
   { value: "follow_up_required", label: "Follow Up Required", tone: "yellow" },
   { value: "not_interested",     label: "Not Interested",     tone: "red"    },
   { value: "do_not_contact",     label: "Do Not Contact",     tone: "red"    },
-  { value: "regular_client",     label: "Regular Client",     tone: "green"  },
+  { value: "regular_client",     label: "Client",             tone: "green"  },
 ];
 
 // Tailwind tokens per tone — kept in one place so the chip + the
