@@ -7,9 +7,9 @@
 // lozenge while unread, fire POST /portal/announcements/{id}/read
 // when the user expands the row, and tell the shell to re-fetch the
 // sidebar badge so it clears instantly (no 60s poll wait).
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
-import { Megaphone, Calendar, Loader2, AlertCircle, ChevronDown, Image as ImageIcon } from "lucide-react";
+import { Megaphone, Calendar, Loader2, AlertCircle, ChevronDown, Image as ImageIcon, Search, X } from "lucide-react";
 import api from "@/lib/api";
 import FileThumbnail from "@/components/files/FileThumbnail";
 
@@ -64,6 +64,23 @@ export default function PortalUpdatesPage() {
   // the NEW lozenge gone after re-collapse, and prevents redundant
   // network chatter when the user fan-toggles a row.
   const [readNow, setReadNow] = useState(() => new Set());
+  // Free-text filter — matches title + intro + panel titles + panel
+  // blurbs. As the announcement list grows (the feed will pile up over
+  // years), this keeps the page usable without making people scroll.
+  const [query, setQuery] = useState("");
+
+  const filteredItems = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((it) => {
+      const haystack = [
+        it.title || "",
+        it.intro || "",
+        ...(it.panels || []).flatMap((p) => [p.title || "", p.blurb || ""]),
+      ].join("\n").toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [items, query]);
 
   useEffect(() => {
     (async () => {
@@ -112,8 +129,40 @@ export default function PortalUpdatesPage() {
           <Megaphone className="w-3 h-3" /> Updates from Creative Mojo
         </div>
         <h1 className="font-display text-4xl font-black text-stone-950 mt-1">HQ Updates</h1>
-        <p className="text-sm text-stone-600 mt-1">All the announcements we've sent you. Tap one to re-open the linked file or folder.</p>
+        <p className="text-sm text-stone-600 mt-1">All the announcements we&apos;ve sent you. Tap one to re-open the linked file or folder.</p>
       </div>
+
+      {/* Search — filters by title + body + panel titles/blurbs.
+          Hidden when there's nothing yet (so an empty state still
+          reads as "no updates yet" not "no matches"). */}
+      {items.length > 0 && (
+        <div className="mb-4 flex items-center gap-2 bg-white border border-stone-200 rounded-xl px-3 py-2 focus-within:border-stone-400 focus-within:ring-2 focus-within:ring-stone-100">
+          <Search className="w-4 h-4 text-stone-400 shrink-0" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search HQ updates by title or content…"
+            data-testid="portal-updates-search"
+            className="flex-1 min-w-0 bg-transparent text-sm outline-none placeholder:text-stone-400"
+          />
+          {query && (
+            <>
+              <span className="text-[10px] uppercase tracking-wider font-bold text-stone-500 tabular-nums shrink-0" data-testid="portal-updates-search-count">
+                {filteredItems.length} / {items.length}
+              </span>
+              <button
+                type="button"
+                onClick={() => setQuery("")}
+                aria-label="Clear search"
+                data-testid="portal-updates-search-clear"
+                className="text-stone-400 hover:text-stone-900 shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       {error && (
         <div className="px-3 py-2 rounded-lg bg-rose-50 border border-rose-200 text-sm text-rose-900 flex items-center gap-2 mb-4">
@@ -125,11 +174,16 @@ export default function PortalUpdatesPage() {
         <div className="text-stone-500 text-sm flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Loading updates…</div>
       ) : items.length === 0 ? (
         <div className="px-6 py-16 border-2 border-dashed border-stone-200 rounded-2xl text-center text-stone-500 text-sm">
-          No updates yet. When we share new files or projects, they'll appear here.
+          No updates yet. When we share new files or projects, they&apos;ll appear here.
+        </div>
+      ) : filteredItems.length === 0 ? (
+        <div className="px-6 py-12 border-2 border-dashed border-stone-200 rounded-2xl text-center text-stone-500 text-sm">
+          No updates match &ldquo;{query}&rdquo;.{" "}
+          <button onClick={() => setQuery("")} className="font-bold underline text-stone-700 hover:text-stone-950">Clear search</button>
         </div>
       ) : (
         <div className="space-y-3">
-          {items.map((it) => {
+          {filteredItems.map((it) => {
             const isOpen = openId === it.id;
             const isUnread = (it.is_unread === true) && !readNow.has(it.id);
             return (
