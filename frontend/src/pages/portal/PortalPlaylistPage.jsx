@@ -2,9 +2,9 @@
 //
 // Embedded YouTube playlist iframe + sidebar list of videos pulled from
 // our cached metadata. "Watch on YouTube" CTA links externally.
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, Loader2, AlertCircle, PlayCircle, Clock } from "lucide-react";
+import { ArrowLeft, Loader2, AlertCircle, PlayCircle, Clock, Sparkles } from "lucide-react";
 import api from "@/lib/api";
 import { bustThumb } from "@/lib/youtubeThumb";
 
@@ -30,11 +30,30 @@ export default function PortalPlaylistPage() {
     api.get(`/portal/training/${playlistId}`)
       .then(({ data }) => {
         setPlaylist(data);
-        if (data.videos?.length) setActiveVideoId(data.videos[0].youtube_id);
+        // Default to the newest video (first in our date-sorted list) so a
+        // freshly-uploaded meeting plays straight away when a franchisee
+        // opens the playlist.
+        const sortedFirst = [...(data.videos || [])].sort((a, b) => {
+          const ta = a.published_at ? new Date(a.published_at).getTime() : 0;
+          const tb = b.published_at ? new Date(b.published_at).getTime() : 0;
+          return tb - ta;
+        })[0];
+        if (sortedFirst) setActiveVideoId(sortedFirst.youtube_id);
       })
       .catch((e) => setError(e?.response?.data?.detail || "Couldn't load this playlist."))
       .finally(() => setLoading(false));
   }, [playlistId]);
+
+  // Date-sorted video list (newest first). Falls back to the original
+  // playlist order for any videos missing ``published_at``.
+  const sortedVideos = useMemo(() => {
+    return [...(playlist?.videos || [])].sort((a, b) => {
+      const ta = a.published_at ? new Date(a.published_at).getTime() : 0;
+      const tb = b.published_at ? new Date(b.published_at).getTime() : 0;
+      return tb - ta;
+    });
+  }, [playlist]);
+  const latestVideoId = sortedVideos[0]?.youtube_id;
 
   if (loading) {
     return <div className="py-16 text-center text-stone-500"><Loader2 className="w-6 h-6 animate-spin inline" /></div>;
@@ -99,12 +118,13 @@ export default function PortalPlaylistPage() {
         {/* Video list */}
         <aside className="bg-white border border-stone-200 rounded-2xl overflow-hidden">
           <div className="px-4 py-3 border-b border-stone-200">
-            <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Up Next</div>
-            <div className="text-sm font-bold text-stone-950">{playlist.videos?.length || 0} video{(playlist.videos?.length || 0) === 1 ? "" : "s"}</div>
+            <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Up Next · newest first</div>
+            <div className="text-sm font-bold text-stone-950">{sortedVideos.length} video{sortedVideos.length === 1 ? "" : "s"}</div>
           </div>
           <div className="max-h-[60vh] lg:max-h-[480px] overflow-y-auto divide-y divide-stone-100">
-            {(playlist.videos || []).map((v, i) => {
+            {sortedVideos.map((v, i) => {
               const active = activeVideoId === v.youtube_id;
+              const isLatest = v.youtube_id === latestVideoId;
               return (
                 <button
                   key={v.youtube_id + i}
@@ -126,7 +146,18 @@ export default function PortalPlaylistPage() {
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className={`text-xs font-semibold line-clamp-2 ${active ? "text-stone-950" : "text-stone-800"}`}>{v.title}</div>
+                    <div className="flex items-start gap-1.5">
+                      <div className={`text-xs font-semibold line-clamp-2 flex-1 ${active ? "text-stone-950" : "text-stone-800"}`}>{v.title}</div>
+                      {isLatest && (
+                        <span
+                          data-testid="playlist-latest-badge"
+                          className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider rounded bg-[#dedd0a] text-stone-950"
+                          title="Most recently added"
+                        >
+                          <Sparkles className="w-2.5 h-2.5" /> Latest
+                        </span>
+                      )}
+                    </div>
                     <div className="text-[10px] text-stone-500 mt-0.5">#{i + 1}</div>
                   </div>
                 </button>
