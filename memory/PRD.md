@@ -1,6 +1,25 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## YouTube Sync hardened — fail-loud + health banner (15 Jun 2026)
+
+**User pain**: New videos uploaded to YouTube weren't appearing in the portal until manual re-authorisation. Sync log showed "SUCCESS" — but in API-key fallback mode (scanned 1 playlist, 2 videos vs the real 7/158). User wanted "just upload to YouTube and click Sync — it should work".
+
+**Root cause**: When the OAuth refresh token expired (Google's Testing-mode consent screens expire refresh tokens after ~7 days), `_get_access_token` returned `None` and the code silently fell back to API-key mode, which only sees Public playlists. Every degraded sync still recorded `status: "success"`.
+
+**Hardening** (`backend/youtube_routes.py` + `frontend/src/pages/AdminYouTubePage.jsx`):
+- `_get_access_token` / `_refresh_access_token` now return `(token, error_reason)` and persist `last_refresh_error` + `last_refresh_at` on the OAuth settings doc.
+- `_sync_all_playlists` and `/admin/youtube/playlists/{id}/refresh` now FAIL LOUD when OAuth is configured (refresh_token previously stored) but the refresh call failed — sync row written with `status: "failed"`, `auth_mode: "oauth_broken"`, and a clear "Authorisation expired — Re-authorise" message. No more silent API-key downgrade.
+- New `GET /admin/youtube/oauth/health` endpoint — actively probes by attempting a refresh and reports `{ connected, healthy, error, checked_at }`.
+- `GET /admin/youtube/oauth/status` now also surfaces `last_refresh_at` + `last_refresh_error`.
+- Admin UI: page load triggers the health probe; if broken → big red banner with one-click "Re-authorise now" + an inline tip about publishing the Google OAuth consent screen out of Testing mode.
+- Admin UI: sync log table gains a **Mode** column with coloured chip (`OAuth` green / `API-key` amber / `OAuth broken` red) — degraded syncs are now impossible to miss.
+- Channel Authorisation panel shows live health state + last refresh error.
+
+**Result**: User can now upload a video to YouTube, click "Sync from YouTube", and either it works cleanly OR they get an immediate, actionable error pointing to Re-authorise. No more "Success" cards lying about it.
+
+
+
 ## Bugfix: custom clients now render on map with status tint (Feb 12 2026)
 
 User reported 21 entries in the pool but only ~7 markers visible on the map, with most prospect statuses (Contacted / Do Not Contact / Contact Attempted) showing zero markers when their filter was selected.

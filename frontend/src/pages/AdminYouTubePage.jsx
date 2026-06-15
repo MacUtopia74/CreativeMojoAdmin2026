@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import {
   Youtube, RefreshCw, Loader2, AlertCircle, CheckCircle2, Clock,
   GraduationCap, Users, EyeOff, ExternalLink, ShieldCheck, ShieldOff, KeyRound,
+  ShieldAlert,
 } from "lucide-react";
 import api from "@/lib/api";
 import { bustThumb } from "@/lib/youtubeThumb";
@@ -36,10 +37,25 @@ function StatusPill({ status }) {
   );
 }
 
+function AuthModePill({ mode }) {
+  const map = {
+    oauth:        { cls: "bg-emerald-50 text-emerald-800 border-emerald-300", label: "OAuth" },
+    api_key:      { cls: "bg-amber-100 text-amber-900 border-amber-300",     label: "API-key" },
+    oauth_broken: { cls: "bg-red-100 text-red-800 border-red-300",           label: "OAuth broken" },
+  };
+  const v = map[mode] || { cls: "bg-stone-100 text-stone-600 border-stone-300", label: mode || "—" };
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border ${v.cls}`}>
+      {v.label}
+    </span>
+  );
+}
+
 export default function AdminYouTubePage() {
   const [items, setItems] = useState([]);
   const [logs, setLogs] = useState([]);
   const [oauth, setOauth] = useState(null);
+  const [health, setHealth] = useState(null); // { connected, healthy, error, checked_at }
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [authorising, setAuthorising] = useState(false);
@@ -56,6 +72,18 @@ export default function AdminYouTubePage() {
       setItems(pls.data.items || []);
       setLogs(syncLog.data.items || []);
       setOauth(oauthRes.data || null);
+      // Active connection probe — only when OAuth is actually connected;
+      // otherwise the "connect" CTA is the right call-to-action.
+      if (oauthRes.data?.connected) {
+        try {
+          const h = await api.get("/admin/youtube/oauth/health");
+          setHealth(h.data || null);
+        } catch {
+          setHealth({ connected: true, healthy: false, error: "Health check failed" });
+        }
+      } else {
+        setHealth(null);
+      }
     } catch (e) {
       setError(e?.response?.data?.detail || "Couldn't load playlists.");
     } finally { setLoading(false); }
@@ -76,13 +104,35 @@ export default function AdminYouTubePage() {
   }, []);
 
   const sync = async () => {
-    setSyncing(true); setError("");
+    setSyncing(true); setError(""); setFlash("");
     try {
-      await api.post("/admin/youtube/sync");
+      const r = await api.post("/admin/youtube/sync");
+      const result = r.data || {};
+      if (result.auth_mode === "oauth_broken" || result.status === "failed") {
+        setError(result.error || "Sync failed.");
+      } else if (result.auth_mode === "api_key" && oauth?.connected) {
+        // Edge case — shouldn't happen now that we fail-loud, but cover it.
+        setError("Sync ran in API-key fallback mode despite OAuth being configured. Re-authorise.");
+      } else {
+        setFlash(
+          `Synced ${result.playlists_scanned ?? 0} playlist(s) — ${result.videos_synced ?? 0} video(s).`
+        );
+      }
       await load();
     } catch (e) {
       setError(e?.response?.data?.detail || "Sync failed.");
     } finally { setSyncing(false); }
+  };
+
+  const recheckHealth = async () => {
+    try {
+      const h = await api.get("/admin/youtube/oauth/health");
+      setHealth(h.data || null);
+      if (h.data?.healthy) setFlash("YouTube authorisation is healthy.");
+      else setError(h.data?.error ? `Authorisation check failed: ${h.data.error}` : "Authorisation is broken — please re-authorise.");
+    } catch (e) {
+      setError(e?.response?.data?.detail || "Health check failed.");
+    }
   };
 
   const authorise = async () => {
@@ -163,6 +213,47 @@ export default function AdminYouTubePage() {
         </div>
       )}
 
+      {/* Big red banner — surfaces broken OAuth before the user clicks Sync */}
+      {oauth?.connected && health && health.healthy === false && (
+        <div
+          className="px-5 py-4 bg-red-50 border-2 border-red-300 rounded-2xl flex flex-col sm:flex-row sm:items-center gap-3"
+          data-testid="yt-oauth-broken-banner"
+        >
+          <ShieldAlert className="w-6 h-6 text-red-600 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="font-display text-base font-black text-red-900">
+              YouTube authorisation has expired
+            </div>
+            <div className="text-xs text-red-800 mt-0.5">
+              Syncs cannot pull Unlisted/Private playlists right now.{" "}
+              {health.error ? <span className="font-mono">[{health.error}]</span> : null}
+              <br />
+              <span className="text-red-700">
+                Tip: if this happens every ~7 days, your Google Cloud OAuth consent screen is in
+                <strong> Testing</strong> mode — publish it to <strong>In Production</strong> to
+                stop refresh tokens expiring.
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={recheckHealth}
+              data-testid="yt-recheck-health-btn"
+              className="px-3 py-2 text-xs font-bold uppercase tracking-wider bg-white hover:bg-red-100 text-red-800 border border-red-300 rounded-lg"
+            >
+              Re-check
+            </button>
+            <button
+              onClick={authorise}
+              data-testid="yt-banner-reauth-btn"
+              className="px-3 py-2 text-xs font-bold uppercase tracking-wider bg-red-600 hover:bg-red-700 text-white rounded-lg flex items-center gap-2"
+            >
+              <RefreshCw className="w-4 h-4" /> Re-authorise now
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* OAuth connection panel — enables sync of Unlisted + Private playlists */}
       <div className="bg-white border border-stone-200 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center gap-4" data-testid="yt-oauth-panel">
         <div className="shrink-0">
@@ -195,6 +286,35 @@ export default function AdminYouTubePage() {
               {oauth.connected_channel ? <> · channel <strong>{oauth.connected_channel}</strong></> : null}
               {oauth.connected_at ? <> · {fmtDate(oauth.connected_at)}</> : null}
               <div className="text-stone-500 mt-0.5">Syncs now include Public, Unlisted, <em>and</em> Private playlists owned by this channel.</div>
+              {oauth.last_refresh_error && (
+                <div className="mt-1 text-red-700">
+                  <span className="font-bold">Last refresh error:</span>{" "}
+                  <span className="font-mono">{oauth.last_refresh_error}</span>
+                  {oauth.last_refresh_at ? <> · {fmtDate(oauth.last_refresh_at)}</> : null}
+                </div>
+              )}
+              {health && (
+                <div className="mt-1">
+                  <span className="text-stone-500">Live health: </span>
+                  {health.healthy ? (
+                    <span className="inline-flex items-center gap-1 text-emerald-700 font-bold">
+                      <CheckCircle2 className="w-3 h-3" /> Healthy
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-red-700 font-bold">
+                      <ShieldAlert className="w-3 h-3" /> Broken
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={recheckHealth}
+                    className="ml-2 text-stone-500 hover:text-stone-800 underline"
+                    data-testid="yt-recheck-health-link"
+                  >
+                    re-check now
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="text-xs text-stone-600 mt-1">
@@ -315,6 +435,7 @@ export default function AdminYouTubePage() {
             <thead className="bg-stone-50 text-[10px] uppercase tracking-wider font-bold text-stone-600">
               <tr><th className="text-left px-4 py-2.5">When</th>
                   <th className="text-left px-4 py-2.5">Status</th>
+                  <th className="text-left px-4 py-2.5">Mode</th>
                   <th className="text-left px-4 py-2.5">Trigger</th>
                   <th className="text-right px-4 py-2.5">Scanned</th>
                   <th className="text-right px-4 py-2.5">Added</th>
@@ -327,6 +448,7 @@ export default function AdminYouTubePage() {
                 <tr key={l.id}>
                   <td className="px-4 py-2 text-stone-700">{fmtDate(l.started_at)}</td>
                   <td className="px-4 py-2"><StatusPill status={l.status} /></td>
+                  <td className="px-4 py-2"><AuthModePill mode={l.auth_mode} /></td>
                   <td className="px-4 py-2 text-stone-600 font-mono text-xs">{l.triggered_by}</td>
                   <td className="px-4 py-2 text-right tabular-nums">{l.playlists_scanned}</td>
                   <td className="px-4 py-2 text-right tabular-nums">{l.playlists_added}</td>

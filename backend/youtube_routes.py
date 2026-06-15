@@ -145,8 +145,13 @@ async def _load_oauth_doc(db) -> Optional[dict]:
     return doc
 
 
-async def _refresh_access_token(db, doc: dict) -> Optional[str]:
-    """Use the stored refresh_token to mint a fresh access_token. Persist it."""
+async def _refresh_access_token(db, doc: dict) -> tuple[Optional[str], Optional[str]]:
+    """Use the stored refresh_token to mint a fresh access_token. Persist it.
+
+    Returns ``(access_token, error_reason)``. On success ``error_reason`` is None.
+    On failure ``access_token`` is None and ``error_reason`` is a short string
+    suitable for surfacing to the admin UI.
+    """
     cid, sec = _oauth_creds_or_raise()
     async with httpx.AsyncClient(timeout=15.0) as http:
         r = await http.post("https://oauth2.googleapis.com/token", data={
@@ -156,36 +161,61 @@ async def _refresh_access_token(db, doc: dict) -> Optional[str]:
             "grant_type": "refresh_token",
         })
     if r.status_code != 200:
+        try:
+            body = r.json()
+            err = body.get("error") or "refresh_failed"
+            desc = body.get("error_description") or ""
+            reason = f"{err}{(': ' + desc) if desc else ''}"
+        except Exception:  # noqa: BLE001
+            reason = f"refresh_failed (HTTP {r.status_code})"
         logger.warning("[youtube-oauth] refresh failed: %s %s", r.status_code, r.text[:200])
-        return None
+        await db.settings.update_one({"_id": OAUTH_SETTINGS_ID}, {"$set": {
+            "last_refresh_error": reason,
+            "last_refresh_at": _now_iso(),
+        }})
+        return None, reason
     tok = r.json()
     access_token = tok.get("access_token")
     if not access_token:
-        return None
+        return None, "no_access_token_in_response"
     expires_in = int(tok.get("expires_in") or 3500)
     expiry = datetime.now(timezone.utc) + timedelta(seconds=expires_in - 60)
     await db.settings.update_one({"_id": OAUTH_SETTINGS_ID}, {"$set": {
         "access_token": access_token,
         "token_expiry": expiry.isoformat(),
         "refreshed_at": _now_iso(),
+        "last_refresh_at": _now_iso(),
+        "last_refresh_error": None,
     }})
-    return access_token
+    return access_token, None
 
 
-async def _get_access_token(db) -> Optional[str]:
-    """Return a valid access token, refreshing if needed. None when not connected."""
+async def _get_access_token(db) -> tuple[Optional[str], Optional[str]]:
+    """Return ``(access_token, error_reason)``.
+
+    - If OAuth is not configured at all → ``(None, None)`` (callers may fall
+      back to API-key mode).
+    - If OAuth IS configured but refresh failed → ``(None, reason)`` so
+      callers can surface the failure instead of silently degrading.
+    """
     doc = await _load_oauth_doc(db)
     if not doc:
-        return None
+        return None, None
     tok = doc.get("access_token")
     exp = doc.get("token_expiry")
     if tok and exp:
         try:
             if datetime.fromisoformat(exp) > datetime.now(timezone.utc):
-                return tok
+                return tok, None
         except Exception:
             pass
     return await _refresh_access_token(db, doc)
+
+
+async def _oauth_is_configured(db) -> bool:
+    """True when an OAuth refresh_token has previously been stored."""
+    doc = await _load_oauth_doc(db)
+    return bool(doc)
 
 
 # ---------------------------------------------------------------------
@@ -310,10 +340,40 @@ def _best_thumb(thumbs: dict) -> str:
 
 
 async def _sync_all_playlists(db, triggered_by: str) -> dict:
-    """Pull every playlist from the channel and upsert into our cache."""
+    """Pull every playlist from the channel and upsert into our cache.
+
+    Fail-loud rule: if OAuth is configured (refresh_token previously stored)
+    but the refresh failed, we DO NOT silently fall back to API-key mode.
+    That silent fallback is what previously caused new Unlisted/Private
+    videos to vanish from the portal for days without anyone noticing.
+    """
     log_id = str(uuid.uuid4())
     started = _now_iso()
-    access_token = await _get_access_token(db)
+    oauth_configured = await _oauth_is_configured(db)
+    access_token, refresh_error = await _get_access_token(db)
+    if oauth_configured and not access_token:
+        # OAuth was set up but token can't be refreshed — abort instead of
+        # silently degrading.
+        summary = {
+            "id": log_id,
+            "started_at": started,
+            "finished_at": _now_iso(),
+            "status": "failed",
+            "playlists_scanned": 0,
+            "playlists_added": 0,
+            "playlists_updated": 0,
+            "videos_synced": 0,
+            "error": (
+                "YouTube authorisation expired — sync aborted to avoid degrading "
+                f"to API-key mode (would miss Unlisted/Private playlists). Please "
+                f"click Re-authorise. Detail: {refresh_error or 'unknown_refresh_error'}"
+            )[:500],
+            "triggered_by": triggered_by,
+            "auth_mode": "oauth_broken",
+        }
+        await db.youtube_sync_log.insert_one(summary.copy())
+        return summary
+
     auth_mode = "oauth" if access_token else "api_key"
     summary = {
         "id": log_id,
@@ -414,7 +474,38 @@ def attach(api: APIRouter, db, require_role):
             "connected_email": (doc or {}).get("connected_email"),
             "connected_channel": (doc or {}).get("connected_channel"),
             "connected_at": (doc or {}).get("connected_at"),
+            "last_refresh_at": (doc or {}).get("last_refresh_at"),
+            "last_refresh_error": (doc or {}).get("last_refresh_error"),
             "redirect_uri": _oauth_redirect_uri(request),
+        }
+
+    @api.get("/admin/youtube/oauth/health")
+    async def oauth_health(user: dict = Depends(require_role("admin"))):
+        """Active connection probe — tries a refresh right now and reports.
+
+        Returned ``healthy`` is the single source of truth used by the
+        admin UI banner to decide whether a re-authorisation prompt is
+        needed.
+        """
+        doc = await _load_oauth_doc(db)
+        if not doc:
+            return {
+                "configured": bool(
+                    os.environ.get("YOUTUBE_OAUTH_CLIENT_ID")
+                    and os.environ.get("YOUTUBE_OAUTH_CLIENT_SECRET")
+                ),
+                "connected": False,
+                "healthy": False,
+                "error": None,
+                "checked_at": _now_iso(),
+            }
+        access_token, refresh_error = await _refresh_access_token(db, doc)
+        return {
+            "configured": True,
+            "connected": True,
+            "healthy": bool(access_token),
+            "error": refresh_error,
+            "checked_at": _now_iso(),
         }
 
     @api.get("/admin/youtube/oauth/auth-url")
@@ -584,7 +675,14 @@ def attach(api: APIRouter, db, require_role):
         )
         if not existing:
             raise HTTPException(404, "Playlist not found")
-        access_token = await _get_access_token(db)
+        oauth_configured = await _oauth_is_configured(db)
+        access_token, refresh_error = await _get_access_token(db)
+        if oauth_configured and not access_token:
+            raise HTTPException(
+                401,
+                f"YouTube authorisation expired — click Re-authorise. "
+                f"Detail: {refresh_error or 'unknown_refresh_error'}",
+            )
         async with httpx.AsyncClient() as client:
             videos = await _fetch_playlist_videos(
                 client, existing["youtube_id"], access_token=access_token,
