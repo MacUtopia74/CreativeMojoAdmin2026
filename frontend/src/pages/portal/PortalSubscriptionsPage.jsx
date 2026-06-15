@@ -246,7 +246,7 @@ export default function PortalSubscriptionsPage() {
     : 0;
 
   return (
-    <div className="space-y-8" data-testid="portal-subscriptions-page">
+    <div className="space-y-8 relative" data-testid="portal-subscriptions-page">
       <PortalPageHeading
         eyebrow="Account"
         icon={Sparkles}
@@ -254,23 +254,31 @@ export default function PortalSubscriptionsPage() {
         subtitle="Add optional bolt-ons to your monthly subscription — billed via your existing GoCardless mandate."
       />
 
+      {/* Promo roundel — pinned to the top-right of the whole page and
+          pulled upward so it visually overlaps the yellow divider under
+          the page heading, closing the dead space above the intro card.
+          On narrow screens it drops into the intro card below.       */}
+      <div className="hidden lg:block absolute top-0 right-0 -translate-y-10 z-20 pointer-events-none">
+        <div className="pointer-events-auto">
+          <PromoRoundel />
+        </div>
+      </div>
+
       {/* Intro */}
       <div className="bg-white border border-stone-200 rounded-2xl px-6 py-6 sm:px-8 sm:py-7">
         <h2 className="font-display text-2xl sm:text-3xl font-black text-stone-950 tracking-tight">
           Supercharge your franchise with bolt-ons
         </h2>
-        {/* Side-by-side intro: paragraph on the left, promo roundel on the right.
-            On narrow screens the roundel stacks below. */}
-        <div className="mt-3 flex flex-col lg:flex-row lg:items-center lg:gap-6">
-          <p className="text-stone-600 text-sm sm:text-base leading-relaxed flex-1">
-            Add any of the optional modules below to your monthly Creative Mojo subscription. Each bolt-on is just £9 a
-            month — pick any two for £16, any three for £22, or grab all four for £27. Billed via your existing
-            GoCardless mandate and appears as a separate line on your Xero invoice. Cancel any time, no minimum term.
-            All prices include VAT.
-          </p>
-          <div className="mt-4 lg:mt-0 lg:shrink-0 self-center lg:self-auto">
-            <PromoRoundel />
-          </div>
+        <p className="mt-3 text-stone-600 text-sm sm:text-base leading-relaxed lg:max-w-[68%]">
+          Add any of the optional modules below to your monthly Creative Mojo subscription. Each bolt-on is just £9 a
+          month — pick any two for £16, any three for £22, or grab all four for £27. Billed via your existing
+          GoCardless mandate and appears as a separate line on your Xero invoice. Cancel any time, no minimum term.
+          All prices include VAT.
+        </p>
+        {/* Narrow-screen fallback — roundel stacks under the paragraph
+            since the absolute-positioned version above is lg:block. */}
+        <div className="mt-5 flex justify-center lg:hidden">
+          <PromoRoundel />
         </div>
         {/* Bundle ladder — shows the franchisee the tier discounts at
             a glance. Wrapped in a heavier, Mojo-lime-tinted panel with

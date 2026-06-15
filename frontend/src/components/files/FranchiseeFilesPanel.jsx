@@ -115,6 +115,30 @@ export default function FranchiseeFilesPanel({ franchisee, canUpload = true, loc
     } finally { setDownloadingKey(null); }
   };
 
+  // Reveal a search-result file inside its containing folder. Works
+  // across tabs: if the file lives under the brand bucket we hop the
+  // tab, otherwise we stay on "own". Clears the search so the tree
+  // browser is what the user sees on return.
+  const openFolderFor = (file) => {
+    const parent = file?.parent_prefix
+      || (file?.key ? file.key.replace(/\/[^/]+$/, "/") : "");
+    if (!parent) return;
+    let nextTab = tab;
+    let root = rootPrefix;
+    if (parent.startsWith(BRAND_ROOT)) {
+      nextTab = "brand";
+      root = BRAND_ROOT;
+    } else if (ownRootPrefix && parent.startsWith(ownRootPrefix)) {
+      nextTab = "own";
+      root = ownRootPrefix;
+    }
+    const rel = root && parent.startsWith(root) ? parent.slice(root.length) : parent;
+    if (!lockedTab && nextTab !== tab) setTab(nextTab);
+    setSearch("");
+    setResults(null);
+    setPrefix(rel);
+  };
+
   const zipAll = () => {
     if (!fullPrefix) return;
     window.location.href = `${API_BASE}/files/folder-zip?prefix=${encodeURIComponent(fullPrefix)}`;
@@ -289,8 +313,8 @@ export default function FranchiseeFilesPanel({ franchisee, canUpload = true, loc
             <div className="px-4 py-10 text-center text-sm text-stone-500">No matches for “{search}”.</div>
           )}
           {results && results.count > 0 && (
-            viewMode === "grid" ? <ResultsGrid items={results.items} onPreview={setPreview} onDownload={download} downloadingKey={downloadingKey} />
-            : <ResultsList items={results.items} onPreview={setPreview} onDownload={download} downloadingKey={downloadingKey} />
+            viewMode === "grid" ? <ResultsGrid items={results.items} onPreview={setPreview} onDownload={download} onOpenFolder={openFolderFor} downloadingKey={downloadingKey} />
+            : <ResultsList items={results.items} onPreview={setPreview} onDownload={download} onOpenFolder={openFolderFor} downloadingKey={downloadingKey} />
           )}
         </div>
       )}
@@ -359,27 +383,27 @@ function TreeList({ tree, onOpenFolder, onPreview, onDownload, downloadingKey })
   );
 }
 
-function ResultsGrid({ items, onPreview, onDownload, downloadingKey }) {
+function ResultsGrid({ items, onPreview, onDownload, onOpenFolder, downloadingKey }) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 p-3">
       {items.map((it) => (
-        <FileTile key={it.key} file={it} onPreview={onPreview} onDownload={onDownload} downloadingKey={downloadingKey} showPath />
+        <FileTile key={it.key} file={it} onPreview={onPreview} onDownload={onDownload} onOpenFolder={onOpenFolder} downloadingKey={downloadingKey} showPath />
       ))}
     </div>
   );
 }
 
-function ResultsList({ items, onPreview, onDownload, downloadingKey }) {
+function ResultsList({ items, onPreview, onDownload, onOpenFolder, downloadingKey }) {
   return (
     <div className="divide-y divide-stone-100">
       {items.map((it) => (
-        <FileRow key={it.key} file={it} onPreview={onPreview} onDownload={onDownload} downloadingKey={downloadingKey} showPath />
+        <FileRow key={it.key} file={it} onPreview={onPreview} onDownload={onDownload} onOpenFolder={onOpenFolder} downloadingKey={downloadingKey} showPath />
       ))}
     </div>
   );
 }
 
-function FileTile({ file, onPreview, onDownload, downloadingKey, showPath = false }) {
+function FileTile({ file, onPreview, onDownload, onOpenFolder, downloadingKey, showPath = false }) {
   return (
     <div className="group flex flex-col items-stretch border border-stone-200 hover:border-stone-500 hover:shadow-md transition-all rounded-xl overflow-hidden bg-white" data-testid={`ff-file-tile-${file.key}`}>
       <button onClick={() => onPreview(file)} className="aspect-square overflow-hidden" data-testid={`ff-preview-${file.key}`}>
@@ -392,18 +416,30 @@ function FileTile({ file, onPreview, onDownload, downloadingKey, showPath = fals
         )}
         <div className="flex items-center justify-between mt-2 gap-1">
           <span className="text-[11px] text-stone-500 tabular-nums">{fmtBytes(file.size)}</span>
-          <button onClick={() => onDownload(file.key)} disabled={downloadingKey === file.key}
-            data-testid={`ff-dl-${file.key}`}
-            className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-md flex items-center gap-1 disabled:opacity-50">
-            {downloadingKey === file.key ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Download className="w-3 h-3" /> Save</>}
-          </button>
+          <div className="flex items-center gap-1">
+            {showPath && onOpenFolder && (
+              <button
+                onClick={() => onOpenFolder(file)}
+                title="Reveal this file in its folder"
+                data-testid={`ff-open-folder-${file.key}`}
+                className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-white border border-stone-300 hover:bg-stone-50 text-stone-800 rounded-md flex items-center gap-1"
+              >
+                <FolderOpen className="w-3 h-3" />
+              </button>
+            )}
+            <button onClick={() => onDownload(file.key)} disabled={downloadingKey === file.key}
+              data-testid={`ff-dl-${file.key}`}
+              className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-md flex items-center gap-1 disabled:opacity-50">
+              {downloadingKey === file.key ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Download className="w-3 h-3" /> Save</>}
+            </button>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-function FileRow({ file, onPreview, onDownload, downloadingKey, showPath = false }) {
+function FileRow({ file, onPreview, onDownload, onOpenFolder, downloadingKey, showPath = false }) {
   return (
     <div className="px-3 sm:px-4 py-3 flex items-center justify-between gap-3 hover:bg-stone-50" data-testid={`ff-file-row-${file.key}`}>
       <button onClick={() => onPreview(file)} className="flex items-center gap-3 min-w-0 flex-1 text-left touch-target" data-testid={`ff-preview-row-${file.key}`}>
@@ -418,8 +454,19 @@ function FileRow({ file, onPreview, onDownload, downloadingKey, showPath = false
           <div className="text-[11px] text-stone-500 tabular-nums sm:hidden mt-0.5">{fmtBytes(file.size)}</div>
         </div>
       </button>
-      <div className="flex items-center gap-3 shrink-0">
+      <div className="flex items-center gap-2 shrink-0">
         <span className="hidden sm:inline text-xs text-stone-500 tabular-nums">{fmtBytes(file.size)}</span>
+        {showPath && onOpenFolder && (
+          <button
+            onClick={() => onOpenFolder(file)}
+            title="Reveal this file in its folder"
+            data-testid={`ff-open-folder-row-${file.key}`}
+            aria-label="Open file folder"
+            className="touch-target px-3 text-[10px] font-bold uppercase tracking-wider bg-white border border-stone-300 hover:bg-stone-50 text-stone-800 rounded-md flex items-center gap-1"
+          >
+            <FolderOpen className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Open Folder</span>
+          </button>
+        )}
         <button onClick={() => onDownload(file.key)} disabled={downloadingKey === file.key}
           data-testid={`ff-dl-row-${file.key}`}
           aria-label={`Download ${file.name}`}

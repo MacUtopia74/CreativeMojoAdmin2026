@@ -844,6 +844,14 @@ export default function FilesPage() {
                         <div className="flex items-center gap-2">
                           <ScopeBadge scope={it.scope} />
                           <span className="text-xs text-stone-500 tabular-nums">{fmtBytes(it.size)}</span>
+                          <button
+                            onClick={() => { setPrefix(it.parent_prefix || ""); setSearch(""); setResults(null); }}
+                            title="Reveal this file in its folder"
+                            data-testid={`open-folder-${it.key}`}
+                            className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-white border border-stone-300 hover:bg-stone-50 text-stone-800 rounded-md flex items-center gap-1"
+                          >
+                            <FolderOpen className="w-3 h-3" /> Open Folder
+                          </button>
                           <button onClick={() => setShare(it)} title="Share link"
                             className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-white border border-stone-300 hover:bg-stone-50 text-stone-700 rounded-md flex items-center gap-1">
                             <Share2 className="w-3 h-3" />
