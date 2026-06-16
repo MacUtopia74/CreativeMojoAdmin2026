@@ -19,6 +19,7 @@
 //     other).
 import { useEffect, useMemo, useState, useCallback } from "react";
 import api from "@/lib/api";
+import FilePreviewModal from "@/components/files/FilePreviewModal";
 import {
   Loader2, Search, Link2, CheckCircle2, X, AlertCircle,
   RefreshCw, Sparkles, FileText, Box, FileImage, Film,
@@ -77,12 +78,13 @@ function ScorePill({ score }) {
 
 // Inline file finder used inside the Edit modal. Mirrors the Files
 // page search: type a few characters, see matching files with their
-// parent folder for context, click the eye to open a presigned
-// preview URL in a new tab, then "Approve" to link the product.
+// parent folder for context, click any row to preview the file
+// inline (PDF/image/video via FilePreviewModal), then "Approve" to
+// link the product.
 function WooFilePicker({ initialQuery, busy, onApprove }) {
   const [q, setQ] = useState(initialQuery || "");
   const [results, setResults] = useState([]);
-  const [previewKey, setPreviewKey] = useState(null);
+  const [previewFile, setPreviewFile] = useState(null);
 
   // Debounced search — same shape as the Files page so admins are
   // never wondering "is this the same search?". 250ms is brisk
@@ -92,24 +94,12 @@ function WooFilePicker({ initialQuery, busy, onApprove }) {
     if (trimmed.length < 2) { setResults([]); return; }
     let cancelled = false;
     const id = setTimeout(() => {
-      api.get("/files/search", { params: { q: trimmed, limit: 12 } })
+      api.get("/files/search", { params: { q: trimmed, limit: 20 } })
         .then(({ data }) => { if (!cancelled) setResults(data?.items || []); })
         .catch(() => { if (!cancelled) setResults([]); });
     }, 250);
     return () => { cancelled = true; clearTimeout(id); };
   }, [q]);
-
-  const openPreview = async (file) => {
-    setPreviewKey(file.key);
-    try {
-      const { data } = await api.get("/files/download", { params: { key: file.key } });
-      if (data?.url) window.open(data.url, "_blank", "noopener,noreferrer");
-    } catch {
-      /* opening failed — admin can still try Download from the Files page */
-    } finally {
-      setPreviewKey(null);
-    }
-  };
 
   return (
     <div className="space-y-3">
@@ -119,41 +109,49 @@ function WooFilePicker({ initialQuery, busy, onApprove }) {
           autoFocus
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search files by name…"
+          placeholder="Search files by name (e.g. 'Flying Scotsman')…"
           data-testid="pc-file-picker-search"
           className="w-full pl-9 pr-3 py-2 text-sm border border-stone-300 rounded-lg focus:outline-none focus:border-stone-900"
         />
       </div>
-      <div className="max-h-72 overflow-y-auto border border-stone-100 rounded-lg divide-y divide-stone-100" data-testid="pc-file-picker-results">
+      <div className="max-h-80 overflow-y-auto border border-stone-100 rounded-lg divide-y divide-stone-100" data-testid="pc-file-picker-results">
         {q.trim().length < 2 ? (
-          <div className="py-6 text-center text-xs text-stone-400">Type at least 2 characters to search the file vault.</div>
+          <div className="py-6 text-center text-xs text-stone-400">
+            Type a few words from the file name to search the vault.<br />
+            Tip: shorter is better &mdash; e.g. <em>&ldquo;Flying Scotsman&rdquo;</em> not the full product title.
+          </div>
         ) : !results.length ? (
           <div className="py-6 text-center text-xs text-stone-500">No files match &ldquo;{q}&rdquo;.</div>
         ) : (
           results.map((f) => (
-            <div key={f.key} data-testid={`pc-file-result-${f.key}`} className="px-3 py-2 flex items-center gap-2 hover:bg-stone-50">
-              <FileText className="w-4 h-4 text-stone-400 shrink-0" />
+            <div
+              key={f.key}
+              onClick={() => setPreviewFile(f)}
+              data-testid={`pc-file-result-${f.key}`}
+              title="Click to preview this file"
+              className="px-3 py-2 flex items-center gap-3 hover:bg-stone-50 cursor-pointer group"
+            >
+              <FileText className="w-5 h-5 text-stone-400 shrink-0" />
               <div className="flex-1 min-w-0">
-                <div className="text-xs font-semibold text-stone-900 truncate">{f.name}</div>
+                <div className="text-xs font-semibold text-stone-900 truncate group-hover:text-stone-950">{f.name}</div>
                 <div className="text-[10px] text-stone-500 truncate">{f.parent_prefix}</div>
                 {f.project_code && (
                   <div className="text-[10px] font-mono text-emerald-700 mt-0.5">↪ {f.project_code}</div>
                 )}
               </div>
               <button
-                onClick={() => openPreview(f)}
-                disabled={previewKey === f.key}
-                title="Open file in a new tab"
+                onClick={(e) => { e.stopPropagation(); setPreviewFile(f); }}
+                title="Preview file"
                 data-testid={`pc-file-preview-${f.key}`}
-                className="w-7 h-7 rounded-md border border-stone-300 hover:bg-stone-100 flex items-center justify-center text-stone-600 disabled:opacity-40"
+                className="w-7 h-7 rounded-md border border-stone-300 hover:bg-stone-100 flex items-center justify-center text-stone-600"
               >
-                {previewKey === f.key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
+                <Eye className="w-3.5 h-3.5" />
               </button>
               <button
-                onClick={() => onApprove(f)}
+                onClick={(e) => { e.stopPropagation(); onApprove(f); }}
                 disabled={busy}
                 data-testid={`pc-file-approve-${f.key}`}
-                className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-stone-950 hover:bg-stone-800 text-[#dedd0a] rounded-md flex items-center gap-1 disabled:opacity-40"
+                className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white rounded-md flex items-center gap-1 disabled:opacity-40"
               >
                 <CheckCircle2 className="w-3 h-3" /> Approve
               </button>
@@ -161,6 +159,9 @@ function WooFilePicker({ initialQuery, busy, onApprove }) {
           ))
         )}
       </div>
+      {previewFile && (
+        <FilePreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />
+      )}
     </div>
   );
 }
@@ -737,7 +738,19 @@ export default function ProjectCodesAdminPage() {
                   Step 1 — Find &amp; preview the file
                 </div>
                 <WooFilePicker
-                  initialQuery={stripHtml(editing.name).slice(0, 60)}
+                  initialQuery={(() => {
+                    // Seed with the first ~3 meaningful words of the
+                    // product name. Long full-titles like "12 Days of
+                    // Christmas Advent Colouring In A3 Booklet" yield
+                    // zero matches; the file is usually called e.g.
+                    // "12 Days of Christmas.pdf". 3 words is the
+                    // sweet spot — admin can refine immediately.
+                    const clean = stripHtml(editing.name || "")
+                      .replace(/\b(Project Kit|Project|Kit|Standard|Boxed|Set|Cards?|Booklet|A3|A4)\b/gi, " ")
+                      .replace(/\s+/g, " ")
+                      .trim();
+                    return clean.split(" ").slice(0, 3).join(" ");
+                  })()}
                   busy={busy}
                   onApprove={approveFileForProduct}
                 />
