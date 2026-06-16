@@ -407,6 +407,12 @@ export default function ProjectCodesAdminPage() {
     }
   };
 
+  // When the admin clicks the product thumbnail in the modal header
+  // we open the Woo storefront image at native size — purely visual
+  // confirmation that this is the right product before they Approve a
+  // file. Closed by clicking the backdrop or the X.
+  const [productImagePreview, setProductImagePreview] = useState(null);
+
   // One-click "Approve" inside the Woo edit modal: link a Woo product
   // to whichever R2 file the admin just previewed. The Project Code
   // is decided in this order so neither side ever drifts:
@@ -717,7 +723,15 @@ export default function ProjectCodesAdminPage() {
           <div className={`bg-white rounded-2xl shadow-2xl w-full ${editing.type === "woo" ? "max-w-2xl" : "max-w-md"} p-6 space-y-4`}>
             <div className="flex items-start gap-3">
               {editing.image && (
-                <img src={editing.image} alt="" className="w-14 h-14 rounded-lg object-cover bg-stone-100 shrink-0" />
+                <button
+                  type="button"
+                  onClick={() => setProductImagePreview(editing.image)}
+                  title="Click to view the storefront image at full size"
+                  data-testid="pc-product-thumb"
+                  className="shrink-0 rounded-lg overflow-hidden ring-1 ring-stone-200 hover:ring-stone-900 transition focus:outline-none"
+                >
+                  <img src={editing.image} alt="" className="w-14 h-14 object-cover bg-stone-100" />
+                </button>
               )}
               <div className="min-w-0">
                 <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">
@@ -795,6 +809,29 @@ export default function ProjectCodesAdminPage() {
               >Save</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {productImagePreview && (
+        <div
+          onClick={() => setProductImagePreview(null)}
+          className="fixed inset-0 z-[70] bg-stone-950/85 backdrop-blur-sm flex items-center justify-center p-4 sm:p-8"
+          data-testid="pc-product-image-lightbox"
+        >
+          <button
+            onClick={() => setProductImagePreview(null)}
+            aria-label="Close storefront image"
+            data-testid="pc-product-image-close"
+            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          <img
+            src={productImagePreview}
+            alt="Product storefront image"
+            onClick={(e) => e.stopPropagation()}
+            className="max-w-full max-h-full object-contain rounded-xl shadow-2xl"
+          />
         </div>
       )}
 
