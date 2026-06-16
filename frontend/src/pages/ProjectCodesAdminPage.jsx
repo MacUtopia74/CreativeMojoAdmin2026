@@ -22,8 +22,25 @@ import api from "@/lib/api";
 import {
   Loader2, Search, Link2, CheckCircle2, X, AlertCircle,
   RefreshCw, Sparkles, FileText, Box, FileImage, Film,
-  Layers, Hash, Filter,
+  Layers, Hash, Filter, Eye,
 } from "lucide-react";
+
+// Woo product names sometimes arrive with raw HTML (``<br>``, ``</p>``,
+// stray ``&amp;``) because the storefront editor lets HTML through.
+// Render them safely as plain text by stripping tags and decoding the
+// handful of entities we actually see in practice.
+function stripHtml(raw) {
+  if (raw == null) return "";
+  const s = String(raw)
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'");
+  return s.replace(/\s+/g, " ").trim();
+}
 
 const ASSET_TYPES = [
   { value: "instruction_pdf", label: "Instruction PDF",  icon: FileText },
@@ -55,6 +72,96 @@ function ScorePill({ score }) {
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border ${cls}`}>
       {score}% match
     </span>
+  );
+}
+
+// Inline file finder used inside the Edit modal. Mirrors the Files
+// page search: type a few characters, see matching files with their
+// parent folder for context, click the eye to open a presigned
+// preview URL in a new tab, then "Approve" to link the product.
+function WooFilePicker({ initialQuery, busy, onApprove }) {
+  const [q, setQ] = useState(initialQuery || "");
+  const [results, setResults] = useState([]);
+  const [previewKey, setPreviewKey] = useState(null);
+
+  // Debounced search — same shape as the Files page so admins are
+  // never wondering "is this the same search?". 250ms is brisk
+  // enough that admins barely register the wait.
+  useEffect(() => {
+    const trimmed = q.trim();
+    if (trimmed.length < 2) { setResults([]); return; }
+    let cancelled = false;
+    const id = setTimeout(() => {
+      api.get("/files/search", { params: { q: trimmed, limit: 12 } })
+        .then(({ data }) => { if (!cancelled) setResults(data?.items || []); })
+        .catch(() => { if (!cancelled) setResults([]); });
+    }, 250);
+    return () => { cancelled = true; clearTimeout(id); };
+  }, [q]);
+
+  const openPreview = async (file) => {
+    setPreviewKey(file.key);
+    try {
+      const { data } = await api.get("/files/download", { params: { key: file.key } });
+      if (data?.url) window.open(data.url, "_blank", "noopener,noreferrer");
+    } catch {
+      /* opening failed — admin can still try Download from the Files page */
+    } finally {
+      setPreviewKey(null);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="relative">
+        <Search className="w-3.5 h-3.5 text-stone-400 absolute left-3 top-3" />
+        <input
+          autoFocus
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search files by name…"
+          data-testid="pc-file-picker-search"
+          className="w-full pl-9 pr-3 py-2 text-sm border border-stone-300 rounded-lg focus:outline-none focus:border-stone-900"
+        />
+      </div>
+      <div className="max-h-72 overflow-y-auto border border-stone-100 rounded-lg divide-y divide-stone-100" data-testid="pc-file-picker-results">
+        {q.trim().length < 2 ? (
+          <div className="py-6 text-center text-xs text-stone-400">Type at least 2 characters to search the file vault.</div>
+        ) : !results.length ? (
+          <div className="py-6 text-center text-xs text-stone-500">No files match &ldquo;{q}&rdquo;.</div>
+        ) : (
+          results.map((f) => (
+            <div key={f.key} data-testid={`pc-file-result-${f.key}`} className="px-3 py-2 flex items-center gap-2 hover:bg-stone-50">
+              <FileText className="w-4 h-4 text-stone-400 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-semibold text-stone-900 truncate">{f.name}</div>
+                <div className="text-[10px] text-stone-500 truncate">{f.parent_prefix}</div>
+                {f.project_code && (
+                  <div className="text-[10px] font-mono text-emerald-700 mt-0.5">↪ {f.project_code}</div>
+                )}
+              </div>
+              <button
+                onClick={() => openPreview(f)}
+                disabled={previewKey === f.key}
+                title="Open file in a new tab"
+                data-testid={`pc-file-preview-${f.key}`}
+                className="w-7 h-7 rounded-md border border-stone-300 hover:bg-stone-100 flex items-center justify-center text-stone-600 disabled:opacity-40"
+              >
+                {previewKey === f.key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
+              </button>
+              <button
+                onClick={() => onApprove(f)}
+                disabled={busy}
+                data-testid={`pc-file-approve-${f.key}`}
+                className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-stone-950 hover:bg-stone-800 text-[#dedd0a] rounded-md flex items-center gap-1 disabled:opacity-40"
+              >
+                <CheckCircle2 className="w-3 h-3" /> Approve
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -201,7 +308,7 @@ export default function ProjectCodesAdminPage() {
         project_code: sug.suggested_code,
         asset_type: match.asset_type_guess,
       });
-      setFlash(`Linked "${sug.product_name}" → ${match.file_name}`);
+      setFlash(`Linked "${stripHtml(sug.product_name)}" → ${match.file_name}`);
       await reload();
     } catch (e) {
       setErr(e?.response?.data?.detail || "Approve failed.");
@@ -296,6 +403,48 @@ export default function ProjectCodesAdminPage() {
       await reload();
     } catch (e) {
       setErr(e?.response?.data?.detail || "Save failed.");
+    }
+  };
+
+  // One-click "Approve" inside the Woo edit modal: link a Woo product
+  // to whichever R2 file the admin just previewed. The Project Code
+  // is decided in this order so neither side ever drifts:
+  //   1) the file's own project_code (if it already has one)
+  //   2) the product's current project_code
+  //   3) the slug derived from the product name (fallback)
+  // Both records are PUT in sequence so the resulting link is
+  // symmetric — refreshing the page shows them paired immediately.
+  const approveFileForProduct = async (file) => {
+    if (!editing || editing.type !== "woo" || !file) return;
+    const productName = editing.name || "";
+    const slug = (s) => (s || "")
+      .toString()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+    const code = file.project_code || editing.value || slug(productName);
+    if (!code) {
+      setErr("Couldn't derive a Project Code from this product name.");
+      return;
+    }
+    try {
+      setBusy(true);
+      // Update both sides so the link is symmetric. The backend
+      // re-slugifies the code on each PUT, so casing/punctuation
+      // drift between the two payloads is harmless.
+      await Promise.all([
+        api.put(`/admin/project-codes/woo/${encodeURIComponent(editing.id)}`,
+          { project_code: code }),
+        api.put(`/admin/project-codes/file/${encodeURIComponent(file.key)}`,
+          { project_code: code }),
+      ]);
+      setFlash(`Linked "${productName}" → ${file.name}`);
+      setEditing(null);
+      await reload();
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Approve failed.");
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -451,7 +600,7 @@ export default function ProjectCodesAdminPage() {
                     <div className="w-12 h-12 rounded shrink-0 bg-stone-100 flex items-center justify-center text-stone-400"><Box className="w-5 h-5" /></div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-bold text-stone-950 truncate">{s.product_name}</div>
+                    <div className="text-sm font-bold text-stone-950 truncate">{stripHtml(s.product_name)}</div>
                     <div className="text-xs text-stone-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
                       <span className="font-mono">{s.suggested_code}</span>
                       <span className="text-stone-300">↔</span>
@@ -556,7 +705,7 @@ export default function ProjectCodesAdminPage() {
         {loading ? (
           <div className="py-12 text-center text-stone-500"><Loader2 className="w-5 h-5 animate-spin inline" /></div>
         ) : tab === "products" ? (
-          <ProductsTable rows={woo} onEdit={(p) => setEditing({ type: "woo", id: p.id, value: p.project_code || "", name: p.name })} />
+          <ProductsTable rows={woo} onEdit={(p) => setEditing({ type: "woo", id: p.id, value: p.project_code || "", name: stripHtml(p.name), image: p.image_url || p.image || null })} />
         ) : (
           <FilesTable rows={files} onEdit={(f) => setEditing({ type: "file", id: f.key, value: f.project_code || "", name: f.name, asset_type: f.asset_type || "instruction_pdf" })} />
         )}
@@ -564,12 +713,43 @@ export default function ProjectCodesAdminPage() {
 
       {editing && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" data-testid="pc-edit-modal" onClick={(e) => { if (e.target === e.currentTarget) setEditing(null); }}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
-            <div>
-              <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Assign Project Code</div>
-              <h3 className="font-display text-xl text-stone-950 mt-1">{editing.name}</h3>
+          <div className={`bg-white rounded-2xl shadow-2xl w-full ${editing.type === "woo" ? "max-w-2xl" : "max-w-md"} p-6 space-y-4`}>
+            <div className="flex items-start gap-3">
+              {editing.image && (
+                <img src={editing.image} alt="" className="w-14 h-14 rounded-lg object-cover bg-stone-100 shrink-0" />
+              )}
+              <div className="min-w-0">
+                <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">
+                  {editing.type === "woo" ? "Link product to a file" : "Assign Project Code"}
+                </div>
+                <h3 className="font-display text-xl text-stone-950 mt-1 truncate">{editing.name}</h3>
+                {editing.type === "woo" && editing.value && (
+                  <div className="text-[11px] text-stone-500 mt-1 flex items-center gap-1.5">
+                    <Link2 className="w-3 h-3" /> Currently linked: <span className="font-mono text-stone-800">{editing.value}</span>
+                  </div>
+                )}
+              </div>
             </div>
-            <div>
+
+            {editing.type === "woo" && (
+              <div className="border-t border-stone-200 pt-4 space-y-2">
+                <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">
+                  Step 1 — Find &amp; preview the file
+                </div>
+                <WooFilePicker
+                  initialQuery={stripHtml(editing.name).slice(0, 60)}
+                  busy={busy}
+                  onApprove={approveFileForProduct}
+                />
+              </div>
+            )}
+
+            <div className={editing.type === "woo" ? "border-t border-stone-200 pt-4" : ""}>
+              {editing.type === "woo" && (
+                <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-2">
+                  Or — set the Project Code manually
+                </div>
+              )}
               <label className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Project Code</label>
               <input
                 value={editing.value}
@@ -642,7 +822,7 @@ export default function ProjectCodesAdminPage() {
                     <div className="w-9 h-9 rounded shrink-0 bg-stone-100" />
                   )}
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-stone-900 truncate">{it.product_name}</div>
+                    <div className="text-sm font-semibold text-stone-900 truncate">{stripHtml(it.product_name)}</div>
                     <div className="text-[11px] text-stone-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
                       <span className="font-mono">{it.suggested_code}</span>
                       <span className="text-stone-300">↔</span>
@@ -705,10 +885,10 @@ function ProductsTable({ rows, onEdit }) {
             <div className="w-9 h-9 rounded shrink-0 bg-stone-100" />
           )}
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-semibold text-stone-900 truncate">{p.name}</div>
+            <div className="text-sm font-semibold text-stone-900 truncate">{stripHtml(p.name)}</div>
             <div className="text-[10px] text-stone-500 truncate flex items-center gap-2">
-              {(p.tag_names || []).slice(0, 2).map((t) => <span key={t} className="px-1 py-px bg-stone-100 rounded">{t}</span>)}
-              {(p.category_names || []).slice(0, 2).map((c) => <span key={c} className="px-1 py-px bg-sky-100 text-sky-800 rounded">{c}</span>)}
+              {(p.tag_names || []).slice(0, 2).map((t) => <span key={t} className="px-1 py-px bg-stone-100 rounded">{stripHtml(t)}</span>)}
+              {(p.category_names || []).slice(0, 2).map((c) => <span key={c} className="px-1 py-px bg-sky-100 text-sky-800 rounded">{stripHtml(c)}</span>)}
             </div>
           </div>
           <div className="shrink-0 min-w-[200px] text-right">

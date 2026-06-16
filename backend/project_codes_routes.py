@@ -141,11 +141,24 @@ def slugify_project_code(raw: str) -> str:
 
     Aggressive on punctuation so accidental punctuation drift between
     the Woo product name and file name still yields the same code.
+    HTML tags (``<br>``, ``</p>``, …) are stripped before slugifying so
+    storefront editor markup doesn't bleed into the generated codes.
     """
     if not raw:
         return ""
+    s = str(raw)
+    # Drop HTML tags + common entities — storefront editor sometimes
+    # ships raw markup in the product title which would otherwise
+    # become "BR" / "P" tokens in the slug.
+    s = re.sub(r"<[^>]+>", " ", s)
+    s = (s.replace("&nbsp;", " ")
+           .replace("&amp;", "&")
+           .replace("&lt;", "<")
+           .replace("&gt;", ">")
+           .replace("&quot;", '"')
+           .replace("&#39;", "'"))
     # Strip accents → ASCII so "café" and "cafe" match.
-    s = unicodedata.normalize("NFKD", str(raw))
+    s = unicodedata.normalize("NFKD", s)
     s = "".join(c for c in s if not unicodedata.combining(c))
     s = s.upper()
     s = re.sub(r"[^A-Z0-9]+", "_", s).strip("_")
