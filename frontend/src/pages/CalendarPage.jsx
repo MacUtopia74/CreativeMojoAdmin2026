@@ -319,7 +319,7 @@ export default function CalendarPage() {
               portal button. Surfaces the Woo Standard Boxed Art Kits
               for the month the admin is currently viewing on the grid. */}
           <button onClick={() => setProjectsModalOpen(true)} data-testid="cal-projects-month-btn"
-            title="See the Standard Boxed Art Kits available this month"
+            title="See the projects available this month"
             className="px-3 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 hover:bg-stone-800 text-[#dedd0a] rounded-lg flex items-center gap-1.5">
             <BookOpen className="w-3.5 h-3.5" /> View projects for this month
           </button>

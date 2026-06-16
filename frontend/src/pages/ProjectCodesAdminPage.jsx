@@ -23,7 +23,7 @@ import FilePreviewModal from "@/components/files/FilePreviewModal";
 import {
   Loader2, Search, Link2, CheckCircle2, X, AlertCircle,
   RefreshCw, Sparkles, FileText, Box, FileImage, Film,
-  Layers, Hash, Filter, Eye,
+  Layers, Hash, Filter, Eye, ExternalLink,
 } from "lucide-react";
 
 // Woo product names sometimes arrive with raw HTML (``<br>``, ``</p>``,
@@ -147,6 +147,17 @@ function WooFilePicker({ initialQuery, busy, onApprove }) {
               >
                 <Eye className="w-3.5 h-3.5" />
               </button>
+              <a
+                href={`/files?prefix=${encodeURIComponent(f.parent_prefix || "")}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                title="Open the containing folder in the Files page (new tab)"
+                data-testid={`pc-file-open-files-${f.key}`}
+                className="w-7 h-7 rounded-md border border-stone-300 hover:bg-stone-100 flex items-center justify-center text-stone-600"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
               <button
                 onClick={(e) => { e.stopPropagation(); onApprove(f); }}
                 disabled={busy}

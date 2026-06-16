@@ -438,7 +438,7 @@ export default function PortalEventsPanel({ open, onToggle, alwaysOpen = false, 
               <button
                 onClick={() => setProjectsModalOpen(true)}
                 data-testid="open-projects-this-month"
-                title="See the Standard Boxed Art Kits available this month"
+                title="See the projects available this month"
                 className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider bg-stone-950 hover:bg-stone-800 text-[#dedd0a] rounded-lg flex items-center gap-1.5"
               >
                 <BookOpen className="w-3.5 h-3.5" /> View projects for this month

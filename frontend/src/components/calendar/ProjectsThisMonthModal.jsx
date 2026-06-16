@@ -88,7 +88,7 @@ export default function ProjectsThisMonthModal({ visibleDate, onClose }) {
             <div className="py-16 text-center text-stone-500"><Loader2 className="w-6 h-6 animate-spin inline" /></div>
           ) : !items.length ? (
             <div className="py-16 text-center text-sm text-stone-500" data-testid="projects-month-empty">
-              No Standard Boxed Art Kits tagged for {MONTH_NAMES[month - 1]} yet. Try a different month, or ask HQ to tag the products.
+              No projects tagged for {MONTH_NAMES[month - 1]} yet. Try a different month, or ask HQ to tag the products.
             </div>
           ) : (
             <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

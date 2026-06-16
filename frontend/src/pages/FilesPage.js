@@ -566,9 +566,18 @@ function FranchiseesScopePanel({ scopeTree, prefix, trashMode, onPick }) {
 
 
 export default function FilesPage() {
+  // Seed ``prefix`` from ``?prefix=`` so other pages can deep-link
+  // into a specific folder (e.g. the Project Linking edit modal
+  // surfaces "Open in Files" next to each search result). One-shot:
+  // we read the param on mount only — subsequent in-page navigation
+  // shouldn't have to push it back into the URL.
+  const initialPrefix = (() => {
+    try { return new URLSearchParams(window.location.search).get("prefix") || ""; }
+    catch { return ""; }
+  })();
   const [scopeTree, setScopeTree] = useState(null);
   const [tree, setTree] = useState(null);
-  const [prefix, setPrefix] = useState("");
+  const [prefix, setPrefix] = useState(initialPrefix);
   const [search, setSearch] = useState("");
   const [results, setResults] = useState(null);
   const [busy, setBusy] = useState(false);
