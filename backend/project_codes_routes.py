@@ -443,6 +443,14 @@ def build_project_codes_router(db, require_role) -> APIRouter:
                     continue
                 if (p["id"], f["key"]) in skipped:
                     continue
+                # Skip JPG/JPEG files — per spec, raw photos are never
+                # the right "project guide" companion to a Woo product
+                # so they only add noise to the suggestion list. Admin
+                # can still link them manually via the Files tab if
+                # ever needed.
+                fname = (f.get("name") or "").lower()
+                if fname.endswith(".jpg") or fname.endswith(".jpeg"):
+                    continue
                 score = _match_score(p.get("name", ""), f.get("name", ""))
                 if score < min_score:
                     continue
