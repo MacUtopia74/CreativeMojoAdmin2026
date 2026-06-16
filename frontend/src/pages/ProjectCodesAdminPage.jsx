@@ -69,14 +69,73 @@ export default function ProjectCodesAdminPage() {
   const [tab, setTab] = useState("products");  // products | files
   const [status, setStatus] = useState("all");  // all | matched | woo_only | file_only
   const [month, setMonth] = useState("");        // "" | "1".."12" — narrows Woo to a single month
-  // Persisted exclusion list — defaults to "Stencil" so the
-  // suggestion engine doesn't waste cycles pairing instruction
-  // products with their stencil companion files. User can wipe it
-  // or add other noisy patterns (e.g. "SVG, draft").
-  const [excludeFiles, setExcludeFiles] = useState(
-    () => localStorage.getItem("pc_exclude_files") ?? "Stencil",
-  );
-  useEffect(() => { localStorage.setItem("pc_exclude_files", excludeFiles); }, [excludeFiles]);
+  // Asset-type chip filter — toggle on = exclude that category from
+  // both the Suggested Matches list and the manual-mapping Files
+  // table. Free-text custom terms supplement the chips (so admins can
+  // add one-off noise patterns without committing them to the preset
+  // list). Both are persisted across reloads.
+  //
+  // Legacy `pc_exclude_files` (a single comma-separated string) is
+  // auto-migrated on first load: known chip labels move into the
+  // chip set, everything else falls through to the custom field.
+  const EXCLUDE_CHIP_OPTIONS = [
+    "PDF", "SVG", "Stencil", "Video", "Image", "Template",
+  ];
+  const [excludeChips, setExcludeChips] = useState(() => {
+    const raw = localStorage.getItem("pc_exclude_chips");
+    if (raw !== null) { try { return new Set(JSON.parse(raw)); } catch { /* fall through */ } }
+    // Migrate from the old single-string key.
+    const legacy = (localStorage.getItem("pc_exclude_files") || "Stencil,Template")
+      .split(",").map((t) => t.trim()).filter(Boolean);
+    const chips = new Set();
+    for (const t of legacy) {
+      const hit = EXCLUDE_CHIP_OPTIONS.find((c) => c.toLowerCase() === t.toLowerCase());
+      if (hit) chips.add(hit);
+    }
+    // Ensure Template is excluded by default — it's the most common
+    // false-positive in the suggestion list.
+    if (!localStorage.getItem("pc_exclude_chips_migrated")) {
+      chips.add("Stencil");
+      chips.add("Template");
+    }
+    return chips;
+  });
+  const [excludeCustom, setExcludeCustom] = useState(() => {
+    if (localStorage.getItem("pc_exclude_custom") !== null) {
+      return localStorage.getItem("pc_exclude_custom") || "";
+    }
+    // Pull non-chip leftovers from the legacy key into the custom field.
+    const legacy = (localStorage.getItem("pc_exclude_files") || "")
+      .split(",").map((t) => t.trim()).filter(Boolean);
+    const remainder = legacy.filter(
+      (t) => !EXCLUDE_CHIP_OPTIONS.some((c) => c.toLowerCase() === t.toLowerCase()),
+    );
+    return remainder.join(", ");
+  });
+  useEffect(() => {
+    localStorage.setItem("pc_exclude_chips", JSON.stringify([...excludeChips]));
+    localStorage.setItem("pc_exclude_chips_migrated", "1");
+  }, [excludeChips]);
+  useEffect(() => { localStorage.setItem("pc_exclude_custom", excludeCustom); }, [excludeCustom]);
+  // Combined comma-separated string sent to the backend. Order is
+  // chips first, then custom, then dedupe — keeps the API contract
+  // unchanged while giving us nicer UX on top.
+  const excludeFiles = (() => {
+    const terms = [
+      ...excludeChips,
+      ...excludeCustom.split(",").map((t) => t.trim()).filter(Boolean),
+    ];
+    return [...new Set(terms.map((t) => t.toLowerCase()))]
+      .map((lc) => terms.find((t) => t.toLowerCase() === lc))
+      .join(",");
+  })();
+  const toggleExcludeChip = (chip) => {
+    setExcludeChips((prev) => {
+      const next = new Set(prev);
+      if (next.has(chip)) next.delete(chip); else next.add(chip);
+      return next;
+    });
+  };
   const [minScore, setMinScore] = useState(90);
   const [editing, setEditing] = useState(null);  // {type:'woo'|'file', id, value, asset_type}
   const [bulkReview, setBulkReview] = useState(null);  // null | { items, min_score }
@@ -335,6 +394,45 @@ export default function ProjectCodesAdminPage() {
             </button>
           </div>
         </div>
+        {/* Asset-type chip filter — chips highlighted = excluded.
+            Adding terms to the custom field appends one-off
+            substring matchers (case-insensitive). Both are persisted
+            in localStorage and shared between the suggestion engine
+            and the manual mapping Files list. */}
+        <div className="flex items-center gap-2 flex-wrap mb-3 pb-3 border-b border-stone-100" data-testid="pc-exclude-chip-row">
+          <span className="text-[10px] uppercase tracking-wider font-bold text-stone-500 mr-1">Hide</span>
+          {EXCLUDE_CHIP_OPTIONS.map((chip) => {
+            const on = excludeChips.has(chip);
+            return (
+              <button
+                key={chip}
+                onClick={() => toggleExcludeChip(chip)}
+                data-testid={`pc-chip-${chip.toLowerCase()}`}
+                title={on ? `Stop hiding "${chip}" files` : `Hide files whose name contains "${chip}"`}
+                className={`px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider rounded-full border transition ${on
+                  ? "bg-stone-950 text-[#dedd0a] border-stone-950"
+                  : "bg-white text-stone-600 border-stone-300 hover:border-stone-500"}`}
+              >
+                {chip}
+              </button>
+            );
+          })}
+          <input
+            value={excludeCustom}
+            onChange={(e) => setExcludeCustom(e.target.value)}
+            placeholder="Custom (comma-separated)…"
+            data-testid="pc-exclude-custom"
+            title="Files whose name contains any of these substrings are also hidden. Case-insensitive."
+            className="ml-1 px-2.5 py-1 text-[11px] border border-stone-300 rounded-full w-56 focus:outline-none focus:border-stone-500"
+          />
+          {(excludeChips.size > 0 || excludeCustom.trim()) && (
+            <button
+              onClick={() => { setExcludeChips(new Set()); setExcludeCustom(""); }}
+              data-testid="pc-chip-clear"
+              className="text-[10px] uppercase tracking-wider font-bold text-stone-500 hover:text-stone-800 ml-1"
+            >Clear</button>
+          )}
+        </div>
         {loading ? (
           <div className="py-10 text-center text-stone-500"><Loader2 className="w-5 h-5 animate-spin inline" /> Building suggestions…</div>
         ) : !suggestions.length ? (
@@ -427,14 +525,14 @@ export default function ProjectCodesAdminPage() {
                 ["10", "October"], ["11", "November"], ["12", "December"],
               ].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
-            <div className="relative" title="Comma-separated. Files whose name contains any of these are hidden from the suggestions + Files tab.">
+            <div className="relative" title="Use the chip filter above the Suggested Matches panel to exclude noisy file types.">
               <X className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 top-2" />
               <input
                 value={excludeFiles}
-                onChange={(e) => setExcludeFiles(e.target.value)}
-                placeholder="Exclude files containing… (e.g. Stencil)"
+                readOnly
+                placeholder="Exclude filter active (see chips above)"
                 data-testid="pc-exclude-files"
-                className="pl-7 pr-3 py-1.5 text-xs border border-stone-300 rounded-md w-56"
+                className="pl-7 pr-3 py-1.5 text-xs border border-stone-200 bg-stone-50 text-stone-500 rounded-md w-56 cursor-not-allowed"
               />
             </div>
             <div className="inline-flex items-center bg-stone-100 rounded-md p-0.5">
