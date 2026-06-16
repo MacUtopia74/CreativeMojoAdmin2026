@@ -25,6 +25,7 @@ import TrashView from "@/components/files/TrashView";
 import FileThumbnail from "@/components/files/FileThumbnail";
 import FilePreviewModal from "@/components/files/FilePreviewModal";
 import FileReplaceButton from "@/components/files/FileReplaceButton";
+import FileActionsMenu from "@/components/files/FileActionsMenu";
 import { prettyFolderName } from "@/utils/folderName";
 
 function fmtBytes(b) {
@@ -576,6 +577,10 @@ export default function FilesPage() {
   const [share, setShare] = useState(null);
   const [folderShare, setFolderShare] = useState(null);
   const [movingFolder, setMovingFolder] = useState(null);
+  // Single-file move state — uses the same FolderMovePicker as folder
+  // moves but resolves to /files/move on confirm. Admin-only (gated
+  // both in the UI and on the backend).
+  const [movingFile, setMovingFile] = useState(null);
   // Trash view: shows soft-deleted folders with restore + permanent
   // delete + empty-trash actions. Activated from the sidebar.
   const [trashMode, setTrashMode] = useState(false);
@@ -623,6 +628,13 @@ export default function FilesPage() {
     reloadTree(prefix); reloadScopes();
   };
 
+  const moveFile = async (newParent) => {
+    const src = movingFile.key;
+    await api.post("/files/move", { key: src, new_parent: newParent });
+    setMovingFile(null);
+    reloadTree(prefix); reloadScopes();
+  };
+
   // Live search debounce
   useEffect(() => {
     if (search.trim().length < 2) { setResults(null); return; }
@@ -633,6 +645,14 @@ export default function FilesPage() {
       } catch (e) { setResults({ items: [], count: 0 }); }
     }, 300);
     return () => clearTimeout(id);
+  }, [search]);
+
+  const refreshSearch = useCallback(async () => {
+    if (search.trim().length < 2) return;
+    try {
+      const { data } = await api.get("/files/search", { params: { q: search.trim(), limit: 80 } });
+      setResults(data);
+    } catch (e) { /* noop */ }
   }, [search]);
 
   const download = async (key) => {
@@ -860,6 +880,11 @@ export default function FilesPage() {
                             className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-md flex items-center gap-1 disabled:opacity-50">
                             {downloadingKey === it.key ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />} Download
                           </button>
+                          <FileActionsMenu
+                            file={it}
+                            onChanged={() => { refreshSearch(); reloadScopes(); }}
+                            onMove={(f) => setMovingFile(f)}
+                          />
                         </div>
                       </div>
                     ))}
@@ -958,6 +983,11 @@ export default function FilesPage() {
                                     className="flex-1 px-1.5 py-1 text-[9px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-md flex items-center justify-center gap-1 disabled:opacity-50">
                                     {downloadingKey === it.key ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
                                   </button>
+                                  <FileActionsMenu
+                                    file={it}
+                                    onChanged={() => { reloadTree(prefix); reloadScopes(); }}
+                                    onMove={(f) => setMovingFile(f)}
+                                  />
                                 </div>
                               </div>
                             </div>
@@ -1000,6 +1030,11 @@ export default function FilesPage() {
                               className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-md flex items-center gap-1 disabled:opacity-50">
                               {downloadingKey === it.key ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />} Download
                             </button>
+                            <FileActionsMenu
+                              file={it}
+                              onChanged={() => { reloadTree(prefix); reloadScopes(); }}
+                              onMove={(f) => setMovingFile(f)}
+                            />
                           </div>
                         </div>
                       ))}
@@ -1021,6 +1056,10 @@ export default function FilesPage() {
         sourcePrefix={movingFolder?.key || ""}
         onClose={() => setMovingFolder(null)}
         onConfirm={moveFolder} />
+      <FolderMovePicker open={!!movingFile}
+        sourcePrefix={movingFile?.parent_prefix || ""}
+        onClose={() => setMovingFile(null)}
+        onConfirm={moveFile} />
     </div>
   );
 }

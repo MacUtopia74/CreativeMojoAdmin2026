@@ -16,8 +16,9 @@ import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
-import { CalendarDays, ExternalLink, Loader2, Plus, RefreshCw, Trash2, AlertCircle, CheckCircle2, X, Save, Link as LinkIcon, MapPin, Clock, Pencil, PowerOff, Video, LayoutGrid, LayoutList, Users, Sparkles, Search } from "lucide-react";
+import { CalendarDays, ExternalLink, Loader2, Plus, RefreshCw, Trash2, AlertCircle, CheckCircle2, X, Save, Link as LinkIcon, MapPin, Clock, Pencil, PowerOff, Video, LayoutGrid, LayoutList, Users, Sparkles, Search, BookOpen } from "lucide-react";
 import YearlyEventsModal from "@/components/calendar/YearlyEventsModal";
+import ProjectsThisMonthModal from "@/components/calendar/ProjectsThisMonthModal";
 
 function formatDateRange(start, end, allDay) {
   if (!start) return "";
@@ -53,6 +54,13 @@ export default function CalendarPage() {
   const [modal, setModal] = useState(null); // null | { event? }
   const [refreshTick, setRefreshTick] = useState(0);
   const [yearlyOpen, setYearlyOpen] = useState(false);
+  // "Projects this month" — opens the same Standard Boxed Art Kits
+  // modal franchisees see on their portal, scoped to whichever month
+  // the admin is currently browsing in the FullCalendar grid. Lets
+  // admins quickly sanity-check that the right kits are linked
+  // (Project Code → Instruction PDF) for the visible month.
+  const [projectsModalOpen, setProjectsModalOpen] = useState(false);
+  const [visibleDate, setVisibleDate] = useState(() => new Date());
   // HQ-managed yearly events (CSV-uploaded). Rendered on the admin
   // grid alongside Google events in the same light-blue swatch the
   // franchisee portal uses so admins see exactly what franchisees see.
@@ -307,6 +315,14 @@ export default function CalendarPage() {
             className="px-3 py-2 text-xs font-bold uppercase tracking-wider border border-blue-300 bg-blue-50 text-blue-800 hover:bg-blue-100 rounded-lg flex items-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5" /> Yearly events
           </button>
+          {/* "View projects for this month" — mirror of the franchisee
+              portal button. Surfaces the Woo Standard Boxed Art Kits
+              for the month the admin is currently viewing on the grid. */}
+          <button onClick={() => setProjectsModalOpen(true)} data-testid="cal-projects-month-btn"
+            title="See the Standard Boxed Art Kits available this month"
+            className="px-3 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 hover:bg-stone-800 text-[#dedd0a] rounded-lg flex items-center gap-1.5">
+            <BookOpen className="w-3.5 h-3.5" /> View projects for this month
+          </button>
           {status?.connected && (
             <>
               <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-900" data-testid="cal-connected-pill">
@@ -513,6 +529,11 @@ export default function CalendarPage() {
                   const end = new Date(info.end);
                   end.setDate(end.getDate() + 7);
                   loadEvents({ start, end });
+                  // Track the midpoint of the visible range so the
+                  // Projects-this-month modal lines up with whatever
+                  // month is on screen (works across Month/Week/Day).
+                  const mid = new Date((info.start.getTime() + info.end.getTime()) / 2);
+                  setVisibleDate(mid);
                 }}
                 dateClick={(info) => {
                   // Click a day cell → open new-event modal pre-filled to that
@@ -586,6 +607,12 @@ export default function CalendarPage() {
         />
       )}
       {yearlyOpen && <YearlyEventsModal onClose={() => { setYearlyOpen(false); setRefreshTick((t) => t + 1); }} />}
+      {projectsModalOpen && (
+        <ProjectsThisMonthModal
+          visibleDate={visibleDate}
+          onClose={() => setProjectsModalOpen(false)}
+        />
+      )}
     </div>
   );
 }

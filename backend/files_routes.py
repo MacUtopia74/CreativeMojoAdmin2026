@@ -888,14 +888,52 @@ def build_router(db, require_role) -> APIRouter:
     @router.delete("/files")
     async def files_delete(
         key: str = Query(...),
-        _user: dict = Depends(require_role("admin")),
+        user: dict = Depends(require_role("admin")),
     ):
+        """Soft-delete a single file by relocating it under
+        ``.trash/<ISO-ts>/<original-key>``. Mirrors the folder
+        soft-delete pattern so admins always have a 30-day undo window.
+        """
+        if not key:
+            raise HTTPException(400, detail="key required")
+        if key.startswith(".trash/"):
+            raise HTTPException(400, detail="File is already in trash")
+        existing = await db.files_index.find_one({"key": key}, {"_id": 0})
+        if not existing:
+            raise HTTPException(404, detail="File not found")
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        trash_key = f".trash/{ts}/{key}"
+        s3 = get_client()
         try:
-            delete_object(key)
+            s3.copy_object(
+                Bucket=R2_BUCKET, Key=trash_key,
+                CopySource={"Bucket": R2_BUCKET, "Key": key},
+            )
+            s3.delete_object(Bucket=R2_BUCKET, Key=key)
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(502, detail=f"R2 delete failed: {exc}") from exc
-        await db.files_index.delete_one({"key": key})
-        return {"deleted": key}
+        new_parent = trash_key.rsplit("/", 1)[0] + "/" if "/" in trash_key else ""
+        await db.files_index.update_one(
+            {"key": key},
+            {"$set": {
+                "key": trash_key,
+                "parent_prefix": new_parent,
+                "scope": "admin",
+                "moved_at": _now(),
+                "moved_by": user.get("email"),
+                "moved_reason": "soft_delete",
+            }},
+        )
+        await db.files_trash_log.insert_one({
+            "original_prefix": key,
+            "trash_prefix": trash_key,
+            "deleted_at": _now(),
+            "deleted_by": user.get("email"),
+            "files_count": 1,
+            "errors": [],
+            "single_file": True,
+        })
+        return {"trashed": True, "key": key, "trash_key": trash_key}
 
     # -----------------------------------------------------------------
     # Recent uploads — only franchisee+shared scopes (admin-only files
@@ -1013,8 +1051,14 @@ def build_router(db, require_role) -> APIRouter:
     # are typically <500 files, <100MB). We also update files_index in
     # bulk so the UI reflects the new layout immediately.
     def _safe_name(raw: str) -> str:
-        s = re.sub(r"[^\w\s.\-]", "", raw or "").strip()
-        return s
+        # Strip only the truly dangerous characters: path separators,
+        # NUL bytes and other ASCII control codes. Common filename
+        # punctuation — parens, ampersand, apostrophe, comma, brackets,
+        # ! @ # $ % ^ + = etc. — is preserved so admins can rename
+        # files to whatever real-world name they need.
+        s = (raw or "").replace("\\", "").replace("/", "")
+        s = re.sub(r"[\x00-\x1f\x7f]", "", s)
+        return s.strip()
 
     async def _move_prefix(src_prefix: str, dst_prefix: str, *, reason: str, user_email: str) -> dict:
         if not src_prefix.endswith("/"):
@@ -1073,6 +1117,93 @@ def build_router(db, require_role) -> APIRouter:
         new_prefix = f"{parent}{new_name}/"
         result = await _move_prefix(prefix, new_prefix, reason="rename", user_email=user.get("email"))
         return {"renamed": True, **result}
+
+    # -----------------------------------------------------------------
+    # Single-file rename / move.
+    #
+    # The folder helpers above operate on a whole prefix; these two
+    # endpoints operate on a single key, with the same copy-then-delete
+    # pattern. Admin role is enforced at the route level so admins can
+    # rename/move any file (admin/, franchisees/, shared/) — the
+    # franchisee portal never reaches these endpoints.
+    async def _move_file(
+        old_key: str, new_key: str, *, reason: str, user_email: str,
+    ) -> dict:
+        if not old_key or not new_key:
+            raise HTTPException(400, detail="old_key and new_key required")
+        if old_key == new_key:
+            raise HTTPException(400, detail="Source and destination are the same")
+        if old_key.startswith(".trash/") or new_key.startswith(".trash/"):
+            raise HTTPException(400, detail="Use the Trash API for trashed files")
+        existing = await db.files_index.find_one({"key": old_key}, {"_id": 0})
+        if not existing:
+            raise HTTPException(404, detail="File not found")
+        # Refuse if anything already lives at the destination — avoids a
+        # silent overwrite that would lose the old file.
+        clash = await db.files_index.find_one({"key": new_key}, {"_id": 0, "key": 1})
+        if clash:
+            raise HTTPException(409, detail="A file already exists at the destination")
+        s3 = get_client()
+        try:
+            s3.copy_object(
+                Bucket=R2_BUCKET, Key=new_key,
+                CopySource={"Bucket": R2_BUCKET, "Key": old_key},
+            )
+            s3.delete_object(Bucket=R2_BUCKET, Key=old_key)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(502, detail=f"R2 copy failed: {exc}") from exc
+        new_name = new_key.rsplit("/", 1)[-1]
+        new_parent = new_key.rsplit("/", 1)[0] + "/" if "/" in new_key else ""
+        patch = {
+            "key": new_key,
+            "name": new_name,
+            "parent_prefix": new_parent,
+            "scope": _classify_uploaded_key(new_key)["scope"],
+            "moved_at": _now(),
+            "moved_by": user_email,
+            "moved_reason": reason,
+        }
+        await db.files_index.update_one({"key": old_key}, {"$set": patch})
+        # If this file had a project_code link, the code lives on the
+        # file row itself — the update above preserves it because we
+        # ``$set`` only the moved fields. Suggestions stay valid.
+        return {"ok": True, "old_key": old_key, "new_key": new_key, "name": new_name}
+
+    @router.post("/files/rename")
+    async def files_rename(body: dict, user: dict = Depends(require_role("admin"))):
+        """Rename a single file inside ``admin/`` (keeps parent folder)."""
+        key = (body.get("key") or "").strip()
+        raw_name = body.get("new_name") or ""
+        new_name = _safe_name(raw_name)
+        if not key or not new_name:
+            raise HTTPException(400, detail="key and new_name required")
+        if "/" in new_name:
+            raise HTTPException(400, detail="new_name cannot contain '/'")
+        parent = key.rsplit("/", 1)[0] + "/" if "/" in key else ""
+        new_key = f"{parent}{new_name}"
+        return await _move_file(
+            key, new_key, reason="rename", user_email=user.get("email"),
+        )
+
+    @router.post("/files/move")
+    async def files_move(body: dict, user: dict = Depends(require_role("admin"))):
+        """Move a single file (under ``admin/``) into a new parent folder.
+
+        ``new_parent`` is the destination folder prefix (e.g.
+        ``admin/Misc/``). Trailing slash is added if missing. The
+        original filename is preserved.
+        """
+        key = (body.get("key") or "").strip()
+        dst_parent = (body.get("new_parent") or "").strip()
+        if not key:
+            raise HTTPException(400, detail="key required")
+        if dst_parent and not dst_parent.endswith("/"):
+            dst_parent += "/"
+        leaf = key.rsplit("/", 1)[-1]
+        new_key = f"{dst_parent}{leaf}"
+        return await _move_file(
+            key, new_key, reason="move", user_email=user.get("email"),
+        )
 
     @router.post("/files/folder/move")
     async def files_folder_move(body: dict, user: dict = Depends(require_role("admin"))):
