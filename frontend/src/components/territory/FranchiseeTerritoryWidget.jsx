@@ -107,8 +107,13 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
     try {
       const homeKey = home.id || home.locationId;
       if (!homeKey) return;
-      const isScotland = String(home.source || "").includes("scot");
-      const source = isScotland ? "scotland" : "cqc";
+      // Detect regulator from the home's country tag so leads tracked
+      // against NI/Wales records don't collide with English CQC ids.
+      const country = String(home.country || "").toLowerCase();
+      const source = country.includes("scot") ? "scotland"
+                   : country.includes("wales") ? "wales"
+                   : (country.includes("northern") || country.includes("ireland")) ? "ni"
+                   : "cqc";
       if (status === "not_contacted") {
         await api.delete("/portal/territory-plus/leads", {
           data: { source, home_id: homeKey },

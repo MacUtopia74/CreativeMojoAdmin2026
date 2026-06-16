@@ -4327,6 +4327,7 @@ from territory_routes import build_territory_router  # noqa: E402
 from cqc_routes import build_cqc_router  # noqa: E402
 from scotland_routes import build_scotland_router  # noqa: E402
 from ni_routes import build_ni_router  # noqa: E402
+from wales_routes import build_wales_router  # noqa: E402
 from help_routes import build_help_router  # noqa: E402
 from email_templates_routes import build_email_templates_router  # noqa: E402
 from resend_routes import build_resend_router  # noqa: E402
@@ -4341,6 +4342,7 @@ api.include_router(build_territory_router(db, require_role))
 api.include_router(build_cqc_router(db, require_role))
 api.include_router(build_scotland_router(db, require_role))
 api.include_router(build_ni_router(db, require_role))
+api.include_router(build_wales_router(db, require_role))
 api.include_router(build_help_router(db, require_role))
 api.include_router(build_email_templates_router(db, require_role))
 api.include_router(build_resend_router(db, require_role))

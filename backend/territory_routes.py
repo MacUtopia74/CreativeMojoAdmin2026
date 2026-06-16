@@ -46,6 +46,35 @@ from ni_definition import (
     definition_to_mongo_filter as ni_definition_to_mongo_filter,
     DEFAULT_DEFINITION_ID as NI_DEFINITION_ID,
 )
+from wales_definition import (
+    WalesDefinition,
+    definition_to_mongo_filter as wales_definition_to_mongo_filter,
+    DEFAULT_DEFINITION_ID as WALES_DEFINITION_ID,
+)
+
+
+# Strictly Welsh postcode prefixes — sectors starting with these have
+# no English CQC coverage so we don't bother querying CQC for them.
+# Border-shared prefixes (SY, HR, CH) are intentionally NOT in this list
+# because the user has franchisees whose territories straddle the
+# England/Wales border — those sectors must hit BOTH datasets.
+_STRICT_WELSH_PREFIXES = ("CF", "SA", "LL", "NP", "LD")
+
+
+def _is_strict_welsh_postcode(code: Optional[str]) -> bool:
+    """True only for postcodes guaranteed to be in Wales (no English
+    coverage). Border-shared prefixes return False so cross-border
+    territories get queried against both Wales + CQC."""
+    if not code:
+        return False
+    s = re.sub(r"\s+", "", str(code).upper())
+    for p in _STRICT_WELSH_PREFIXES:
+        if not s.startswith(p):
+            continue
+        nxt = s[len(p) : len(p) + 1]
+        if nxt.isdigit():
+            return True
+    return False
 
 
 def _is_ni_postcode(code: Optional[str]) -> bool:
@@ -140,32 +169,65 @@ def build_territory_router(db, require_role):  # noqa: D401
         d = NiDefinition(**doc) if doc else NiDefinition()
         return ni_definition_to_mongo_filter(d)
 
-    def _split_sectors_by_country(sectors: list[str]) -> tuple[list[str], list[str], list[str]]:
-        """Partition sector codes into (Scottish, NI, rest-of-UK) lists so
-        the right data source can be queried for each."""
+    async def _wales_filter() -> dict:
+        doc = await db.wales_definition.find_one(
+            {"_id": WALES_DEFINITION_ID}, {"_id": 0},
+        )
+        d = WalesDefinition(**doc) if doc else WalesDefinition()
+        return wales_definition_to_mongo_filter(d)
+
+    def _split_sectors_by_country(
+        sectors: list[str],
+    ) -> tuple[list[str], list[str], list[str], list[str]]:
+        """Partition sector codes into
+        (Scottish, NI, strict-Welsh, rest-of-UK).
+
+        ``rest-of-UK`` covers England + the England/Wales border (SY/HR/CH).
+        Those border sectors are queried against BOTH the CQC and Wales
+        datasets so cross-border franchisees get hits from both regulators.
+        """
         scot: list[str] = []
         ni: list[str] = []
+        wales: list[str] = []
         rest: list[str] = []
         for s in sectors:
             if _is_ni_postcode(s):
                 ni.append(s)
             elif is_scottish_postcode(s):
                 scot.append(s)
+            elif _is_strict_welsh_postcode(s):
+                wales.append(s)
             else:
                 rest.append(s)
-        return scot, ni, rest
+        return scot, ni, wales, rest
 
     async def _count_homes_per_sector(sectors: list[str]) -> dict:
-        """Total homes per sector across CQC + Scotland + NI sources."""
+        """Total homes per sector across CQC + Scotland + NI + Wales.
+
+        Border sectors (SY/HR/CH) are queried against BOTH CQC and Wales
+        and the counts summed so cross-border franchisees see the full
+        picture in their territory headline number.
+        """
         if not sectors:
             return {}
-        scot, ni, rest = _split_sectors_by_country(sectors)
+        scot, ni, wales, rest = _split_sectors_by_country(sectors)
         merged: dict[str, int] = {}
         if rest:
             homes_coll = await _homes_collection()
             base = await _homes_filter()
             cur = homes_coll.aggregate([
                 {"$match": {**base, "postcode_sector": {"$in": rest}}},
+                {"$group": {"_id": "$postcode_sector", "n": {"$sum": 1}}},
+            ])
+            for r in await cur.to_list(5000):
+                merged[r["_id"]] = merged.get(r["_id"], 0) + r["n"]
+            # Border crossover: ``rest`` sectors that have any Welsh
+            # coverage also get a Wales count added on top. CIW's CSV
+            # tags every record with a postcode_sector so the same
+            # ``$in`` query just works.
+            wales_base = await _wales_filter()
+            cur = db.wales_care_services.aggregate([
+                {"$match": {**wales_base, "postcode_sector": {"$in": rest}}},
                 {"$group": {"_id": "$postcode_sector", "n": {"$sum": 1}}},
             ])
             for r in await cur.to_list(5000):
@@ -182,6 +244,14 @@ def build_territory_router(db, require_role):  # noqa: D401
             base = await _ni_filter()
             cur = db.ni_care_services.aggregate([
                 {"$match": {**base, "postcode_sector": {"$in": ni}}},
+                {"$group": {"_id": "$postcode_sector", "n": {"$sum": 1}}},
+            ])
+            for r in await cur.to_list(5000):
+                merged[r["_id"]] = merged.get(r["_id"], 0) + r["n"]
+        if wales:
+            base = await _wales_filter()
+            cur = db.wales_care_services.aggregate([
+                {"$match": {**base, "postcode_sector": {"$in": wales}}},
                 {"$group": {"_id": "$postcode_sector", "n": {"$sum": 1}}},
             ])
             for r in await cur.to_list(5000):
@@ -211,8 +281,45 @@ def build_territory_router(db, require_role):  # noqa: D401
         """
         if not sectors:
             return []
-        scot, ni, rest = _split_sectors_by_country(sectors)
+        scot, ni, wales, rest = _split_sectors_by_country(sectors)
         out: list[dict] = []
+
+        # Helper: shape a Welsh CIW doc into the same lightweight payload
+        # the frontend expects from CQC docs. Active=False rows are
+        # tagged ``inactive: True`` so the UI can dim them as "recently
+        # closed".
+        def _shape_wales(r: dict) -> dict:
+            return {
+                "locationId": r.get("serviceUrn"),
+                "name": r.get("name") or r.get("knownAs"),
+                "postalCode": r.get("postalCode"),
+                "postcode_sector": r.get("postcode_sector"),
+                "town": r.get("town"),
+                "careHome": "Y",  # CIW import is pre-filtered to Care Home Service
+                "numberOfBeds": r.get("maxApprovedPlaces"),
+                "gacServiceTypes": (
+                    [{"name": r.get("serviceSubType")}] if r.get("serviceSubType")
+                    else [{"name": r.get("serviceType")}] if r.get("serviceType") else []
+                ),
+                "specialisms": [{"name": c} for c in (r.get("categoriesOfCare") or [])],
+                "currentRatings": (
+                    {"overall": {"rating": r.get("ratingsText")}}
+                    if r.get("ratingsText") else {}
+                ),
+                "country": "Wales",
+                "localAuthority": r.get("localAuthority"),
+                "providerId": r.get("providerUrn"),
+                "providerName": r.get("provider"),
+                "providerNameKey": r.get("providerNameKey"),
+                "phoneNumber": r.get("phone"),
+                "emailAddress": r.get("email"),
+                "website": r.get("website"),
+                "lastUpdatedDate": r.get("lastUpdatedOn"),
+                "active": r.get("active", True),
+                "inactive": r.get("active") is False,
+                "inactiveSince": r.get("inactive_since"),
+            }
+
         if rest:
             homes_coll = await _homes_collection()
             base = await _homes_filter()
@@ -220,6 +327,16 @@ def build_territory_router(db, require_role):  # noqa: D401
                 {**base, "postcode_sector": {"$in": rest}}, {"_id": 0},
             ).limit(limit)
             out.extend(await cur.to_list(limit))
+            # Border crossover: also union in any Welsh CIW homes whose
+            # sector matches one of the ``rest`` codes (SY/HR/CH etc.).
+            if len(out) < limit:
+                wales_base = await _wales_filter()
+                remaining = limit - len(out)
+                cur = db.wales_care_services.find(
+                    {**wales_base, "postcode_sector": {"$in": rest}}, {"_id": 0},
+                ).limit(remaining)
+                for r in await cur.to_list(remaining):
+                    out.append(_shape_wales(r))
         # Scottish docs surface as the same lightweight shape — frontend
         # treats them as CQC-like but tagged with country.
         if scot and len(out) < limit:
@@ -273,6 +390,15 @@ def build_territory_router(db, require_role):  # noqa: D401
                     "phoneNumber": r.get("phone"),
                     "lastInspectionDate": r.get("lastInspectedDate"),
                 })
+        # Strict Welsh docs — primary source for CF/SA/LL/NP/LD sectors.
+        if wales and len(out) < limit:
+            base = await _wales_filter()
+            remaining = limit - len(out)
+            cur = db.wales_care_services.find(
+                {**base, "postcode_sector": {"$in": wales}}, {"_id": 0},
+            ).limit(remaining)
+            for r in await cur.to_list(remaining):
+                out.append(_shape_wales(r))
 
         # ------ providerName enrichment from legacy cqc_locations -------
         # Collect distinct providerIds across the result that are missing

@@ -39,7 +39,7 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger("creative-mojo-admin.territory_plus")
 
 
-CLIENT_SOURCES = {"custom", "cqc", "scotland"}
+CLIENT_SOURCES = {"custom", "cqc", "scotland", "ni", "wales"}
 # Lead-status taxonomy for the Marketing CRM panel on the territory modal.
 # Stored as the raw key on the doc; the UI maps to display label + colour.
 # (Kept distinct from the older 3-state ``LEAD_STATUSES`` further down,
@@ -287,8 +287,8 @@ def attach(api: APIRouter, db, require_role):
         """
         allowed, fr = await _has_access(db, user)
         _gate(user, allowed)
-        if body.source not in {"cqc", "scotland"}:
-            raise HTTPException(400, "source must be 'cqc' or 'scotland'")
+        if body.source not in {"cqc", "scotland", "ni", "wales"}:
+            raise HTTPException(400, "source must be 'cqc', 'scotland', 'ni' or 'wales'")
         existing = await db.franchisee_clients.find_one(
             {"franchisee_id": fr["id"], "source": body.source, "home_id": body.home_id},
             {"_id": 0},
@@ -409,8 +409,8 @@ def attach(api: APIRouter, db, require_role):
     ):
         allowed, fr = await _has_access(db, user)
         _gate(user, allowed)
-        if body.source not in {"cqc", "scotland"}:
-            raise HTTPException(400, "source must be 'cqc' or 'scotland'")
+        if body.source not in {"cqc", "scotland", "ni", "wales"}:
+            raise HTTPException(400, "source must be 'cqc', 'scotland', 'ni' or 'wales'")
         if body.status not in LEAD_STATUSES:
             raise HTTPException(
                 400, f"status must be one of: {sorted(LEAD_STATUSES)}",

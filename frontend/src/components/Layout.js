@@ -106,6 +106,7 @@ const SIDEBAR = [
           { kind: "item", to: "/cqc-definitions", label: "CQC Definitions", icon: Stethoscope, testid: "nav-cqc-definitions", permKey: "cqc-definitions" },
           { kind: "item", to: "/scotland-definitions", label: "Scotland Definitions", icon: Stethoscope, testid: "nav-scotland-definitions", permKey: "scotland-definitions" },
           { kind: "item", to: "/ni-definitions", label: "Northern Ireland Definitions", icon: Stethoscope, testid: "nav-ni-definitions", permKey: "ni-definitions" },
+          { kind: "item", to: "/wales-definitions", label: "Wales Definitions", icon: Stethoscope, testid: "nav-wales-definitions", permKey: "wales-definitions" },
           { kind: "item", to: "/admin/help-centre", label: "Help Centre", icon: LifeBuoy, testid: "nav-help-centre", permKey: "help-centre" },
           { kind: "item", to: "/admin/subscription-requests", label: "Subscription Requests", icon: Sparkles, testid: "nav-subscription-requests", permKey: "subscription-requests" },
         ],
@@ -161,6 +162,7 @@ const SIDEBAR_V2 = [
           { kind: "item", to: "/cqc-definitions",     label: "CQC",                         icon: Stethoscope, testid: "nav-cqc-definitions",     permKey: "cqc-definitions" },
           { kind: "item", to: "/scotland-definitions", label: "Scotland",                   icon: Stethoscope, testid: "nav-scotland-definitions", permKey: "scotland-definitions" },
           { kind: "item", to: "/ni-definitions",      label: "Northern Ireland",            icon: Stethoscope, testid: "nav-ni-definitions",      permKey: "ni-definitions" },
+          { kind: "item", to: "/wales-definitions",   label: "Wales",                       icon: Stethoscope, testid: "nav-wales-definitions",   permKey: "wales-definitions" },
         ],
       },
       {
@@ -209,6 +211,7 @@ export const ADMIN_NAV_KEYS = [
   { key: "cqc-definitions",  label: "CQC Definitions",      paths: ["/cqc-definitions"] },
   { key: "scotland-definitions", label: "Scotland Definitions", paths: ["/scotland-definitions"] },
   { key: "ni-definitions",   label: "Northern Ireland Definitions", paths: ["/ni-definitions"] },
+  { key: "wales-definitions", label: "Wales Definitions", paths: ["/wales-definitions"] },
   { key: "help-centre",      label: "Help Centre", paths: ["/admin/help-centre"] },
   { key: "subscription-requests", label: "Subscription Requests", paths: ["/admin/subscription-requests"] },
   { key: "invoices",         label: "Sandra's Invoices",    paths: ["/invoices"] },

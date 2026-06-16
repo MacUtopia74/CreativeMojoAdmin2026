@@ -223,7 +223,12 @@ export default function TerritoryClientModal({ initial, onClose, onSaved, onDele
           {isLinked && (
             <div className="px-3 py-2.5 bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-lg flex items-start gap-3">
               <div className="flex-1">
-                This client started from <strong>{initial.source === "scotland" ? "Care Inspectorate Scotland" : "CQC"}</strong>.
+                This client started from <strong>{
+                  initial.source === "scotland" ? "Care Inspectorate Scotland"
+                  : initial.source === "wales" ? "Care Inspectorate Wales (CIW)"
+                  : initial.source === "ni" ? "RQIA (Northern Ireland)"
+                  : "CQC"
+                }</strong>.
                 You can edit any field — your changes are private to you and never written
                 back to the public dataset.
               </div>
@@ -504,7 +509,12 @@ export default function TerritoryClientModal({ initial, onClose, onSaved, onDele
             <div className="px-5 py-4 border-b border-stone-200 flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">
-                  Live data from {initial?.source === "scotland" ? "Care Inspectorate Scotland" : "CQC"}
+                  Live data from {
+                    initial?.source === "scotland" ? "Care Inspectorate Scotland"
+                    : initial?.source === "wales" ? "Care Inspectorate Wales (CIW)"
+                    : initial?.source === "ni" ? "RQIA (Northern Ireland)"
+                    : "CQC"
+                  }
                 </div>
                 <h3 className="font-display text-lg font-black text-stone-950 truncate">{cqcSnapshot.name || "—"}</h3>
               </div>
