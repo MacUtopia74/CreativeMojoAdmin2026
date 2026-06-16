@@ -243,8 +243,8 @@ export default function MyClientsPanel({
               <span className="w-7" />
               <span className="flex-[2] min-w-0">Client name</span>
               <span className="flex-1 min-w-0">Location</span>
-              <span className="hidden lg:block w-32">Status</span>
-              <span className="hidden lg:block w-20 text-right">Beds</span>
+              <span className="hidden lg:block w-40">Status</span>
+              <span className="hidden lg:block w-16">Beds</span>
               <span className="w-4" />
             </div>
           )}
@@ -304,15 +304,15 @@ export default function MyClientsPanel({
                       <div className="hidden md:block flex-1 min-w-0 text-sm text-stone-700 truncate">
                         {c._location || "—"}
                       </div>
-                      <div className="hidden lg:flex shrink-0 w-32">
+                      <div className="hidden lg:flex shrink-0 w-40">
                         {meta.option && (
-                          <span className={`inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded border ${meta.tone.chip}`}>
+                          <span className={`inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded border whitespace-nowrap ${meta.tone.chip}`}>
                             <span className={`w-2 h-2 rounded-full ${meta.tone.dot}`}></span>
                             {meta.label}
                           </span>
                         )}
                       </div>
-                      <div className="hidden lg:flex shrink-0 w-20 justify-end">
+                      <div className="hidden lg:flex shrink-0 w-16">
                         {c._beds != null && (
                           <span className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded bg-white/70 text-stone-700 border border-stone-200">
                             <BedDouble className="w-3 h-3" /> {c._beds}
