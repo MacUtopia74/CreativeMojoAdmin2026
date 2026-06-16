@@ -68,6 +68,7 @@ export default function ProjectCodesAdminPage() {
   const [q, setQ] = useState("");
   const [tab, setTab] = useState("products");  // products | files
   const [status, setStatus] = useState("all");  // all | matched | woo_only | file_only
+  const [month, setMonth] = useState("");        // "" | "1".."12" — narrows Woo to a single month
   const [minScore, setMinScore] = useState(90);
   const [editing, setEditing] = useState(null);  // {type:'woo'|'file', id, value, asset_type}
   const [bulkReview, setBulkReview] = useState(null);  // null | { items, min_score }
@@ -76,18 +77,32 @@ export default function ProjectCodesAdminPage() {
   const reload = useCallback(async () => {
     setLoading(true); setErr("");
     try {
+      const params = {
+        q: q || undefined,
+        status,
+        // Convert select-string → number; "" means no month filter.
+        month: month ? parseInt(month, 10) : undefined,
+      };
       const [main, sug, skips] = await Promise.all([
-        api.get("/admin/project-codes", { params: { q: q || undefined, status } }),
+        api.get("/admin/project-codes", { params }),
         api.get("/admin/project-codes/suggestions", { params: { min_score: minScore } }),
         api.get("/admin/project-codes/suggestions/skipped"),
       ]);
       setData(main.data);
-      setSuggestions(sug.data.items || []);
+      // If the admin has chosen a month, narrow the suggestions list
+      // client-side to only that month's products. (The suggestion
+      // engine itself is global so we keep its endpoint unchanged.)
+      let suggestions = sug.data.items || [];
+      if (month) {
+        const allowedIds = new Set((main.data?.products || []).map((p) => p.id));
+        suggestions = suggestions.filter((s) => allowedIds.has(s.woo_id));
+      }
+      setSuggestions(suggestions);
       setSkipsCount(skips.data.count || 0);
     } catch (e) {
       setErr(e?.response?.data?.detail || "Couldn't load project codes.");
     } finally { setLoading(false); }
-  }, [q, status, minScore]);
+  }, [q, status, month, minScore]);
 
   useEffect(() => { reload(); }, [reload]);
 
@@ -381,11 +396,26 @@ export default function ProjectCodesAdminPage() {
               <input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="Filter by name…"
+                placeholder="Search by name (Woo or file)…"
                 data-testid="pc-search"
-                className="pl-7 pr-3 py-1.5 text-xs border border-stone-300 rounded-md w-56"
+                className="pl-7 pr-3 py-1.5 text-xs border border-stone-300 rounded-md w-64"
               />
             </div>
+            <select
+              value={month}
+              onChange={(e) => setMonth(e.target.value)}
+              data-testid="pc-month-filter"
+              title="Filter Woo products by category month"
+              className="px-2 py-1.5 text-xs border border-stone-300 rounded-md bg-white"
+            >
+              <option value="">All months</option>
+              {[
+                ["1", "January"], ["2", "February"], ["3", "March"],
+                ["4", "April"], ["5", "May"], ["6", "June"],
+                ["7", "July"], ["8", "August"], ["9", "September"],
+                ["10", "October"], ["11", "November"], ["12", "December"],
+              ].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
             <div className="inline-flex items-center bg-stone-100 rounded-md p-0.5">
               {[
                 ["all", "All"],

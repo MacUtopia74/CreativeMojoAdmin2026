@@ -68,8 +68,40 @@ EXT_DEFAULT_ASSET = {
 # Mongo filter — rapidfuzz on the slug ignores capitalisation/spaces.
 ART_KIT_TAG_SLUG = "standard-boxed-art-kits"
 
-# Month names (English UK) ↔ index — used when matching Woo categories
-# like "May" / "June" to the visible calendar month from the portal.
+# File-vault path fragment that bounds the "project-guide" universe.
+# Anything outside this folder (per-franchisee documents under
+# ``franchisees/…/My own franchise documents``, admin scratch, .trash
+# etc.) is NOT a candidate for Project Code matching — the spec is
+# strict about this so franchisees never see a private file by
+# accident, and the suggestion engine isn't dragged down by 500+
+# irrelevant docs.
+PROJECT_FILES_KEY_FRAGMENT = "All Projects & Templates (Guides & Files)"
+
+
+def _project_files_query() -> dict:
+    """Mongo filter that restricts ``files_index`` to project-guide
+    territory. Used by every endpoint that lists or matches files."""
+    return {"key": {"$regex": re.escape(PROJECT_FILES_KEY_FRAGMENT)}}
+
+
+async def _purge_out_of_scope_codes(db) -> int:
+    """One-shot cleanup: clear ``project_code`` / ``asset_type`` from
+    any file outside the project-guide folder. Runs idempotently from
+    the admin page's first load so legacy mistakes auto-heal.
+    """
+    res = await db.files_index.update_many(
+        {
+            "project_code": {"$ne": None},
+            "key": {"$not": {"$regex": re.escape(PROJECT_FILES_KEY_FRAGMENT)}},
+        },
+        {"$set": {"project_code": None, "asset_type": None}},
+    )
+    return res.modified_count
+
+
+# Month names ↔ index — used when matching Woo categories like "May"
+# / "June" to either the visible calendar month (portal) or the
+# admin's month dropdown.
 MONTH_NAMES_LOWER = (
     "january", "february", "march", "april", "may", "june",
     "july", "august", "september", "october", "november", "december",
@@ -168,21 +200,41 @@ def build_project_codes_router(db, require_role) -> APIRouter:
     async def list_project_codes(
         q: Optional[str] = Query(None, description="Fuzzy filter on names"),
         status: str = Query("all", description="all|matched|woo_only|file_only"),
+        month: Optional[int] = Query(
+            None, ge=1, le=12,
+            description="If set, only Woo products whose category matches this month",
+        ),
         _user: dict = Depends(require_role("admin")),
     ):
         """Single unified view: every Woo top-level product (no
-        variations) and every file in ``files_index``, with each
-        record's ``project_code`` and a join indicator.
+        variations) and every IN-SCOPE file from the project-guide
+        folder (``All Projects & Templates (Guides & Files)`` only —
+        franchisee-private files are excluded by design).
 
         ``status`` filter helps the admin focus on the work that's
         left — ``woo_only`` lists Woo products that don't yet have a
         matching file; ``file_only`` lists orphaned files.
+
+        ``month`` (1–12) narrows the Woo side to a single calendar
+        month based on the product's WooCommerce category — drives
+        the admin's month dropdown so the user can hand-link a single
+        month's batch at a time.
         """
         await _ensure_indexes()
+        # Self-heal any out-of-scope file codes on every load. Cheap
+        # update_many that no-ops once clean.
+        await _purge_out_of_scope_codes(db)
+
         # Project-side: ignore variations (they share parent's code).
-        woo_match = {"is_variation": {"$ne": True}}
+        woo_match: dict = {"is_variation": {"$ne": True}}
         if q:
             woo_match["name"] = {"$regex": re.escape(q), "$options": "i"}
+        if month:
+            mname = MONTH_NAMES_LOWER[month - 1]
+            woo_match["$or"] = [
+                {"category_slugs": mname},
+                {"category_names": {"$regex": f"^{mname}$", "$options": "i"}},
+            ]
         woo_cur = db.woo_products.find(
             woo_match,
             {
@@ -194,7 +246,7 @@ def build_project_codes_router(db, require_role) -> APIRouter:
         ).sort("name", 1)
         woo_products = await woo_cur.to_list(5000)
 
-        file_match: dict = {}
+        file_match: dict = dict(_project_files_query())
         if q:
             file_match["name"] = {"$regex": re.escape(q), "$options": "i"}
         file_cur = db.files_index.find(
@@ -329,7 +381,7 @@ def build_project_codes_router(db, require_role) -> APIRouter:
             {"_id": 0, "id": 1, "name": 1, "image_url": 1, "project_code": 1},
         ).to_list(5000)
         files = await db.files_index.find(
-            {},
+            _project_files_query(),
             {"_id": 0, "key": 1, "name": 1, "project_code": 1, "asset_type": 1, "content_type": 1},
         ).to_list(10000)
 
@@ -563,7 +615,11 @@ def build_project_codes_router(db, require_role) -> APIRouter:
         files: dict[str, dict] = {}
         if codes:
             cur = db.files_index.find(
-                {"project_code": {"$in": codes}, "asset_type": "instruction_pdf"},
+                {
+                    **_project_files_query(),
+                    "project_code": {"$in": codes},
+                    "asset_type": "instruction_pdf",
+                },
                 {"_id": 0, "key": 1, "name": 1, "project_code": 1, "size": 1},
             )
             for f in await cur.to_list(2000):
