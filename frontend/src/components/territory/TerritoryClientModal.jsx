@@ -40,10 +40,14 @@ export default function TerritoryClientModal({ initial, onClose, onSaved, onDele
   const navigate = useNavigate();
   const [form, setForm] = useState(() => {
     const empty = Object.fromEntries(FIELDS.map((f) => [f.key, ""]));
-    if (!initial) return { ...empty, notes: "", contacts: [], lead_status: "", last_contact_date: "", last_contact_method: "", follow_up_required: false, follow_up_date: "", follow_up_notes: "" };
+    // Default status: rows with no ``lead_status`` set (legacy records
+    // or freshly-marked prospects) are treated as "Not Contacted"
+    // everywhere — the My Clients list already falls back to this, so
+    // the modal must too or the dropdown reads "— select status —"
+    // while the row chip shouts NOT CONTACTED.
+    if (!initial) return { ...empty, notes: "", contacts: [], lead_status: "not_contacted", last_contact_date: "", last_contact_method: "", follow_up_required: false, follow_up_date: "", follow_up_notes: "" };
     return {
       ...empty,
-      lead_status: "",
       last_contact_date: "",
       last_contact_method: "",
       follow_up_date: "",
@@ -53,6 +57,10 @@ export default function TerritoryClientModal({ initial, onClose, onSaved, onDele
           .filter(([k]) => k !== "follow_up_required")
           .map(([k, v]) => [k, v ?? ""]),
       ),
+      // ``initial.lead_status`` may be missing or empty (older records)
+      // — coerce to the canonical default so the dropdown matches the
+      // list view's fallback chip.
+      lead_status: initial.lead_status || "not_contacted",
       notes: initial.notes || "",
       contacts: Array.isArray(initial.contacts) ? initial.contacts : [],
       follow_up_required: !!initial.follow_up_required,
