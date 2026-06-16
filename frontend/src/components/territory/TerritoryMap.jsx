@@ -629,6 +629,10 @@ export default function TerritoryMap({
       // only matching custom entries render on the map.
       if (statusFilter && status !== statusFilter) return;
       const isClient = status === "regular_client";
+      // "My clients only" filter parity with home markers — drop
+      // non-client custom entries entirely so the map shows only
+      // your own gold ★ pins.
+      if (dimNonClients && !isClient) return;
       const el = document.createElement("div");
       el.className = "cm-client-marker";
       if (isClient) {
@@ -668,7 +672,7 @@ export default function TerritoryMap({
       customClientsRef.current.forEach((m) => m.remove());
       customClientsRef.current = [];
     };
-  }, [customClients, ready, onCustomClientClick, statusFilter]);
+  }, [customClients, ready, onCustomClientClick, statusFilter, dimNonClients]);
 
   // ----------------- highlight the active home marker -----------------
   // When the user opens a row in the homes list below the map, we re-skin
