@@ -164,12 +164,12 @@ const SIDEBAR_V2 = [
           { kind: "item", to: "/scotland-definitions", label: "Scotland",                   icon: Stethoscope, testid: "nav-scotland-definitions", permKey: "scotland-definitions" },
           { kind: "item", to: "/ni-definitions",      label: "Northern Ireland",            icon: Stethoscope, testid: "nav-ni-definitions",      permKey: "ni-definitions" },
           { kind: "item", to: "/wales-definitions",   label: "Wales",                       icon: Stethoscope, testid: "nav-wales-definitions",   permKey: "wales-definitions" },
-          { kind: "item", to: "/admin/project-codes",  label: "Project Codes",              icon: Link2,       testid: "nav-project-codes",       permKey: "project-codes" },
         ],
       },
       {
         kind: "group", key: "content", label: "Content", icon: FolderOpen, testid: "nav-content-group",
         children: [
+          { kind: "item", to: "/admin/project-codes", label: "Project Linking",             icon: Link2,       testid: "nav-project-codes",       permKey: "project-codes" },
           { kind: "item", to: "/admin/help-centre",   label: "Help Centre",                 icon: LifeBuoy,    testid: "nav-help-centre",         permKey: "help-centre" },
           { kind: "item", to: "/admin/shape-orders",  label: "Franchise Store",             icon: ShoppingBag, testid: "nav-admin-shape-orders",  permKey: "admin-shape-orders" },
           { kind: "item", to: "/admin/youtube",       label: "YouTube Playlists",           icon: Youtube,     testid: "nav-admin-youtube",       permKey: "admin-youtube" },
@@ -214,7 +214,7 @@ export const ADMIN_NAV_KEYS = [
   { key: "scotland-definitions", label: "Scotland Definitions", paths: ["/scotland-definitions"] },
   { key: "ni-definitions",   label: "Northern Ireland Definitions", paths: ["/ni-definitions"] },
   { key: "wales-definitions", label: "Wales Definitions", paths: ["/wales-definitions"] },
-  { key: "project-codes",     label: "Project Codes",     paths: ["/admin/project-codes"] },
+  { key: "project-codes",     label: "Project Linking",   paths: ["/admin/project-codes"] },
   { key: "help-centre",      label: "Help Centre", paths: ["/admin/help-centre"] },
   { key: "subscription-requests", label: "Subscription Requests", paths: ["/admin/subscription-requests"] },
   { key: "invoices",         label: "Sandra's Invoices",    paths: ["/invoices"] },
