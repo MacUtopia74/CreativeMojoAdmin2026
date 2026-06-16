@@ -688,8 +688,8 @@ export default function TerritoryBuilderPage() {
                 · Nearby sectors collapsible (right)
               Keeps the working chips one click away without crowding the
               map below. */}
-          <div className="grid lg:grid-cols-3 gap-3 items-start">
-            <div className="bg-white border border-stone-200 rounded-2xl">
+          <div className="grid lg:grid-cols-3 gap-3 items-start relative z-20">
+            <div className="bg-white border border-stone-200 rounded-2xl relative">
               <div className="p-3 flex items-center gap-3 flex-wrap">
                 <button
                   onClick={() => setShowOverlay((v) => !v)}
@@ -713,7 +713,7 @@ export default function TerritoryBuilderPage() {
                 )}
               </div>
               {showOverlay && legendOpen && overlay.franchisees.length > 0 && (
-                <div className="px-3 pb-3 grid grid-cols-2 gap-1.5" data-testid="franchisee-legend">
+                <div className="absolute top-full left-0 right-0 mt-1 z-30 bg-white border border-stone-200 rounded-2xl shadow-xl p-3 grid grid-cols-2 gap-1.5 max-h-[420px] overflow-y-auto" data-testid="franchisee-legend">
                   {overlay.franchisees.map((f) => (
                     <button
                       key={f.id}
@@ -732,8 +732,8 @@ export default function TerritoryBuilderPage() {
               )}
             </div>
 
-            {/* Selected sectors — collapsible, sits above the map */}
-            <div className="bg-white border border-stone-200 rounded-2xl">
+            {/* Selected sectors — collapsible, drops OVER the map */}
+            <div className="bg-white border border-stone-200 rounded-2xl relative">
               <button
                 type="button"
                 onClick={() => setSelectedListOpen((v) => !v)}
@@ -744,7 +744,7 @@ export default function TerritoryBuilderPage() {
                 {selectedListOpen ? <ChevronUp className="w-4 h-4 text-stone-500" /> : <ChevronDown className="w-4 h-4 text-stone-500" />}
               </button>
               {selectedListOpen && (
-                <div className="px-4 pb-4">
+                <div className="absolute top-full left-0 right-0 mt-1 z-30 bg-white border border-stone-200 rounded-2xl shadow-xl px-4 py-4">
                   {!sortedSelected.length ? (
                     <div className="text-xs text-stone-500">Click sectors on the map to add them here.</div>
                   ) : (
@@ -789,8 +789,8 @@ export default function TerritoryBuilderPage() {
               )}
             </div>
 
-            {/* Nearby sectors — collapsible, sits above the map */}
-            <div className="bg-white border border-stone-200 rounded-2xl">
+            {/* Nearby sectors — collapsible, drops OVER the map */}
+            <div className="bg-white border border-stone-200 rounded-2xl relative">
               <button
                 type="button"
                 onClick={() => setNearbyListOpen((v) => !v)}
@@ -804,7 +804,7 @@ export default function TerritoryBuilderPage() {
                 {nearbyListOpen ? <ChevronUp className="w-4 h-4 text-stone-500" /> : <ChevronDown className="w-4 h-4 text-stone-500" />}
               </button>
               {nearbyListOpen && (
-                <div className="px-4 pb-4">
+                <div className="absolute top-full left-0 right-0 mt-1 z-30 bg-white border border-stone-200 rounded-2xl shadow-xl px-4 py-4">
                   {/* Filter + sort row. Sort defaults to distance (current
                       behaviour). Switching to A-Z is useful when scanning
                       for a specific outcode while ignoring radius. */}
