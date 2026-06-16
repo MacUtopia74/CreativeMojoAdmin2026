@@ -129,7 +129,9 @@ export default function ProjectCodesAdminPage() {
         woo_id: sug.woo_id, file_key: match.file_key,
       });
       await reload();
-    } catch (e) { /* noop */ }
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Could not dismiss suggestion.");
+    }
   };
 
   const openBulkReview = () => {

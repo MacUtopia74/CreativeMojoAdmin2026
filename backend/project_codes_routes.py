@@ -523,6 +523,12 @@ def build_project_codes_router(db, require_role) -> APIRouter:
         product to its linked ``instruction_pdf`` file (if any) so the
         modal can render an immediate "Open Project Guide" link or
         a "Coming soon" fallback.
+
+        ``guide_url`` is intentionally returned as a relative path
+        (``/files/download?key=…``); the React ``api`` client prepends
+        the API host + bearer token. Keeping it relative means we
+        never leak the host into client-stored state. The frontend
+        GETs the path and opens the returned ``{url}`` in a new tab.
         """
         month_name_lower = MONTH_NAMES_LOWER[month - 1]
         # Slug version: "may" / "june" — Woo stores categories slugged
