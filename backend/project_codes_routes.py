@@ -1,0 +1,593 @@
+"""Project Codes — the central link between WooCommerce products and
+Cloudflare R2 project assets stored in our ``files_index`` collection.
+
+Design (per product brief, locked 16 Jun 2026):
+  • **Storage**: Hub-primary. ``project_code`` lives on the Mongo
+    documents (``woo_products`` + ``files_index``). R2 metadata is NOT
+    used as the primary store — would require enumerating the bucket
+    on every lookup. R2-side stamping can be layered later without
+    schema changes.
+  • **WooCommerce side**: Hub-only. We don't push the code into Woo;
+    the admin assigns codes inside this app, keyed by Woo product ID.
+  • **Multiple assets per code**: Every ``files_index`` doc can carry
+    ``project_code`` + ``asset_type`` ∈ {instruction_pdf, svg_cutting,
+    stencil, video, image, other}. One code → many files of different
+    types. The portal calendar modal defaults to ``instruction_pdf``
+    for the "Open Project Guide" button; a future Project Library can
+    surface every asset.
+  • **Suggestion engine**: rapidfuzz token_set_ratio across Woo
+    product names and file basenames (extension stripped). Returns
+    ranked suggestions with confidence 0–100. The admin approves one
+    at a time or bulk-approves anything ≥ threshold.
+
+Endpoints (all admin-scoped except the portal one):
+  • GET    /admin/project-codes                — unified Woo + file view
+  • PUT    /admin/project-codes/woo/{woo_id}   — set/clear product code
+  • PUT    /admin/project-codes/file/{key}     — set/clear file code + asset_type
+  • GET    /admin/project-codes/suggestions    — auto-match suggestions
+  • POST   /admin/project-codes/suggestions/approve  — single approve
+  • POST   /admin/project-codes/suggestions/approve-bulk — bulk approve
+  • POST   /admin/project-codes/suggestions/skip — dismiss a suggestion
+  • GET    /portal/calendar/projects?month=&year=  — month-filtered list
+                                                     for the Calendar modal
+"""
+from __future__ import annotations
+
+import logging
+import re
+import unicodedata
+from datetime import datetime, timezone
+from typing import Optional
+from urllib.parse import quote_plus
+
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
+from rapidfuzz import fuzz
+
+logger = logging.getLogger("creative-mojo-admin.project_codes")
+
+ASSET_TYPES = (
+    "instruction_pdf", "svg_cutting", "stencil",
+    "video", "image", "other",
+)
+DEFAULT_ASSET_TYPE = "instruction_pdf"
+
+# Filename extensions → default asset_type guess. Used when the admin
+# hasn't set one yet and we need to pre-fill the dropdown.
+EXT_DEFAULT_ASSET = {
+    ".pdf": "instruction_pdf",
+    ".svg": "svg_cutting",
+    ".dxf": "svg_cutting",
+    ".mp4": "video", ".mov": "video", ".m4v": "video", ".webm": "video",
+    ".jpg": "image", ".jpeg": "image", ".png": "image",
+    ".webp": "image", ".heic": "image", ".heif": "image",
+}
+
+# Standard tag for products that should appear in the calendar modal
+# (per spec: "Standard Boxed Art Kits"). Stored slugified for the
+# Mongo filter — rapidfuzz on the slug ignores capitalisation/spaces.
+ART_KIT_TAG_SLUG = "standard-boxed-art-kits"
+
+# Month names (English UK) ↔ index — used when matching Woo categories
+# like "May" / "June" to the visible calendar month from the portal.
+MONTH_NAMES_LOWER = (
+    "january", "february", "march", "april", "may", "june",
+    "july", "august", "september", "october", "november", "december",
+)
+
+# ---------------------------------------------------------------- helpers
+
+
+def slugify_project_code(raw: str) -> str:
+    """Turn a free-text name into a stable Project Code.
+
+    ``"Forget Me Not Tea Set"`` → ``"FORGET_ME_NOT_TEA_SET"``.
+
+    Aggressive on punctuation so accidental punctuation drift between
+    the Woo product name and file name still yields the same code.
+    """
+    if not raw:
+        return ""
+    # Strip accents → ASCII so "café" and "cafe" match.
+    s = unicodedata.normalize("NFKD", str(raw))
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    s = s.upper()
+    s = re.sub(r"[^A-Z0-9]+", "_", s).strip("_")
+    return s
+
+
+def _strip_extension(name: str) -> str:
+    return re.sub(r"\.[A-Za-z0-9]{1,5}$", "", name or "")
+
+
+def _guess_asset_type(filename: str) -> str:
+    m = re.search(r"\.[A-Za-z0-9]{1,5}$", filename or "")
+    if not m:
+        return DEFAULT_ASSET_TYPE
+    return EXT_DEFAULT_ASSET.get(m.group(0).lower(), "other")
+
+
+def _match_score(product_name: str, file_basename: str) -> int:
+    """Confidence 0–100. Uses token_set_ratio so word-order and stray
+    punctuation don't tank the score — "Forget Me Not Tea Set" and
+    "Forget Me Not - Tea Set" still match ~95+."""
+    a = (product_name or "").strip().lower()
+    b = _strip_extension(file_basename or "").strip().lower()
+    if not a or not b:
+        return 0
+    return int(fuzz.token_set_ratio(a, b))
+
+
+# ---------------------------------------------------------------- models
+
+
+class ProductCodeBody(BaseModel):
+    project_code: Optional[str] = Field(
+        default=None,
+        description="Set to empty/null to clear. Slugified server-side.",
+    )
+
+
+class FileCodeBody(BaseModel):
+    project_code: Optional[str] = Field(default=None)
+    asset_type: Optional[str] = Field(default=None)
+
+
+class ApproveBody(BaseModel):
+    woo_id: str
+    file_key: str
+    project_code: Optional[str] = None  # if None, generate from product name
+    asset_type: Optional[str] = None    # if None, guess from extension
+
+
+class BulkApproveBody(BaseModel):
+    # Server-side floor of 90 ensures bulk approval can never be set
+    # to a careless threshold (e.g. 50%) and silently wreck the
+    # mapping. The admin UI also surfaces a review-before-confirm
+    # modal so the human eyes every link before it lands.
+    min_score: int = Field(default=95, ge=90, le=100)
+    limit: int = Field(default=100, ge=1, le=500)
+
+
+class SkipBody(BaseModel):
+    woo_id: str
+    file_key: str
+
+
+# ---------------------------------------------------------------- router
+def build_project_codes_router(db, require_role) -> APIRouter:
+    router = APIRouter()
+
+    async def _ensure_indexes():
+        await db.woo_products.create_index("project_code")
+        await db.files_index.create_index("project_code")
+        await db.files_index.create_index([("project_code", 1), ("asset_type", 1)])
+        await db.project_code_skips.create_index([("woo_id", 1), ("file_key", 1)], unique=True)
+
+    @router.get("/admin/project-codes")
+    async def list_project_codes(
+        q: Optional[str] = Query(None, description="Fuzzy filter on names"),
+        status: str = Query("all", description="all|matched|woo_only|file_only"),
+        _user: dict = Depends(require_role("admin")),
+    ):
+        """Single unified view: every Woo top-level product (no
+        variations) and every file in ``files_index``, with each
+        record's ``project_code`` and a join indicator.
+
+        ``status`` filter helps the admin focus on the work that's
+        left — ``woo_only`` lists Woo products that don't yet have a
+        matching file; ``file_only`` lists orphaned files.
+        """
+        await _ensure_indexes()
+        # Project-side: ignore variations (they share parent's code).
+        woo_match = {"is_variation": {"$ne": True}}
+        if q:
+            woo_match["name"] = {"$regex": re.escape(q), "$options": "i"}
+        woo_cur = db.woo_products.find(
+            woo_match,
+            {
+                "_id": 0, "id": 1, "woo_id": 1, "name": 1, "sku": 1,
+                "image_url": 1, "project_code": 1,
+                "tag_names": 1, "tag_slugs": 1,
+                "category_names": 1, "category_slugs": 1,
+            },
+        ).sort("name", 1)
+        woo_products = await woo_cur.to_list(5000)
+
+        file_match: dict = {}
+        if q:
+            file_match["name"] = {"$regex": re.escape(q), "$options": "i"}
+        file_cur = db.files_index.find(
+            file_match,
+            {
+                "_id": 0, "id": 1, "key": 1, "name": 1, "content_type": 1,
+                "size": 1, "project_code": 1, "asset_type": 1,
+            },
+        ).sort("name", 1)
+        files = await file_cur.to_list(5000)
+
+        # Build code → file list lookup once so the join is O(1).
+        files_by_code: dict[str, list[dict]] = {}
+        for f in files:
+            code = f.get("project_code")
+            if code:
+                files_by_code.setdefault(code, []).append(f)
+
+        matched_codes = {p.get("project_code") for p in woo_products if p.get("project_code")}
+        matched_codes.discard(None)
+        matched_codes.discard("")
+
+        # Apply status filter
+        out_woo = []
+        for p in woo_products:
+            code = p.get("project_code")
+            has_file = bool(code and files_by_code.get(code))
+            row = {
+                **p,
+                "has_code": bool(code),
+                "linked_files": files_by_code.get(code, []) if code else [],
+                "has_linked_file": has_file,
+            }
+            if status == "matched" and not has_file:
+                continue
+            if status == "woo_only" and has_file:
+                continue
+            if status == "file_only":
+                continue
+            out_woo.append(row)
+
+        out_files = []
+        for f in files:
+            code = f.get("project_code")
+            in_matched = bool(code and code in matched_codes)
+            row = {
+                **f,
+                "has_code": bool(code),
+                "linked_to_woo": in_matched,
+            }
+            if status == "matched" and not in_matched:
+                continue
+            if status == "file_only" and in_matched:
+                continue
+            if status == "woo_only":
+                continue
+            out_files.append(row)
+
+        # Counters power the admin status pills at the top of the page.
+        counts = {
+            "woo_total": len(woo_products),
+            "woo_with_code": sum(1 for p in woo_products if p.get("project_code")),
+            "woo_matched_to_file": sum(
+                1 for p in woo_products
+                if p.get("project_code") and files_by_code.get(p.get("project_code"))
+            ),
+            "files_total": len(files),
+            "files_with_code": sum(1 for f in files if f.get("project_code")),
+        }
+        return {"products": out_woo, "files": out_files, "counts": counts}
+
+    @router.put("/admin/project-codes/woo/{woo_id}")
+    async def set_product_code(
+        woo_id: str,
+        body: ProductCodeBody,
+        user: dict = Depends(require_role("admin")),
+    ):
+        existing = await db.woo_products.find_one(
+            {"id": woo_id}, {"_id": 0, "id": 1, "name": 1},
+        )
+        if not existing:
+            raise HTTPException(404, "Woo product not found")
+        new_code = slugify_project_code(body.project_code or "") or None
+        await db.woo_products.update_one(
+            {"id": woo_id},
+            {"$set": {
+                "project_code": new_code,
+                "project_code_updated_at": datetime.now(timezone.utc).isoformat(),
+                "project_code_updated_by": user.get("email"),
+            }},
+        )
+        return {"ok": True, "project_code": new_code}
+
+    @router.put("/admin/project-codes/file/{file_key:path}")
+    async def set_file_code(
+        file_key: str,
+        body: FileCodeBody,
+        user: dict = Depends(require_role("admin")),
+    ):
+        existing = await db.files_index.find_one(
+            {"key": file_key}, {"_id": 0, "key": 1, "name": 1},
+        )
+        if not existing:
+            raise HTTPException(404, "File not found")
+        new_code = slugify_project_code(body.project_code or "") or None
+        asset_type = body.asset_type
+        if asset_type and asset_type not in ASSET_TYPES:
+            raise HTTPException(400, f"asset_type must be one of {ASSET_TYPES}")
+        if new_code and not asset_type:
+            asset_type = _guess_asset_type(existing.get("name") or "")
+        await db.files_index.update_one(
+            {"key": file_key},
+            {"$set": {
+                "project_code": new_code,
+                "asset_type": asset_type if new_code else None,
+                "project_code_updated_at": datetime.now(timezone.utc).isoformat(),
+                "project_code_updated_by": user.get("email"),
+            }},
+        )
+        return {"ok": True, "project_code": new_code, "asset_type": asset_type if new_code else None}
+
+    # ---- Suggestion engine ----------------------------------------
+
+    async def _build_suggestions(min_score: int, limit: int) -> list[dict]:
+        """Return ranked product↔file suggestions whose fuzzy score
+        meets ``min_score``. Skipped pairs and pairs already linked
+        through the same Project Code are filtered out.
+        """
+        # Pull lightweight projections — we only need name + key/ID.
+        woo = await db.woo_products.find(
+            {"is_variation": {"$ne": True}},
+            {"_id": 0, "id": 1, "name": 1, "image_url": 1, "project_code": 1},
+        ).to_list(5000)
+        files = await db.files_index.find(
+            {},
+            {"_id": 0, "key": 1, "name": 1, "project_code": 1, "asset_type": 1, "content_type": 1},
+        ).to_list(10000)
+
+        # Build "skip" lookup so dismissed suggestions don't reappear.
+        skipped = set()
+        async for s in db.project_code_skips.find({}, {"_id": 0, "woo_id": 1, "file_key": 1}):
+            skipped.add((s["woo_id"], s["file_key"]))
+
+        out: list[dict] = []
+        for p in woo:
+            # If product already has a code AND a file is already
+            # linked, don't suggest more — admin already curated it.
+            if p.get("project_code") and any(
+                f.get("project_code") == p.get("project_code") for f in files
+            ):
+                continue
+            best: list[dict] = []
+            for f in files:
+                # Don't suggest pairs where the file is already linked
+                # to a *different* product code — would create a
+                # conflict on approval.
+                if f.get("project_code") and f.get("project_code") != p.get("project_code"):
+                    continue
+                if (p["id"], f["key"]) in skipped:
+                    continue
+                score = _match_score(p.get("name", ""), f.get("name", ""))
+                if score < min_score:
+                    continue
+                best.append({
+                    "file_key": f["key"],
+                    "file_name": f.get("name"),
+                    "score": score,
+                    "asset_type_guess": _guess_asset_type(f.get("name") or ""),
+                })
+            if not best:
+                continue
+            best.sort(key=lambda x: -x["score"])
+            out.append({
+                "woo_id": p["id"],
+                "product_name": p.get("name"),
+                "product_image": p.get("image_url"),
+                "suggested_code": slugify_project_code(p.get("name", "")),
+                "current_code": p.get("project_code"),
+                "matches": best[:5],  # top 5 candidates per product
+                "best_score": best[0]["score"],
+            })
+        out.sort(key=lambda x: -x["best_score"])
+        return out[:limit]
+
+    @router.get("/admin/project-codes/suggestions")
+    async def get_suggestions(
+        min_score: int = Query(80, ge=50, le=100),
+        limit: int = Query(200, ge=1, le=1000),
+        _user: dict = Depends(require_role("admin")),
+    ):
+        await _ensure_indexes()
+        items = await _build_suggestions(min_score, limit)
+        return {"items": items, "count": len(items), "min_score": min_score}
+
+    @router.post("/admin/project-codes/suggestions/approve")
+    async def approve_suggestion(
+        body: ApproveBody = Body(...),
+        user: dict = Depends(require_role("admin")),
+    ):
+        prod = await db.woo_products.find_one(
+            {"id": body.woo_id}, {"_id": 0, "id": 1, "name": 1, "project_code": 1},
+        )
+        if not prod:
+            raise HTTPException(404, "Woo product not found")
+        f = await db.files_index.find_one(
+            {"key": body.file_key}, {"_id": 0, "key": 1, "name": 1, "project_code": 1},
+        )
+        if not f:
+            raise HTTPException(404, "File not found")
+        code = slugify_project_code(
+            body.project_code
+            or prod.get("project_code")
+            or prod.get("name")
+            or "",
+        )
+        if not code:
+            raise HTTPException(400, "Could not derive a Project Code")
+        asset_type = body.asset_type or _guess_asset_type(f.get("name") or "")
+        if asset_type not in ASSET_TYPES:
+            asset_type = DEFAULT_ASSET_TYPE
+        now = datetime.now(timezone.utc).isoformat()
+        await db.woo_products.update_one(
+            {"id": body.woo_id},
+            {"$set": {
+                "project_code": code,
+                "project_code_updated_at": now,
+                "project_code_updated_by": user.get("email"),
+            }},
+        )
+        await db.files_index.update_one(
+            {"key": body.file_key},
+            {"$set": {
+                "project_code": code,
+                "asset_type": asset_type,
+                "project_code_updated_at": now,
+                "project_code_updated_by": user.get("email"),
+            }},
+        )
+        return {"ok": True, "project_code": code, "asset_type": asset_type}
+
+    @router.post("/admin/project-codes/suggestions/approve-bulk")
+    async def approve_bulk(
+        body: BulkApproveBody = Body(...),
+        user: dict = Depends(require_role("admin")),
+    ):
+        suggestions = await _build_suggestions(body.min_score, body.limit)
+        now = datetime.now(timezone.utc).isoformat()
+        approved = 0
+        for s in suggestions:
+            top = s["matches"][0]
+            code = slugify_project_code(s.get("product_name") or "")
+            if not code:
+                continue
+            asset_type = top.get("asset_type_guess") or DEFAULT_ASSET_TYPE
+            await db.woo_products.update_one(
+                {"id": s["woo_id"]},
+                {"$set": {
+                    "project_code": code,
+                    "project_code_updated_at": now,
+                    "project_code_updated_by": user.get("email"),
+                }},
+            )
+            await db.files_index.update_one(
+                {"key": top["file_key"]},
+                {"$set": {
+                    "project_code": code,
+                    "asset_type": asset_type,
+                    "project_code_updated_at": now,
+                    "project_code_updated_by": user.get("email"),
+                }},
+            )
+            approved += 1
+        return {"ok": True, "approved": approved, "considered": len(suggestions)}
+
+    @router.post("/admin/project-codes/suggestions/skip")
+    async def skip_suggestion(
+        body: SkipBody = Body(...),
+        user: dict = Depends(require_role("admin")),
+    ):
+        await db.project_code_skips.update_one(
+            {"woo_id": body.woo_id, "file_key": body.file_key},
+            {"$set": {
+                "skipped_at": datetime.now(timezone.utc).isoformat(),
+                "skipped_by": user.get("email"),
+            }},
+            upsert=True,
+        )
+        return {"ok": True}
+
+    @router.get("/admin/project-codes/suggestions/skipped")
+    async def list_skips(_user: dict = Depends(require_role("admin"))):
+        """Surface the skip queue so the admin can see how many
+        suggestions they previously dismissed before deciding whether
+        to reset.
+        """
+        cur = db.project_code_skips.find({}, {"_id": 0}).sort("skipped_at", -1)
+        items = await cur.to_list(2000)
+        return {"count": len(items), "items": items}
+
+    @router.post("/admin/project-codes/suggestions/reset-skips")
+    async def reset_skips(_user: dict = Depends(require_role("admin"))):
+        """Clear the skip queue so previously-dismissed suggestions
+        re-surface on the next ``/suggestions`` call. Used after a fresh
+        WooCommerce or R2 sync when filename changes might make a
+        previously-rejected pair worth reconsidering.
+        """
+        res = await db.project_code_skips.delete_many({})
+        return {"ok": True, "cleared": res.deleted_count}
+
+    # ---- Manual Woo refresh trigger (the admin "Sync from Woo" button)
+    # already exists in the existing Woo integration router; we don't
+    # duplicate it here.
+
+    # ---- Portal calendar feed ------------------------------------
+
+    @router.get("/portal/calendar/projects")
+    async def portal_projects(
+        month: int = Query(..., ge=1, le=12),
+        year: int = Query(..., ge=2000, le=2100),
+        user: dict = Depends(require_role("franchisee", "admin")),
+    ):
+        """Projects available for the calendar modal.
+
+        Filters Woo products to the "Standard Boxed Art Kits" tag
+        AND a category matching the requested month name. Joins each
+        product to its linked ``instruction_pdf`` file (if any) so the
+        modal can render an immediate "Open Project Guide" link or
+        a "Coming soon" fallback.
+        """
+        month_name_lower = MONTH_NAMES_LOWER[month - 1]
+        # Slug version: "may" / "june" — Woo stores categories slugged
+        # lowercase so we match either name or slug.
+        month_slug = month_name_lower
+        # NB: year is currently advisory (Woo categories are usually
+        # "May" not "May 2026"). We accept it for future-proofing —
+        # if you later add per-year categories, the filter can extend.
+        prods = await db.woo_products.find(
+            {
+                "is_variation": {"$ne": True},
+                "$and": [
+                    {"$or": [
+                        {"tag_slugs": ART_KIT_TAG_SLUG},
+                        {"tag_names": {"$regex": "Standard Boxed Art Kits", "$options": "i"}},
+                    ]},
+                    {"$or": [
+                        {"category_slugs": month_slug},
+                        {"category_names": {"$regex": f"^{month_name_lower}$", "$options": "i"}},
+                    ]},
+                ],
+            },
+            {
+                "_id": 0, "id": 1, "woo_id": 1, "name": 1,
+                "image_url": 1, "permalink": 1, "project_code": 1,
+                "category_names": 1, "tag_names": 1,
+            },
+        ).sort("name", 1).to_list(500)
+
+        # Resolve instruction_pdf for each project_code in one round-trip.
+        codes = [p["project_code"] for p in prods if p.get("project_code")]
+        files: dict[str, dict] = {}
+        if codes:
+            cur = db.files_index.find(
+                {"project_code": {"$in": codes}, "asset_type": "instruction_pdf"},
+                {"_id": 0, "key": 1, "name": 1, "project_code": 1, "size": 1},
+            )
+            for f in await cur.to_list(2000):
+                # Keep first match per code (admin can change which file
+                # is the canonical instruction PDF by re-tagging).
+                code = f.get("project_code")
+                if code and code not in files:
+                    files[code] = f
+
+        items = []
+        for p in prods:
+            code = p.get("project_code")
+            f = files.get(code) if code else None
+            items.append({
+                "id": p["id"],
+                "woo_id": p.get("woo_id"),
+                "name": p.get("name"),
+                "image_url": p.get("image_url"),
+                "permalink": p.get("permalink"),
+                "project_code": code,
+                "has_guide": bool(f),
+                # The file download URL is the existing files-router
+                # signed-URL pattern — keeping it relative so the
+                # frontend's ``api`` client adds the host/auth.
+                "guide_url": (
+                    f"/files/download?key={quote_plus(f['key'])}"
+                    if f else None
+                ),
+                "guide_filename": f.get("name") if f else None,
+            })
+        return {"month": month, "year": year, "items": items, "count": len(items)}
+
+    return router

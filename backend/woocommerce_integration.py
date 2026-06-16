@@ -237,9 +237,21 @@ async def sync_products(db) -> dict:
                     # array is also kept for picker previews.
                     "image_url": ((raw.get("images") or [{}])[0].get("src")) if raw.get("images") else None,
                     "images": raw.get("images") or [],
+                    # Tag + category mirror — drives the calendar
+                    # "Projects for this month" filter (tag = "Standard
+                    # Boxed Art Kits", category = month name) and the
+                    # Project Codes admin matcher.
+                    "tag_names": [t.get("name") for t in (raw.get("tags") or []) if t.get("name")],
+                    "tag_slugs": [t.get("slug") for t in (raw.get("tags") or []) if t.get("slug")],
+                    "category_names": [c.get("name") for c in (raw.get("categories") or []) if c.get("name")],
+                    "category_slugs": [c.get("slug") for c in (raw.get("categories") or []) if c.get("slug")],
                     "is_variation": False,
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 }
+                # ``$set`` would clobber the Hub-side ``project_code``
+                # field (the user manages those inside the admin
+                # mapping page — Woo never knows about them). Use
+                # ``$set`` for the Woo-sourced fields only.
                 ops.append(UpdateOne({"id": doc["id"]}, {"$set": doc}, upsert=True))
                 if raw.get("type") == "variable":
                     variable_parent_ids.append(int(raw.get("id")))

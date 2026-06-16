@@ -14,6 +14,7 @@ import {
   MapPin,
   Target,
   Stethoscope,
+  Link2,
   CalendarDays,
   LogOut,
   ChevronDown,
@@ -163,6 +164,7 @@ const SIDEBAR_V2 = [
           { kind: "item", to: "/scotland-definitions", label: "Scotland",                   icon: Stethoscope, testid: "nav-scotland-definitions", permKey: "scotland-definitions" },
           { kind: "item", to: "/ni-definitions",      label: "Northern Ireland",            icon: Stethoscope, testid: "nav-ni-definitions",      permKey: "ni-definitions" },
           { kind: "item", to: "/wales-definitions",   label: "Wales",                       icon: Stethoscope, testid: "nav-wales-definitions",   permKey: "wales-definitions" },
+          { kind: "item", to: "/admin/project-codes",  label: "Project Codes",              icon: Link2,       testid: "nav-project-codes",       permKey: "project-codes" },
         ],
       },
       {
@@ -212,6 +214,7 @@ export const ADMIN_NAV_KEYS = [
   { key: "scotland-definitions", label: "Scotland Definitions", paths: ["/scotland-definitions"] },
   { key: "ni-definitions",   label: "Northern Ireland Definitions", paths: ["/ni-definitions"] },
   { key: "wales-definitions", label: "Wales Definitions", paths: ["/wales-definitions"] },
+  { key: "project-codes",     label: "Project Codes",     paths: ["/admin/project-codes"] },
   { key: "help-centre",      label: "Help Centre", paths: ["/admin/help-centre"] },
   { key: "subscription-requests", label: "Subscription Requests", paths: ["/admin/subscription-requests"] },
   { key: "invoices",         label: "Sandra's Invoices",    paths: ["/invoices"] },

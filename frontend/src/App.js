@@ -30,6 +30,7 @@ import OrdersReconciliationPage from "@/pages/OrdersReconciliationPage";
 import ScotlandDefinitionsPage from "@/pages/ScotlandDefinitionsPage";
 import NiDefinitionsPage from "@/pages/NiDefinitionsPage";
 import WalesDefinitionsPage from "@/pages/WalesDefinitionsPage";
+import ProjectCodesAdminPage from "@/pages/ProjectCodesAdminPage";
 import AdminHelpCentrePage from "@/pages/AdminHelpCentrePage";
 import AdminSubscriptionRequestsPage from "@/pages/AdminSubscriptionRequestsPage";
 import EmailTemplatesPage from "@/pages/EmailTemplatesPage";
@@ -134,6 +135,7 @@ export default function App() {
               <Route path="/scotland-definitions" element={<ScotlandDefinitionsPage />} />
               <Route path="/ni-definitions" element={<NiDefinitionsPage />} />
               <Route path="/wales-definitions" element={<WalesDefinitionsPage />} />
+              <Route path="/admin/project-codes" element={<ProjectCodesAdminPage />} />
               <Route path="/admin/help-centre" element={<AdminHelpCentrePage />} />
               <Route path="/admin/subscription-requests" element={<AdminSubscriptionRequestsPage />} />
               <Route path="/admin/email-templates" element={<EmailTemplatesPage />} />

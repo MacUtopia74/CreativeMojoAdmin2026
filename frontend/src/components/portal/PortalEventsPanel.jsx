@@ -16,11 +16,13 @@ import {
   CalendarDays, Video, MapPin, Clock, ChevronDown, ChevronUp,
   Loader2, ExternalLink, RefreshCw, LayoutGrid, LayoutList, X, Plus,
   Pencil, Trash2, Save, AlertCircle, Sparkles, User, Search,
+  BookOpen,
 } from "lucide-react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
+import ProjectsThisMonthModal from "@/components/calendar/ProjectsThisMonthModal";
 
 const UK = "en-GB";
 // Mojo brand green/lime — used for the HQ swatch and dedicated to Zoom
@@ -108,6 +110,13 @@ export default function PortalEventsPanel({ open, onToggle, alwaysOpen = false, 
   // initialView and is updated when the user clicks the toolbar
   // buttons too, so the React state stays in sync with the grid.
   const [calView, setCalView] = useState("dayGridMonth");
+  // The currently-visible calendar month/year. Updated via FullCalendar's
+  // ``datesSet`` callback so the "Projects this month" modal reflects
+  // what the franchisee is looking at — not always today's month.
+  const [visibleDate, setVisibleDate] = useState(() => new Date());
+  // Projects-for-this-month modal (linked to Woo "Standard Boxed Art Kits"
+  // via shared Project Code). Visible to every logged-in franchisee.
+  const [projectsModalOpen, setProjectsModalOpen] = useState(false);
   const fcRef = useRef(null);
 
   // Day-detail modal — fired by either dayClick or "more" link.
@@ -426,6 +435,14 @@ export default function PortalEventsPanel({ open, onToggle, alwaysOpen = false, 
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={() => setProjectsModalOpen(true)}
+                data-testid="open-projects-this-month"
+                title="See the Standard Boxed Art Kits available this month"
+                className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider bg-stone-950 hover:bg-stone-800 text-[#dedd0a] rounded-lg flex items-center gap-1.5"
+              >
+                <BookOpen className="w-3.5 h-3.5" /> View projects for this month
+              </button>
               {isFranchisee && (
                 <button
                   onClick={() => openEditor(null)}
@@ -482,6 +499,15 @@ export default function PortalEventsPanel({ open, onToggle, alwaysOpen = false, 
                   // a direct button event for us; this keeps the local
                   // "calView" state in sync if FC ever switches views).
                   viewDidMount={(arg) => setCalView(arg.view.type)}
+                  // datesSet fires whenever the visible date range
+                  // changes (toolbar prev/next, today, sub-view swap)
+                  // — perfect hook for "the month the user is looking
+                  // at". The midpoint of the visible range is the
+                  // safest choice across Month/Week/Day sub-views.
+                  datesSet={(arg) => {
+                    const mid = new Date((arg.start.getTime() + arg.end.getTime()) / 2);
+                    setVisibleDate(mid);
+                  }}
                   dateClick={(info) => {
                     setSelectedDay(info.dateStr.slice(0, 10));
                   }}
@@ -554,6 +580,13 @@ export default function PortalEventsPanel({ open, onToggle, alwaysOpen = false, 
               return arr.map((x) => (x.id === doc.id ? doc : x));
             });
           }}
+        />
+      )}
+
+      {projectsModalOpen && (
+        <ProjectsThisMonthModal
+          visibleDate={visibleDate}
+          onClose={() => setProjectsModalOpen(false)}
         />
       )}
     </div>

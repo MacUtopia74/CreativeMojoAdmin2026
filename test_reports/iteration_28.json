@@ -1,0 +1,49 @@
+{
+  "summary": "Backend + frontend testing for Project Codes feature (Woo↔R2 link, suggestion engine, skip/reset, portal calendar modal). 13/13 pytest cases pass, all UI flows verified end-to-end against the public preview URL.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_project_codes.py",
+    "/app/test_reports/pytest/pytest_project_codes.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "/app/frontend/src/pages/ProjectCodesAdminPage.jsx is 608 lines — consider splitting Suggestions panel, Bulk-Review modal and Edit modal into their own components to stay <500 lines/file.",
+    "Skip handler at line 132 swallows errors silently ('catch (e) { /* noop */ }') — surface to setErr so a failed skip POST isn't invisible.",
+    "Portal /api/portal/calendar/projects returns guide_url as a relative path; verified the frontend prepends host via the api client. OK, but document the contract in the route docstring.",
+    "approve-bulk endpoint exists but the UI deliberately does NOT call it (it loops per-item approve POSTs to honour the drop-X selections). Suggest deprecating /approve-bulk or rename to /approve-bulk-unsupervised to avoid future mis-use that bypasses the review modal."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_project_codes.py (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (13/13 pytest)",
+    "frontend": "100% (admin page + portal modal flows verified)"
+  },
+  "test_credentials": "admin@creativemojo.co.uk / CreativeMojo2026! and demo@creativemojo.co.uk / CreativeMojoDemo2026! (seed via POST /api/admin/seed-demo-franchisee if missing). Auth = Bearer access_token from login JSON.",
+  "seed_data_creation": "None — tests run against live data (334 Woo products, 1806 files, 193 suggestions at min_score=90). All test-created project codes (TEST_* prefix) are cleaned up in finally blocks.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend uses Bearer token auth (returned in /api/auth/login JSON as access_token). The demo franchisee account is seeded on demand via admin POST /api/admin/seed-demo-franchisee. Portal /portal/login is a TWO-STEP form (email → Continue, then password → submit). The admin /admin/project-codes page testids are stable. Suggestions at min_score=90 returned 193 100%-match pairs in this run. The bulk review modal uses per-item POST /admin/project-codes/suggestions/approve (NOT the bulk endpoint) so dropped rows truly stay dropped — verified via row count after drop (193 → 192). Portal calendar modal title binds to the FullCalendar visibleDate (verified June 2026 label). Edit modal works for Woo products without asset_type dropdown (correct — only files have asset_type).",
+  "verified_flows": [
+    "GET /api/admin/project-codes returns products, files, counts and excludes is_variation:true rows",
+    "GET /admin/project-codes/suggestions?min_score=90 — ranked desc, each item has woo_id/product_name/suggested_code/matches[≤5]/best_score; matches carry file_key/file_name/score/asset_type_guess",
+    "POST /admin/project-codes/suggestions/approve atomically writes project_code to woo_products AND project_code+asset_type to files_index (verified by re-fetch)",
+    "POST /admin/project-codes/suggestions/skip persists to project_code_skips; subsequent GET /suggestions OMITS the pair; /suggestions/skipped lists it",
+    "POST /admin/project-codes/suggestions/reset-skips clears the queue and returns {ok:true, cleared:N}; skipped pair re-appears in next /suggestions call",
+    "POST /suggestions/approve-bulk with min_score=80 → 422 (Pydantic ge=90 floor enforced)",
+    "PUT /admin/project-codes/woo/{id} set+clear; PUT /file/{key} set+clear with 400 on invalid asset_type",
+    "GET /api/portal/calendar/projects?month=10&year=2026 — admin AND franchisee both authorised; each item has has_guide flag + guide_url when applicable",
+    "Frontend admin: counters (334/0/0 0%/1806/0), min_score default=90, bulk btn disabled at 80 / enabled at 90, bulk review modal renders 193 rows with drop-X (193→192 verified), pc-bulk-confirm text 'Approve 192 links'",
+    "Frontend admin: Edit modal opens (pc-edit-modal/pc-edit-input/pc-edit-save) for Woo products, asset-type dropdown absent for Woo rows (correct)",
+    "Frontend admin: skip → 'Reset 1 skip' button appears; clicking + confirming clears it (button disappears)",
+    "Frontend portal: 'View projects for this month' button visible on /portal/events; opens projects-month-modal titled 'June 2026' with 32 tiles, 32 'Project Guide Coming Soon' chips, 32 'View on Shop' links (all has_guide=False as expected pre-assignment)"
+  ]
+}
