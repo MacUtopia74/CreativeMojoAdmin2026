@@ -1,6 +1,35 @@
 # Creative Mojo — Unified Admin Platform PRD
 
 
+## Wales (CIW) integration complete — 1,461 care homes live (16 Jun 2026)
+
+**What landed**
+- New module `backend/wales_routes.py` — CIW CSV importer with incremental upsert by Service URN. ~3,613 non-care-home rows (childcare, fostering, adoption etc.) filtered out at parse time per spec.
+- `backend/wales_definition.py` — mirrors NI/Scotland rule shape (include/exclude facets, min_places, plus new `hide_inactive` toggle).
+- `backend/care_group_normaliser.py` — strips legal suffixes (Ltd/Limited/Group/etc.), case + punctuation so `"Hallmark Care Homes Ltd"` and `"Hallmark Care Homes Limited"` collapse to the same Care Group key.
+- `backend/territory_routes.py` — added `_is_strict_welsh_postcode`, `_wales_filter`, extended `_split_sectors_by_country` to return 4 buckets, and made the "rest-of-UK" bucket query BOTH CQC and Wales additively so cross-border sectors (SY/HR/CH) get hits from both regulators.
+- `backend/territory_plus_routes.py` — `CLIENT_SOURCES` enum extended to accept `"wales"` and `"ni"` so My Clients can attribute regulator correctly.
+- `frontend/src/pages/WalesDefinitionsPage.jsx` — full admin page mirroring the NI definitions page, with CSV upload, incremental import summary panel (`X new · Y updated · Z reactivated · N closed`), Live Preview, and `Hide closed/removed homes` toggle.
+- Frontend nav + routing: Wales sits under Mapping → Northern Ireland at `/wales-definitions`. Permission key `wales-definitions` registered.
+
+**Key design decisions vs NI/Scotland**
+- **CSV not XLSX** (CIW only publishes CSV).
+- **Incremental upsert by `serviceUrn`** with `active: true/false` soft-delete — closed URNs remain in the DB and are tagged `inactive_since` so they can be dimmed in the franchisee map as "recently closed/removed".
+- **No polygon importer** — Welsh sectors (CF/SA/LL/NP/LD) are already covered by the GB-wide `postcode_sector_polygons` collection.
+- **Border crossover** — sectors that aren't strictly Welsh (SY/HR/CH) hit BOTH the CQC and Wales datasets. Counts and lists are unioned across regulators.
+
+**Validation**
+- `/tmp/ciw.csv` → 1461 inserted on first run, 1461 updated (zero inserts) on re-run.
+- Truncated upload → 1094 inactivated; re-upload full → 1094 reactivated.
+- `GET /api/territory/homes?sectors=LD1 5,NP10 9,LL57 4` returns Welsh records with `country: "Wales"`, `locationId: "SIN-..."`, `providerName` + `providerNameKey` populated for Care Groups bucketing.
+- Tests at `/app/backend/tests/test_wales_ciw.py` — 17/18 pass, 1 by-design skip.
+
+**Open follow-up (not blocking)**
+- Wire Country = Wales filter chip into Territory list/map UI (currently the data carries `country: "Wales"` but there's no explicit filter chip — same parity gap exists for Scotland/NI).
+- Re-count `franchisee.territory_home_count` on Wales definition save (analogue of `_recount_ni_franchisees`) — purely a denormalised counter optimisation; live counts via `_count_homes_per_sector` always reflect truth.
+
+
+
 ## YouTube Sync hardened — fail-loud + health banner (15 Jun 2026)
 
 **User pain**: New videos uploaded to YouTube weren't appearing in the portal until manual re-authorisation. Sync log showed "SUCCESS" — but in API-key fallback mode (scanned 1 playlist, 2 videos vs the real 7/158). User wanted "just upload to YouTube and click Sync — it should work".
