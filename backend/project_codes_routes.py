@@ -78,10 +78,34 @@ ART_KIT_TAG_SLUG = "standard-boxed-art-kits"
 PROJECT_FILES_KEY_FRAGMENT = "All Projects & Templates (Guides & Files)"
 
 
-def _project_files_query() -> dict:
+def _exclude_terms_filter(raw: Optional[str]) -> Optional[dict]:
+    """Turn ``"Stencil, SVG"`` into a Mongo ``$nor`` clause that drops
+    any file whose ``name`` contains *any* of those terms (case-i).
+
+    Returns ``None`` when the input is empty so callers can short-circuit.
+    """
+    if not raw:
+        return None
+    terms = [t.strip() for t in str(raw).split(",") if t.strip()]
+    if not terms:
+        return None
+    return {
+        "$nor": [
+            {"name": {"$regex": re.escape(t), "$options": "i"}}
+            for t in terms
+        ],
+    }
+
+
+def _project_files_query(exclude_terms: Optional[str] = None) -> dict:
     """Mongo filter that restricts ``files_index`` to project-guide
-    territory. Used by every endpoint that lists or matches files."""
-    return {"key": {"$regex": re.escape(PROJECT_FILES_KEY_FRAGMENT)}}
+    territory, optionally further excluding any name containing the
+    comma-separated terms in ``exclude_terms`` (e.g. "Stencil")."""
+    f: dict = {"key": {"$regex": re.escape(PROJECT_FILES_KEY_FRAGMENT)}}
+    extra = _exclude_terms_filter(exclude_terms)
+    if extra:
+        f.update(extra)
+    return f
 
 
 async def _purge_out_of_scope_codes(db) -> int:
@@ -204,6 +228,13 @@ def build_project_codes_router(db, require_role) -> APIRouter:
             None, ge=1, le=12,
             description="If set, only Woo products whose category matches this month",
         ),
+        exclude_files: Optional[str] = Query(
+            None,
+            description=(
+                "Comma-separated terms (e.g. 'Stencil'). Files whose name "
+                "contains any of these are hidden — defaults set client-side."
+            ),
+        ),
         _user: dict = Depends(require_role("admin")),
     ):
         """Single unified view: every Woo top-level product (no
@@ -246,7 +277,7 @@ def build_project_codes_router(db, require_role) -> APIRouter:
         ).sort("name", 1)
         woo_products = await woo_cur.to_list(5000)
 
-        file_match: dict = dict(_project_files_query())
+        file_match: dict = dict(_project_files_query(exclude_files))
         if q:
             file_match["name"] = {"$regex": re.escape(q), "$options": "i"}
         file_cur = db.files_index.find(
@@ -370,10 +401,15 @@ def build_project_codes_router(db, require_role) -> APIRouter:
 
     # ---- Suggestion engine ----------------------------------------
 
-    async def _build_suggestions(min_score: int, limit: int) -> list[dict]:
+    async def _build_suggestions(
+        min_score: int,
+        limit: int,
+        exclude_files: Optional[str] = None,
+    ) -> list[dict]:
         """Return ranked product↔file suggestions whose fuzzy score
-        meets ``min_score``. Skipped pairs and pairs already linked
-        through the same Project Code are filtered out.
+        meets ``min_score``. Skipped pairs, pairs already linked
+        through the same Project Code, and files whose name matches
+        any ``exclude_files`` term are filtered out.
         """
         # Pull lightweight projections — we only need name + key/ID.
         woo = await db.woo_products.find(
@@ -381,7 +417,7 @@ def build_project_codes_router(db, require_role) -> APIRouter:
             {"_id": 0, "id": 1, "name": 1, "image_url": 1, "project_code": 1},
         ).to_list(5000)
         files = await db.files_index.find(
-            _project_files_query(),
+            _project_files_query(exclude_files),
             {"_id": 0, "key": 1, "name": 1, "project_code": 1, "asset_type": 1, "content_type": 1},
         ).to_list(10000)
 
@@ -435,10 +471,14 @@ def build_project_codes_router(db, require_role) -> APIRouter:
     async def get_suggestions(
         min_score: int = Query(80, ge=50, le=100),
         limit: int = Query(200, ge=1, le=1000),
+        exclude_files: Optional[str] = Query(
+            None,
+            description="Comma-separated terms — files whose name contains any are skipped",
+        ),
         _user: dict = Depends(require_role("admin")),
     ):
         await _ensure_indexes()
-        items = await _build_suggestions(min_score, limit)
+        items = await _build_suggestions(min_score, limit, exclude_files)
         return {"items": items, "count": len(items), "min_score": min_score}
 
     @router.post("/admin/project-codes/suggestions/approve")

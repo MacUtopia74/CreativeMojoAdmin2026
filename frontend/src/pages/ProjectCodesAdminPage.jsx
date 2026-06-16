@@ -69,6 +69,14 @@ export default function ProjectCodesAdminPage() {
   const [tab, setTab] = useState("products");  // products | files
   const [status, setStatus] = useState("all");  // all | matched | woo_only | file_only
   const [month, setMonth] = useState("");        // "" | "1".."12" — narrows Woo to a single month
+  // Persisted exclusion list — defaults to "Stencil" so the
+  // suggestion engine doesn't waste cycles pairing instruction
+  // products with their stencil companion files. User can wipe it
+  // or add other noisy patterns (e.g. "SVG, draft").
+  const [excludeFiles, setExcludeFiles] = useState(
+    () => localStorage.getItem("pc_exclude_files") ?? "Stencil",
+  );
+  useEffect(() => { localStorage.setItem("pc_exclude_files", excludeFiles); }, [excludeFiles]);
   const [minScore, setMinScore] = useState(90);
   const [editing, setEditing] = useState(null);  // {type:'woo'|'file', id, value, asset_type}
   const [bulkReview, setBulkReview] = useState(null);  // null | { items, min_score }
@@ -82,10 +90,13 @@ export default function ProjectCodesAdminPage() {
         status,
         // Convert select-string → number; "" means no month filter.
         month: month ? parseInt(month, 10) : undefined,
+        exclude_files: excludeFiles || undefined,
       };
       const [main, sug, skips] = await Promise.all([
         api.get("/admin/project-codes", { params }),
-        api.get("/admin/project-codes/suggestions", { params: { min_score: minScore } }),
+        api.get("/admin/project-codes/suggestions", {
+          params: { min_score: minScore, exclude_files: excludeFiles || undefined },
+        }),
         api.get("/admin/project-codes/suggestions/skipped"),
       ]);
       setData(main.data);
@@ -102,7 +113,7 @@ export default function ProjectCodesAdminPage() {
     } catch (e) {
       setErr(e?.response?.data?.detail || "Couldn't load project codes.");
     } finally { setLoading(false); }
-  }, [q, status, month, minScore]);
+  }, [q, status, month, excludeFiles, minScore]);
 
   useEffect(() => { reload(); }, [reload]);
 
@@ -416,6 +427,16 @@ export default function ProjectCodesAdminPage() {
                 ["10", "October"], ["11", "November"], ["12", "December"],
               ].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
+            <div className="relative" title="Comma-separated. Files whose name contains any of these are hidden from the suggestions + Files tab.">
+              <X className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 top-2" />
+              <input
+                value={excludeFiles}
+                onChange={(e) => setExcludeFiles(e.target.value)}
+                placeholder="Exclude files containing… (e.g. Stencil)"
+                data-testid="pc-exclude-files"
+                className="pl-7 pr-3 py-1.5 text-xs border border-stone-300 rounded-md w-56"
+              />
+            </div>
             <div className="inline-flex items-center bg-stone-100 rounded-md p-0.5">
               {[
                 ["all", "All"],
