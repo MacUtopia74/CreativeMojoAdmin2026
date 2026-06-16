@@ -33,6 +33,11 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
   // ``true`` = clients-focused (60/40 in favour of My Clients, map narrower).
   // Toggled by the maximize button in either panel header.
   const [clientsFocus, setClientsFocus] = useState(false);
+  // Full-page width "list only" mode — hides the map so the franchisee
+  // can see twice as many client rows at a glance (rendered in a
+  // two-column grid). Exits back to balanced layout via the SHOW MAP
+  // button surfaced inside the panel header.
+  const [clientsFullWidth, setClientsFullWidth] = useState(false);
   const [flyTo, setFlyTo] = useState(null);
   const [check, setCheck] = useState("");
   const [checkResult, setCheckResult] = useState(null);
@@ -486,17 +491,26 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
         {postcodeBanner}
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-stretch">
-          {/* LEFT COLUMN — My Clients table only.
-              Width flips between col-span-2 (balanced) and col-span-3
-              (clients-focused) via the maximize toggle in either panel. */}
-          <div className={`flex flex-col ${clientsFocus ? "lg:col-span-3" : "lg:col-span-2"}`}>
+          {/* LEFT COLUMN — My Clients table.
+              Width has three states:
+                • balanced   → col-span-2 (map dominant)
+                • clientsFocus → col-span-3 (clients dominant, map narrow)
+                • clientsFullWidth → col-span-5 (map hidden, two-column grid)
+          */}
+          <div className={`flex flex-col ${
+            clientsFullWidth ? "lg:col-span-5"
+              : clientsFocus ? "lg:col-span-3"
+              : "lg:col-span-2"
+          }`}>
             <MyClientsPanel
               clients={myClients}
               homeById={homeById}
               onAddClient={() => setEditingClient({ __new: true })}
               onEditClient={(c) => setEditingClient(c)}
-              expanded={clientsFocus}
+              expanded={clientsFocus || clientsFullWidth}
               onExpandedChange={setClientsFocus}
+              fullWidth={clientsFullWidth}
+              onFullWidthChange={setClientsFullWidth}
               myClientsOnly={myClientsOnly}
               onMyClientsOnlyChange={setMyClientsOnly}
               marketingEnabled={marketingEnabled}
@@ -505,7 +519,9 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
             />
           </div>
 
-          {/* RIGHT COLUMN — Map. Width follows the inverse of clientsFocus. */}
+          {/* RIGHT COLUMN — Map. Width follows the inverse of clientsFocus.
+              Hidden entirely in full-width client mode. */}
+          {!clientsFullWidth && (
           <div className={`flex ${clientsFocus ? "lg:col-span-2" : "lg:col-span-3"}`}>
             <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden h-full w-full flex flex-col">
               <div className="px-4 py-3 border-b border-stone-200 flex items-center justify-between gap-3" style={{ backgroundColor: "#eeee84" }}>
@@ -541,6 +557,7 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
               <div className="flex-1">{mapEl}</div>
             </div>
           </div>
+          )}
         </div>
 
         {/* BOTTOM ROW — CQC Homes + Care Groups */}

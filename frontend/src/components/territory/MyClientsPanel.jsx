@@ -19,10 +19,12 @@ import { useNavigate } from "react-router-dom";
 import {
   Users, Plus, ChevronRight, Search, Star, BedDouble,
   Maximize2, Minimize2, Eye, Megaphone, Filter,
+  Columns2, Map as MapIcon,
 } from "lucide-react";
 import { LEAD_STATUS_OPTIONS, getLeadStatusMeta } from "@/lib/leadStatus";
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE_DEFAULT = 10;
+const PAGE_SIZE_FULL = 20;  // 2-column grid → ~2× rows on screen at once
 const TYPE_FROM_HOME = (h) => {
   if (!h) return "";
   const services = (h.gacServiceTypes || []).map((s) => s?.name || "").filter(Boolean);
@@ -47,6 +49,8 @@ export default function MyClientsPanel({
   onEditClient,
   expanded = false,           // optional — for the column-width toggle
   onExpandedChange = null,    // (next) => void
+  fullWidth = false,          // optional — full-page width mode (map hidden)
+  onFullWidthChange = null,   // (next) => void; toggles the parent layout
   myClientsOnly = false,      // map-filter toggle (lives in this header now)
   onMyClientsOnlyChange = null,
   marketingEnabled = false,   // hide the Megaphone shortcut when the
@@ -125,6 +129,7 @@ export default function MyClientsPanel({
     return sorted;
   }, [rows, q, statusFilter, sortValue]);
 
+  const PAGE_SIZE = fullWidth ? PAGE_SIZE_FULL : PAGE_SIZE_DEFAULT;
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageRows = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
@@ -162,7 +167,28 @@ export default function MyClientsPanel({
               <span className="sm:hidden">Only Mine</span>
             </button>
           )}
-          {onExpandedChange && (
+          {onFullWidthChange && fullWidth && (
+            <button
+              onClick={() => onFullWidthChange(false)}
+              data-testid="my-clients-show-map"
+              title="Bring the map back alongside the client list"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md border border-stone-950 bg-stone-950 text-[#dedd0a] hover:bg-stone-800"
+            >
+              <MapIcon className="w-3 h-3" /> Show Map
+            </button>
+          )}
+          {onFullWidthChange && !fullWidth && (
+            <button
+              onClick={() => onFullWidthChange(true)}
+              data-testid="my-clients-full-width"
+              title="Hide the map and show clients full-width in two columns"
+              className="w-7 h-7 rounded-full border border-stone-950 bg-white text-stone-950 hover:bg-stone-100 flex items-center justify-center"
+              aria-label="Expand panel to full page width"
+            >
+              <Columns2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {onExpandedChange && !fullWidth && (
             <button
               onClick={() => onExpandedChange(!expanded)}
               data-testid="my-clients-width-toggle"
@@ -237,8 +263,10 @@ export default function MyClientsPanel({
 
           {/* Optional column header strip — only when wide (expanded) so
               the spread-out row fields are scannable. Hidden in narrow
-              mode where rows stack vertically. */}
-          {expanded && filtered.length > 0 && (
+              mode where rows stack vertically. Also hidden in
+              fullWidth (2-column grid) mode since a single header
+              strip can't label both columns. */}
+          {expanded && !fullWidth && filtered.length > 0 && (
             <div className="hidden md:flex items-center gap-3 px-4 py-2 bg-stone-50 border-b border-stone-200 text-[10px] uppercase tracking-wider font-bold text-stone-500" data-testid="my-clients-column-headers">
               <span className="w-7" />
               <span className="flex-[2] min-w-0">Client name</span>
@@ -251,14 +279,20 @@ export default function MyClientsPanel({
 
           {/* Stacked list — no table, reads cleanly in narrow column.
               Switches to a horizontal spread when ``expanded`` so the
-              extra width carries the location/type/beds inline. */}
+              extra width carries the location/type/beds inline. In
+              ``fullWidth`` mode the rows render in a 2-column CSS grid
+              so the franchisee sees ~twice as many at a glance. */}
           {filtered.length === 0 ? (
             <div className="px-4 py-10 text-center text-sm text-stone-500 flex-1 flex flex-col items-center justify-center gap-2">
               <Users className="w-8 h-8 text-stone-300" />
               {q || statusFilter ? "No clients match your filters." : "No clients yet — mark a CQC home as 'My Client' or add a custom one."}
             </div>
           ) : (
-            <div className="flex-1 overflow-y-auto divide-y divide-stone-100">
+            <div className={
+              fullWidth
+                ? "flex-1 overflow-y-auto grid grid-cols-1 xl:grid-cols-2"
+                : "flex-1 overflow-y-auto divide-y divide-stone-100"
+            }>
               {pageRows.map((c) => {
                 const meta = getLeadStatusMeta(c._status);
                 const rowBg = meta.tone.rowBg;
@@ -270,7 +304,9 @@ export default function MyClientsPanel({
                   onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onEditClient?.(c); } }}
                   role="button"
                   tabIndex={0}
-                  className="px-4 py-3 hover:bg-stone-50 cursor-pointer group flex items-center gap-3 transition-colors"
+                  className={`px-4 py-3 hover:bg-stone-50 cursor-pointer group flex items-center gap-3 transition-colors ${
+                    fullWidth ? "border-b border-stone-100 xl:[&:nth-child(odd)]:border-r xl:[&:nth-child(odd)]:border-r-stone-100" : ""
+                  }`}
                   style={rowBg && rowBg !== "transparent" ? { backgroundColor: rowBg } : undefined}
                   data-testid={`my-clients-row-${c.id}`}
                 >
