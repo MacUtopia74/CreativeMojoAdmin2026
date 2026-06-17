@@ -3916,6 +3916,53 @@ async def move_contact(contact_id: str, body: ContactMoveRequest, _: dict = Depe
     return {"ok": True, "target": body.target, "collection": coll}
 
 
+@api.post("/contacts/bulk-delete")
+async def bulk_delete_contacts(
+    body: dict, user: dict = Depends(require_role("admin")),
+):
+    """Permanently delete a batch of contacts and tombstone their
+    Gravity Forms entries so the hourly backfill never re-imports them.
+
+    Mirrors the single-delete behaviour but in one round-trip — used by
+    the kanban's "Delete selected" action when an admin wants to clear
+    out a column of unwanted duplicates in one go.
+    """
+    ids = body.get("ids") or []
+    if not ids:
+        return {"ok": True, "deleted": 0, "tombstoned": 0}
+    # Pull gravity_entry_id metadata first — needed for tombstones.
+    rows = await db.web_form_contacts.find(
+        {"id": {"$in": ids}},
+        {"_id": 0, "id": 1, "gravity_entry_id": 1, "form_id": 1,
+         "email": 1, "first_name": 1, "last_name": 1},
+    ).to_list(len(ids))
+    tomb_docs = [{
+        "gravity_entry_id": str(r["gravity_entry_id"]),
+        "form_id": r.get("form_id"),
+        "email": r.get("email"),
+        "name": f"{r.get('first_name') or ''} {r.get('last_name') or ''}".strip() or None,
+        "deleted_at": datetime.now(timezone.utc).isoformat(),
+        "deleted_by": user.get("email"),
+        "reason": "bulk_delete",
+    } for r in rows if r.get("gravity_entry_id")]
+    if tomb_docs:
+        from pymongo import UpdateOne
+        await db.gf_deleted_entries.bulk_write(
+            [UpdateOne(
+                {"gravity_entry_id": d["gravity_entry_id"]},
+                {"$set": d}, upsert=True,
+            ) for d in tomb_docs],
+            ordered=False,
+        )
+    res1 = await db.web_form_contacts.delete_many({"id": {"$in": ids}})
+    res2 = await db.contacts.delete_many({"id": {"$in": ids}})
+    return {
+        "ok": True,
+        "deleted": res1.deleted_count + res2.deleted_count,
+        "tombstoned": len(tomb_docs),
+    }
+
+
 @api.post("/contacts/bulk-move")
 async def bulk_move_contacts(body: ContactBulkMoveRequest, _: dict = Depends(require_role("admin"))):
     if body.target not in MOVE_TARGETS:

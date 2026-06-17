@@ -666,7 +666,7 @@ function ReferralBadge({ source }) {
 }
 
 // Compact "Move to…" dropdown used both on rows (compact) and the bulk action bar
-function MoveMenu({ onMove, label = "Move", testid, currentTab, count, contactSource, inPipeline }) {
+function MoveMenu({ onMove, onDelete, label = "Move", testid, currentTab, count, contactSource, inPipeline }) {
   const [open, setOpen] = useState(false);
   const [showStages, setShowStages] = useState(false);
   const close = () => { setOpen(false); setShowStages(false); };
@@ -715,6 +715,18 @@ function MoveMenu({ onMove, label = "Move", testid, currentTab, count, contactSo
                   className="w-full text-left px-3 py-2 hover:bg-stone-50 flex items-center gap-2 text-red-700">
                   <X className="w-3.5 h-3.5" /> Remove from Pipeline
                 </button>
+              )}
+              {onDelete && (
+                <>
+                  <div className="px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 bg-stone-50 border-y border-stone-200">Danger zone</div>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onDelete(); close(); }}
+                    data-testid={`${testid}-bulk-delete`}
+                    className="w-full text-left px-3 py-2 hover:bg-red-50 flex items-center gap-2 text-red-700 font-bold"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Delete selected{count != null && count > 0 ? ` (${count})` : ""}
+                  </button>
+                </>
               )}
             </>
           ) : (
@@ -1715,6 +1727,25 @@ export default function ContactsPage() {
     } catch (e) { setError("Could not move contacts."); }
   };
 
+  const bulkDelete = async () => {
+    const ids = Array.from(selectedIds);
+    if (!ids.length) return;
+    if (!window.confirm(`Permanently delete ${ids.length} selected contact${ids.length === 1 ? "" : "s"}?\n\nThe Gravity Forms entries will be tombstoned so the hourly backfill won't re-import them. This cannot be undone.`)) return;
+    try {
+      const { data } = await api.post("/contacts/bulk-delete", { ids });
+      setData((d) => ({ ...d, items: d.items.filter((c) => !selectedIds.has(c.id)) }));
+      clearSelection();
+      loadCounts();
+      // Surface a tiny success line so the admin sees what landed.
+      setError("");
+      if (typeof window !== "undefined") {
+        window.setTimeout(() => {
+          window.alert(`Deleted ${data?.deleted || 0} contact${(data?.deleted || 0) === 1 ? "" : "s"}.${data?.tombstoned ? ` Tombstoned ${data.tombstoned} Gravity Forms entr${data.tombstoned === 1 ? "y" : "ies"} so they won't reappear.` : ""}`);
+        }, 50);
+      }
+    } catch (e) { setError("Could not delete contacts."); }
+  };
+
   const updateStage = async (contactId, newStage) => {
     try {
       await api.patch(`/contacts/${contactId}/pipeline`, { pipeline_status: newStage });
@@ -2032,7 +2063,7 @@ export default function ContactsPage() {
               <span className="text-sm font-bold tabular-nums">{selectedIds.size} selected</span>
             </div>
             <div className="flex-1" />
-            <MoveMenu onMove={bulkMove} label="Move selected" testid="bulk-move" currentTab={tab} count={selectedIds.size} />
+            <MoveMenu onMove={bulkMove} onDelete={bulkDelete} label="Move selected" testid="bulk-move" currentTab={tab} count={selectedIds.size} />
             {selectedIds.size === 2 && (
               <button onClick={openMergeFromBulkBar} data-testid="bulk-merge"
                 className="touch-target px-3 text-xs font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-[#aaaa11] rounded-lg flex items-center gap-1.5">
