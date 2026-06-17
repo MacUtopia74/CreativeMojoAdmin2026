@@ -7,9 +7,11 @@
 // know the gap is on us, not on them.
 import { useEffect, useState } from "react";
 import {
-  X, Loader2, BookOpen, AlertCircle, FileText, ExternalLink,
+  X, Loader2, BookOpen, AlertCircle, FileText, ExternalLink, Link2,
 } from "lucide-react";
 import api from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
+import EditProductLinkModal from "@/components/projectcodes/EditProductLinkModal";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -26,9 +28,19 @@ export default function ProjectsThisMonthModal({ visibleDate, onClose }) {
   const d = visibleDate || new Date();
   const month = d.getMonth() + 1;
   const year = d.getFullYear();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  // When the admin clicks "Match" on a tile we open the shared edit
+  // modal (same one as the Project Codes admin page). Storing the
+  // product here keeps it lazily-rendered above the month modal.
+  const [matching, setMatching] = useState(null);
+  // Bump after each successful save so we re-fetch the month feed and
+  // the tile flips from "Coming soon" → "Open Project Guide" without
+  // requiring the admin to close + reopen the modal.
+  const [reloadTick, setReloadTick] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -38,7 +50,7 @@ export default function ProjectsThisMonthModal({ visibleDate, onClose }) {
       .catch((e) => { if (!cancelled) setErr(e?.response?.data?.detail || "Could not load projects."); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [month, year]);
+  }, [month, year, reloadTick]);
 
   const openGuide = async (it) => {
     if (!it.guide_url) return;
@@ -131,6 +143,25 @@ export default function ProjectsThisMonthModal({ visibleDate, onClose }) {
                         View on shop <ExternalLink className="w-3 h-3" />
                       </a>
                     )}
+                    {/* Admin-only Match button — opens the shared
+                        EditProductLinkModal so HQ can finish linking
+                        the product to an R2 instruction PDF without
+                        leaving the calendar context. */}
+                    {isAdmin && (
+                      <button
+                        onClick={() => setMatching({
+                          id: it.woo_id || it.id,
+                          name: it.name,
+                          image: it.image_url,
+                          value: it.project_code || "",
+                        })}
+                        data-testid={`projects-month-match-${it.id}`}
+                        title={it.has_guide ? "Re-link to a different file" : "Find and link an Instruction PDF"}
+                        className="text-[10px] uppercase tracking-wider font-bold text-sky-700 hover:text-sky-900 inline-flex items-center gap-1 self-start"
+                      >
+                        <Link2 className="w-3 h-3" /> {it.has_guide ? "Re-match" : "Match"}
+                      </button>
+                    )}
                   </div>
                 </li>
               ))}
@@ -138,6 +169,13 @@ export default function ProjectsThisMonthModal({ visibleDate, onClose }) {
           )}
         </div>
       </div>
+      {matching && (
+        <EditProductLinkModal
+          product={matching}
+          onClose={() => setMatching(null)}
+          onSaved={() => { setMatching(null); setReloadTick((t) => t + 1); }}
+        />
+      )}
     </div>
   );
 }
