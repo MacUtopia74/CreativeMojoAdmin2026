@@ -4,7 +4,7 @@ import api from "@/lib/api";
 import LinkExistingFranchiseeModal from "@/components/contacts/LinkExistingFranchiseeModal";
 import MergeContactsModal from "@/components/contacts/MergeContactsModal";
 import DuplicatesModal from "@/components/contacts/DuplicatesModal";
-import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, ChevronsLeft, ChevronsRight, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus, Plus, Sparkles, Upload, FileText, CheckCircle2, Send, Award, Target, Link2, GitMerge, Home, Package, Flame, Clock, Pencil } from "lucide-react";
+import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, ChevronsLeft, ChevronsRight, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus, Plus, Sparkles, Upload, FileText, CheckCircle2, Send, Award, Target, Link2, GitMerge, Home, Package, Flame, Clock, Pencil, RefreshCw } from "lucide-react";
 import ReplyWithTemplateModal from "@/components/ReplyWithTemplateModal";
 import EmailTimeline from "@/components/EmailTimeline";
 
@@ -2091,6 +2091,26 @@ export default function ContactsPage() {
                 );
               })}
             </div>
+            <span className="text-stone-300">·</span>
+            <button
+              onClick={async () => {
+                if (!window.confirm("Find and remove duplicate Sales Pipeline contacts?\n\nThe same email submitted multiple times via Gravity Forms creates duplicate cards. This removes the newer 'new' duplicates when an older, already-triaged copy exists. Safe — never deletes triaged records.")) return;
+                try {
+                  const { data } = await api.post("/contacts/dedupe-pipeline");
+                  const samples = (data.samples || []).slice(0, 5).map((s) => `${s.name || s.email}`).join("\n  • ");
+                  window.alert(`Removed ${data.removed || 0} duplicate ${data.removed === 1 ? "record" : "records"}.${samples ? "\n\nIncluding:\n  • " + samples : ""}`);
+                  load();
+                  loadCounts();
+                } catch (e) {
+                  window.alert(e?.response?.data?.detail || "Dedupe failed.");
+                }
+              }}
+              data-testid="pipeline-dedupe-btn"
+              title="Find email duplicates in the pipeline and remove the 'new' copies when an older triaged version already exists"
+              className="px-3 py-1 text-[11px] font-bold uppercase tracking-wider border border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 rounded-lg flex items-center gap-1.5"
+            >
+              <RefreshCw className="w-3 h-3" /> Dedupe pipeline
+            </button>
           </div>
           <div className="grid grid-cols-2 lg:grid-cols-7 gap-3" data-testid="pipeline-summary">
             <button onClick={() => setStageFilter("")} className={`bg-white border border-stone-200 rounded-2xl p-4 text-left hover:border-stone-400 transition-colors ${stageFilter === "" ? "ring-2 ring-stone-950" : ""}`}>

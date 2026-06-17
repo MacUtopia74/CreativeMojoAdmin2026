@@ -3935,6 +3935,104 @@ async def bulk_move_contacts(body: ContactBulkMoveRequest, _: dict = Depends(req
     return {"ok": True, "moved": moved, "not_found": not_found}
 
 
+@api.post("/contacts/dedupe-pipeline")
+async def dedupe_pipeline_contacts(
+    dry_run: bool = Query(False, description="If true, report duplicates without deleting"),
+    _: dict = Depends(require_role("admin")),
+):
+    """Remove "re-ingested" duplicates from the active Sales Pipeline.
+
+    Background: when a prospect submits the same Gravity Form again
+    (e.g. ``Licence Enquiry``), the backfill creates a brand-new
+    ``web_form_contacts`` row with ``pipeline_status="new"``. Any
+    older record the team already triaged into "contacted" / "replied"
+    / "closed" then competes with the fresh duplicate in the kanban —
+    same person appears in two columns, the team loses track.
+
+    Strategy (safe by default):
+    1. Group all in-pipeline rows by ``(email, source)``.
+    2. For groups containing more than one record AND at least one
+       non-"new" status, delete the "new" duplicates (they're the
+       newly-arrived submissions the team hasn't seen yet — the
+       prospect's earlier engagement state is the source of truth).
+    3. For groups where every record is "new" (no triage yet), keep
+       the EARLIEST one and delete the rest — they're literally the
+       same form submitted twice in close succession.
+
+    ``dry_run`` reports what *would* happen without mutating anything.
+    """
+    pipeline_cur = db.web_form_contacts.aggregate([
+        {"$match": {"in_pipeline": True}},
+        {"$group": {
+            "_id": {
+                "email": {"$toLower": {"$ifNull": ["$email", ""]}},
+                "source": "$source",
+            },
+            "rows": {"$push": {
+                "id": "$id",
+                "pipeline_status": "$pipeline_status",
+                "created_at": "$created_at",
+                "date": "$date",
+                "full_name": {"$concat": [
+                    {"$ifNull": ["$first_name", ""]}, " ",
+                    {"$ifNull": ["$last_name", ""]},
+                ]},
+            }},
+            "count": {"$sum": 1},
+        }},
+        {"$match": {"count": {"$gt": 1}}},
+    ])
+    to_delete: list[dict] = []
+    async for grp in pipeline_cur:
+        email = grp["_id"]["email"]
+        if not email:
+            # Don't dedupe rows with no email — that's not a reliable
+            # identity signal and we risk wiping the wrong record.
+            continue
+        rows = grp["rows"]
+        statuses = {r.get("pipeline_status") for r in rows}
+        if statuses - {"new"}:
+            # At least one record already triaged → kill the "new" dups.
+            for r in rows:
+                if r.get("pipeline_status") == "new":
+                    to_delete.append({"id": r["id"], "email": email,
+                                      "reason": "duplicate_of_triaged",
+                                      "name": (r.get("full_name") or "").strip()})
+        else:
+            # All copies still "new" — keep the earliest by
+            # ``created_at`` (fall back to ``date`` string).
+            def _sort_key(r):
+                ca = r.get("created_at")
+                # Mongo stores some as datetime, others as ISO string —
+                # normalise to a comparable string.
+                if isinstance(ca, datetime):
+                    return ca.isoformat()
+                return ca or r.get("date") or ""
+            ordered = sorted(rows, key=_sort_key)
+            for r in ordered[1:]:
+                to_delete.append({"id": r["id"], "email": email,
+                                  "reason": "duplicate_new_submission",
+                                  "name": (r.get("full_name") or "").strip()})
+
+    if dry_run:
+        return {
+            "dry_run": True,
+            "would_remove": len(to_delete),
+            "samples": to_delete[:20],
+        }
+
+    removed = 0
+    if to_delete:
+        ids = [d["id"] for d in to_delete]
+        res = await db.web_form_contacts.delete_many({"id": {"$in": ids}})
+        removed = res.deleted_count
+    return {
+        "dry_run": False,
+        "removed": removed,
+        "samples": to_delete[:20],
+    }
+
+
 # ----------------------------------------------------------------------------
 # CRM — Territories
 # ----------------------------------------------------------------------------
