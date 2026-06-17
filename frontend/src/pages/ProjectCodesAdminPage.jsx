@@ -418,11 +418,28 @@ export default function ProjectCodesAdminPage() {
     }
   };
 
-  // When the admin clicks the product thumbnail in the modal header
-  // we open the Woo storefront image at native size — purely visual
-  // confirmation that this is the right product before they Approve a
-  // file. Closed by clicking the backdrop or the X.
-  const [productImagePreview, setProductImagePreview] = useState(null);
+  // Per-admin row dismissal lists — clicking the X on a Woo product
+  // or R2 file row stashes its id/key here so it stops showing up.
+  // Stored in localStorage so the choice persists across reloads;
+  // a "N hidden — show all" affordance restores everything in one
+  // click when admins want to review them again.
+  const [hiddenProducts, setHiddenProducts] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem("pc_hidden_products") || "[]")); }
+    catch { return new Set(); }
+  });
+  const [hiddenFiles, setHiddenFiles] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem("pc_hidden_files") || "[]")); }
+    catch { return new Set(); }
+  });
+  useEffect(() => {
+    localStorage.setItem("pc_hidden_products", JSON.stringify([...hiddenProducts]));
+  }, [hiddenProducts]);
+  useEffect(() => {
+    localStorage.setItem("pc_hidden_files", JSON.stringify([...hiddenFiles]));
+  }, [hiddenFiles]);
+  const hideProduct = (id) => setHiddenProducts((s) => { const n = new Set(s); n.add(id); return n; });
+  const hideFile = (key) => setHiddenFiles((s) => { const n = new Set(s); n.add(key); return n; });
+  const restoreHidden = () => { setHiddenProducts(new Set()); setHiddenFiles(new Set()); };
 
   // One-click "Approve" inside the Woo edit modal: link a Woo product
   // to whichever R2 file the admin just previewed. The Project Code
