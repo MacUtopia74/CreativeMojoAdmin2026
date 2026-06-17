@@ -122,6 +122,15 @@ FIELD_LABELS_BY_FORM: dict[int, dict[str, str]] = {
         "25.1": "SPAM MAIL",
         "7.1":  "Privacy",
     },
+    # Form 33 — short Franchise Enquiry popup (June 2026). Confirmed
+    # field IDs from the WordPress Gravity Forms editor: Name=5,
+    # Email=4, Phone=6, Postcode=7.
+    33: {
+        "5": "First Name",
+        "4": "Email",
+        "6": "Phone Number",
+        "7": "Postcode",
+    },
 }
 
 
@@ -239,6 +248,8 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
             form_title = "Franchise Enquiry Contact Form"
         elif form_id == 32:
             form_title = "Licence Enquiry Contact Form"
+        elif form_id == 33:
+            form_title = "Franchise Enquiry Short Form (popup)"
         elif form_id == 1:
             form_title = "Contact Form"
         else:
@@ -269,6 +280,16 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
                 postcode = (entry.get("28") or "").strip() or None
                 country  = (entry.get("16") or "").strip() or None
                 source = "licence_enquiry"
+                in_pipeline_flag = True
+            elif form_id == 33:
+                # Short franchise popup — confirmed field IDs:
+                # Name=5, Email=4, Phone=6, Postcode=7.
+                first = (entry.get("5") or "").strip() or first
+                email = (entry.get("4") or "").strip().lower() or email
+                phone = (entry.get("6") or "").strip() or phone
+                postcode = (entry.get("7") or "").strip() or None
+                country  = None
+                source = "franchise_enquiry"
                 in_pipeline_flag = True
             elif form_id == 1:
                 postcode = (entry.get("16") or "").strip() or None

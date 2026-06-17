@@ -689,14 +689,17 @@ async def change_password(
 # ----------------------------------------------------------------------------
 FORM_ID_TO_SOURCE = {
     1: "general_enquiry",       # general contact form
-    17: "franchise_enquiry",    # franchise enquiry form
+    17: "franchise_enquiry",    # franchise enquiry form (long form)
     32: "licence_enquiry",      # licence enquiry form
+    33: "franchise_enquiry",    # franchise enquiry SHORT form (popup, June 2026)
 }
 
 # Form IDs whose submissions land directly in the active Sales Pipeline as "New".
-# Form 17 = Franchise Enquiry · Form 32 = Licence Enquiry. These represent fresh leads
-# that should be triaged by the sales team immediately, not parked in the contacts tabs.
-FORM_IDS_IN_PIPELINE: set = {17, 32}
+# Form 17 = Franchise Enquiry (long) · Form 32 = Licence Enquiry ·
+# Form 33 = Franchise Enquiry (short popup). All three represent fresh leads
+# that should be triaged by the sales team immediately, not parked in the
+# contacts tabs.
+FORM_IDS_IN_PIPELINE: set = {17, 32, 33}
 
 # Form 1 (General Contact) is the catch-all WordPress form whose "Reason for
 # contacting" dropdown drives where the submission ends up. Map each option to
@@ -821,7 +824,7 @@ async def gravity_forms_intake(payload: GravityFormsIntake, request: Request):
         "form_title": payload.form_title,
         "gravity_entry_id": payload.entry_id,
         "date": payload.date or datetime.now(timezone.utc).isoformat(),
-        "first_name": _pick(f, "First Name", "first_name", "fname", "First"),
+        "first_name": _pick(f, "First Name", "first_name", "fname", "First", "FirstName", "Name"),
         "last_name": _pick(f, "Last Name", "last_name", "lname", "Last", "Surname"),
         "email": _pick(f, "Email", "Email Address", "email", "email_address"),
         "telephone": _pick(f, "Telephone", "Phone", "Telephone Number", "Mobile", "Phone Number"),
@@ -859,6 +862,7 @@ async def intake_config(_: dict = Depends(require_role("admin"))):
             {"form_id": 1, "name": "Contact Form (General)", "source_tag": "general_enquiry"},
             {"form_id": 17, "name": "Franchise Enquiry Contact Form", "source_tag": "franchise_enquiry"},
             {"form_id": 32, "name": "Licence Enquiry Contact Form", "source_tag": "licence_enquiry"},
+            {"form_id": 33, "name": "Franchise Enquiry Short Form (popup)", "source_tag": "franchise_enquiry"},
         ],
     }
 
