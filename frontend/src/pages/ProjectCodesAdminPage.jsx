@@ -418,6 +418,12 @@ export default function ProjectCodesAdminPage() {
     }
   };
 
+  // When the admin clicks the product thumbnail in the modal header
+  // we open the Woo storefront image at native size — purely visual
+  // confirmation that this is the right product before they Approve a
+  // file. Closed by clicking the backdrop or the X.
+  const [productImagePreview, setProductImagePreview] = useState(null);
+
   // Per-admin row dismissal lists — clicking the X on a Woo product
   // or R2 file row stashes its id/key here so it stops showing up.
   // Stored in localStorage so the choice persists across reloads;
@@ -484,8 +490,17 @@ export default function ProjectCodesAdminPage() {
   };
 
   const counts = data?.counts || {};
-  const woo = data?.products || [];
-  const files = data?.files || [];
+  const wooAll = data?.products || [];
+  const filesAll = data?.files || [];
+  // Filter out admin-dismissed rows. We compute these client-side so
+  // dismissing a row never costs a round-trip and the localStorage
+  // persistence survives reloads / browser restarts. ``restoreHidden``
+  // wipes both sets in one click.
+  const woo = wooAll.filter((p) => !hiddenProducts.has(p.id));
+  const files = filesAll.filter((f) => !hiddenFiles.has(f.key));
+  const hiddenWooCount = wooAll.length - woo.length;
+  const hiddenFilesCount = filesAll.length - files.length;
+  const hiddenCount = hiddenWooCount + hiddenFilesCount;
   const matchedPct = useMemo(() => {
     if (!counts.woo_total) return 0;
     return Math.round((counts.woo_matched_to_file / counts.woo_total) * 100);
@@ -682,6 +697,16 @@ export default function ProjectCodesAdminPage() {
               data-testid="tab-files"
               className={`px-3 py-1.5 text-xs font-bold uppercase tracking-wider rounded-md ${tab === "files" ? "bg-stone-950 text-[#dedd0a]" : "text-stone-600 hover:bg-stone-100"}`}
             >R2 Files ({files.length})</button>
+            {hiddenCount > 0 && (
+              <button
+                onClick={restoreHidden}
+                title="Restore everything you've dismissed with the X icon"
+                data-testid="pc-restore-hidden"
+                className="ml-2 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-full border border-stone-300 bg-amber-50 text-amber-900 hover:bg-amber-100 flex items-center gap-1"
+              >
+                <RefreshCw className="w-3 h-3" /> {hiddenCount} hidden — show all
+              </button>
+            )}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <div className="relative">
@@ -740,9 +765,9 @@ export default function ProjectCodesAdminPage() {
         {loading ? (
           <div className="py-12 text-center text-stone-500"><Loader2 className="w-5 h-5 animate-spin inline" /></div>
         ) : tab === "products" ? (
-          <ProductsTable rows={woo} onEdit={(p) => setEditing({ type: "woo", id: p.id, value: p.project_code || "", name: stripHtml(p.name), image: p.image_url || p.image || null })} />
+          <ProductsTable rows={woo} onEdit={(p) => setEditing({ type: "woo", id: p.id, value: p.project_code || "", name: stripHtml(p.name), image: p.image_url || p.image || null })} onHide={hideProduct} />
         ) : (
-          <FilesTable rows={files} onEdit={(f) => setEditing({ type: "file", id: f.key, value: f.project_code || "", name: f.name, asset_type: f.asset_type || "instruction_pdf" })} />
+          <FilesTable rows={files} onEdit={(f) => setEditing({ type: "file", id: f.key, value: f.project_code || "", name: f.name, asset_type: f.asset_type || "instruction_pdf" })} onHide={hideFile} />
         )}
       </section>
 
@@ -951,7 +976,7 @@ function Counter({ label, value, accent, tail, testid }) {
   );
 }
 
-function ProductsTable({ rows, onEdit }) {
+function ProductsTable({ rows, onEdit, onHide }) {
   if (!rows.length) return <div className="py-10 text-center text-sm text-stone-500">No products match.</div>;
   return (
     <div className="divide-y divide-stone-100 max-h-[600px] overflow-y-auto">
@@ -980,13 +1005,21 @@ function ProductsTable({ rows, onEdit }) {
             )}
           </div>
           <button onClick={() => onEdit(p)} className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider border border-stone-300 hover:bg-stone-100 rounded-md">Edit</button>
+          <button
+            onClick={() => onHide(p.id)}
+            title="Hide this row from the list (admins only — restore later from the 'N hidden' link at the top)"
+            data-testid={`pc-hide-product-${p.id}`}
+            className="w-7 h-7 rounded-md text-stone-400 hover:text-red-700 hover:bg-red-50 flex items-center justify-center"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
       ))}
     </div>
   );
 }
 
-function FilesTable({ rows, onEdit }) {
+function FilesTable({ rows, onEdit, onHide }) {
   if (!rows.length) return <div className="py-10 text-center text-sm text-stone-500">No files match.</div>;
   return (
     <div className="divide-y divide-stone-100 max-h-[600px] overflow-y-auto">
@@ -1009,6 +1042,14 @@ function FilesTable({ rows, onEdit }) {
             )}
           </div>
           <button onClick={() => onEdit(f)} className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider border border-stone-300 hover:bg-stone-100 rounded-md">Edit</button>
+          <button
+            onClick={() => onHide(f.key)}
+            title="Hide this row from the list (restore later from the 'N hidden' link at the top)"
+            data-testid={`pc-hide-file-${f.key}`}
+            className="w-7 h-7 rounded-md text-stone-400 hover:text-red-700 hover:bg-red-50 flex items-center justify-center"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
       ))}
     </div>
