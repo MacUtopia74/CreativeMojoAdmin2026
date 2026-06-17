@@ -3924,9 +3924,58 @@ async def bulk_move_contacts(body: ContactBulkMoveRequest, _: dict = Depends(req
         raise HTTPException(status_code=400, detail=f"pipeline_status must be one of {PIPELINE_STAGES}")
     if not body.ids:
         return {"ok": True, "moved": 0, "not_found": 0}
+
+    # Fast path — for the common "move N rows already in web_form_contacts
+    # to a new pipeline state / source" case we do ONE Mongo
+    # ``update_many`` instead of looping per-id. The previous loop was
+    # ~50ms per row → unworkable at thousand-id scale (ingress timeout
+    # after 30s). With ``update_many`` even 10k IDs complete in <1s.
+    now = datetime.now(timezone.utc).isoformat()
     moved = 0
     not_found = 0
-    for cid in body.ids:
+
+    if body.target == "pipeline":
+        stage = body.pipeline_status if body.pipeline_status in PIPELINE_STAGES else "new"
+        patch = {
+            "in_pipeline": True,
+            "pipeline_status": stage,
+            "updated_at": now,
+            "pipeline_status_updated_at": now,
+        }
+        res = await db.web_form_contacts.update_many({"id": {"$in": body.ids}}, {"$set": patch})
+        moved = res.matched_count
+    elif body.target in ("franchise", "licence"):
+        target_source = "licence_enquiry" if body.target == "licence" else "franchise_enquiry"
+        res = await db.web_form_contacts.update_many(
+            {"id": {"$in": body.ids}},
+            {"$set": {"source": target_source, "updated_at": now}},
+        )
+        moved = res.matched_count
+    elif body.target == "general":
+        res = await db.web_form_contacts.update_many(
+            {"id": {"$in": body.ids}},
+            {"$set": {"source": "general_enquiry", "updated_at": now}},
+        )
+        moved = res.matched_count
+    elif body.target == "remove_from_pipeline":
+        res = await db.web_form_contacts.update_many(
+            {"id": {"$in": body.ids}},
+            {"$set": {"in_pipeline": False, "pipeline_status": None, "updated_at": now}},
+        )
+        moved = res.matched_count
+
+    # Any leftover IDs are either (a) legacy ``contacts`` rows that need
+    # the per-id migration path or (b) actual not-found. Loop those to
+    # preserve the original semantics — there's never many of these so
+    # the residual loop stays fast.
+    remaining = body.ids if moved == 0 else None
+    if moved < len(body.ids):
+        already_moved = await db.web_form_contacts.find(
+            {"id": {"$in": body.ids}}, {"_id": 0, "id": 1},
+        ).to_list(len(body.ids))
+        moved_ids = {r["id"] for r in already_moved}
+        remaining = [cid for cid in body.ids if cid not in moved_ids]
+    for cid in (remaining or []):
         coll = await _move_one_contact(cid, body.target, body.pipeline_status)
         if coll:
             moved += 1
@@ -4022,13 +4071,34 @@ async def dedupe_pipeline_contacts(
         }
 
     removed = 0
+    tombstones_added = 0
     if to_delete:
         ids = [d["id"] for d in to_delete]
+        # Capture gravity_entry_ids BEFORE deletion so we can tombstone
+        # them — otherwise the periodic Gravity Forms backfill would
+        # silently re-insert the same duplicates on its next run (the
+        # `gf_deleted_entries` collection is its source of truth for
+        # "never bring this back").
+        rows_to_kill = await db.web_form_contacts.find(
+            {"id": {"$in": ids}, "gravity_entry_id": {"$ne": None}},
+            {"_id": 0, "gravity_entry_id": 1, "email": 1},
+        ).to_list(len(ids))
+        now_iso = datetime.now(timezone.utc).isoformat()
+        tombs = [{
+            "gravity_entry_id": r["gravity_entry_id"],
+            "email": r.get("email"),
+            "deleted_at": now_iso,
+            "reason": "dedupe_pipeline",
+        } for r in rows_to_kill if r.get("gravity_entry_id")]
+        if tombs:
+            await db.gf_deleted_entries.insert_many(tombs, ordered=False)
+            tombstones_added = len(tombs)
         res = await db.web_form_contacts.delete_many({"id": {"$in": ids}})
         removed = res.deleted_count
     return {
         "dry_run": False,
         "removed": removed,
+        "tombstones_added": tombstones_added,
         "samples": to_delete[:20],
     }
 
