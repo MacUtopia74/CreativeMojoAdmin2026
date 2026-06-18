@@ -20,6 +20,7 @@ import {
   Copy,
   CheckCircle2,
   Mail,
+  MailCheck,
   Clock,
   MoreHorizontal,
   Search,
@@ -187,6 +188,26 @@ function UsersTab() {
     }
   };
 
+  // Handover — send the franchisee/licensee a branded Resend email with
+  // portal URL + a freshly-generated temp password. Resets their password
+  // server-side every time it's pressed, so re-pressing is the supported
+  // way to re-issue credentials if the user mislays the email.
+  const handoverUser = async (u) => {
+    const verb = u.handover_sent_at ? "Re-send" : "Send";
+    if (!window.confirm(
+      `${verb} portal access email to ${u.email}?\n\n`
+      + "This will reset their password to a new temporary one and email it to them via Resend. "
+      + (u.handover_sent_at ? "Their current credentials will stop working." : "")
+    )) return;
+    try {
+      const { data } = await api.post(`/auth/users/${u.id}/handover`);
+      toast.success(`Handover email sent to ${data.email_sent_to}`);
+      load();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Could not send handover email");
+    }
+  };
+
   return (
     <>
       {/* Filter / search bar */}
@@ -245,6 +266,7 @@ function UsersTab() {
             franchiseeById={franchiseeById}
             onPermissions={setPermsUser}
             onModules={setModulesUser}
+            onHandover={handoverUser}
             onDelete={deleteUser}
             testid="franchisee-users-section"
           />
@@ -294,7 +316,7 @@ function UsersTab() {
 // identical without duplicating the markup.
 function UsersSection({
   title, subtitle, users, totalCount, me, franchiseeById,
-  onPermissions, onModules, onDelete, testid,
+  onPermissions, onModules, onHandover, onDelete, testid,
 }) {
   return (
     <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid={testid}>
@@ -381,6 +403,23 @@ function UsersSection({
                   title="Enable or disable portal add-on modules"
                 >
                   <Sparkles className="w-3.5 h-3.5" /> Modules
+                </button>
+              )}
+              {(u.role === "franchisee" || u.role === "licensee") && onHandover && (
+                <button
+                  onClick={() => onHandover(u)}
+                  data-testid={`user-handover-${u.id}`}
+                  className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg flex items-center gap-1.5 ${
+                    u.handover_sent_at
+                      ? "border border-stone-300 hover:bg-stone-50 text-stone-700"
+                      : "bg-stone-950 hover:bg-stone-800 text-[#dddd16] border border-stone-950"
+                  }`}
+                  title={u.handover_sent_at
+                    ? `Last sent ${new Date(u.handover_sent_at).toLocaleString("en-GB")} — click to re-send a fresh password`
+                    : "Send portal URL + temporary password to this franchisee"}
+                >
+                  <MailCheck className="w-3.5 h-3.5" />
+                  {u.handover_sent_at ? "Re-send" : "Handover access"}
                 </button>
               )}
               {u.id !== me?.id && (

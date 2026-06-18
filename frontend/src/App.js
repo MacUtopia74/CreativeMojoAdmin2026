@@ -4,6 +4,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Layout from "@/components/Layout";
 import LoginPage from "@/pages/LoginPage";
+import ResetPasswordPage from "@/pages/ResetPasswordPage";
 import DashboardPage from "@/pages/DashboardPage";
 import FranchiseesPage from "@/pages/FranchiseesPage";
 import FranchiseeDetailPage from "@/pages/FranchiseeDetailPage";
@@ -84,6 +85,7 @@ export default function App() {
           <EnvBanner />
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/portal/login" element={<PortalLoginPage />} />
             <Route path="/change-password" element={
               <ProtectedRoute><ChangePasswordPage /></ProtectedRoute>

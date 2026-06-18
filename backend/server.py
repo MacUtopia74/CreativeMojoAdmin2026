@@ -13,6 +13,7 @@ import bcrypt
 import jwt
 import httpx
 from datetime import datetime, timezone, timedelta
+import secrets
 from typing import Optional, List, Literal, Dict, Any
 from fastapi import FastAPI, APIRouter, Body, HTTPException, Request, Response, Depends, Query, UploadFile, File
 from starlette.middleware.cors import CORSMiddleware
@@ -23,6 +24,10 @@ from pydantic import BaseModel, EmailStr, Field, ConfigDict
 # Config & Database
 # ----------------------------------------------------------------------------
 MONGO_URL = os.environ["MONGO_URL"]
+# Portal URL used in branded emails (handover, password reset). Override
+# via env in non-prod environments so localhost devs don't email links
+# pointing at live production.
+PORTAL_URL = os.environ.get("PORTAL_URL", "https://hub.creativemojo.co.uk")
 DB_NAME = os.environ["DB_NAME"]
 # JWT signing key. The env-provided value is used as a *seed*: on first
 # boot we cache it in MongoDB and from then on the DB-backed value wins.
@@ -531,6 +536,48 @@ async def password_reset_request(
             "user_agent": request.headers.get("User-Agent", "")[:300],
             "status": "pending",
         })
+        # Self-serve: when Resend is configured, send the user a branded
+        # email with a one-time reset link straight away. The admin queue
+        # entry above stays as an audit trail. If Resend isn't
+        # configured, we silently fall back to the legacy admin-fulfilled
+        # flow — no behaviour change.
+        try:
+            from resend_routes import (
+                RESEND_API_KEY, RESEND_FROM_EMAIL, RESEND_FROM_NAME,
+            )
+            if RESEND_API_KEY:
+                import resend as _resend
+                _resend.api_key = RESEND_API_KEY
+                token = secrets.token_urlsafe(32)
+                exp = (now + timedelta(hours=2)).isoformat()
+                await db.password_reset_tokens.insert_one({
+                    "token": token,
+                    "user_id": user["id"],
+                    "email": email,
+                    "created_at": now.isoformat(),
+                    "expires_at": exp,
+                    "used_at": None,
+                    "ip": ip,
+                })
+                reset_url = f"{PORTAL_URL}/reset-password?token={token}"
+                html = _build_reset_email_html(
+                    user.get("name") or email.split("@")[0],
+                    reset_url,
+                )
+                try:
+                    _resend.Emails.send({
+                        "from": f"{RESEND_FROM_NAME} <{RESEND_FROM_EMAIL}>",
+                        "to": [email],
+                        "subject": "Reset your Creative Mojo Franchise Hub password",
+                        "html": html,
+                        "tags": [{"name": "kind", "value": "password-reset"}],
+                    })
+                except Exception:  # noqa: BLE001
+                    # Don't leak Resend failures back to the requester —
+                    # they'll re-try, admin still sees the queued ticket.
+                    logger.exception("Resend password-reset email failed for %s", email)
+        except Exception:  # noqa: BLE001
+            logger.exception("Self-serve reset short-circuit failed for %s", email)
     # Bump rate-limit even on miss so we don't leak account existence via
     # timing or response shape.
     await db.login_attempts.update_one(
@@ -569,6 +616,82 @@ async def password_reset_requests_list(
     )
     pending = await db.password_reset_requests.count_documents({"status": "pending"})
     return {"requests": rows, "pending_count": pending}
+
+
+# ----------------------------------------------------------------------------
+# Self-serve password reset (token-based, fully email-driven via Resend).
+# Companion to the existing /auth/password-reset/request endpoint, which
+# now also mints a token + sends the email when Resend is configured.
+# ----------------------------------------------------------------------------
+def _build_reset_email_html(name: str, reset_url: str) -> str:
+    safe_name = (name.split(" ")[0] if name else "there")
+    return f"""<!doctype html>
+<html><body style="margin:0;padding:0;background:#f5f5f4;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;">
+  <div style="max-width:560px;margin:32px auto;padding:0;background:#ffffff;border:1px solid #e7e5e4;border-radius:16px;overflow:hidden;">
+    <div style="background:#0c0a09;color:#dddd16;padding:20px 28px;font-size:13px;letter-spacing:0.2em;text-transform:uppercase;font-weight:700;">
+      Creative Mojo · Password reset
+    </div>
+    <div style="padding:28px;color:#1c1917;line-height:1.55;font-size:15px;">
+      <p style="margin:0 0 14px 0;">Hi {safe_name},</p>
+      <p style="margin:0 0 14px 0;">You (or someone using your email) asked to reset the password on your Creative Mojo Franchise Hub account.</p>
+      <p style="margin:0 0 22px 0;">Click the button below to choose a new password. The link expires in 2 hours.</p>
+      <div style="text-align:center;margin:22px 0;">
+        <a href="{reset_url}" style="display:inline-block;padding:14px 26px;background:#0c0a09;color:#dddd16;text-decoration:none;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;font-size:13px;border-radius:999px;">Reset my password</a>
+      </div>
+      <p style="margin:0 0 14px 0;font-size:13px;color:#78716c;">If the button doesn't work, paste this link into your browser:<br><span style="font-family:ui-monospace,Menlo,monospace;font-size:12px;word-break:break-all;color:#1c1917;">{reset_url}</span></p>
+      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:14px 18px;margin:18px 0;color:#78350f;font-size:14px;">
+        Didn't request this? Ignore this email — your existing password remains active.
+      </div>
+      <p style="margin:18px 0 0 0;">— Creative Mojo</p>
+    </div>
+  </div>
+</body></html>"""
+
+
+class PasswordResetConfirmBody(BaseModel):
+    token: str
+    new_password: str
+
+
+@api.post("/auth/password-reset/confirm")
+async def password_reset_confirm(body: PasswordResetConfirmBody):
+    """Consume a one-time token from the Resend reset email and set the
+    new password. Token is single-use, valid for 2 hours."""
+    if len(body.new_password or "") < 8:
+        raise HTTPException(400, "New password must be at least 8 characters")
+    tok = await db.password_reset_tokens.find_one({"token": body.token})
+    if not tok or tok.get("used_at"):
+        raise HTTPException(400, "This reset link is invalid or already used.")
+    try:
+        exp = datetime.fromisoformat(tok["expires_at"])
+    except Exception:  # noqa: BLE001
+        raise HTTPException(400, "This reset link is malformed.")  # noqa: B904
+    if exp < datetime.now(timezone.utc):
+        raise HTTPException(400, "This reset link has expired. Request a new one.")
+    user = await db.users.find_one({"id": tok["user_id"]})
+    if not user:
+        raise HTTPException(400, "User no longer exists.")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {
+            "password_hash": hash_password(body.new_password),
+            "password_changed_at": now_iso,
+            "active": True,
+        },
+         "$unset": {"force_password_change": "", "must_change_password": "",
+                    "handover_pending": ""}},
+    )
+    await db.password_reset_tokens.update_one(
+        {"token": body.token},
+        {"$set": {"used_at": now_iso}},
+    )
+    # Mark any pending admin queue rows for this email as auto-fulfilled
+    await db.password_reset_requests.update_many(
+        {"email": user["email"], "status": "pending"},
+        {"$set": {"status": "auto_fulfilled", "fulfilled_at": now_iso}},
+    )
+    return {"ok": True, "email": user["email"]}
 
 
 @api.post("/auth/password-reset/requests/{request_id}/fulfill")
@@ -669,10 +792,127 @@ async def change_password(
                 "password_hash": hash_password(body.new_password),
                 "password_changed_at": datetime.now(timezone.utc).isoformat(),
             },
-            "$unset": {"force_password_change": ""},
+            "$unset": {"force_password_change": "", "must_change_password": "",
+                       "handover_pending": ""},
         },
     )
     return {"ok": True}
+
+
+# ----------------------------------------------------------------------------
+# Handover access — admin presses "Handover" on a franchisee user row →
+# we generate a NEW temporary password, send a branded Resend email with
+# the portal URL + temp password + first-login instructions, and clear
+# the ``handover_pending`` flag on the user. Idempotent in the sense that
+# re-pressing the button generates a fresh password each time (use case:
+# franchisee lost the email).
+# ----------------------------------------------------------------------------
+
+
+def _build_handover_email_html(name: str, email: str, temp_password: str, portal_url: str) -> str:
+    safe_name = (name.split(" ")[0] if name else "there")
+    return f"""<!doctype html>
+<html><body style="margin:0;padding:0;background:#f5f5f4;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;">
+  <div style="max-width:560px;margin:32px auto;padding:0;background:#ffffff;border:1px solid #e7e5e4;border-radius:16px;overflow:hidden;">
+    <div style="background:#0c0a09;color:#dddd16;padding:20px 28px;font-size:13px;letter-spacing:0.2em;text-transform:uppercase;font-weight:700;">
+      Creative Mojo · Franchise Hub
+    </div>
+    <div style="padding:28px;color:#1c1917;line-height:1.55;font-size:15px;">
+      <p style="margin:0 0 14px 0;">Hi {safe_name},</p>
+      <p style="margin:0 0 14px 0;">Your Creative Mojo Franchise Hub access is now live. Below are your login details.</p>
+      <table style="width:100%;border-collapse:collapse;margin:18px 0;background:#fafaf9;border:1px solid #e7e5e4;border-radius:10px;">
+        <tr>
+          <td style="padding:14px 18px;font-size:11px;text-transform:uppercase;letter-spacing:0.15em;color:#78716c;font-weight:700;width:120px;">Portal</td>
+          <td style="padding:14px 18px;"><a href="{portal_url}/login" style="color:#1c1917;font-weight:600;text-decoration:underline;">{portal_url}/login</a></td>
+        </tr>
+        <tr>
+          <td style="padding:14px 18px;font-size:11px;text-transform:uppercase;letter-spacing:0.15em;color:#78716c;font-weight:700;border-top:1px solid #e7e5e4;">Email</td>
+          <td style="padding:14px 18px;border-top:1px solid #e7e5e4;font-family:ui-monospace,Menlo,monospace;font-size:14px;">{email}</td>
+        </tr>
+        <tr>
+          <td style="padding:14px 18px;font-size:11px;text-transform:uppercase;letter-spacing:0.15em;color:#78716c;font-weight:700;border-top:1px solid #e7e5e4;">Temporary password</td>
+          <td style="padding:14px 18px;border-top:1px solid #e7e5e4;font-family:ui-monospace,Menlo,monospace;font-size:14px;font-weight:600;">{temp_password}</td>
+        </tr>
+      </table>
+      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:14px 18px;margin:18px 0;color:#78350f;font-size:14px;">
+        <strong>First time logging in?</strong><br>
+        On first login, click your name in the top-right corner → <strong>Change password</strong> to set your own.
+      </div>
+      <p style="margin:18px 0 0 0;">Welcome aboard,<br><strong>The Creative Mojo team</strong></p>
+    </div>
+    <div style="padding:16px 28px;border-top:1px solid #e7e5e4;background:#fafaf9;font-size:11px;color:#78716c;">
+      This message contains temporary credentials. Please don't share or forward it.
+    </div>
+  </div>
+</body></html>"""
+
+
+@api.post("/auth/users/{user_id}/handover")
+async def handover_portal_access(
+    user_id: str,
+    admin: dict = Depends(require_role("admin")),
+):
+    """Send the franchisee a branded email with portal URL, their email
+    and a freshly-generated temporary password. Used by the "Handover
+    franchise access" button on the Admin Users page.
+
+    Always resets the password — re-pressing the button is the supported
+    way to re-issue credentials when the franchisee loses the email.
+    """
+    target = await db.users.find_one({"id": user_id})
+    if not target:
+        raise HTTPException(404, "User not found")
+    if target.get("role") not in ("franchisee", "licensee"):
+        raise HTTPException(400, "Handover is only supported for franchisee/licensee users")
+
+    try:
+        from resend_routes import (
+            RESEND_API_KEY, RESEND_FROM_EMAIL, RESEND_FROM_NAME,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(503, "Resend module not available") from exc
+    if not RESEND_API_KEY:
+        raise HTTPException(503, "Resend not configured — set RESEND_API_KEY")
+
+    # Fresh strong temporary password.
+    import string
+    alphabet = string.ascii_letters + string.digits
+    temp_password = "".join(secrets.choice(alphabet) for _ in range(14))
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {
+            "password_hash": hash_password(temp_password),
+            "must_change_password": True,
+            "active": True,
+            "handover_sent_at": now_iso,
+            "handover_sent_by": admin.get("email"),
+        },
+         "$unset": {"handover_pending": ""}},
+    )
+
+    name = target.get("name") or (target.get("email") or "").split("@")[0]
+    html = _build_handover_email_html(name, target["email"], temp_password, PORTAL_URL)
+    import resend as _resend
+    _resend.api_key = RESEND_API_KEY
+    try:
+        result = _resend.Emails.send({
+            "from": f"{RESEND_FROM_NAME} <{RESEND_FROM_EMAIL}>",
+            "to": [target["email"]],
+            "subject": "Welcome to the Creative Mojo Franchise Hub",
+            "html": html,
+            "tags": [{"name": "kind", "value": "portal-handover"}],
+        })
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(502, detail=f"Resend send failed: {exc}") from exc
+
+    return {
+        "ok": True,
+        "email_sent_to": target["email"],
+        "user_id": user_id,
+        "resend_id": (result or {}).get("id") if isinstance(result, dict) else None,
+        "sent_at": now_iso,
+    }
 
 
 # ----------------------------------------------------------------------------
@@ -1652,6 +1892,117 @@ async def franchisees_bootstrap_folders_all(
     return summary
 
 
+async def _ensure_portal_user_for_franchisee(
+    franchisee_id: str,
+    *,
+    actor_email: Optional[str] = None,
+    prefer_mojo_email: bool = True,
+    generate_password: bool = True,
+) -> dict:
+    """Single source of truth for creating-or-linking a portal user for
+    a franchisee. Used by:
+      * POST /franchisees/{id}/create-portal-login (admin-triggered)
+      * convert_contact_to_franchisee (auto-runs on conversion)
+      * handover endpoint (force-resets the password + emails it)
+
+    Returns:
+        {
+          "ok": bool,
+          "already_existed": bool,
+          "email": str | None,
+          "user_id": str | None,
+          "name": str | None,
+          "temporary_password": str | None,
+          "skipped_reason": str | None,
+        }
+
+    Never raises — callers (esp. the convert flow) treat a failed
+    sub-step as non-fatal and surface the reason instead.
+    """
+    from franchisee_folders import ensure_franchisee_folders
+    f = await db.franchisees.find_one({"id": franchisee_id}, {"_id": 0})
+    if not f:
+        return {"ok": False, "skipped_reason": "franchisee_not_found"}
+
+    # Pick the email. ``prefer_mojo_email`` flips the lookup to put the
+    # branded address first — admin asked for mojo_email priority during
+    # auto-onboarding so the franchisee logs in with their CM identity.
+    candidates = (
+        ["mojo_email", "email", "primary_email", "contact_email"]
+        if prefer_mojo_email
+        else ["email", "primary_email", "contact_email", "mojo_email"]
+    )
+    email = ""
+    for key in candidates:
+        v = (f.get(key) or "").strip().lower()
+        if v:
+            email = v
+            break
+    if not email:
+        return {"ok": False, "skipped_reason": "no_email_on_file"}
+
+    name = (f.get("full_name") or f"{f.get('first_name', '')} {f.get('last_name', '')}".strip()
+            or f.get("organisation") or email)
+
+    # Ensure R2 folders exist before anything else (idempotent).
+    try:
+        await ensure_franchisee_folders(db, f, user_email=actor_email)
+    except Exception:
+        logger.exception("ensure_franchisee_folders failed for %s — continuing", franchisee_id)
+
+    existing = await db.users.find_one({"email": email})
+    now_iso = datetime.now(timezone.utc).isoformat()
+    if existing:
+        await db.users.update_one(
+            {"id": existing["id"]},
+            {"$set": {
+                "role": "franchisee",
+                "franchisee_id": franchisee_id,
+                "active": True,
+                "updated_at": now_iso,
+                "updated_by": actor_email,
+            }},
+        )
+        return {
+            "ok": True,
+            "already_existed": True,
+            "email": email,
+            "user_id": existing["id"],
+            "name": existing.get("name") or name,
+            "temporary_password": None,
+            "skipped_reason": None,
+        }
+
+    # Strong, human-readable temp password — 14 chars, mixed case + digits.
+    import secrets
+    import string
+    alphabet = string.ascii_letters + string.digits
+    temp_password = "".join(secrets.choice(alphabet) for _ in range(14)) if generate_password else None
+    new_id = str(uuid.uuid4())
+    await db.users.insert_one({
+        "id": new_id,
+        "email": email,
+        "name": name,
+        "role": "franchisee",
+        "franchisee_id": franchisee_id,
+        "password_hash": hash_password(temp_password) if temp_password else "",
+        "created_at": now_iso,
+        "created_by": actor_email,
+        "active": True,
+        "must_change_password": True,
+        "handover_pending": True,
+    })
+    return {
+        "ok": True,
+        "already_existed": False,
+        "email": email,
+        "user_id": new_id,
+        "name": name,
+        "temporary_password": temp_password,
+        "skipped_reason": None,
+    }
+
+
 @api.post("/franchisees/{franchisee_id}/create-portal-login")
 async def create_portal_login(
     franchisee_id: str,
@@ -1665,76 +2016,23 @@ async def create_portal_login(
       and return ``already_existed=True``.
     * Otherwise we mint a fresh user with a strong random temporary
       password and return it so the admin can pass it to the franchisee
-      on a one-off basis (next step: email transport so we can mail it
-      automatically).
+      on a one-off basis. To email the password automatically use the
+      Handover endpoint instead.
     * Standard folders are also ensured (idempotent — safe to re-run).
     """
-    from franchisee_folders import ensure_franchisee_folders
-    f = await db.franchisees.find_one({"id": franchisee_id}, {"_id": 0})
-    if not f:
-        raise HTTPException(404, detail="Franchisee not found")
+    out = await _ensure_portal_user_for_franchisee(
+        franchisee_id, actor_email=user.get("email"), prefer_mojo_email=False,
+    )
+    if not out.get("ok"):
+        if out.get("skipped_reason") == "franchisee_not_found":
+            raise HTTPException(404, detail="Franchisee not found")
+        if out.get("skipped_reason") == "no_email_on_file":
+            raise HTTPException(400, detail="This franchisee has no email on file — add one before creating a portal login.")
+        raise HTTPException(400, detail=f"Could not create portal login: {out.get('skipped_reason')}")
+    msg = ("Existing user updated and linked to this franchisee." if out["already_existed"]
+           else "Portal login created. Share the temporary password securely — the franchisee will be asked to change it on first login.")
+    return {**out, "message": msg}
 
-    # Pick the most-trusted email field we have on file.
-    email = (f.get("email") or f.get("primary_email") or f.get("contact_email")
-             or f.get("mojo_email") or "").strip().lower()
-    if not email:
-        raise HTTPException(400, detail="This franchisee has no email on file — add one before creating a portal login.")
-
-    name = (f.get("full_name") or f"{f.get('first_name', '')} {f.get('last_name', '')}".strip()
-            or f.get("organisation") or email)
-
-    # Make sure their R2 folder layout exists so first login lands well.
-    await ensure_franchisee_folders(db, f, user_email=user.get("email"))
-
-    existing = await db.users.find_one({"email": email})
-    if existing:
-        await db.users.update_one(
-            {"id": existing["id"]},
-            {"$set": {
-                "role": "franchisee",
-                "franchisee_id": franchisee_id,
-                "active": True,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-                "updated_by": user.get("email"),
-            }},
-        )
-        return {
-            "ok": True,
-            "already_existed": True,
-            "email": email,
-            "user_id": existing["id"],
-            "name": existing.get("name") or name,
-            "temporary_password": None,
-            "message": "Existing user updated and linked to this franchisee.",
-        }
-
-    # Strong, human-readable temp password — 14 chars, mixed case + digits.
-    import secrets
-    import string
-    alphabet = string.ascii_letters + string.digits
-    temp_password = "".join(secrets.choice(alphabet) for _ in range(14))
-    new_id = str(uuid.uuid4())
-    await db.users.insert_one({
-        "id": new_id,
-        "email": email,
-        "name": name,
-        "role": "franchisee",
-        "franchisee_id": franchisee_id,
-        "password_hash": hash_password(temp_password),
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "created_by": user.get("email"),
-        "active": True,
-        "must_change_password": True,
-    })
-    return {
-        "ok": True,
-        "already_existed": False,
-        "email": email,
-        "user_id": new_id,
-        "name": name,
-        "temporary_password": temp_password,
-        "message": "Portal login created. Share the temporary password securely — the franchisee will be asked to change it on first login.",
-    }
 
 
 @api.get("/portal/me")
@@ -2333,6 +2631,10 @@ async def convert_contact_to_franchisee(contact_id: str, user: dict = Depends(re
         "last_name": contact.get("last_name"),
         "organisation": contact.get("establishment_name"),
         "email": (contact.get("email") or "").lower() or None,
+        # Mojo branded email — present on contacts when the admin set it
+        # during sales triage. Carries onto the franchisee so the auto
+        # portal-user step picks it up as the login.
+        "mojo_email": (contact.get("mojo_email") or "").lower() or None,
         "telephone": contact.get("telephone"),
         "mobile_phone": contact.get("mobile_phone"),
         # ---- Address — copy every line the Franchisee detail page renders.
@@ -2453,6 +2755,15 @@ async def convert_contact_to_franchisee(contact_id: str, user: dict = Depends(re
     # Ensure the response is JSON-friendly — datetimes go to ISO strings.
     if isinstance(franchisee_doc.get("territory_updated_at"), datetime):
         franchisee_doc["territory_updated_at"] = franchisee_doc["territory_updated_at"].isoformat()
+
+    # Auto-create a portal user for this franchisee — using mojo_email
+    # preferred. The user is created with ``handover_pending=True`` and a
+    # random password that's NOT returned/sent. Admin must press the
+    # "Handover" button when ready to send credentials.
+    portal_user = await _ensure_portal_user_for_franchisee(
+        f_id, actor_email=user.get("email"), prefer_mojo_email=True,
+        generate_password=False,  # we don't surface the password here
+    )
     return {
         "ok": True,
         "record_type": record_type,
@@ -2461,6 +2772,13 @@ async def convert_contact_to_franchisee(contact_id: str, user: dict = Depends(re
         "territory_sectors": territory_sectors,
         "territory_home_count": territory_home_count,
         "linked_plan_id": linked_plan_id,
+        "portal_user": {
+            "created": portal_user.get("ok") and not portal_user.get("already_existed"),
+            "linked": portal_user.get("ok") and portal_user.get("already_existed"),
+            "email": portal_user.get("email"),
+            "user_id": portal_user.get("user_id"),
+            "skipped_reason": portal_user.get("skipped_reason"),
+        },
     }
 
 
