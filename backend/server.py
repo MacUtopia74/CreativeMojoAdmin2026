@@ -4822,11 +4822,26 @@ async def get_version():
     return {"version": BUILD_VERSION, "started_at": BUILD_VERSION}
 
 
+@api.get("/system/info")
+async def get_system_info():
+    """Lightweight env probe consumed by the EnvBanner footer pill on
+    the frontend. Returns the backend boot timestamp so a fresh
+    "last deploy" indicator can be derived without needing CI metadata.
+    Public on purpose — every page mounts the banner."""
+    return {
+        "started_at": getattr(app.state, "started_at", None),
+        "version": BUILD_VERSION,
+    }
+
+
 # ----------------------------------------------------------------------------
 # Startup: seed admin + indexes
 # ----------------------------------------------------------------------------
 @app.on_event("startup")
 async def on_startup():
+    # Capture server boot time so /api/system/info can surface a
+    # "last-deploy" timestamp on the frontend env banner.
+    app.state.started_at = datetime.now(timezone.utc).isoformat()
     await db.users.create_index("email", unique=True)
     await db.users.create_index("id", unique=True)
     await db.login_attempts.create_index("identifier")
