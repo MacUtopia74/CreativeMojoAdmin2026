@@ -2332,6 +2332,124 @@ async def convert_contact_to_franchisee(contact_id: str, user: dict = Depends(re
 
 
 # ----------------------------------------------------------------------------
+# One-shot backfill: for every franchisee that was created via
+# convert-to-franchisee BEFORE the auto-link fix shipped (18 Jun 2026),
+# find the latest territory_plan that was drawn for the source contact
+# and copy its sectors onto the franchisee. Idempotent + dry-run friendly.
+# ----------------------------------------------------------------------------
+@api.post("/admin/backfill/convert-territories")
+async def backfill_convert_territories(
+    dry_run: bool = False,
+    user: dict = Depends(require_role("admin")),
+):
+    """Scan franchisees that were converted from a contact but have no
+    territory_sectors yet, and back-fill from the latest territory_plan
+    tied to that source contact. Returns a per-row report.
+
+    Query params:
+        dry_run=true → report only, no writes.
+    """
+    now = datetime.now(timezone.utc)
+    # Candidates: created via conversion AND missing territory data.
+    candidates = await db.franchisees.find(
+        {
+            "converted_from_contact_id": {"$exists": True, "$ne": None},
+            "$or": [
+                {"territory_sectors": {"$exists": False}},
+                {"territory_sectors": []},
+                {"territory_sectors": None},
+            ],
+        },
+        {"_id": 0, "id": 1, "first_name": 1, "last_name": 1, "organisation": 1,
+         "converted_from_contact_id": 1, "converted_at": 1},
+    ).to_list(2000)
+
+    linked = 0
+    skipped_no_plan = 0
+    linked_rows: list[dict] = []
+    skipped_rows: list[dict] = []
+
+    for fr in candidates:
+        cid = fr.get("converted_from_contact_id")
+        plan = await db.territory_plans.find_one(
+            {"contact_id": cid},
+            {"_id": 0},
+            sort=[("created_at", -1)],
+        )
+        name = " ".join(filter(None, [fr.get("first_name"), fr.get("last_name")])) or fr.get("organisation") or fr["id"]
+        if not plan or not plan.get("sectors"):
+            skipped_no_plan += 1
+            skipped_rows.append({"franchisee_id": fr["id"], "name": name, "reason": "no plan for contact"})
+            continue
+
+        # Normalise sectors the same way save_franchisee_territory does.
+        seen: list[str] = []
+        for s in plan["sectors"]:
+            v = " ".join(str(s).upper().split())
+            if v and v not in seen:
+                seen.append(v)
+        if not seen:
+            skipped_no_plan += 1
+            skipped_rows.append({"franchisee_id": fr["id"], "name": name, "reason": "plan had no usable sectors"})
+            continue
+
+        row = {
+            "franchisee_id": fr["id"],
+            "name": name,
+            "plan_id": plan.get("id"),
+            "sectors": len(seen),
+            "home_count": plan.get("home_count"),
+        }
+        linked_rows.append(row)
+        linked += 1
+        if dry_run:
+            continue
+
+        # --- WRITES ---
+        await db.franchisees.update_one(
+            {"id": fr["id"]},
+            {"$set": {
+                "territory_sectors": seen,
+                "territory_home_count": plan.get("home_count"),
+                "territory_updated_at": now,
+                "territory_updated_by": user.get("email"),
+                "territory_source_plan_id": plan.get("id"),
+            }},
+        )
+        await db.territory_plans.update_one(
+            {"id": plan["id"]},
+            {"$set": {"franchisee_id": fr["id"], "updated_at": now}},
+        )
+        await db.territory_history.insert_one({
+            "id": str(uuid.uuid4()),
+            "franchisee_id": fr["id"],
+            "organisation": fr.get("organisation"),
+            "previous_sectors": [],
+            "previous_home_count": None,
+            "previous_updated_at": None,
+            "previous_updated_by": None,
+            "new_sectors": seen,
+            "new_home_count": plan.get("home_count"),
+            "changed_at": now,
+            "changed_by": user.get("email"),
+            "added_count": len(seen),
+            "removed_count": 0,
+            "source": "backfill_convert_to_franchisee",
+            "source_plan_id": plan.get("id"),
+        })
+
+    return {
+        "ok": True,
+        "dry_run": dry_run,
+        "candidates": len(candidates),
+        "linked": linked,
+        "skipped_no_plan": skipped_no_plan,
+        "linked_rows": linked_rows,
+        "skipped_rows": skipped_rows,
+    }
+
+
+# ----------------------------------------------------------------------------
 # Link an enquiry contact to an EXISTING franchisee record (no new record
 # created). Useful for cleaning up the pipeline when a lead is already in the
 # franchisees collection from the migration. Mirrors the data-shape side-
