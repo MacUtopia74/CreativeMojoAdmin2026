@@ -157,6 +157,78 @@ function Panel({ icon: Icon, title, action, children, testid }) {
   );
 }
 
+// Sales pipeline → Launch handoff. Preserves the four-row drawer
+// checklist that lived on the contact (Territory confirmed / Contract
+// sent / Shadow day + date + with-whom / Training day(s) + dates) so
+// the onboarding history isn't lost when the franchisee record takes
+// over. Read-only by design — the source of truth was the contact.
+function HandoffRow({ label, ticked, children }) {
+  return (
+    <div className="flex items-start gap-3 py-2">
+      <span
+        className={`mt-0.5 inline-flex items-center justify-center w-4 h-4 rounded border ${ticked ? "bg-stone-950 border-stone-950 text-[#dddd16]" : "bg-white border-stone-300 text-transparent"}`}
+        aria-hidden="true"
+        data-testid={`sales-handoff-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}>
+        {ticked ? <Check className="w-3 h-3" /> : null}
+      </span>
+      <div className="flex-1 min-w-0">
+        <div className={`text-sm ${ticked ? "text-stone-900" : "text-stone-400"}`}>{label}</div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function SalesHandoffPanel({ handoff }) {
+  const fmt = (d) => {
+    if (!d) return null;
+    try { return formatDate(d); } catch { return d; }
+  };
+  return (
+    <Panel
+      icon={ClipboardList}
+      title="Sales Handoff — Onboarding Checklist (from CRM)"
+      testid="panel-sales-handoff"
+      action={
+        handoff.source_checklist_updated_at && (
+          <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-400">
+            Last updated {formatDate(handoff.source_checklist_updated_at)}
+            {handoff.source_checklist_updated_by ? ` · ${handoff.source_checklist_updated_by}` : ""}
+          </div>
+        )
+      }>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-1">
+        <HandoffRow label="Territory confirmed" ticked={!!handoff.territory_defined} />
+        <HandoffRow label="Contract sent" ticked={!!handoff.contract_sent} />
+        <HandoffRow label="Shadow day booked" ticked={!!handoff.shadow_day_booked}>
+          {(handoff.shadow_day_date || handoff.shadowing_with) && (
+            <div className="text-xs text-stone-500 mt-0.5">
+              {handoff.shadow_day_date && <span className="tabular-nums">{fmt(handoff.shadow_day_date)}</span>}
+              {handoff.shadow_day_date && handoff.shadowing_with && <span> · </span>}
+              {handoff.shadowing_with && <span>Shadowing: {handoff.shadowing_with}</span>}
+            </div>
+          )}
+        </HandoffRow>
+        <HandoffRow label="Training day(s) booked" ticked={!!handoff.training_days_booked}>
+          {Array.isArray(handoff.training_day_dates) && handoff.training_day_dates.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-1">
+              {handoff.training_day_dates.map((d) => (
+                <span key={d} className="px-2 py-0.5 text-[11px] font-medium text-stone-700 bg-stone-100 border border-stone-200 rounded-full tabular-nums">
+                  {fmt(d)}
+                </span>
+              ))}
+            </div>
+          )}
+        </HandoffRow>
+      </div>
+      <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-400 mt-3 pt-3 border-t border-stone-100">
+        Carried over from the Sales Pipeline on {handoff.captured_at ? formatDate(handoff.captured_at) : "conversion"}
+        {handoff.captured_by ? ` by ${handoff.captured_by}` : ""}
+      </div>
+    </Panel>
+  );
+}
+
 // In-place editable text field
 function EditField({ field, value, label, type = "text", editing, draft, setDraft, mono }) {
   if (!editing) {
@@ -714,6 +786,7 @@ export default function FranchiseeDetailPage() {
         </div>
 
         {/* CONTRACTS — full-width prominent */}
+        {f.sales_handoff && <SalesHandoffPanel handoff={f.sales_handoff} />}
         <Panel icon={FileText} title={`Contracts (${contracts.length})`} testid="panel-contracts"
           action={
             <button onClick={() => setContractModal(contracts.length ? { previous: current } : "new")}

@@ -2231,6 +2231,39 @@ async def _find_latest_territory_plan_for_contact(
     return plan, ("contact_id" if plan else "")
 
 
+def _extract_sales_handoff(contact: dict, captured_by: Optional[str]) -> Optional[dict]:
+    """Snapshot the Sales Pipeline drawer checklist from a contact doc so
+    it survives conversion onto the franchisee record. Returns ``None``
+    when the contact has no checklist data at all (avoids polluting the
+    franchisee doc with an empty handoff object for legacy migrated
+    contacts that never went through the pipeline UI).
+    """
+    if not contact:
+        return None
+    keys = (
+        "territory_defined",
+        "contract_sent",
+        "shadow_day_booked",
+        "shadow_day_date",
+        "shadowing_with",
+        "training_days_booked",
+        "training_day_dates",
+    )
+    snapshot = {k: contact.get(k) for k in keys if contact.get(k) not in (None, "", [])}
+    if not snapshot:
+        return None
+    snapshot["captured_at"] = datetime.now(timezone.utc).isoformat()
+    if captured_by:
+        snapshot["captured_by"] = captured_by
+    src_updated = contact.get("checklist_updated_at")
+    if src_updated:
+        snapshot["source_checklist_updated_at"] = src_updated
+    src_by = contact.get("checklist_updated_by")
+    if src_by:
+        snapshot["source_checklist_updated_by"] = src_by
+    return snapshot
+
+
 @api.post("/contacts/{contact_id}/convert-to-franchisee")
 async def convert_contact_to_franchisee(contact_id: str, user: dict = Depends(require_role("admin"))):
     """Create a franchisee/licencee record from an existing contact and mark the contact 'converted'.
@@ -2326,6 +2359,27 @@ async def convert_contact_to_franchisee(contact_id: str, user: dict = Depends(re
         franchisee_doc["territory_updated_at"] = datetime.now(timezone.utc)
         franchisee_doc["territory_updated_by"] = user.get("email")
         franchisee_doc["territory_source_plan_id"] = linked_plan_id
+
+    # ------------------------------------------------------------------
+    # Sales handoff: preserve the Sales Pipeline drawer checklist on the
+    # franchisee record so the onboarding history isn't lost. Stored
+    # under two roofs:
+    #   1. ``sales_handoff`` — verbatim copy of the contact's checklist
+    #      (Territory confirmed / Contract sent / Shadow day + date +
+    #      shadowing-with / Training days + dates). Surfaced as a
+    #      read-only panel on FranchiseeDetailPage.
+    #   2. ``launch_checklist`` — pre-ticks the matching In-House Launch
+    #      Prep row (``territory_defined_confirmed``) so the launch
+    #      checklist modal opens with the territory tick already on,
+    #      saving the admin a click.
+    # ------------------------------------------------------------------
+    handoff = _extract_sales_handoff(contact, user.get("email"))
+    if handoff:
+        franchisee_doc["sales_handoff"] = handoff
+        if handoff.get("territory_defined"):
+            franchisee_doc["launch_checklist"] = {"territory_defined_confirmed": True}
+            franchisee_doc["launch_checklist_updated_at"] = datetime.now(timezone.utc).isoformat()
+            franchisee_doc["launch_checklist_updated_by"] = user.get("email")
     await db.franchisees.insert_one(franchisee_doc)
 
     # Back-link the plan to the new franchisee + audit-log the auto-copy
@@ -2429,18 +2483,23 @@ async def backfill_convert_territories(
                 {"territory_sectors": None},
                 # Missing one of the segment tags
                 {"tags": {"$nin": ["Franchisee", "Worldwide Licencee"]}},
+                # Missing sales handoff snapshot
+                {"sales_handoff": {"$exists": False}},
             ],
         },
         {"_id": 0, "id": 1, "first_name": 1, "last_name": 1, "organisation": 1,
          "email": 1, "tags": 1, "territory_sectors": 1, "record_type": 1,
+         "sales_handoff": 1, "launch_checklist": 1,
          "converted_from_contact_id": 1, "converted_at": 1},
     ).to_list(2000)
 
     linked = 0
     retagged = 0
+    handoff_copied = 0
     skipped_no_plan = 0
     linked_rows: list[dict] = []
     retagged_rows: list[dict] = []
+    handoff_rows: list[dict] = []
     skipped_rows: list[dict] = []
 
     for fr in candidates:
@@ -2466,13 +2525,37 @@ async def backfill_convert_territories(
         # Skip the territory copy if the row already has sectors — only the
         # tag may have been the issue.
         if fr.get("territory_sectors"):
-            continue
+            # Still attempt sales-handoff repair below.
+            pass
 
         # Re-fetch the contact document so the email-fallback can fire even
         # when the row only exposes converted_from_contact_id.
         contact_doc = await db.web_form_contacts.find_one({"id": cid}, {"_id": 0})
         if not contact_doc:
             contact_doc = await db.contacts.find_one({"id": cid}, {"_id": 0})
+
+        # ---------- (c) sales handoff repair ----------
+        # Capture the Sales Pipeline drawer checklist on the franchisee.
+        if not fr.get("sales_handoff") and contact_doc:
+            handoff = _extract_sales_handoff(contact_doc, user.get("email"))
+            if handoff:
+                handoff_rows.append({"franchisee_id": fr["id"], "name": name,
+                                     "fields": [k for k in handoff if k not in ("captured_at", "captured_by")]})
+                handoff_copied += 1
+                if not dry_run:
+                    set_ops = {"sales_handoff": handoff, "updated_at": now}
+                    # Pre-tick the launch_checklist territory row if not
+                    # already touched on this franchisee.
+                    if handoff.get("territory_defined") and not fr.get("launch_checklist"):
+                        set_ops["launch_checklist"] = {"territory_defined_confirmed": True}
+                        set_ops["launch_checklist_updated_at"] = now.isoformat()
+                        set_ops["launch_checklist_updated_by"] = user.get("email")
+                    await db.franchisees.update_one({"id": fr["id"]}, {"$set": set_ops})
+
+        # Now run the territory link only when the row genuinely needs it.
+        if fr.get("territory_sectors"):
+            continue
+
         # Fallback: if the original contact was deleted/merged, use the
         # franchisee's own email so the helper can still find a sibling
         # plan tied to that email.
@@ -2549,9 +2632,11 @@ async def backfill_convert_territories(
         "candidates": len(candidates),
         "linked": linked,
         "retagged": retagged,
+        "handoff_copied": handoff_copied,
         "skipped_no_plan": skipped_no_plan,
         "linked_rows": linked_rows,
         "retagged_rows": retagged_rows,
+        "handoff_rows": handoff_rows,
         "skipped_rows": skipped_rows,
     }
 
