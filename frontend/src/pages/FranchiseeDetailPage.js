@@ -232,11 +232,22 @@ function SalesHandoffPanel({ handoff }) {
 // In-place editable text field
 function EditField({ field, value, label, type = "text", editing, draft, setDraft, mono }) {
   if (!editing) {
+    // Emails + phones get tappable href links in read-mode so admins
+    // can click through to mail/dial instead of copy-pasting.
+    const href = value
+      ? (type === "email" ? `mailto:${value}`
+        : type === "tel"   ? `tel:${value}`
+        : null)
+      : null;
     return (
       <div>
         <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">{label}</div>
-        <div className={`text-sm text-stone-900 mt-1 ${mono ? "tabular-nums" : ""}`}>
-          {value || <span className="text-stone-300">—</span>}
+        <div className={`text-sm mt-1 ${mono ? "tabular-nums" : ""}`}>
+          {value
+            ? (href
+                ? <a href={href} className="text-stone-900 hover:text-stone-600 hover:underline break-all" data-testid={`link-${field}`}>{value}</a>
+                : <span className="text-stone-900">{value}</span>)
+            : <span className="text-stone-300">—</span>}
         </div>
       </div>
     );
@@ -489,6 +500,9 @@ export default function FranchiseeDetailPage() {
       country: f.country || "", notes: f.notes || "",
       website: f.website || "", facebook: f.facebook || "",
       bio_url: f.bio_url || "",
+      // Admins assign the franchise number (e.g. "0029") on launch —
+      // the column on FranchiseesPage shows "—" until this is set.
+      franchise_number: f.franchise_number || "",
     });
     setEditing(true);
   };
@@ -678,7 +692,7 @@ export default function FranchiseeDetailPage() {
               </div>
               <div className="bg-white p-4">
                 <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Territory</div>
-                <div className="font-display text-2xl text-stone-950 mt-1">{territories.length}</div>
+                <div className="font-display text-2xl text-stone-950 mt-1">{(f.territory_sectors || []).length || territories.length}</div>
                 <div className="text-xs text-stone-500 mt-0.5">postcode sectors</div>
               </div>
               <div className="bg-white p-4" data-testid="kpi-mandate">
@@ -750,14 +764,15 @@ export default function FranchiseeDetailPage() {
               </button>
             )}>
             <div className="grid grid-cols-2 gap-5">
+              <EditField field="franchise_number" label="Franchise No." value={f.franchise_number} editing={editing} draft={draft} setDraft={setDraft} mono />
+              <EditField field="organisation" label="Organisation" value={f.organisation} editing={editing} draft={draft} setDraft={setDraft} />
               <EditField field="first_name" label="First Name" value={f.first_name} editing={editing} draft={draft} setDraft={setDraft} />
               <EditField field="last_name" label="Last Name" value={f.last_name} editing={editing} draft={draft} setDraft={setDraft} />
-              <EditField field="organisation" label="Organisation" value={f.organisation} editing={editing} draft={draft} setDraft={setDraft} />
               <EditField field="email" label="Email" value={f.email} type="email" editing={editing} draft={draft} setDraft={setDraft} mono />
               <EditField field="mojo_email" label="Mojo Email" value={f.mojo_email} type="email" editing={editing} draft={draft} setDraft={setDraft} mono />
               <EditField field="secondary_email" label="Secondary Email" value={f.secondary_email} type="email" editing={editing} draft={draft} setDraft={setDraft} mono />
-              <EditField field="telephone" label="Telephone" value={f.telephone} editing={editing} draft={draft} setDraft={setDraft} mono />
-              <EditField field="mobile_phone" label="Mobile" value={f.mobile_phone} editing={editing} draft={draft} setDraft={setDraft} mono />
+              <EditField field="telephone" label="Telephone" value={f.telephone} type="tel" editing={editing} draft={draft} setDraft={setDraft} mono />
+              <EditField field="mobile_phone" label="Mobile" value={f.mobile_phone} type="tel" editing={editing} draft={draft} setDraft={setDraft} mono />
               <EditField field="website" label="Website" value={f.website} editing={editing} draft={draft} setDraft={setDraft} mono />
               <EditField field="facebook" label="Facebook" value={f.facebook} editing={editing} draft={draft} setDraft={setDraft} mono />
               <EditField field="bio_url" label="Mojo biography page" value={f.bio_url} editing={editing} draft={draft} setDraft={setDraft} mono />

@@ -1260,10 +1260,14 @@ async def franchisee_xero_contact_link(
 # Editable franchisee fields (admin only). Any unspecified field is left untouched.
 FRANCHISEE_EDITABLE_FIELDS = {
     "first_name", "last_name", "organisation", "email", "mojo_email", "secondary_email",
-    "telephone", "mobile_phone", "address", "city", "county", "postcode", "country",
+    "telephone", "mobile_phone", "address", "address_street", "address_line_2",
+    "city", "county", "postcode", "country",
     "potential", "fee_paid", "anniversary_reminder", "notes",
     "status", "staying_leaving",
     "website", "facebook", "bio_url",
+    # Franchise number (e.g. 0029) — admin assigns on launch. Editable
+    # from the Contact Details panel on FranchiseeDetailPage.
+    "franchise_number",
 }
 
 
