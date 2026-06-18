@@ -2178,6 +2178,59 @@ async def clear_mandate_reminder(
     return {"ok": True}
 
 
+# ----------------------------------------------------------------------------
+# Shared helper: find the latest territory_plan for a contact, with email
+# fallback so we don't miss a plan tied to a sibling contact record.
+# Used by both POST /contacts/{id}/convert-to-franchisee and the one-shot
+# POST /admin/backfill/convert-territories endpoint.
+# ----------------------------------------------------------------------------
+async def _find_latest_territory_plan_for_contact(
+    contact: dict, contact_id: str,
+) -> tuple[Optional[dict], str]:
+    """Return (plan, match_basis) where match_basis ∈
+    {"contact_id", "email", ""} for logging / debugging.
+
+    1. Try contact_id directly.
+    2. If miss + the contact has an email, build the set of *all* contact
+       IDs (across both web_form_contacts and contacts collections) that
+       share that email, and pick the latest plan tied to any of them.
+       This catches the multi-record-per-person case.
+    """
+    plan = await db.territory_plans.find_one(
+        {"contact_id": contact_id},
+        {"_id": 0},
+        sort=[("created_at", -1)],
+    )
+    if plan and plan.get("sectors"):
+        return plan, "contact_id"
+
+    email = (contact.get("email") or "").strip().lower()
+    if not email:
+        return plan, ("contact_id" if plan else "")
+
+    # Sibling contact IDs sharing the email (case-insensitive).
+    email_q = {"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}}
+    sibling_ids: set[str] = set()
+    async for row in db.web_form_contacts.find(email_q, {"_id": 0, "id": 1}):
+        if row.get("id"):
+            sibling_ids.add(row["id"])
+    async for row in db.contacts.find(email_q, {"_id": 0, "id": 1}):
+        if row.get("id"):
+            sibling_ids.add(row["id"])
+    sibling_ids.discard(contact_id)
+    if not sibling_ids:
+        return plan, ("contact_id" if plan else "")
+
+    sibling_plan = await db.territory_plans.find_one(
+        {"contact_id": {"$in": list(sibling_ids)}, "sectors": {"$ne": []}},
+        {"_id": 0},
+        sort=[("created_at", -1)],
+    )
+    if sibling_plan and sibling_plan.get("sectors"):
+        return sibling_plan, "email"
+    return plan, ("contact_id" if plan else "")
+
+
 @api.post("/contacts/{contact_id}/convert-to-franchisee")
 async def convert_contact_to_franchisee(contact_id: str, user: dict = Depends(require_role("admin"))):
     """Create a franchisee/licencee record from an existing contact and mark the contact 'converted'.
@@ -2209,17 +2262,14 @@ async def convert_contact_to_franchisee(contact_id: str, user: dict = Depends(re
         notes_lines.append(f"Original enquiry date: {display_date}")
     # ------------------------------------------------------------------
     # Auto-link any territory plan that was built for this contact in the
-    # Territory Builder. The latest plan (highest ``created_at``) wins so
-    # accidental drafts don't clobber a later, deliberate plan. Plan
-    # sectors are copied directly onto the new franchisee — keeping the
-    # franchisee record self-sufficient — and the plan is back-linked to
-    # the franchisee so the audit trail survives.
+    # Territory Builder. We look across both contact collections and ALSO
+    # fall back to email-matching, because a single prospect (e.g. one
+    # who first filled the legacy form then resubmitted the new Gravity
+    # form) can have multiple contact rows; the plan might be attached
+    # to a sibling, not the row the admin clicked Convert on. Latest
+    # plan (highest ``created_at``) wins to avoid stale drafts.
     # ------------------------------------------------------------------
-    plan = await db.territory_plans.find_one(
-        {"contact_id": contact_id},
-        {"_id": 0},
-        sort=[("created_at", -1)],
-    )
+    plan, linked_via = await _find_latest_territory_plan_for_contact(contact, contact_id)
     territory_sectors: list[str] = []
     territory_home_count: int | None = None
     linked_plan_id: str | None = None
@@ -2234,6 +2284,10 @@ async def convert_contact_to_franchisee(contact_id: str, user: dict = Depends(re
         territory_sectors = seen
         territory_home_count = plan.get("home_count")
         linked_plan_id = plan.get("id")
+        logger.info(
+            "convert-to-franchisee: linked plan %s (%d sectors) via %s for contact %s",
+            linked_plan_id, len(seen), linked_via, contact_id,
+        )
 
     franchisee_doc = {
         "id": f_id,
@@ -2248,7 +2302,14 @@ async def convert_contact_to_franchisee(contact_id: str, user: dict = Depends(re
         "city": contact.get("city"),
         "country": contact.get("country_tag"),
         "potential": contact.get("potential"),
-        "tags": ["Converted from enquiry"],
+        # NOTE: the Franchisees list "Active" / "Worldwide Licencees" tabs
+        # filter strictly on tag presence (FranchiseesPage.js#SEGMENTS).
+        # Without the matching tag, newly-converted records only show up
+        # under "All" — which is what regression #SamanthaWhiteman was.
+        "tags": [
+            "Worldwide Licencee" if record_type == "licencee" else "Franchisee",
+            "Converted from enquiry",
+        ],
         "status": "Active",
         "converted_from_contact_id": contact_id,
         "converted_at": now,
@@ -2342,15 +2403,23 @@ async def backfill_convert_territories(
     dry_run: bool = False,
     user: dict = Depends(require_role("admin")),
 ):
-    """Scan franchisees that were converted from a contact but have no
-    territory_sectors yet, and back-fill from the latest territory_plan
-    tied to that source contact. Returns a per-row report.
+    """Recover already-converted franchisees from BEFORE the auto-link
+    fix shipped (18 Jun 2026). Two repairs in one pass:
 
-    Query params:
-        dry_run=true → report only, no writes.
+    1. Territory: copy sectors+home_count from the latest territory_plan
+       for the source contact (uses email-fallback to catch the
+       multi-record-per-person case).
+    2. Tags: ensure the franchisee carries the "Franchisee" / "Worldwide
+       Licencee" tag so they appear under the Active tab on the
+       Franchisees page — without this they only showed under "All".
+
+    Idempotent. Supports ``?dry_run=true`` for a read-only preview.
     """
     now = datetime.now(timezone.utc)
-    # Candidates: created via conversion AND missing territory data.
+
+    # Candidates: anything created via conversion that still needs ONE OR
+    # BOTH repairs. Use a fat $or so a row missing only the tag (not the
+    # territory) still gets retagged in a single pass.
     candidates = await db.franchisees.find(
         {
             "converted_from_contact_id": {"$exists": True, "$ne": None},
@@ -2358,28 +2427,62 @@ async def backfill_convert_territories(
                 {"territory_sectors": {"$exists": False}},
                 {"territory_sectors": []},
                 {"territory_sectors": None},
+                # Missing one of the segment tags
+                {"tags": {"$nin": ["Franchisee", "Worldwide Licencee"]}},
             ],
         },
         {"_id": 0, "id": 1, "first_name": 1, "last_name": 1, "organisation": 1,
+         "email": 1, "tags": 1, "territory_sectors": 1, "record_type": 1,
          "converted_from_contact_id": 1, "converted_at": 1},
     ).to_list(2000)
 
     linked = 0
+    retagged = 0
     skipped_no_plan = 0
     linked_rows: list[dict] = []
+    retagged_rows: list[dict] = []
     skipped_rows: list[dict] = []
 
     for fr in candidates:
         cid = fr.get("converted_from_contact_id")
-        plan = await db.territory_plans.find_one(
-            {"contact_id": cid},
-            {"_id": 0},
-            sort=[("created_at", -1)],
-        )
         name = " ".join(filter(None, [fr.get("first_name"), fr.get("last_name")])) or fr.get("organisation") or fr["id"]
+
+        # ---------- (a) tag repair ----------
+        needed_tag = "Worldwide Licencee" if fr.get("record_type") == "licencee" else "Franchisee"
+        existing_tags = fr.get("tags") or []
+        if not isinstance(existing_tags, list):
+            existing_tags = [existing_tags] if existing_tags else []
+        tag_changed = needed_tag not in existing_tags
+        if tag_changed:
+            new_tags = [needed_tag] + [t for t in existing_tags if t != needed_tag]
+            retagged_rows.append({"franchisee_id": fr["id"], "name": name, "added_tag": needed_tag})
+            retagged += 1
+            if not dry_run:
+                await db.franchisees.update_one(
+                    {"id": fr["id"]}, {"$set": {"tags": new_tags, "updated_at": now}},
+                )
+
+        # ---------- (b) territory repair ----------
+        # Skip the territory copy if the row already has sectors — only the
+        # tag may have been the issue.
+        if fr.get("territory_sectors"):
+            continue
+
+        # Re-fetch the contact document so the email-fallback can fire even
+        # when the row only exposes converted_from_contact_id.
+        contact_doc = await db.web_form_contacts.find_one({"id": cid}, {"_id": 0})
+        if not contact_doc:
+            contact_doc = await db.contacts.find_one({"id": cid}, {"_id": 0})
+        # Fallback: if the original contact was deleted/merged, use the
+        # franchisee's own email so the helper can still find a sibling
+        # plan tied to that email.
+        if not contact_doc:
+            contact_doc = {"id": cid, "email": fr.get("email")}
+
+        plan, match_basis = await _find_latest_territory_plan_for_contact(contact_doc, cid)
         if not plan or not plan.get("sectors"):
             skipped_no_plan += 1
-            skipped_rows.append({"franchisee_id": fr["id"], "name": name, "reason": "no plan for contact"})
+            skipped_rows.append({"franchisee_id": fr["id"], "name": name, "reason": "no plan for contact or email-sibling"})
             continue
 
         # Normalise sectors the same way save_franchisee_territory does.
@@ -2399,6 +2502,7 @@ async def backfill_convert_territories(
             "plan_id": plan.get("id"),
             "sectors": len(seen),
             "home_count": plan.get("home_count"),
+            "matched_via": match_basis,
         }
         linked_rows.append(row)
         linked += 1
@@ -2436,6 +2540,7 @@ async def backfill_convert_territories(
             "removed_count": 0,
             "source": "backfill_convert_to_franchisee",
             "source_plan_id": plan.get("id"),
+            "matched_via": match_basis,
         })
 
     return {
@@ -2443,8 +2548,10 @@ async def backfill_convert_territories(
         "dry_run": dry_run,
         "candidates": len(candidates),
         "linked": linked,
+        "retagged": retagged,
         "skipped_no_plan": skipped_no_plan,
         "linked_rows": linked_rows,
+        "retagged_rows": retagged_rows,
         "skipped_rows": skipped_rows,
     }
 

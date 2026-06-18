@@ -152,7 +152,7 @@ def test_skipped_when_no_plan(s, cleanup):
     assert r.status_code == 200
     body = r.json()
     skipped_ours = [x for x in body["skipped_rows"] if x["franchisee_id"] == fid]
-    assert skipped_ours and skipped_ours[0]["reason"] == "no plan for contact"
+    assert skipped_ours and skipped_ours[0]["reason"] in ("no plan for contact", "no plan for contact or email-sibling")
 
 
 # ---------- Cleanup ----------
