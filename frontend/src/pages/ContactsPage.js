@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "@/lib/api";
+import { toast } from "sonner";
 import LinkExistingFranchiseeModal from "@/components/contacts/LinkExistingFranchiseeModal";
 import MergeContactsModal from "@/components/contacts/MergeContactsModal";
 import DuplicatesModal from "@/components/contacts/DuplicatesModal";
@@ -1829,7 +1830,25 @@ export default function ContactsPage() {
           : c),
       }));
       setSelected(null);
-      if (fid) navigate(`/franchisees/${fid}`);
+      if (!fid) return;
+      // Surface territory link status — auto-linked plan or missing/needs review
+      if (res?.territory_linked) {
+        const homes = res?.territory_home_count;
+        const homesNote = (homes !== null && homes !== undefined)
+          ? ` (${homes.toLocaleString()} homes)`
+          : "";
+        toast.success(
+          `Territory linked from prospect plan — ${res.territory_sectors?.length || 0} sectors${homesNote}.`,
+        );
+        navigate(`/franchisees/${fid}`);
+      } else {
+        // No prebuilt plan → ask the admin whether to open the builder now
+        const goBuild = window.confirm(
+          "Franchisee created, but no territory was defined for this contact yet.\n\n"
+          + "Open the Territory Builder now to draw one?",
+        );
+        navigate(goBuild ? `/territory-builder?franchisee_id=${fid}` : `/franchisees/${fid}`);
+      }
     } catch (e) {
       const msg = e?.response?.data?.detail || "Could not convert contact.";
       setError(typeof msg === "string" ? msg : "Could not convert contact.");

@@ -17,7 +17,10 @@ ENV needed (set in backend/.env):
   WP_SITE_URL          (e.g. https://www.creativemojo.com)
   GF_CONSUMER_KEY      (ck_…)
   GF_CONSUMER_SECRET   (cs_…)
-  GF_BACKFILL_FORM_IDS (comma-separated form ids — e.g. "17,32")
+  GF_BACKFILL_FORM_IDS (OPTIONAL, comma-separated form IDs — overrides
+                        the default list from form_intake_config.py.
+                        Only set in emergencies; the in-code list is the
+                        source of truth.)
 """
 from __future__ import annotations
 
@@ -205,12 +208,18 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
     (rather than skipped). This recovers from a previous backfill that ran
     with the wrong field-ID mapping.
     Returns ``{inserted, updated, checked, errors}``."""
-    form_ids = [
-        int(x) for x in (os.environ.get("GF_BACKFILL_FORM_IDS") or "").split(",")
-        if x.strip().isdigit()
-    ]
+    # Form IDs come from the shared form_intake_config module so adding a
+    # new Gravity Form is a one-line code change. GF_BACKFILL_FORM_IDS env
+    # var is still honoured (comma-separated overrides) for emergency ops,
+    # but is no longer required for the backfill to run.
+    env_override = (os.environ.get("GF_BACKFILL_FORM_IDS") or "").strip()
+    if env_override:
+        form_ids = [int(x) for x in env_override.split(",") if x.strip().isdigit()]
+    else:
+        from form_intake_config import backfill_form_ids
+        form_ids = backfill_form_ids()
     if not form_ids:
-        raise RuntimeError("GF_BACKFILL_FORM_IDS env not configured")
+        raise RuntimeError("No Gravity Forms configured for backfill")
 
     inserted = 0
     updated = 0

@@ -1,0 +1,55 @@
+{
+  "summary": "Verified Iteration 22 P0 (Convert-to-Franchisee auto-links territory plan) and P1 (eliminate GF_BACKFILL_FORM_IDS env drift) end-to-end. 13/13 pytest cases pass (4 P0 + 9 P1+regression). Frontend convert flow verified on the public preview URL for both code paths (with-plan toast + nav; no-plan confirm dialog + nav). Latest-plan-wins, 409 idempotent, 404 missing-contact all confirmed via direct API.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter22_convert_territory.py",
+    "/app/backend/tests/test_iter22_p1_regression.py",
+    "/app/test_reports/pytest/test_iter22_results.xml",
+    "/app/test_reports/pytest/test_iter22_p1_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "ContactsPage.js is 2,521 lines — exceeds the 700-line threshold. Pipeline kanban, drawer, bulk-bar, merge modal, duplicate finder and convert flow could each be split into siblings under /pages/contacts/* to ease maintenance and testing.",
+    "convertContact (ContactsPage.js:1813) silently swallows network failures into setError() but provides no toast.error fallback for the user — admin only sees the inline error banner which can be off-screen if drawer is scrolled. Consider toast.error in the catch block for parity with the success path.",
+    "form_intake_config.backfill_form_ids() filters FORM_IDS_IN_PIPELINE against FORM_ID_TO_SOURCE — if a future form is added to FORM_IDS_IN_PIPELINE but the source map is forgotten, it will silently drop. Consider asserting at import time that the two are consistent (or logging a warning).",
+    "gf_backfill.py:215 reads GF_BACKFILL_FORM_IDS via os.environ.get on every invocation — fine for now, but if the env override is meant to be transitional (per the P1 brief), add a TODO/deprecation marker to remove the override path entirely after the migration window.",
+    "POST /api/contacts/{id}/convert-to-franchisee currently returns territory_linked=false and quietly skips link when no plan exists — confirmed correct contract. Recommend documenting the response shape in an OpenAPI/Pydantic model (currently the route returns a raw dict)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter22_p1_regression.py (new — P1 + regression)"
+  ],
+  "success_rate": {
+    "backend": "100% (13/13 pytest: 4 P0 territory-link + 9 P1+regression)",
+    "frontend": "100% (login → contacts → drawer → convert verified for both with-plan and no-plan paths; toast+navigate, confirm()+navigate)"
+  },
+  "test_credentials": "admin@creativemojo.co.uk / CreativeMojo2026! (from /app/memory/test_credentials.md). Auth via cookie session (POST /api/auth/login).",
+  "seed_data_creation": "Each test creates its own TEST_-prefixed contacts/franchisees/territory_plans via API and deletes them in fixture teardown / inline cleanup. No persistent seed data left behind.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Convert-to-franchisee response is now {ok, record_type, franchisee, territory_linked, territory_sectors, territory_home_count, linked_plan_id}. POST /api/contacts wraps the new contact under body.contact.id (not top-level body.id) — when scripting, use `body.get('id') or body.get('contact',{}).get('id')`. To open the convert button in the drawer, the contact must be target=pipeline AND pipeline_status='qualified' AND not already converted; you can set pipeline_status directly in the POST /api/contacts payload. Selector: [data-testid=\"drawer-convert\"]. The success path uses sonner toast (auto-dismisses ~4s) AND immediately navigates to /franchisees/{id} — capture toast text within ~500ms after click or it will be gone. The no-plan path uses window.confirm() — install a page.on('dialog', ...) handler BEFORE clicking. Pre-existing test_iter15_convert.py::test_contact_marked_and_idempotent still fails (asserts pipeline_status=='converted' but code sets it to None) — unrelated to iteration 22 and explicitly out-of-scope per main agent.",
+  "verified_flows": [
+    "POST /api/contacts/{id}/convert-to-franchisee with NO plan → territory_linked=false, territory_sectors=[], linked_plan_id=null, franchisee created without territory_sectors",
+    "POST /api/contacts/{id}/convert-to-franchisee with ONE plan → territory_linked=true, sectors copied onto franchisee, plan back-linked (visible via GET /api/territory-plans?franchisee_id=...), franchisee /territory returns the sectors+home_count, /territory/history shows source='convert_to_franchisee' snapshot",
+    "POST /api/contacts/{id}/convert-to-franchisee with TWO plans (1.1s apart) → linked_plan_id == newest plan id, sectors come from newer plan",
+    "Second convert call on same contact → 409",
+    "Convert nonexistent contact → 404",
+    "form_intake_config.backfill_form_ids() returns [17,32,33] and FORM_ID_TO_SOURCE contains all three",
+    "gf_backfill resolves form_ids from form_intake_config when GF_BACKFILL_FORM_IDS env is unset (monkeypatch.delenv); env override still wins when set",
+    "POST /api/intake/backfill/run → 200 with JSON body",
+    "GET /api/contacts?target=pipeline → 200, list shape",
+    "POST /api/contacts/bulk-move with {ids, target:'pipeline', stage:'qualified'} → 200",
+    "POST /api/contacts/bulk-delete → 200, GET on deleted contact returns 404",
+    "PATCH /api/contacts/{id}/promote and /demote → 200",
+    "Frontend: login → /contacts → search → click contact card → drawer opens → [data-testid=drawer-convert] visible; click triggers initial window.confirm('Convert to Franchisee for ...?') → accept → POST fires",
+    "Frontend with-plan: after POST returns territory_linked=true, sonner toast emits 'Territory linked from prospect plan — N sectors (X homes)' and React navigates to /franchisees/{id} (verified URL change to /franchisees/a30eef12-7aca-4dfc-a434-7d5132c4f269 with sectors persisted on the franchisee record)",
+    "Frontend no-plan: after POST returns territory_linked=false, a second window.confirm('Open Territory Builder now to draw one?') appears; accepting navigates to /territory-builder?franchisee_id={fid} (verified URL=/territory-builder?franchisee_id=40ae4ee4-...)"
+  ]
+}

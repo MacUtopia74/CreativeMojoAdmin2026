@@ -687,34 +687,14 @@ async def change_password(
 # ----------------------------------------------------------------------------
 # Form Intake (Gravity Forms via WordPress plugin)
 # ----------------------------------------------------------------------------
-FORM_ID_TO_SOURCE = {
-    1: "general_enquiry",       # general contact form
-    17: "franchise_enquiry",    # franchise enquiry form (long form)
-    32: "licence_enquiry",      # licence enquiry form
-    33: "franchise_enquiry",    # franchise enquiry SHORT form (popup, June 2026)
-}
-
-# Form IDs whose submissions land directly in the active Sales Pipeline as "New".
-# Form 17 = Franchise Enquiry (long) · Form 32 = Licence Enquiry ·
-# Form 33 = Franchise Enquiry (short popup). All three represent fresh leads
-# that should be triaged by the sales team immediately, not parked in the
-# contacts tabs.
-FORM_IDS_IN_PIPELINE: set = {17, 32, 33}
-
-# Form 1 (General Contact) is the catch-all WordPress form whose "Reason for
-# contacting" dropdown drives where the submission ends up. Map each option to
-# the matching source category so e.g. care-home and art-kit enquiries land in
-# their own tabs instead of polluting the franchise pipeline.
-FORM1_REASON_TO_SOURCE: dict[str, str] = {
-    "franchise enquiry": "franchise_enquiry",
-    "licence enquiry":   "licence_enquiry",
-    "care home class enquiry":   "care_home_enquiry",
-    "deliverable art kit enquiry": "art_kit_enquiry",
-    "other": "general_enquiry",
-}
-# Pipeline-eligible source categories — the only ones that show up in the
-# sales kanban. Care home / art kit / general are reference-only contacts.
-PIPELINE_SOURCES: set = {"franchise_enquiry", "licence_enquiry"}
+# Form intake config lives in form_intake_config.py so the gf_backfill module
+# can share the same source of truth without a circular import.
+from form_intake_config import (  # noqa: E402
+    FORM_ID_TO_SOURCE,
+    FORM_IDS_IN_PIPELINE,
+    FORM1_REASON_TO_SOURCE,
+    PIPELINE_SOURCES,
+)
 
 
 def _pick(fields_by_label: dict, *candidates: str) -> Optional[str]:
@@ -2227,6 +2207,34 @@ async def convert_contact_to_franchisee(contact_id: str, user: dict = Depends(re
         m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", raw_date)
         display_date = f"{m.group(3)}/{m.group(2)}/{m.group(1)}" if m else raw_date
         notes_lines.append(f"Original enquiry date: {display_date}")
+    # ------------------------------------------------------------------
+    # Auto-link any territory plan that was built for this contact in the
+    # Territory Builder. The latest plan (highest ``created_at``) wins so
+    # accidental drafts don't clobber a later, deliberate plan. Plan
+    # sectors are copied directly onto the new franchisee — keeping the
+    # franchisee record self-sufficient — and the plan is back-linked to
+    # the franchisee so the audit trail survives.
+    # ------------------------------------------------------------------
+    plan = await db.territory_plans.find_one(
+        {"contact_id": contact_id},
+        {"_id": 0},
+        sort=[("created_at", -1)],
+    )
+    territory_sectors: list[str] = []
+    territory_home_count: int | None = None
+    linked_plan_id: str | None = None
+    if plan and plan.get("sectors"):
+        # Normalise (uppercase, single-space, dedupe) — same rules as the
+        # PUT /franchisees/{id}/territory endpoint applies on manual save.
+        seen: list[str] = []
+        for s in plan["sectors"]:
+            v = " ".join(str(s).upper().split())
+            if v and v not in seen:
+                seen.append(v)
+        territory_sectors = seen
+        territory_home_count = plan.get("home_count")
+        linked_plan_id = plan.get("id")
+
     franchisee_doc = {
         "id": f_id,
         "record_type": record_type,
@@ -2251,7 +2259,41 @@ async def convert_contact_to_franchisee(contact_id: str, user: dict = Depends(re
         "contract_ids": [],
         "territory_ids": [],
     }
+    if territory_sectors:
+        franchisee_doc["territory_sectors"] = territory_sectors
+        franchisee_doc["territory_home_count"] = territory_home_count
+        franchisee_doc["territory_updated_at"] = datetime.now(timezone.utc)
+        franchisee_doc["territory_updated_by"] = user.get("email")
+        franchisee_doc["territory_source_plan_id"] = linked_plan_id
     await db.franchisees.insert_one(franchisee_doc)
+
+    # Back-link the plan to the new franchisee + audit-log the auto-copy
+    # so the Territory History panel shows where the boundary came from.
+    if linked_plan_id:
+        await db.territory_plans.update_one(
+            {"id": linked_plan_id},
+            {"$set": {
+                "franchisee_id": f_id,
+                "updated_at": datetime.now(timezone.utc),
+            }},
+        )
+        await db.territory_history.insert_one({
+            "id": str(uuid.uuid4()),
+            "franchisee_id": f_id,
+            "organisation": franchisee_doc.get("organisation"),
+            "previous_sectors": [],
+            "previous_home_count": None,
+            "previous_updated_at": None,
+            "previous_updated_by": None,
+            "new_sectors": territory_sectors,
+            "new_home_count": territory_home_count,
+            "changed_at": datetime.now(timezone.utc),
+            "changed_by": user.get("email"),
+            "added_count": len(territory_sectors),
+            "removed_count": 0,
+            "source": "convert_to_franchisee",
+            "source_plan_id": linked_plan_id,
+        })
     # Bootstrap their standard R2 folders (Artwork / Franchise Agreement
     # / Territory) so the portal Files panel isn't empty on first login.
     try:
@@ -2275,7 +2317,18 @@ async def convert_contact_to_franchisee(contact_id: str, user: dict = Depends(re
     else:
         await db.contacts.update_one({"id": contact_id}, {"$set": update})
     franchisee_doc.pop("_id", None)
-    return {"ok": True, "record_type": record_type, "franchisee": franchisee_doc}
+    # Ensure the response is JSON-friendly — datetimes go to ISO strings.
+    if isinstance(franchisee_doc.get("territory_updated_at"), datetime):
+        franchisee_doc["territory_updated_at"] = franchisee_doc["territory_updated_at"].isoformat()
+    return {
+        "ok": True,
+        "record_type": record_type,
+        "franchisee": franchisee_doc,
+        "territory_linked": bool(territory_sectors),
+        "territory_sectors": territory_sectors,
+        "territory_home_count": territory_home_count,
+        "linked_plan_id": linked_plan_id,
+    }
 
 
 # ----------------------------------------------------------------------------
