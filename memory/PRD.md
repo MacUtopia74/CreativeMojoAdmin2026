@@ -30,6 +30,23 @@ where applicable.
   manual link table, calendar modal, month dropdown, Stencil exclusion filter
 - ✅ Verified Preview: Project Codes search ("National BBQ Week") and month
   dropdown (June) now render correctly (16 Jun 2026)
+- ✅ **Iteration 22 (18 Jun 2026) — Convert-to-Franchisee auto-links territory plan**
+  • POST /api/contacts/{id}/convert-to-franchisee now finds the latest
+    territory_plan for the contact, copies sectors + home_count onto the
+    new franchisee, back-links the plan, and writes a territory_history
+    snapshot tagged `source=convert_to_franchisee`. Response surfaces
+    `territory_linked`, `territory_sectors`, `territory_home_count`,
+    `linked_plan_id`.
+  • ContactsPage convertContact: sonner toast on auto-link, confirm()
+    prompt redirects admin to /territory-builder when no plan exists.
+  • Test coverage: backend/tests/test_iter22_convert_territory.py (4/4
+    pass) + testing_agent_v3_fork verified frontend both code paths.
+- ✅ **Iteration 22 (18 Jun 2026) — Eliminated GF_BACKFILL_FORM_IDS env drift**
+  • New /app/backend/form_intake_config.py owns FORM_ID_TO_SOURCE,
+    FORM_IDS_IN_PIPELINE, FORM1_REASON_TO_SOURCE, PIPELINE_SOURCES +
+    backfill_form_ids() helper. server.py + gf_backfill.py both import
+    from it. Env var GF_BACKFILL_FORM_IDS is now optional (still honoured
+    as emergency override). Removes the drift that hit Form 33 in prod.
 
 ## P1 — Upcoming
 - Marketing+ #3: Insert image from File Vault into eshot composer
