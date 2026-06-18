@@ -37,9 +37,14 @@ export default function ProjectGuideModal({ project, onClose }) {
     setLoading(true); setErr("");
     (async () => {
       try {
-        // (1) Get the signed URL for the embedded instruction PDF.
+        // (1) Get a signed URL for the embedded instruction PDF. We
+        // explicitly pass attachment=false so the signed URL is minted
+        // with ``Content-Disposition: inline`` instead of ``attachment``
+        // — without this Safari (and most browsers) force-download the
+        // PDF instead of rendering it inside the <iframe>.
         const pdfReq = guide_url
-          ? api.get(guide_url).then((r) => r.data?.url || r.data?.signed_url || null)
+          ? api.get(guide_url, { params: { attachment: false } })
+              .then((r) => r.data?.url || r.data?.signed_url || null)
           : Promise.resolve(null);
         // (2) Fetch related files (every asset_type EXCEPT the guide
         // itself — we filter client-side so the embed always wins).
