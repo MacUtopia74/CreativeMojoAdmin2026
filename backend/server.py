@@ -2331,9 +2331,23 @@ async def convert_contact_to_franchisee(contact_id: str, user: dict = Depends(re
         "email": (contact.get("email") or "").lower() or None,
         "telephone": contact.get("telephone"),
         "mobile_phone": contact.get("mobile_phone"),
+        # ---- Address — copy every line the Franchisee detail page renders.
+        # Contacts use ``address_line_1`` (canonical, May 2026) with legacy
+        # mirror ``address_street``; franchisees only read the latter, so
+        # we coalesce here.
+        "address_street": (
+            contact.get("address_line_1")
+            or contact.get("address_street")
+            or contact.get("address")
+            or None
+        ),
+        "address_line_2": contact.get("address_line_2") or None,
         "postcode": (contact.get("postcode") or "").upper() or None,
-        "city": contact.get("city"),
-        "country": contact.get("country_tag"),
+        "city": contact.get("city") or contact.get("town") or None,
+        "county": contact.get("county") or contact.get("region") or None,
+        # Either ``country`` (manual-add form) or ``country_tag`` (legacy
+        # webform classification). Fall back through both.
+        "country": contact.get("country") or contact.get("country_tag") or None,
         "potential": contact.get("potential"),
         # NOTE: the Franchisees list "Active" / "Worldwide Licencees" tabs
         # filter strictly on tag presence (FranchiseesPage.js#SEGMENTS).
@@ -2485,21 +2499,29 @@ async def backfill_convert_territories(
                 {"tags": {"$nin": ["Franchisee", "Worldwide Licencee"]}},
                 # Missing sales handoff snapshot
                 {"sales_handoff": {"$exists": False}},
+                # Missing address line / county (legacy convert mapping
+                # only wrote postcode + city + country_tag)
+                {"address_street": {"$in": [None, ""]}},
+                {"county": {"$in": [None, ""]}},
             ],
         },
         {"_id": 0, "id": 1, "first_name": 1, "last_name": 1, "organisation": 1,
          "email": 1, "tags": 1, "territory_sectors": 1, "record_type": 1,
          "sales_handoff": 1, "launch_checklist": 1,
+         "address_street": 1, "address_line_2": 1, "city": 1, "county": 1,
+         "postcode": 1, "country": 1,
          "converted_from_contact_id": 1, "converted_at": 1},
     ).to_list(2000)
 
     linked = 0
     retagged = 0
     handoff_copied = 0
+    address_filled = 0
     skipped_no_plan = 0
     linked_rows: list[dict] = []
     retagged_rows: list[dict] = []
     handoff_rows: list[dict] = []
+    address_rows: list[dict] = []
     skipped_rows: list[dict] = []
 
     for fr in candidates:
@@ -2551,6 +2573,40 @@ async def backfill_convert_territories(
                         set_ops["launch_checklist_updated_at"] = now.isoformat()
                         set_ops["launch_checklist_updated_by"] = user.get("email")
                     await db.franchisees.update_one({"id": fr["id"]}, {"$set": set_ops})
+
+        # ---------- (d) address repair ----------
+        # Older convert runs missed address_line / county / address_line_2,
+        # and used the legacy ``country_tag`` field that prospect contacts
+        # rarely populate. Fill in whatever's still blank — never overwrite.
+        if contact_doc:
+            addr_updates: dict = {}
+            if not fr.get("address_street"):
+                v = (contact_doc.get("address_line_1")
+                     or contact_doc.get("address_street")
+                     or contact_doc.get("address"))
+                if v:
+                    addr_updates["address_street"] = v
+            if not fr.get("address_line_2") and contact_doc.get("address_line_2"):
+                addr_updates["address_line_2"] = contact_doc["address_line_2"]
+            if not fr.get("city"):
+                v = contact_doc.get("city") or contact_doc.get("town")
+                if v:
+                    addr_updates["city"] = v
+            if not fr.get("county"):
+                v = contact_doc.get("county") or contact_doc.get("region")
+                if v:
+                    addr_updates["county"] = v
+            if not fr.get("country"):
+                v = contact_doc.get("country") or contact_doc.get("country_tag")
+                if v:
+                    addr_updates["country"] = v
+            if addr_updates:
+                address_rows.append({"franchisee_id": fr["id"], "name": name,
+                                     "fields": sorted(addr_updates.keys())})
+                address_filled += 1
+                if not dry_run:
+                    addr_updates["updated_at"] = now
+                    await db.franchisees.update_one({"id": fr["id"]}, {"$set": addr_updates})
 
         # Now run the territory link only when the row genuinely needs it.
         if fr.get("territory_sectors"):
@@ -2633,10 +2689,12 @@ async def backfill_convert_territories(
         "linked": linked,
         "retagged": retagged,
         "handoff_copied": handoff_copied,
+        "address_filled": address_filled,
         "skipped_no_plan": skipped_no_plan,
         "linked_rows": linked_rows,
         "retagged_rows": retagged_rows,
         "handoff_rows": handoff_rows,
+        "address_rows": address_rows,
         "skipped_rows": skipped_rows,
     }
 
