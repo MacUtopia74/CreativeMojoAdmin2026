@@ -709,8 +709,48 @@ def build_project_codes_router(db, require_role) -> APIRouter:
                     f"/files/download?key={quote_plus(f['key'])}"
                     if f else None
                 ),
+                "guide_key": f.get("key") if f else None,
                 "guide_filename": f.get("name") if f else None,
             })
         return {"month": month, "year": year, "items": items, "count": len(items)}
+
+    @router.get("/portal/projects/{project_code}/files")
+    async def portal_project_files(
+        project_code: str,
+        user: dict = Depends(require_role("franchisee", "admin")),
+    ):
+        """Return every file tagged with this project_code, grouped by
+        asset_type, so the new Project Guide modal on the calendar can
+        list stencils / cutting files / videos / images next to the
+        embedded PDF guide.
+
+        Each entry exposes a relative ``download_url`` pointing at the
+        existing files-router signed-URL endpoint. The frontend hits it
+        only when the franchisee clicks a file — keeps the modal cheap
+        to open even for projects with many assets.
+        """
+        if not project_code or not project_code.strip():
+            raise HTTPException(400, "project_code required")
+        cur = db.files_index.find(
+            {
+                **_project_files_query(),
+                "project_code": project_code.strip(),
+            },
+            {"_id": 0, "key": 1, "name": 1, "size": 1, "asset_type": 1,
+             "modified": 1, "content_type": 1},
+        ).sort("name", 1)
+        files = await cur.to_list(2000)
+        out: list[dict] = []
+        for f in files:
+            out.append({
+                "key": f.get("key"),
+                "name": f.get("name") or "",
+                "size": f.get("size"),
+                "asset_type": f.get("asset_type") or "other",
+                "content_type": f.get("content_type"),
+                "modified": f.get("modified"),
+                "download_url": f"/files/download?key={quote_plus(f['key'])}",
+            })
+        return {"project_code": project_code, "files": out, "count": len(out)}
 
     return router

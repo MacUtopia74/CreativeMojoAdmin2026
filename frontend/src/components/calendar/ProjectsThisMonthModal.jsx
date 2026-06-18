@@ -12,6 +12,7 @@ import {
 import api from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import EditProductLinkModal from "@/components/projectcodes/EditProductLinkModal";
+import ProjectGuideModal from "@/components/calendar/ProjectGuideModal";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -37,6 +38,11 @@ export default function ProjectsThisMonthModal({ visibleDate, onClose }) {
   // modal (same one as the Project Codes admin page). Storing the
   // product here keeps it lazily-rendered above the month modal.
   const [matching, setMatching] = useState(null);
+  // The "Open project guide" tile click now opens an in-app modal that
+  // embeds the PDF and lists the related stencil / cutting / video /
+  // image files. Storing the active project here keeps it lazily-
+  // mounted above the month modal.
+  const [opened, setOpened] = useState(null);
   // Bump after each successful save so we re-fetch the month feed and
   // the tile flips from "Coming soon" → "Open Project Guide" without
   // requiring the admin to close + reopen the modal.
@@ -52,18 +58,9 @@ export default function ProjectsThisMonthModal({ visibleDate, onClose }) {
     return () => { cancelled = true; };
   }, [month, year, reloadTick]);
 
-  const openGuide = async (it) => {
-    if (!it.guide_url) return;
-    // The endpoint returns a relative path that hits the existing
-    // signed-download endpoint. Use api so the auth header flows.
-    try {
-      const { data } = await api.get(it.guide_url);
-      const url = data?.url || data?.signed_url;
-      if (url) window.open(url, "_blank", "noopener,noreferrer");
-      else setErr("Couldn't generate the download link.");
-    } catch (e) {
-      setErr(e?.response?.data?.detail || "Couldn't open the project guide.");
-    }
+  const openGuide = (it) => {
+    if (!it.has_guide) return;
+    setOpened(it);
   };
 
   return (
@@ -132,7 +129,7 @@ export default function ProjectsThisMonthModal({ visibleDate, onClose }) {
                         Project guide coming soon
                       </div>
                     )}
-                    {it.permalink && (
+                    {it.permalink && isAdmin && (
                       <a
                         href={it.permalink}
                         target="_blank"
@@ -174,6 +171,12 @@ export default function ProjectsThisMonthModal({ visibleDate, onClose }) {
           product={matching}
           onClose={() => setMatching(null)}
           onSaved={() => { setMatching(null); setReloadTick((t) => t + 1); }}
+        />
+      )}
+      {opened && (
+        <ProjectGuideModal
+          project={opened}
+          onClose={() => setOpened(null)}
         />
       )}
     </div>
