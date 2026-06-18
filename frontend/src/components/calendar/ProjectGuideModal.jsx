@@ -1,22 +1,13 @@
 // Opens when a franchisee clicks "Open Project Guide" on the
 // Calendar → "Projects this month" modal. Embeds the linked
-// Instruction PDF inline and surfaces every other file tagged with
-// the same project_code (stencils, SVG cutting files, videos, images)
-// so they can be grabbed without leaving the modal.
+// Instruction PDF inline and lists every other file that lives in
+// the SAME R2 folder (stencils, cutting files, videos, photos —
+// whatever's there) so they can be grabbed without leaving the modal.
 import { useEffect, useMemo, useState } from "react";
 import {
-  X, Loader2, AlertCircle, FileText, Scissors, Video, ImageIcon,
-  Download, Box,
+  X, Loader2, AlertCircle, FileText, FileDown,
 } from "lucide-react";
 import api from "@/lib/api";
-
-const TYPE_META = {
-  stencil:         { label: "Stencils",       icon: Box,       order: 1 },
-  svg_cutting:     { label: "Cutting files",  icon: Scissors,  order: 2 },
-  video:           { label: "Videos",         icon: Video,     order: 3 },
-  image:           { label: "Photos",         icon: ImageIcon, order: 4 },
-  other:           { label: "Other files",    icon: FileText,  order: 99 },
-};
 
 function humanSize(b) {
   if (b == null) return "";
@@ -26,7 +17,7 @@ function humanSize(b) {
 }
 
 export default function ProjectGuideModal({ project, onClose }) {
-  const { name, project_code, guide_url } = project;
+  const { name, project_code, guide_url, guide_key } = project;
   const [pdfUrl, setPdfUrl] = useState(null);
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -46,18 +37,20 @@ export default function ProjectGuideModal({ project, onClose }) {
           ? api.get(guide_url, { params: { attachment: false } })
               .then((r) => r.data?.url || r.data?.signed_url || null)
           : Promise.resolve(null);
-        // (2) Fetch related files (every asset_type EXCEPT the guide
-        // itself — we filter client-side so the embed always wins).
+        // (2) Fetch every other file in the SAME folder as the guide.
+        // Backend uses guide_key to derive the folder prefix — no
+        // dependence on asset_type tagging.
         const filesReq = project_code
-          ? api.get(`/portal/projects/${encodeURIComponent(project_code)}/files`)
-              .then((r) => r.data?.files || [])
+          ? api.get(`/portal/projects/${encodeURIComponent(project_code)}/files`, {
+              params: guide_key ? { guide_key } : {},
+            }).then((r) => r.data?.files || [])
           : Promise.resolve([]);
         const [pdf, filesData] = await Promise.all([pdfReq, filesReq]);
         if (cancelled) return;
         setPdfUrl(pdf);
-        // Drop the instruction_pdf entries — those are already embedded
-        // up top. Keep stencils / cutting / video / image / other.
-        setFiles((filesData || []).filter((f) => f.asset_type !== "instruction_pdf"));
+        // Drop the guide itself from the sidebar — it's already embedded
+        // up top.
+        setFiles((filesData || []).filter((f) => f.key !== guide_key));
       } catch (e) {
         if (!cancelled) setErr(e?.response?.data?.detail || "Could not load this project.");
       } finally {
@@ -65,20 +58,15 @@ export default function ProjectGuideModal({ project, onClose }) {
       }
     })();
     return () => { cancelled = true; };
-  }, [guide_url, project_code]);
+  }, [guide_url, guide_key, project_code]);
 
-  // Group + sort related files by asset_type for clean section headings.
-  const grouped = useMemo(() => {
-    const m = new Map();
-    for (const f of files) {
-      const k = f.asset_type || "other";
-      if (!m.has(k)) m.set(k, []);
-      m.get(k).push(f);
-    }
-    return [...m.entries()].sort(
-      (a, b) => (TYPE_META[a[0]]?.order || 99) - (TYPE_META[b[0]]?.order || 99),
-    );
-  }, [files]);
+  // Folder name for the sidebar header. ``project-files/aaa/bbb/x.pdf``
+  // → ``bbb`` — short, human, no path noise.
+  const folderLabel = useMemo(() => {
+    if (!guide_key) return "";
+    const parts = guide_key.split("/");
+    return parts.length >= 2 ? parts[parts.length - 2] : "";
+  }, [guide_key]);
 
   const openFile = async (f) => {
     try {
@@ -142,56 +130,47 @@ export default function ProjectGuideModal({ project, onClose }) {
             )}
           </div>
 
-          {/* Sidebar — related files */}
+          {/* Sidebar — every file that lives in the same folder */}
           <aside className="w-full lg:w-80 xl:w-96 border-t lg:border-t-0 lg:border-l border-stone-200 bg-white overflow-y-auto flex-shrink-0">
             <div className="px-4 py-3 border-b border-stone-200 sticky top-0 bg-white">
               <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">
-                Related files
+                Folder contents
               </div>
-              <div className="text-xs text-stone-500 mt-0.5">
-                Stencils, cutting files, videos and photos for this project.
+              <div className="text-xs text-stone-500 mt-0.5 truncate" title={folderLabel}>
+                {folderLabel
+                  ? <>Other files in <span className="font-medium text-stone-700">{folderLabel}/</span></>
+                  : "Other files alongside this guide."}
               </div>
             </div>
-            <div className="p-4 space-y-5" data-testid="project-guide-related">
+            <div className="p-4" data-testid="project-guide-related">
               {loading ? (
                 <div className="py-6 text-center text-stone-400">
                   <Loader2 className="w-5 h-5 animate-spin inline" />
                 </div>
-              ) : grouped.length === 0 ? (
+              ) : files.length === 0 ? (
                 <div className="py-6 text-center text-sm text-stone-400" data-testid="project-guide-no-related">
-                  No related files attached yet.
+                  No other files in this folder yet.
                 </div>
               ) : (
-                grouped.map(([type, list]) => {
-                  const meta = TYPE_META[type] || TYPE_META.other;
-                  const Icon = meta.icon;
-                  return (
-                    <div key={type} data-testid={`project-guide-group-${type}`}>
-                      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-2">
-                        <Icon className="w-3 h-3" /> {meta.label} <span className="text-stone-400">({list.length})</span>
-                      </div>
-                      <ul className="space-y-1.5">
-                        {list.map((f) => (
-                          <li key={f.key}>
-                            <button
-                              onClick={() => openFile(f)}
-                              data-testid={`project-guide-file-${f.key}`}
-                              className="w-full text-left px-3 py-2 rounded-lg border border-stone-200 bg-stone-50 hover:bg-stone-100 hover:border-stone-300 transition-colors flex items-center justify-between gap-2 group"
-                            >
-                              <div className="min-w-0 flex-1">
-                                <div className="text-sm font-medium text-stone-900 truncate">{f.name}</div>
-                                {f.size != null && (
-                                  <div className="text-[11px] text-stone-500 mt-0.5">{humanSize(f.size)}</div>
-                                )}
-                              </div>
-                              <Download className="w-4 h-4 text-stone-400 group-hover:text-stone-900 flex-shrink-0" />
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  );
-                })
+                <ul className="space-y-1.5">
+                  {files.map((f) => (
+                    <li key={f.key}>
+                      <button
+                        onClick={() => openFile(f)}
+                        data-testid={`project-guide-file-${f.key}`}
+                        className="w-full text-left px-3 py-2 rounded-lg border border-stone-200 bg-stone-50 hover:bg-stone-100 hover:border-stone-300 transition-colors flex items-center justify-between gap-2 group"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-medium text-stone-900 truncate">{f.name}</div>
+                          {f.size != null && (
+                            <div className="text-[11px] text-stone-500 mt-0.5">{humanSize(f.size)}</div>
+                          )}
+                        </div>
+                        <FileDown className="w-4 h-4 text-stone-400 group-hover:text-stone-900 flex-shrink-0" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               )}
             </div>
           </aside>

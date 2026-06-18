@@ -717,25 +717,40 @@ def build_project_codes_router(db, require_role) -> APIRouter:
     @router.get("/portal/projects/{project_code}/files")
     async def portal_project_files(
         project_code: str,
+        guide_key: str = "",
         user: dict = Depends(require_role("franchisee", "admin")),
     ):
-        """Return every file tagged with this project_code, grouped by
-        asset_type, so the new Project Guide modal on the calendar can
-        list stencils / cutting files / videos / images next to the
-        embedded PDF guide.
+        """List every file that lives in the same R2 folder as the
+        project guide PDF. The franchisee asked for "show the folder",
+        not "show files tagged with this project_code" — so we derive
+        the folder prefix from ``guide_key`` and list its contents.
 
-        Each entry exposes a relative ``download_url`` pointing at the
-        existing files-router signed-URL endpoint. The frontend hits it
-        only when the franchisee clicks a file — keeps the modal cheap
-        to open even for projects with many assets.
+        Falls back to the project_code filter when no guide_key is
+        supplied (for older calendar entries that haven't been re-fetched
+        yet). Either way the franchisee is still confined to files in
+        the project-guide tree via the ``PROJECT_FILES_KEY_FRAGMENT``
+        check below — they can't peek into arbitrary R2 folders.
         """
         if not project_code or not project_code.strip():
             raise HTTPException(400, "project_code required")
-        cur = db.files_index.find(
-            {
+
+        if guide_key and PROJECT_FILES_KEY_FRAGMENT in guide_key:
+            # Folder = everything up to the last "/" in the guide key.
+            # Add a trailing "/" so a prefix like "foo/bar" doesn't match
+            # "foo/barbecue".
+            folder = guide_key.rsplit("/", 1)[0] + "/"
+            query: dict = {"key": {"$regex": f"^{re.escape(folder)}"}}
+        else:
+            # Legacy fallback — keep the project_code-based filter so the
+            # endpoint stays useful for items that don't have a guide
+            # uploaded yet, or where the caller didn't pass guide_key.
+            query = {
                 **_project_files_query(),
                 "project_code": project_code.strip(),
-            },
+            }
+
+        cur = db.files_index.find(
+            query,
             {"_id": 0, "key": 1, "name": 1, "size": 1, "asset_type": 1,
              "modified": 1, "content_type": 1},
         ).sort("name", 1)
