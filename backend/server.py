@@ -5215,11 +5215,12 @@ async def on_startup():
     # Airtable seed of migration_table_decisions removed 2026-05-19
     # (Airtable decommissioned — see comment block elsewhere in this file.)
 
-    # Kick off the GF backfill loop in the background — hourly safety net
-    # so missed webhook submissions get reconciled automatically.
+    # Kick off the GF backfill loop in the background — 10-min safety
+    # net so missed webhook submissions (and spam-quarantined entries we
+    # now rescue) get reconciled automatically.
     try:
-        asyncio.create_task(_gf_backfill_loop(db, every_seconds=3600))
-        logger.info("GF backfill scheduler started (hourly)")
+        asyncio.create_task(_gf_backfill_loop(db, every_seconds=600))
+        logger.info("GF backfill scheduler started (every 10 minutes)")
     except Exception as e:
         logger.warning(f"Could not start GF backfill scheduler: {e}")
 

@@ -181,24 +181,54 @@ _backfill_state: dict = {
 
 
 async def _fetch_recent_entries(form_id: int, limit: int = 50) -> list[dict]:
-    """Most-recent ``limit`` entries from one Gravity Form."""
+    """Most-recent ``limit`` entries from one Gravity Form. Pulls BOTH
+    active and spam-flagged entries — Gravity Forms aggressively marks
+    legitimate leads as spam (e.g. when a honey-pot field on the form
+    doesn't get the exact expected answer), and our own
+    ``_looks_like_spam`` filter is the authoritative judge once they're
+    in our system. Trashed entries are still excluded since those were
+    deleted on the WP side."""
     base = os.environ.get("WP_SITE_URL")
     key = os.environ.get("GF_CONSUMER_KEY")
     secret = os.environ.get("GF_CONSUMER_SECRET")
     if not (base and key and secret):
         raise RuntimeError("WP_SITE_URL / GF_CONSUMER_KEY / GF_CONSUMER_SECRET not set")
     url = f"{base.rstrip('/')}/wp-json/gf/v2/entries"
-    params = {
-        "form_ids": str(form_id),
-        "paging[page_size]": str(limit),
-        "sorting[key]": "id",
-        "sorting[direction]": "DESC",
-    }
+
+    # GF REST API requires a separate request per status. We dedupe by
+    # entry id on the way back in case GF ever returns the same row
+    # twice. The ``search`` param must be a JSON-encoded string per the
+    # v2 API contract — passing ``search[status]=spam`` returns a 400.
+    import json as _json
+    out: dict[str, dict] = {}
     async with httpx.AsyncClient(timeout=20.0) as http:
-        r = await http.get(url, params=params, auth=(key, secret))
-    if r.status_code != 200:
-        raise RuntimeError(f"GF API {r.status_code}: {r.text[:300]}")
-    return r.json().get("entries") or []
+        for status in ("active", "spam"):
+            params = {
+                "form_ids": str(form_id),
+                "paging[page_size]": str(limit),
+                "sorting[key]": "id",
+                "sorting[direction]": "DESC",
+                "search": _json.dumps({"status": status}),
+            }
+            try:
+                r = await http.get(url, params=params, auth=(key, secret))
+                if r.status_code != 200:
+                    logger.warning("GF API %s status=%s for form %s: %s",
+                                   r.status_code, status, form_id, r.text[:200])
+                    continue
+                for e in (r.json().get("entries") or []):
+                    eid = str(e.get("id"))
+                    if eid:
+                        # Tag with the WP-side status so the insert path
+                        # can audit-log "rescued from spam".
+                        e.setdefault("_wp_status", status)
+                        out[eid] = e
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("GF API fetch failed (form %s status %s): %s",
+                               form_id, status, exc)
+    # Keep DESC order on the way out so newest entries hit the spam-
+    # filter check first.
+    return sorted(out.values(), key=lambda e: int(e.get("id") or 0), reverse=True)
 
 
 async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) -> dict:
@@ -366,10 +396,22 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
                 # Brand-new entry — insert.
                 doc_core["id"] = _uuid()
                 doc_core["created_at"] = now
+                # Audit-log the rescue from GF's spam filter so we can
+                # see what bypassed it in a clean trail.
+                wp_status = entry.get("_wp_status")
+                if wp_status and wp_status != "active":
+                    doc_core["gf_wp_status"] = wp_status
+                    doc_core["gf_spam_rescued"] = True
                 try:
                     await db.web_form_contacts.insert_one(doc_core)
                     inserted += 1
-                    logger.info("GF backfill inserted entry %s (%s)", eid, full_name)
+                    if wp_status and wp_status != "active":
+                        logger.warning(
+                            "GF backfill rescued entry %s from GF status=%s (%s / %s)",
+                            eid, wp_status, full_name, email,
+                        )
+                    else:
+                        logger.info("GF backfill inserted entry %s (%s)", eid, full_name)
                 except Exception as exc:  # noqa: BLE001
                     errors.append(f"entry {eid}: {exc}")
                 continue
@@ -425,6 +467,55 @@ def _looks_like_spam(name: str, email: str) -> bool:
     return any(p.search(blob) for p in _SPAM_PATTERNS)
 
 
+async def _repair_pipeline_membership(db) -> dict:
+    """Self-healing invariant: every contact whose source is in
+    PIPELINE_SOURCES (franchise/licence enquiry) MUST have
+    ``in_pipeline=True`` and ``pipeline_status="new"`` (when no other
+    stage is set). Older rows imported before this contract was
+    introduced — and any row where an edge-case path forgot to set the
+    flag — would otherwise silently disappear from the Sales Pipeline
+    kanban. Called automatically on every backfill cycle so the bug
+    can't reappear without code changes.
+
+    Returns ``{web_repaired, legacy_repaired}``.
+    """
+    pipeline_sources_list = list(PIPELINE_SOURCES)
+    # web_form_contacts — fix in_pipeline + pipeline_status together so
+    # the kanban actually picks the row up.
+    web = await db.web_form_contacts.update_many(
+        {
+            "source": {"$in": pipeline_sources_list},
+            "merged_into": {"$in": [None, ""]},
+            "$or": [
+                {"in_pipeline": {"$ne": True}},
+                {"in_pipeline": {"$exists": False}},
+            ],
+        },
+        {"$set": {"in_pipeline": True, "pipeline_status": "new"}},
+    )
+    # legacy contacts — same rule but smaller universe.
+    legacy = await db.contacts.update_many(
+        {
+            "source": {"$in": pipeline_sources_list},
+            "merged_into": {"$in": [None, ""]},
+            "$or": [
+                {"in_pipeline": {"$ne": True}},
+                {"in_pipeline": {"$exists": False}},
+            ],
+        },
+        {"$set": {"in_pipeline": True, "pipeline_status": "new"}},
+    )
+    if web.modified_count or legacy.modified_count:
+        logger.info(
+            "Pipeline membership self-heal: web=%s legacy=%s",
+            web.modified_count, legacy.modified_count,
+        )
+    return {
+        "web_repaired": web.modified_count,
+        "legacy_repaired": legacy.modified_count,
+    }
+
+
 # ---------------------------------------------------------------- router
 def attach(api, db, require_role):
     router = APIRouter()
@@ -440,9 +531,21 @@ def attach(api, db, require_role):
             # hammer the GF REST API.
             limit = max(1, min(500, int(limit)))
             result = await run_backfill(db, limit_per_form=limit, repair_stubs=repair)
-            return {"ok": True, **result, "by": user.get("email")}
+            # Self-heal pipeline membership on every manual run too —
+            # makes the "Refresh from Gravity Forms" button a one-stop
+            # fix for the "form 33 didn't appear in pipeline" bug.
+            heal = await _repair_pipeline_membership(db)
+            return {"ok": True, **result, **heal, "by": user.get("email")}
         except Exception as exc:
             raise HTTPException(500, detail=str(exc))
+
+    @router.post("/intake/backfill/repair-pipeline")
+    async def repair_pipeline_only(user: dict = Depends(require_role("admin"))):
+        """Standalone pipeline-membership repair. Useful when an admin
+        knows a known-good contact isn't showing up in the kanban and
+        wants to fix it without re-pulling from GF."""
+        heal = await _repair_pipeline_membership(db)
+        return {"ok": True, **heal, "by": user.get("email")}
 
     @router.get("/intake/backfill/status")
     async def backfill_status(_user: dict = Depends(require_role("admin"))):
@@ -452,8 +555,13 @@ def attach(api, db, require_role):
 
 
 # ---------------------------------------------------------------- scheduler
-async def schedule_periodic(db, every_seconds: int = 3600):
-    """Background task — runs immediately on startup, then every hour.
+async def schedule_periodic(db, every_seconds: int = 600):
+    """Background task — runs immediately on startup, then every 10 min
+    (was 60 min). 10 min keeps the "fresh form-33 lead → pipeline" delay
+    short even when the live webhook silently fails. Each cycle also
+    self-heals pipeline membership so legacy-tagged rows can't
+    permanently hide from the kanban.
+
     Survives single failures (logs + continues).
     """
     # 30-second startup delay so we don't compete with the rest of the boot.
@@ -464,6 +572,9 @@ async def schedule_periodic(db, every_seconds: int = 3600):
             if result["inserted"]:
                 logger.info("GF backfill cycle: inserted %s of %s checked",
                             result["inserted"], result["checked"])
+            heal = await _repair_pipeline_membership(db)
+            if heal["web_repaired"] or heal["legacy_repaired"]:
+                logger.info("GF backfill cycle self-heal: %s", heal)
         except Exception as exc:  # noqa: BLE001
             logger.warning("GF backfill cycle failed: %s", exc)
         await asyncio.sleep(every_seconds)
