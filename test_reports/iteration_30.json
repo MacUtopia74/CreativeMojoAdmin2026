@@ -1,0 +1,70 @@
+{
+  "summary": "Iteration 30 readiness check (handover login flow + Calendar Project-Folder modal + portal smoke tests) before live franchisee onboarding. 9/10 pytest cases pass (1 intentional skip — destructive admin reset fulfill). Frontend portal login, navigation, File Vault, Territory map (Mapbox), HQ Updates, and Logout all verified end-to-end on the public preview URL. The Project Folder modal itself was NOT exercised because the trigger lives behind the 'VIEW PROJECTS FOR THIS MONTH' button on /portal/events — the modal flow needs a re-run before the franchisee logs in.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/auth/users", "issue": "Field is `must_change_password` (not `force_password_change` as referenced in the review). Also has `handover_pending`. Inconsistent with the rest of the auth surface (`/auth/me` and `/auth/login` return `force_password_change`). Recommend aliasing or unifying."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "PortalHome (/portal)", "issue": "No `data-testid=\"portal-dashboard\"` (or `portal-home`) anchor on the landing page. Review asked for it; tests cannot reliably gate on dashboard render.", "selector": "[data-testid=\"portal-dashboard\"]", "priority": "MEDIUM"},
+      {"component": "PortalCalendarPage trigger", "issue": "The 'VIEW PROJECTS FOR THIS MONTH' button (yellow CTA on /portal/events) has no data-testid. The downstream 'Open Project Folder' button + ProjectGuideModal could not be reached automatically — needs `data-testid=\"ptm-view-projects\"` (or similar) for stable e2e gating.", "selector": "button:has-text(\"View projects for this month\")", "priority": "MEDIUM"},
+      {"component": "Routing", "issue": "Direct nav to `/portal/calendar` produces React-Router warning `No routes matched location \"/portal/calendar\"`. The Calendar sidebar link routes to `/portal/events`. Either add a `/portal/calendar` redirect or update any docs/emails referring to the legacy URL.", "selector": "n/a", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter30_handover_folder.py",
+    "/app/test_reports/pytest/iter30_results.xml"
+  ],
+  "action_items": [
+    "Add `data-testid=\"portal-dashboard\"` (or `portal-home`) to PortalHome.jsx landing card.",
+    "Add `data-testid=\"ptm-view-projects\"` to the 'View Projects for this Month' button on PortalCalendarPage, and confirm `data-testid=\"project-folder-modal\"|`project-folder-view-toggle`|`project-folder-zip-btn`|`project-folder-close`| are rendered (iter-26 redesign) — re-test once selector is added.",
+    "Unify `must_change_password` vs `force_password_change` on the admin users endpoint (or document the alias) — could surface as a banner on /admin/users for handover-pending users.",
+    "Either add `/portal/calendar` route or remove that legacy path from any handover comms.",
+    "Demo franchisee `sandra@creativemojo.co.uk` is currently NOT in `force_password_change=true` state (login lands directly on /portal) — for the real franchisee Foteini, ensure the HANDOVER ACCESS email flips the flag so the force-change flow actually fires. We did NOT mutate Sandra's account to preserve creds."
+  ],
+  "critical_code_review_comments": [
+    "files_routes.py:~1636 `/files/folder-zip` streams source files in real time and silently skips files on `IncompleteRead`/connection drops (seen in backend.err.log while zipping a huge `shared/` prefix). Recommend: log to a job/audit row, and surface a partial-zip warning in the response headers so the UI can warn the user that some files were omitted.",
+    "Streaming the full `shared/` (6.4 GB / 1217 files) ZIP can saturate a single backend worker for minutes — multiple concurrent requests against /folder-zip with a large prefix caused upstream 30s read-timeouts on /api/auth/login. Consider a size cap, async job + signed URL, or moving ZIP generation to a worker queue.",
+    "force_password_change vs must_change_password naming drift across endpoints (login/me vs users-list). Pick one and alias the other in the Pydantic model.",
+    "Portal navigation: `/portal/calendar` is not registered but appears in legacy docs — either add a redirect route or remove references."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter30_handover_folder.py (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (9/9 executed, 1 intentional destructive-fulfill skip)",
+    "frontend": "85% — login/nav/FileVault/Territory/HQ/Logout PASS; Project-Folder modal NOT EXERCISED (trigger lacks testid)"
+  },
+  "test_credentials": "Admin: admin@creativemojo.co.uk / CreativeMojo2026! | Franchisee: sandra@creativemojo.co.uk / Test1234! (NOT mutated)",
+  "seed_data_creation": "None — only filed a password-reset request for sandra@creativemojo.co.uk (status=pending). Did NOT fulfill it (would have rotated the live demo password). Main agent should reject/cleanup that pending row OR fulfill it if you want to exercise the force-change UI.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Portal login is a TWO-STEP form: enter email → click CONTINUE → password field appears → submit. The Calendar sidebar link routes to /portal/events (not /portal/calendar). The 'Open Project Folder' button is gated behind clicking the yellow 'VIEW PROJECTS FOR THIS MONTH' button which opens ProjectsThisMonthModal. Backend ZIP of large shared/ folders is very slow (>30s) — always pick a small sub-prefix (e.g. shared/_announcement_thumbs/). File listing endpoint is `/api/files/tree?prefix=...` (not `/api/files/list`). Admin users endpoint returns `must_change_password` + `handover_pending` (not `force_password_change`).",
+  "verified_flows": [
+    "POST /api/auth/login (admin + franchisee) → 200, cookies set",
+    "GET /api/auth/me → role=franchisee, role=admin",
+    "POST /api/auth/password-reset/request known + unknown email → 200 generic (anti-enum)",
+    "GET /api/auth/password-reset/requests?status=pending → 200, pending row visible to admin",
+    "GET /api/files/folder-zip?prefix=shared/_announcement_thumbs/ → 200 Content-Type application/zip",
+    "GET /api/files/download?key=<shared file key> → 200 {url: 'https://...'}",
+    "GET /api/files/download?key=<other franchisee key> → 403/404 (no privilege escalation)",
+    "GET /api/auth/users (admin) → includes must_change_password + handover_pending flags",
+    "POST /api/auth/logout → cookies cleared; GET /api/auth/me → 401",
+    "Frontend: 2-step portal login → /portal lands NOT /admin, sidebar shows My Franchise/Territory/Calendar/File Vault/HQ Updates/Account",
+    "Frontend: /portal/events Calendar renders June 2026 with events, Month/Week/Day toggles, 'View Projects for this Month' CTA visible",
+    "Frontend: /portal/files (File Vault) shows shared folders 'All Projects & Templates' (1118 files, 5.81 GB) and 'Running Your Franchise Business' (99 files, 145.7 MB)",
+    "Frontend: /portal/territory renders Mapbox canvas + 118 homes / 62 sectors highlighted; only franchisee's assigned territory visible",
+    "Frontend: /portal/updates HQ Updates empty-state renders correctly",
+    "Frontend: Account dropdown → Logout clears cookies and redirects to /portal/login; /api/auth/me returns 401"
+  ],
+  "not_verified": [
+    "Force-password-change UX flow (demo account not in that state)",
+    "Admin fulfill-reset endpoint side-effects (skipped to preserve creds)",
+    "ProjectGuideModal (Open Project Folder) — trigger button has no testid; modal+List/Grid toggle+ZIP-all not exercised via UI",
+    "Admin HANDOVER ACCESS button on FranchiseeDetailPage (not reached in this run)"
+  ]
+}
