@@ -70,6 +70,25 @@ where applicable.
     Diagnose a Form. Removes need for console snippets.
   • `_repair_pipeline_membership` confirmed permanently disabled (kept
     as no-op) — caused the 951-row resurrection in iter 23.
+- ✅ **Iteration 26 (19 Jun 2026) — Calendar Project Folder modal aligned with HQ Updates UX**
+  • Calendar → "Projects this month" → "Open Project Folder" (renamed
+    from "Open Project Guide") now opens a modal that mirrors the
+    look and feel of the public ``PublicFolderSharePage`` ("Hello
+    Summer"-style): folder summary card, List/Grid toggle (preference
+    persists per browser), per-file Download buttons, and a single
+    "Download all as ZIP" CTA that streams via the existing
+    ``/api/files/folder-zip`` endpoint.
+  • Grid view shows real thumbnails for images + first-page PDF
+    previews via pdfjs-dist (lazy IntersectionObserver-driven). All
+    other file types fall back to a coloured icon.
+  • Old "PDF iframe on left + thin sidebar on right" layout removed
+    — replaced by the unified folder browser so franchisees get one
+    consistent file-browsing experience whether the files came from
+    HQ Updates or a Calendar project link.
+  • Backend untouched. Same ``/portal/projects/{code}/files`` listing
+    + ``/files/download`` signed-URL minting + ``/files/folder-zip``
+    streaming used everywhere else.
+
 - ✅ **Iteration 25 (19 Jun 2026) — Manage Gravity Forms admin tool**
   • Form intake config moved from hardcoded ``form_intake_config.py`` +
     ``gf_backfill.py if form_id == X:`` ladder to a MongoDB-backed

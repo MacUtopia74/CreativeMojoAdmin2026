@@ -122,7 +122,7 @@ export default function ProjectsThisMonthModal({ visibleDate, onClose }) {
                         data-testid={`projects-month-open-${it.id}`}
                         className="mt-auto inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 hover:bg-stone-800 text-[#dedd0a] rounded-lg"
                       >
-                        <BookOpen className="w-3.5 h-3.5" /> Open Project Guide
+                        <BookOpen className="w-3.5 h-3.5" /> Open Project Folder
                       </button>
                     ) : (
                       <div className="mt-auto px-3 py-2 text-xs font-bold uppercase tracking-wider text-stone-500 bg-stone-100 rounded-lg text-center" data-testid={`projects-month-coming-soon-${it.id}`}>
