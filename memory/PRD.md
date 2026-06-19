@@ -70,6 +70,29 @@ where applicable.
     Diagnose a Form. Removes need for console snippets.
   • `_repair_pipeline_membership` confirmed permanently disabled (kept
     as no-op) — caused the 951-row resurrection in iter 23.
+- ✅ **Iteration 24.1 (19 Jun 2026) — Email-collision promotion path**
+  • Production refresh kept reporting "1 new, 0 repaired" but Lisa/Paul/
+    Donna never appeared in NEW. Root cause: the same people had
+    submitted older Form 17 / Form 1 enquiries; the existing rows held
+    their email but a DIFFERENT gravity_entry_id, so the backfill's
+    "already exists?" lookup (gravity_entry_id-only) returned None and
+    the insert collided on the unique-email index, throwing silently.
+  • `run_backfill` now does a second email-based lookup against
+    PIPELINE_SOURCES rows. If a candidate Form-33 entry collides on
+    email with an old row that is NOT in the pipeline, the old row is
+    PROMOTED in place — gravity_entry_id, form_id, in_pipeline,
+    pipeline_status="new", pipeline_updated_at all refreshed; existing
+    first_name/last_name are preserved so we don't blat
+    "Lisa Henshall" with just "Lisa".
+  • Diagnose endpoint surfaces two new verdicts —
+    `duplicate_email_would_promote` and
+    `duplicate_email_already_in_pipeline` — plus the matched-by-email
+    existing row so the cause of a "skip" is never hidden again.
+  • Backfill endpoint now returns `errors[]` and the UI summary flags
+    "⚠️ N error(s)" so future silent failures surface.
+  • Verified end-to-end on Preview: simulated Lisa as an old Form-17
+    row (archived, not in pipeline) → ran backfill → row promoted to
+    NEW with first/last preserved (`updated=1, inserted=0`).
 
 ## P1 — Upcoming
 - **Mobile-friendly Admin Sales Pipeline (Tier A)**: hide Dormant/Lost on `<sm`,

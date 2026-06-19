@@ -275,9 +275,36 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
         ids = [str(e["id"]) for e in entries]
         existing_rows = await db.web_form_contacts.find(
             {"gravity_entry_id": {"$in": ids}},
-            {"_id": 0, "gravity_entry_id": 1, "first_name": 1, "last_name": 1, "ingested_via": 1},
+            {"_id": 0, "gravity_entry_id": 1, "first_name": 1, "last_name": 1,
+             "ingested_via": 1, "in_pipeline": 1, "pipeline_status": 1,
+             "id": 1, "email": 1, "source": 1},
         ).to_list(len(ids))
         have_by_id = {e["gravity_entry_id"]: e for e in existing_rows}
+
+        # ALSO build an email lookup of every franchise/licence row already
+        # in the DB. If a person submitted Form 17 / Form 1 last year and
+        # comes back via Form 33, they collide on email — we want to PUT
+        # them in NEW, not skip them as "already exists" because the old
+        # row is sitting in Dormant. We only consider pipeline-eligible
+        # sources to keep this scope narrow.
+        candidate_emails = [
+            (e.get("4") or "").strip().lower()
+            for e in entries if (e.get("4") or "").strip()
+        ]
+        existing_by_email: dict[str, dict] = {}
+        if candidate_emails:
+            email_rows = await db.web_form_contacts.find(
+                {"email": {"$in": candidate_emails},
+                 "source": {"$in": list(PIPELINE_SOURCES)}},
+                {"_id": 0, "id": 1, "email": 1, "gravity_entry_id": 1,
+                 "first_name": 1, "last_name": 1, "ingested_via": 1,
+                 "in_pipeline": 1, "pipeline_status": 1, "source": 1,
+                 "received_at": 1, "date": 1, "auto_archived_at": 1},
+            ).to_list(len(candidate_emails) * 5)  # one person can have multiple rows
+            for r in email_rows:
+                em = (r.get("email") or "").lower()
+                if em and em not in existing_by_email:
+                    existing_by_email[em] = r
 
         # Tombstones — entries an admin explicitly deleted. Never re-insert.
         tomb_rows = await db.gf_deleted_entries.find(
@@ -405,6 +432,18 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
             }
 
             existing = have_by_id.get(eid)
+            # Email-based fallback: same person might have submitted a
+            # different form previously, leaving a row with a different
+            # gravity_entry_id. We promote that row back to NEW rather
+            # than inserting a duplicate that'd silently 11000 on the
+            # unique-email index.
+            existing_by_em = existing_by_email.get((email or "").lower()) if email else None
+            if existing is None and existing_by_em is not None:
+                # Treat as "needs promotion" rather than insert.
+                existing = existing_by_em
+                # Mark which path so the repair branch below logs cleanly.
+                existing["_matched_by"] = "email"
+
             if existing is None:
                 # Brand-new entry — insert.
                 doc_core["id"] = _uuid()
@@ -429,23 +468,55 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
                     errors.append(f"entry {eid}: {exc}")
                 continue
 
-            # Existing — repair only if the previous row was a name-less stub
-            # left over from the broken backfill mapping.
+            # Existing — decide what to do:
+            #  (a) name-less stub from the broken Form-33 mapping → repair
+            #      first/last names + always force in_pipeline=true, NEW.
+            #  (b) matched by email (different gravity_entry_id) AND not
+            #      currently in pipeline → promote back into NEW because
+            #      the same person re-engaged via Form 33.
+            #  (c) otherwise leave alone (admin already worked it).
             is_stub = (
                 repair_stubs
                 and (existing.get("ingested_via") == "gf_backfill")
                 and not (existing.get("first_name") or existing.get("last_name"))
             )
-            if not is_stub:
+            re_engaged_by_email = (
+                existing.get("_matched_by") == "email"
+                and not existing.get("in_pipeline")
+            )
+            if not (is_stub or re_engaged_by_email):
                 continue
 
+            update_set = dict(doc_core)
+            update_set.pop("ingested_via", None)  # keep original provenance
+            # Always force these — this is the whole point of the repair.
+            update_set["in_pipeline"] = True
+            update_set["pipeline_status"] = "new"
+            update_set["pipeline_updated_at"] = now.isoformat()
+            # Don't blat populated names with form-33's first-only "Lisa"
+            # if the legacy row already has "Lisa Henshall". Only overwrite
+            # name parts that are currently empty.
+            if existing.get("first_name") and update_set.get("first_name"):
+                if (existing["first_name"] or "").strip().lower() == (update_set["first_name"] or "").strip().lower():
+                    pass  # safe to keep update
+                else:
+                    update_set["first_name"] = existing["first_name"]
+            if existing.get("last_name") and not update_set.get("last_name"):
+                update_set["last_name"] = existing["last_name"]
+            # Match by id when matched-by-email (different gravity_entry_id);
+            # otherwise by gravity_entry_id (the normal stub repair path).
+            match_query = ({"id": existing["id"]} if existing.get("_matched_by") == "email"
+                           else {"gravity_entry_id": eid})
             try:
-                await db.web_form_contacts.update_one(
-                    {"gravity_entry_id": eid},
-                    {"$set": doc_core},
-                )
+                await db.web_form_contacts.update_one(match_query, {"$set": update_set})
                 updated += 1
-                logger.info("GF backfill repaired stub entry %s (%s)", eid, full_name)
+                if existing.get("_matched_by") == "email":
+                    logger.info(
+                        "GF backfill PROMOTED re-engaged contact via email %s (entry %s, %s)",
+                        email, eid, full_name,
+                    )
+                else:
+                    logger.info("GF backfill repaired stub entry %s (%s)", eid, full_name)
             except Exception as exc:  # noqa: BLE001
                 errors.append(f"repair entry {eid}: {exc}")
 
@@ -642,6 +713,28 @@ def attach(api, db, require_role):
              "ingested_via": 1},
         ).to_list(len(ids))
         have_by_id = {e["gravity_entry_id"]: e for e in existing}
+        # Email-based fallback lookup — the same person might have submitted
+        # an earlier form (e.g. Form 17 / Form 1) and exist under a different
+        # gravity_entry_id. Surface that so we can see exactly why an insert
+        # would be skipped or collide on a unique-email index.
+        candidate_emails = [
+            (e.get("4") or "").strip().lower() for e in entries
+            if (e.get("4") or "").strip()
+        ]
+        existing_by_email: dict[str, dict] = {}
+        if candidate_emails:
+            email_rows = await db.web_form_contacts.find(
+                {"email": {"$in": candidate_emails}},
+                {"_id": 0, "id": 1, "email": 1, "gravity_entry_id": 1,
+                 "first_name": 1, "last_name": 1, "form_id": 1,
+                 "source": 1, "in_pipeline": 1, "pipeline_status": 1,
+                 "ingested_via": 1, "received_at": 1, "date": 1,
+                 "auto_archived_at": 1, "auto_archived_reason": 1},
+            ).to_list(len(candidate_emails) * 5)
+            for r in email_rows:
+                em = (r.get("email") or "").lower()
+                if em and em not in existing_by_email:
+                    existing_by_email[em] = r
         tomb_rows = await db.gf_deleted_entries.find(
             {"gravity_entry_id": {"$in": ids}},
             {"_id": 0, "gravity_entry_id": 1},
@@ -668,11 +761,15 @@ def attach(api, db, require_role):
             full_name = f"{first or ''} {last or ''}".strip()
             is_spam = _looks_like_spam(full_name, email or "")
             existing_row = have_by_id.get(eid)
+            email_match = existing_by_email.get((email or "").lower()) if email else None
             verdict: str
             if eid in tombstoned:
                 verdict = "skip_tombstoned"
             elif existing_row:
                 verdict = "already_in_db"
+            elif email_match:
+                verdict = "duplicate_email_would_promote" if not email_match.get("in_pipeline") \
+                          else "duplicate_email_already_in_pipeline"
             elif is_spam:
                 verdict = "skip_spam_filter"
             else:
@@ -691,12 +788,17 @@ def attach(api, db, require_role):
                 "first_name": first, "last_name": last, "email": email,
                 "verdict": verdict,
                 "existing_in_db": existing_row,
+                "email_match_existing": email_match,
                 "raw_fields": raw_fields,
             })
 
         summary = {
             "would_insert": sum(1 for r in out_rows if r["verdict"] == "would_insert"),
             "already_in_db": sum(1 for r in out_rows if r["verdict"] == "already_in_db"),
+            "duplicate_email_would_promote":
+                sum(1 for r in out_rows if r["verdict"] == "duplicate_email_would_promote"),
+            "duplicate_email_already_in_pipeline":
+                sum(1 for r in out_rows if r["verdict"] == "duplicate_email_already_in_pipeline"),
             "skip_spam_filter": sum(1 for r in out_rows if r["verdict"] == "skip_spam_filter"),
             "skip_tombstoned": sum(1 for r in out_rows if r["verdict"] == "skip_tombstoned"),
         }

@@ -83,8 +83,11 @@ export default function FormIntakePage() {
       let resp;
       if (kind === "refresh") {
         resp = await api.post("/intake/backfill/run", null, { params: { limit: 50, repair: true } });
-        setActionResult({ kind, ok: true, summary:
-          `Pulled ${resp.data.checked || 0} entries from Gravity Forms. ${resp.data.inserted || 0} new, ${resp.data.updated || 0} repaired.` });
+        const errs = resp.data.errors || [];
+        const errSuffix = errs.length ? ` ⚠️ ${errs.length} error(s) — see details.` : "";
+        setActionResult({ kind, ok: errs.length === 0, summary:
+          `Pulled ${resp.data.checked || 0} entries from Gravity Forms. ${resp.data.inserted || 0} new, ${resp.data.updated || 0} repaired/promoted.${errSuffix}`,
+          raw: errs.length ? { entries: errs.map((e, i) => ({ idx: i, error: e })) } : null });
       } else if (kind === "dormant") {
         if (!window.confirm("Move all 'Contacted' leads that haven't been touched in 60 days into 'Dormant'? This is safe — only changes the stage, no data deleted.")) {
           setBusyAction(""); return;
@@ -103,7 +106,7 @@ export default function FormIntakePage() {
         } else {
           const s = d.summary || {};
           setActionResult({ kind, ok: true, summary:
-            `Form ${diagnoseFormId}: ${d.wp_entries} entries on WP — ${s.would_insert || 0} would insert, ${s.already_in_db || 0} already in DB, ${s.skip_spam_filter || 0} filtered as spam, ${s.skip_tombstoned || 0} tombstoned.`, raw: d });
+            `Form ${diagnoseFormId}: ${d.wp_entries} entries on WP — ${s.would_insert || 0} would insert, ${s.already_in_db || 0} already in DB, ${s.duplicate_email_would_promote || 0} duplicate-email (would promote to NEW), ${s.duplicate_email_already_in_pipeline || 0} duplicate-email (already in pipeline), ${s.skip_spam_filter || 0} filtered as spam, ${s.skip_tombstoned || 0} tombstoned.`, raw: d });
         }
       }
       // refresh recent feed after a maintenance op
