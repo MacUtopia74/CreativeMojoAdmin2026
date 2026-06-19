@@ -84,10 +84,20 @@ export default function FormIntakePage() {
       if (kind === "refresh") {
         resp = await api.post("/intake/backfill/run", null, { params: { limit: 50, repair: true } });
         const errs = resp.data.errors || [];
+        const traces = resp.data.traces || [];
         const errSuffix = errs.length ? ` ⚠️ ${errs.length} error(s) — see details.` : "";
+        // Build a per-outcome roll-up so the most common silent failure
+        // ("inserted 0, promoted 0") is visible without expanding details.
+        const byOutcome = traces.reduce((acc, t) => {
+          acc[t.outcome] = (acc[t.outcome] || 0) + 1;
+          return acc;
+        }, {});
+        const outcomeLine = Object.keys(byOutcome).length
+          ? ` Per-entry: ${Object.entries(byOutcome).map(([k, v]) => `${k}=${v}`).join(", ")}.`
+          : "";
         setActionResult({ kind, ok: errs.length === 0, summary:
-          `Pulled ${resp.data.checked || 0} entries from Gravity Forms. ${resp.data.inserted || 0} new, ${resp.data.updated || 0} repaired/promoted.${errSuffix}`,
-          raw: errs.length ? { entries: errs.map((e, i) => ({ idx: i, error: e })) } : null });
+          `Pulled ${resp.data.checked || 0} entries from Gravity Forms. ${resp.data.inserted || 0} new, ${resp.data.updated || 0} repaired/promoted.${outcomeLine}${errSuffix}`,
+          raw: { entries: traces.concat(errs.map((e, i) => ({ idx: i, error: e }))) }});
       } else if (kind === "dormant") {
         if (!window.confirm("Move all 'Contacted' leads that haven't been touched in 60 days into 'Dormant'? This is safe — only changes the stage, no data deleted.")) {
           setBusyAction(""); return;

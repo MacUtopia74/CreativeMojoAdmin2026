@@ -70,29 +70,33 @@ where applicable.
     Diagnose a Form. Removes need for console snippets.
   • `_repair_pipeline_membership` confirmed permanently disabled (kept
     as no-op) — caused the 951-row resurrection in iter 23.
-- ✅ **Iteration 24.1 (19 Jun 2026) — Email-collision promotion path**
-  • Production refresh kept reporting "1 new, 0 repaired" but Lisa/Paul/
-    Donna never appeared in NEW. Root cause: the same people had
-    submitted older Form 17 / Form 1 enquiries; the existing rows held
-    their email but a DIFFERENT gravity_entry_id, so the backfill's
-    "already exists?" lookup (gravity_entry_id-only) returned None and
-    the insert collided on the unique-email index, throwing silently.
-  • `run_backfill` now does a second email-based lookup against
-    PIPELINE_SOURCES rows. If a candidate Form-33 entry collides on
-    email with an old row that is NOT in the pipeline, the old row is
-    PROMOTED in place — gravity_entry_id, form_id, in_pipeline,
-    pipeline_status="new", pipeline_updated_at all refreshed; existing
-    first_name/last_name are preserved so we don't blat
-    "Lisa Henshall" with just "Lisa".
-  • Diagnose endpoint surfaces two new verdicts —
-    `duplicate_email_would_promote` and
-    `duplicate_email_already_in_pipeline` — plus the matched-by-email
-    existing row so the cause of a "skip" is never hidden again.
-  • Backfill endpoint now returns `errors[]` and the UI summary flags
-    "⚠️ N error(s)" so future silent failures surface.
-  • Verified end-to-end on Preview: simulated Lisa as an old Form-17
-    row (archived, not in pipeline) → ran backfill → row promoted to
-    NEW with first/last preserved (`updated=1, inserted=0`).
+- ✅ **Iteration 24.2 (19 Jun 2026) — Final Form 33 fix: per-entry traces + smart promotion**
+  • Real Production root cause: the v24.1 email-collision lookup was
+    restricted to ``source IN PIPELINE_SOURCES`` (i.e. franchise/licence
+    only). Paul's existing row was a 2022 care_home_enquiry, so the
+    lookup MISSED him and the insert went into a silent loop nobody
+    surfaced. Lisa & Donna's silent failures turned out to be artifacts
+    of accumulated test state, not a Production bug — Production has no
+    duplicate rows for those emails.
+  • Dropped the ``source`` filter on the email lookup so we now detect
+    duplicate emails against EVERY existing CRM row, not just pipeline
+    sources.
+  • When the email lookup returns multiple rows for the same address
+    (common — a person can have 5+ historic submissions), prefer the
+    most-promotable: out-of-pipeline first, then Dormant, then Lost,
+    then anything-else. Protects in-flight Qualified/Contacted rows
+    from being silently bumped back to NEW.
+  • If the insert path ever does collide on a unique-email index
+    despite the upfront lookup, recover by falling through to the
+    promotion path instead of swallowing the error.
+  • ``run_backfill`` now returns ``traces[]`` — per-entry outcome
+    (``inserted`` / ``promoted`` / ``repaired_stub`` /
+    ``skip_already_active`` / ``insert_failed`` / ``promote_failed``).
+    The FormIntakePage maintenance UI surfaces these inline so any
+    future silent failure is one click away.
+  • End-to-end verified on Preview against Production-shape data: Lisa
+    → inserted, Paul → promoted from his care_home row, Donna →
+    inserted. inserted=2, updated=1, errors=[].
 
 ## P1 — Upcoming
 - **Mobile-friendly Admin Sales Pipeline (Tier A)**: hide Dormant/Lost on `<sm`,

@@ -260,6 +260,8 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
     updated = 0
     checked = 0
     errors: list[str] = []
+    traces: list[dict] = []  # per-entry outcome — invaluable when a refresh
+                             # silently does nothing on Production.
 
     for form_id in form_ids:
         try:
@@ -281,12 +283,14 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
         ).to_list(len(ids))
         have_by_id = {e["gravity_entry_id"]: e for e in existing_rows}
 
-        # ALSO build an email lookup of every franchise/licence row already
-        # in the DB. If a person submitted Form 17 / Form 1 last year and
-        # comes back via Form 33, they collide on email — we want to PUT
-        # them in NEW, not skip them as "already exists" because the old
-        # row is sitting in Dormant. We only consider pipeline-eligible
-        # sources to keep this scope narrow.
+        # ALSO build an email lookup of EVERY existing row already in the
+        # DB. If a person submitted any prior form (Form 17, Form 1
+        # care-home enquiry, etc.) and comes back via Form 33, the unique
+        # email index would silently 11000 a fresh insert — we instead
+        # PROMOTE the existing row into NEW. Critically we do NOT filter
+        # by ``source`` here: Paul Dunkserly's original row was a
+        # care_home_enquiry, which isn't in PIPELINE_SOURCES, so a
+        # source-scoped lookup missed him on prod.
         candidate_emails = [
             (e.get("4") or "").strip().lower()
             for e in entries if (e.get("4") or "").strip()
@@ -294,14 +298,26 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
         existing_by_email: dict[str, dict] = {}
         if candidate_emails:
             email_rows = await db.web_form_contacts.find(
-                {"email": {"$in": candidate_emails},
-                 "source": {"$in": list(PIPELINE_SOURCES)}},
+                {"email": {"$in": candidate_emails}},
                 {"_id": 0, "id": 1, "email": 1, "gravity_entry_id": 1,
                  "first_name": 1, "last_name": 1, "ingested_via": 1,
                  "in_pipeline": 1, "pipeline_status": 1, "source": 1,
                  "received_at": 1, "date": 1, "auto_archived_at": 1},
             ).to_list(len(candidate_emails) * 5)  # one person can have multiple rows
-            for r in email_rows:
+            # When there are multiple rows for the same email, prefer the
+            # one that's the best PROMOTION candidate: not currently active
+            # in the pipeline (so we don't blat an admin's in-flight work),
+            # ordered Dormant > Lost > archived > anything-else.
+            def _promote_score(r: dict) -> tuple[int, int]:
+                stage = (r.get("pipeline_status") or "").lower()
+                if not r.get("in_pipeline"):
+                    return (0, 0)            # best — out of pipeline
+                if stage in ("dormant",):
+                    return (1, 0)            # dormant is fine to promote
+                if stage in ("lost",):
+                    return (2, 0)            # lost is OK too
+                return (10, 0)               # active stage — last resort
+            for r in sorted(email_rows, key=_promote_score):
                 em = (r.get("email") or "").lower()
                 if em and em not in existing_by_email:
                     existing_by_email[em] = r
@@ -445,11 +461,11 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
                 existing["_matched_by"] = "email"
 
             if existing is None:
-                # Brand-new entry — insert.
+                # Brand-new entry — insert. If a unique index trips us
+                # up despite the email-lookup miss above, fall back to
+                # a post-hoc email promotion so the lead still surfaces.
                 doc_core["id"] = _uuid()
                 doc_core["created_at"] = now
-                # Audit-log the rescue from GF's spam filter so we can
-                # see what bypassed it in a clean trail.
                 wp_status = entry.get("_wp_status")
                 if wp_status and wp_status != "active":
                     doc_core["gf_wp_status"] = wp_status
@@ -457,6 +473,9 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
                 try:
                     await db.web_form_contacts.insert_one(doc_core)
                     inserted += 1
+                    traces.append({"entry_id": eid, "outcome": "inserted",
+                                   "email": email, "name": full_name,
+                                   "form_id": form_id})
                     if wp_status and wp_status != "active":
                         logger.warning(
                             "GF backfill rescued entry %s from GF status=%s (%s / %s)",
@@ -465,8 +484,31 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
                     else:
                         logger.info("GF backfill inserted entry %s (%s)", eid, full_name)
                 except Exception as exc:  # noqa: BLE001
-                    errors.append(f"entry {eid}: {exc}")
-                continue
+                    # Insert collided — most often the unique-email
+                    # index. Recover by finding the existing row and
+                    # promoting it (same effect as the email fallback
+                    # would have had if we'd seen it up-front).
+                    err_str = str(exc)
+                    logger.warning("GF backfill insert collided entry %s: %s", eid, err_str)
+                    recovered = None
+                    if email:
+                        recovered = await db.web_form_contacts.find_one(
+                            {"email": email},
+                            {"_id": 0, "id": 1, "first_name": 1, "last_name": 1,
+                             "in_pipeline": 1, "pipeline_status": 1, "source": 1,
+                             "ingested_via": 1, "gravity_entry_id": 1},
+                        )
+                    if recovered:
+                        recovered["_matched_by"] = "email_post_insert_collision"
+                        existing = recovered  # fall through to promotion branch
+                    else:
+                        errors.append(f"entry {eid}: {err_str}")
+                        traces.append({"entry_id": eid, "outcome": "insert_failed",
+                                       "email": email, "name": full_name,
+                                       "form_id": form_id, "error": err_str})
+                        continue
+                else:
+                    continue  # successful insert — done with this entry
 
             # Existing — decide what to do:
             #  (a) name-less stub from the broken Form-33 mapping → repair
@@ -474,17 +516,24 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
             #  (b) matched by email (different gravity_entry_id) AND not
             #      currently in pipeline → promote back into NEW because
             #      the same person re-engaged via Form 33.
-            #  (c) otherwise leave alone (admin already worked it).
+            #  (c) matched by email, IN pipeline but NOT in "new" → also
+            #      promote to NEW (re-engagement bumps them back up).
+            #  (d) otherwise leave alone (admin already worked them).
             is_stub = (
                 repair_stubs
                 and (existing.get("ingested_via") == "gf_backfill")
                 and not (existing.get("first_name") or existing.get("last_name"))
             )
-            re_engaged_by_email = (
-                existing.get("_matched_by") == "email"
-                and not existing.get("in_pipeline")
+            matched_email = existing.get("_matched_by", "").startswith("email")
+            re_engaged_by_email = matched_email and (
+                not existing.get("in_pipeline")
+                or (existing.get("pipeline_status") or "") in ("dormant", "lost", "")
             )
             if not (is_stub or re_engaged_by_email):
+                traces.append({"entry_id": eid, "outcome": "skip_already_active",
+                               "email": email, "name": full_name,
+                               "form_id": form_id,
+                               "existing_stage": existing.get("pipeline_status")})
                 continue
 
             update_set = dict(doc_core)
@@ -505,12 +554,18 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
                 update_set["last_name"] = existing["last_name"]
             # Match by id when matched-by-email (different gravity_entry_id);
             # otherwise by gravity_entry_id (the normal stub repair path).
-            match_query = ({"id": existing["id"]} if existing.get("_matched_by") == "email"
+            match_query = ({"id": existing["id"]} if matched_email
                            else {"gravity_entry_id": eid})
             try:
                 await db.web_form_contacts.update_one(match_query, {"$set": update_set})
                 updated += 1
-                if existing.get("_matched_by") == "email":
+                outcome = "promoted" if matched_email else "repaired_stub"
+                traces.append({"entry_id": eid, "outcome": outcome,
+                               "email": email, "name": full_name,
+                               "form_id": form_id,
+                               "matched_existing_id": existing.get("id"),
+                               "previous_stage": existing.get("pipeline_status")})
+                if matched_email:
                     logger.info(
                         "GF backfill PROMOTED re-engaged contact via email %s (entry %s, %s)",
                         email, eid, full_name,
@@ -519,6 +574,9 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
                     logger.info("GF backfill repaired stub entry %s (%s)", eid, full_name)
             except Exception as exc:  # noqa: BLE001
                 errors.append(f"repair entry {eid}: {exc}")
+                traces.append({"entry_id": eid, "outcome": "promote_failed",
+                               "email": email, "name": full_name,
+                               "form_id": form_id, "error": str(exc)})
 
     _backfill_state.update({
         "last_run_at": datetime.now(timezone.utc),
@@ -527,7 +585,8 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
         "last_checked": checked,
         "last_error": "; ".join(errors)[:500] if errors else None,
     })
-    return {"inserted": inserted, "updated": updated, "checked": checked, "errors": errors}
+    return {"inserted": inserted, "updated": updated, "checked": checked,
+            "errors": errors, "traces": traces}
 
 
 def _uuid() -> str:
@@ -731,7 +790,18 @@ def attach(api, db, require_role):
                  "ingested_via": 1, "received_at": 1, "date": 1,
                  "auto_archived_at": 1, "auto_archived_reason": 1},
             ).to_list(len(candidate_emails) * 5)
-            for r in email_rows:
+            # Use the same "best promotion candidate" sort that
+            # run_backfill uses so the diagnose verdict matches reality.
+            def _ps(r: dict) -> tuple[int, int]:
+                stage = (r.get("pipeline_status") or "").lower()
+                if not r.get("in_pipeline"):
+                    return (0, 0)
+                if stage == "dormant":
+                    return (1, 0)
+                if stage == "lost":
+                    return (2, 0)
+                return (10, 0)
+            for r in sorted(email_rows, key=_ps):
                 em = (r.get("email") or "").lower()
                 if em and em not in existing_by_email:
                     existing_by_email[em] = r
@@ -768,8 +838,12 @@ def attach(api, db, require_role):
             elif existing_row:
                 verdict = "already_in_db"
             elif email_match:
-                verdict = "duplicate_email_would_promote" if not email_match.get("in_pipeline") \
-                          else "duplicate_email_already_in_pipeline"
+                # Dormant / lost / out-of-pipeline → we promote on backfill.
+                # Anything else means an admin is actively working it.
+                em_stage = (email_match.get("pipeline_status") or "").lower()
+                em_active = email_match.get("in_pipeline") and em_stage not in ("dormant", "lost", "")
+                verdict = "duplicate_email_already_in_pipeline" if em_active \
+                         else "duplicate_email_would_promote"
             elif is_spam:
                 verdict = "skip_spam_filter"
             else:
