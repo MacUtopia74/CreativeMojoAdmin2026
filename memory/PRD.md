@@ -70,33 +70,37 @@ where applicable.
     Diagnose a Form. Removes need for console snippets.
   • `_repair_pipeline_membership` confirmed permanently disabled (kept
     as no-op) — caused the 951-row resurrection in iter 23.
-- ✅ **Iteration 24.2 (19 Jun 2026) — Final Form 33 fix: per-entry traces + smart promotion**
-  • Real Production root cause: the v24.1 email-collision lookup was
-    restricted to ``source IN PIPELINE_SOURCES`` (i.e. franchise/licence
-    only). Paul's existing row was a 2022 care_home_enquiry, so the
-    lookup MISSED him and the insert went into a silent loop nobody
-    surfaced. Lisa & Donna's silent failures turned out to be artifacts
-    of accumulated test state, not a Production bug — Production has no
-    duplicate rows for those emails.
-  • Dropped the ``source`` filter on the email lookup so we now detect
-    duplicate emails against EVERY existing CRM row, not just pipeline
-    sources.
-  • When the email lookup returns multiple rows for the same address
-    (common — a person can have 5+ historic submissions), prefer the
-    most-promotable: out-of-pipeline first, then Dormant, then Lost,
-    then anything-else. Protects in-flight Qualified/Contacted rows
-    from being silently bumped back to NEW.
-  • If the insert path ever does collide on a unique-email index
-    despite the upfront lookup, recover by falling through to the
-    promotion path instead of swallowing the error.
-  • ``run_backfill`` now returns ``traces[]`` — per-entry outcome
-    (``inserted`` / ``promoted`` / ``repaired_stub`` /
-    ``skip_already_active`` / ``insert_failed`` / ``promote_failed``).
-    The FormIntakePage maintenance UI surfaces these inline so any
-    future silent failure is one click away.
-  • End-to-end verified on Preview against Production-shape data: Lisa
-    → inserted, Paul → promoted from his care_home row, Donna →
-    inserted. inserted=2, updated=1, errors=[].
+- ✅ **Iteration 24.3 (19 Jun 2026) — THE actual Form 33 fix**
+  • Real root cause #1 (revealed by the per-entry traces in v24.2):
+    Production's ``GF_BACKFILL_FORM_IDS`` env var was set to ``1,17,32``
+    — i.e. FORM 33 WAS NEVER BEING PULLED FROM THE GF REST API.
+    Preview's env had ``1,17,32,33``, which is why Preview worked and
+    Production didn't. The traces showed 134 entries processed across
+    forms 1/17/32 and exactly zero from form 33.
+  • Fix: env-var union with ``backfill_form_ids()`` instead of an
+    override. The env var can now only ADD forms, never subtract.
+    Production's stale env value is now harmless.
+  • Real root cause #2 (collateral damage from v24.2's promotion path):
+    the email-promotion logic fired regardless of whether the inbound
+    GF entry was franchise/licence-eligible. A 2025 Form-1 art-kit
+    enquiry from Sanora Carrozza matched an old dormant row by email
+    and got promoted to NEW even though art_kit_enquiry isn't a
+    pipeline source.
+  • Fix: ``re_engaged_by_email`` now also requires
+    ``in_pipeline_flag=True`` for the inbound entry. Care-home /
+    art-kit / general-contact submissions can no longer promote
+    historic rows into NEW.
+  • New ``POST /api/intake/backfill/undo-bad-art-kit-promotion`` — one-shot
+    repair to pull any wrongly-promoted (non-franchise/licence) row
+    back OUT of the NEW column. Idempotent.
+  • UI gains a 4th maintenance button ("Remove non-pipeline rows from
+    NEW") for the cleanup. Refresh result now also reports
+    ``form_ids_used`` so an env mis-config will never be invisible
+    again.
+  • Verified end-to-end on Preview with ``GF_BACKFILL_FORM_IDS=1,17,32``
+    (production-shape env): form 33 forced into pull list, Lisa
+    inserted, Paul promoted from existing care-home row, Donna
+    inserted, zero bad cross-form promotions.
 
 ## P1 — Upcoming
 - **Mobile-friendly Admin Sales Pipeline (Tier A)**: hide Dormant/Lost on `<sm`,

@@ -85,9 +85,8 @@ export default function FormIntakePage() {
         resp = await api.post("/intake/backfill/run", null, { params: { limit: 50, repair: true } });
         const errs = resp.data.errors || [];
         const traces = resp.data.traces || [];
+        const formIds = resp.data.form_ids_used || [];
         const errSuffix = errs.length ? ` ⚠️ ${errs.length} error(s) — see details.` : "";
-        // Build a per-outcome roll-up so the most common silent failure
-        // ("inserted 0, promoted 0") is visible without expanding details.
         const byOutcome = traces.reduce((acc, t) => {
           acc[t.outcome] = (acc[t.outcome] || 0) + 1;
           return acc;
@@ -95,8 +94,9 @@ export default function FormIntakePage() {
         const outcomeLine = Object.keys(byOutcome).length
           ? ` Per-entry: ${Object.entries(byOutcome).map(([k, v]) => `${k}=${v}`).join(", ")}.`
           : "";
+        const formsLine = formIds.length ? ` Forms pulled: [${formIds.join(", ")}].` : "";
         setActionResult({ kind, ok: errs.length === 0, summary:
-          `Pulled ${resp.data.checked || 0} entries from Gravity Forms. ${resp.data.inserted || 0} new, ${resp.data.updated || 0} repaired/promoted.${outcomeLine}${errSuffix}`,
+          `Pulled ${resp.data.checked || 0} entries from Gravity Forms.${formsLine} ${resp.data.inserted || 0} new, ${resp.data.updated || 0} repaired/promoted.${outcomeLine}${errSuffix}`,
           raw: { entries: traces.concat(errs.map((e, i) => ({ idx: i, error: e }))) }});
       } else if (kind === "dormant") {
         if (!window.confirm("Move all 'Contacted' leads that haven't been touched in 60 days into 'Dormant'? This is safe — only changes the stage, no data deleted.")) {
@@ -105,6 +105,13 @@ export default function FormIntakePage() {
         resp = await api.post("/intake/backfill/contacted-to-dormant", null, { params: { cutoff_days: 60 } });
         setActionResult({ kind, ok: true, summary:
           `Moved ${(resp.data.web_moved || 0) + (resp.data.legacy_moved || 0)} stale 'Contacted' leads into 'Dormant'.` });
+      } else if (kind === "cleanup_bad_promo") {
+        if (!window.confirm("Remove any non-franchise / non-licence rows that got wrongly pulled into the NEW column? Reversible.")) {
+          setBusyAction(""); return;
+        }
+        resp = await api.post("/intake/backfill/undo-bad-art-kit-promotion");
+        setActionResult({ kind, ok: true, summary:
+          `Removed ${resp.data.moved_out_of_new || 0} non-pipeline rows from the NEW column.` });
       } else if (kind === "diagnose") {
         resp = await api.get(`/intake/backfill/diagnose/${diagnoseFormId}`, { params: { limit: 20 } });
         const d = resp.data;
@@ -211,7 +218,7 @@ export default function FormIntakePage() {
 
         {/* Maintenance — manual triggers for the GF backfill, stale-lead cleanup, and per-form diagnostic */}
         <Panel icon={Activity} title="Pipeline Maintenance" testid="panel-maintenance">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
             <button
               onClick={() => runMaintenance("refresh")}
               disabled={!!busyAction}
@@ -237,6 +244,20 @@ export default function FormIntakePage() {
               </div>
               <div className="text-xs text-stone-600 leading-relaxed">
                 Move any {String.fromCharCode(8220)}Contacted{String.fromCharCode(8221)} lead that hasn{String.fromCharCode(8217)}t been touched in 60 days into the {String.fromCharCode(8220)}Dormant{String.fromCharCode(8221)} stage. Reversible — only changes the stage label.
+              </div>
+            </button>
+
+            <button
+              onClick={() => runMaintenance("cleanup_bad_promo")}
+              disabled={!!busyAction}
+              data-testid="btn-cleanup-bad-promo"
+              className="text-left p-4 border border-red-200 rounded-xl bg-red-50/40 hover:border-red-400 hover:bg-red-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+              <div className="flex items-center gap-2 text-red-900 mb-2">
+                <AlertCircle className={`w-3.5 h-3.5 ${busyAction === "cleanup_bad_promo" ? "animate-pulse" : ""}`} />
+                <span className="text-[10px] uppercase tracking-[0.2em] font-bold">Remove non-pipeline rows from NEW</span>
+              </div>
+              <div className="text-xs text-red-700 leading-relaxed">
+                Cleanup for the v24.2 over-promotion bug. Removes any art-kit / care-home / general rows that got wrongly pulled into NEW. Safe — only changes the stage.
               </div>
             </button>
 

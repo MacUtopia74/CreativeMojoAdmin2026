@@ -243,17 +243,21 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
     (rather than skipped). This recovers from a previous backfill that ran
     with the wrong field-ID mapping.
     Returns ``{inserted, updated, checked, errors}``."""
-    # Form IDs come from the shared form_intake_config module so adding a
-    # new Gravity Form is a one-line code change. GF_BACKFILL_FORM_IDS env
-    # var is still honoured (comma-separated overrides) for emergency ops,
-    # but is no longer required for the backfill to run.
+    # Form IDs always include the static FORM_IDS_IN_PIPELINE set
+    # (currently 17, 32, 33). The GF_BACKFILL_FORM_IDS env var can ADD
+    # extra forms (e.g. 1 for general-contact triage) but can no longer
+    # *subtract* — historically a stale Production env value silently
+    # excluded form 33, causing the Form-33 leads outage. Union >
+    # override.
+    from form_intake_config import backfill_form_ids
+    form_ids: set[int] = set(backfill_form_ids())
     env_override = (os.environ.get("GF_BACKFILL_FORM_IDS") or "").strip()
     if env_override:
-        form_ids = [int(x) for x in env_override.split(",") if x.strip().isdigit()]
-    else:
-        from form_intake_config import backfill_form_ids
-        form_ids = backfill_form_ids()
-    if not form_ids:
+        form_ids.update(
+            int(x) for x in env_override.split(",") if x.strip().isdigit()
+        )
+    form_ids_list = sorted(form_ids)
+    if not form_ids_list:
         raise RuntimeError("No Gravity Forms configured for backfill")
 
     inserted = 0
@@ -263,7 +267,7 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
     traces: list[dict] = []  # per-entry outcome — invaluable when a refresh
                              # silently does nothing on Production.
 
-    for form_id in form_ids:
+    for form_id in form_ids_list:
         try:
             entries = await _fetch_recent_entries(form_id, limit=limit_per_form)
         except Exception as exc:
@@ -525,9 +529,20 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
                 and not (existing.get("first_name") or existing.get("last_name"))
             )
             matched_email = existing.get("_matched_by", "").startswith("email")
-            re_engaged_by_email = matched_email and (
-                not existing.get("in_pipeline")
-                or (existing.get("pipeline_status") or "") in ("dormant", "lost", "")
+            # CRITICAL guard: promotion of an existing row to NEW must ONLY
+            # fire when the INBOUND entry itself is a pipeline-eligible
+            # enquiry (franchise/licence). Without this, a returning lead
+            # filing an art-kit or care-home enquiry via the general
+            # contact form would silently get yanked into NEW — which is
+            # how Sanora's 11-month-old art_kit row ended up at the top of
+            # the kanban.
+            re_engaged_by_email = (
+                matched_email
+                and in_pipeline_flag
+                and (
+                    not existing.get("in_pipeline")
+                    or (existing.get("pipeline_status") or "") in ("dormant", "lost", "")
+                )
             )
             if not (is_stub or re_engaged_by_email):
                 traces.append({"entry_id": eid, "outcome": "skip_already_active",
@@ -586,7 +601,7 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
         "last_error": "; ".join(errors)[:500] if errors else None,
     })
     return {"inserted": inserted, "updated": updated, "checked": checked,
-            "errors": errors, "traces": traces}
+            "errors": errors, "traces": traces, "form_ids_used": form_ids_list}
 
 
 def _uuid() -> str:
@@ -878,6 +893,37 @@ def attach(api, db, require_role):
         }
         return {"ok": True, "form_id": form_id, "wp_entries": len(entries),
                 "summary": summary, "entries": out_rows}
+
+    @router.post("/intake/backfill/undo-bad-art-kit-promotion")
+    async def undo_bad_art_kit_promotion(
+        user: dict = Depends(require_role("admin")),
+    ):
+        """One-shot cleanup for the v24.2 over-promotion bug: any row
+        currently in pipeline_status='new' whose ``source`` is anything
+        other than franchise_enquiry / licence_enquiry should NEVER have
+        been promoted to NEW. Pushes them back out of the pipeline
+        (in_pipeline=False, pipeline_status=null). Idempotent.
+        """
+        from form_intake_config import PIPELINE_SOURCES
+        moved = 0
+        for coll_name in ("web_form_contacts", "contacts"):
+            coll = db[coll_name]
+            res = await coll.update_many(
+                {"in_pipeline": True, "pipeline_status": "new",
+                 "source": {"$nin": list(PIPELINE_SOURCES)}},
+                {"$set": {
+                    "in_pipeline": False,
+                    "pipeline_status": None,
+                    "pipeline_updated_at": datetime.now(timezone.utc).isoformat(),
+                    "auto_archived_reason": "undo_bad_art_kit_promotion",
+                }},
+            )
+            moved += res.modified_count
+        logger.warning(
+            "undo_bad_art_kit_promotion: removed %s non-pipeline rows from NEW (by %s)",
+            moved, user.get("email"),
+        )
+        return {"ok": True, "moved_out_of_new": moved, "by": user.get("email")}
 
     @router.post("/intake/backfill/contacted-to-dormant")
     async def contacted_to_dormant(
