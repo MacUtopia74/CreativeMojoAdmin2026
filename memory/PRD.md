@@ -47,8 +47,33 @@ where applicable.
     backfill_form_ids() helper. server.py + gf_backfill.py both import
     from it. Env var GF_BACKFILL_FORM_IDS is now optional (still honoured
     as emergency override). Removes the drift that hit Form 33 in prod.
+- ✅ **Iteration 24 (19 Jun 2026) — Form 33 intake fix + Pipeline Maintenance UI**
+  • Root cause of "no Form 33 leads in NEW column": field-ID mapping in
+    gf_backfill.py was using flat keys (5/7) but Form 33 uses GF composite
+    dotted keys (5.3 for Name, 7.5 for Postcode). All 3 stub Form 33
+    rows (Lisa, Paul, Donna) were in the DB but had null first/last_name,
+    so were invisible on the kanban.
+  • Fixed FIELD_LABELS_BY_FORM[33] mapping + Form 33 extraction in
+    run_backfill (splits "5.3" full-name into first+last). Live webhook
+    in server.py also gains a "split full-name into first+last" safety
+    pass when last_name comes back null.
+  • New GET /api/intake/backfill/diagnose/{form_id} endpoint — calls GF
+    REST API directly and reports per-entry verdict (would_insert /
+    already_in_db / skip_spam_filter / skip_tombstoned) plus the raw
+    field IDs. Indispensable for future "why isn't form X arriving?" bugs.
+  • New POST /api/intake/backfill/contacted-to-dormant?cutoff_days=60 —
+    moves stale "Contacted" leads (no human touch + arrival date > 60d)
+    into "Dormant". Reversible. On Preview reduced Contacted column from
+    597 → 67 (530 moved to Dormant). Idempotent.
+  • FormIntakePage.js gains a "Pipeline Maintenance" panel with three
+    buttons: Refresh from Gravity Forms, Archive Contacted > 60d → Dormant,
+    Diagnose a Form. Removes need for console snippets.
+  • `_repair_pipeline_membership` confirmed permanently disabled (kept
+    as no-op) — caused the 951-row resurrection in iter 23.
 
 ## P1 — Upcoming
+- **Mobile-friendly Admin Sales Pipeline (Tier A)**: hide Dormant/Lost on `<sm`,
+  4-col KPIs, snap-scroll kanban, header wrap
 - Marketing+ #3: Insert image from File Vault into eshot composer
 - Plan-a-Route: wire to Mapbox Directions + deep-link to Google/Apple Maps
 

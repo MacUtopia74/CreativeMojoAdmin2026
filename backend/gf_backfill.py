@@ -125,14 +125,19 @@ FIELD_LABELS_BY_FORM: dict[int, dict[str, str]] = {
         "25.1": "SPAM MAIL",
         "7.1":  "Privacy",
     },
-    # Form 33 — short Franchise Enquiry popup (June 2026). Confirmed
-    # field IDs from the WordPress Gravity Forms editor: Name=5,
-    # Email=4, Phone=6, Postcode=7.
+    # Form 33 — short Franchise Enquiry popup (June 2026). The live form
+    # uses GF's dotted "composite" field layout, NOT flat numeric IDs:
+    #   5.3 — Name (single full-name field, e.g. "Lisa" or "Donna O'Neill")
+    #   4   — Email
+    #   6   — Phone
+    #   7.5 — Postcode (sub-field of an Address block)
+    #   9.1 — Anti-spam honeypot acknowledgment (ignored)
     33: {
-        "5": "First Name",
-        "4": "Email",
-        "6": "Phone Number",
-        "7": "Postcode",
+        "5.3": "Name",
+        "4":   "Email",
+        "6":   "Phone Number",
+        "7.5": "Postcode",
+        "9.1": "Anti-Spam Confirmation",
     },
 }
 
@@ -321,12 +326,20 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
                 source = "licence_enquiry"
                 in_pipeline_flag = True
             elif form_id == 33:
-                # Short franchise popup — confirmed field IDs:
-                # Name=5, Email=4, Phone=6, Postcode=7.
-                first = (entry.get("5") or "").strip() or first
+                # Short franchise popup — composite field layout (dotted keys):
+                # Name=5.3 (full single field), Email=4, Phone=6, Postcode=7.5.
+                # Fall back to flat keys (5 / 7) in case the WP form is ever
+                # rebuilt with "Simple" name/address sub-types. 5.3 holds the
+                # WHOLE name ("Lisa", "Donna O'Neill") so we split on the
+                # first whitespace into first/last.
+                raw_name = (entry.get("5.3") or entry.get("5") or "").strip()
+                if raw_name:
+                    parts = raw_name.split(None, 1)
+                    first = parts[0]
+                    last = parts[1] if len(parts) > 1 else None
                 email = (entry.get("4") or "").strip().lower() or email
                 phone = (entry.get("6") or "").strip() or phone
-                postcode = (entry.get("7") or "").strip() or None
+                postcode = (entry.get("7.5") or entry.get("7") or "").strip() or None
                 country  = None
                 source = "franchise_enquiry"
                 in_pipeline_flag = True
@@ -590,6 +603,200 @@ def attach(api, db, require_role):
     @router.get("/intake/backfill/status")
     async def backfill_status(_user: dict = Depends(require_role("admin"))):
         return _backfill_state
+
+    @router.get("/intake/backfill/diagnose/{form_id}")
+    async def diagnose_form(
+        form_id: int,
+        limit: int = 20,
+        _user: dict = Depends(require_role("admin")),
+    ):
+        """Read-only diagnostic. Hits the Gravity Forms REST API directly
+        for ``form_id`` and reports — for each entry returned by WP —
+        whether our intake would insert it, skip it (already exists,
+        tombstoned, spam), and what the parsed name/email would be.
+
+        Use this when a form's submissions aren't appearing in the CRM
+        to figure out where the pipeline is breaking.
+        """
+        limit = max(1, min(100, int(limit)))
+        try:
+            entries = await _fetch_recent_entries(form_id, limit=limit)
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "form_id": form_id, "error": str(exc),
+                    "hint": "Check WP_SITE_URL / GF_CONSUMER_KEY / GF_CONSUMER_SECRET in backend/.env"}
+
+        if not entries:
+            return {
+                "ok": True, "form_id": form_id, "wp_entries": 0,
+                "diagnosis": "Gravity Forms REST API returned ZERO entries for this form. "
+                             "Either the form has no submissions yet, the form_id is wrong, "
+                             "or the GF REST credentials don't have read access to this form.",
+                "entries": [],
+            }
+
+        ids = [str(e["id"]) for e in entries]
+        existing = await db.web_form_contacts.find(
+            {"gravity_entry_id": {"$in": ids}},
+            {"_id": 0, "gravity_entry_id": 1, "first_name": 1, "last_name": 1,
+             "email": 1, "in_pipeline": 1, "pipeline_status": 1, "source": 1,
+             "ingested_via": 1},
+        ).to_list(len(ids))
+        have_by_id = {e["gravity_entry_id"]: e for e in existing}
+        tomb_rows = await db.gf_deleted_entries.find(
+            {"gravity_entry_id": {"$in": ids}},
+            {"_id": 0, "gravity_entry_id": 1},
+        ).to_list(len(ids))
+        tombstoned = {t["gravity_entry_id"] for t in tomb_rows}
+
+        out_rows: list[dict] = []
+        for entry in entries:
+            eid = str(entry["id"])
+            # Mirror the field extraction used by run_backfill
+            if form_id == 33:
+                raw_name = (entry.get("5.3") or "").strip()
+                if raw_name:
+                    parts = raw_name.split(None, 1)
+                    first = parts[0]
+                    last = parts[1] if len(parts) > 1 else None
+                else:
+                    first = last = None
+                email = (entry.get("4") or "").strip().lower() or None
+            else:
+                first = (entry.get("9")  or "").strip() or None
+                last  = (entry.get("12") or "").strip() or None
+                email = (entry.get("4")  or "").strip().lower() or None
+            full_name = f"{first or ''} {last or ''}".strip()
+            is_spam = _looks_like_spam(full_name, email or "")
+            existing_row = have_by_id.get(eid)
+            verdict: str
+            if eid in tombstoned:
+                verdict = "skip_tombstoned"
+            elif existing_row:
+                verdict = "already_in_db"
+            elif is_spam:
+                verdict = "skip_spam_filter"
+            else:
+                verdict = "would_insert"
+            # Snapshot every populated numeric/dotted field so we can see
+            # exactly where the real values live (e.g. 9.3 = First Name on
+            # a "Normal" GF Name field, vs 5 = First Name on a "Simple" one).
+            raw_fields = {
+                k: str(v) for k, v in entry.items()
+                if re.match(r"^\d+(\.\d+)?$", str(k)) and v not in (None, "", [])
+            }
+            out_rows.append({
+                "entry_id": eid,
+                "wp_status": entry.get("_wp_status"),
+                "date_created": entry.get("date_created"),
+                "first_name": first, "last_name": last, "email": email,
+                "verdict": verdict,
+                "existing_in_db": existing_row,
+                "raw_fields": raw_fields,
+            })
+
+        summary = {
+            "would_insert": sum(1 for r in out_rows if r["verdict"] == "would_insert"),
+            "already_in_db": sum(1 for r in out_rows if r["verdict"] == "already_in_db"),
+            "skip_spam_filter": sum(1 for r in out_rows if r["verdict"] == "skip_spam_filter"),
+            "skip_tombstoned": sum(1 for r in out_rows if r["verdict"] == "skip_tombstoned"),
+        }
+        return {"ok": True, "form_id": form_id, "wp_entries": len(entries),
+                "summary": summary, "entries": out_rows}
+
+    @router.post("/intake/backfill/contacted-to-dormant")
+    async def contacted_to_dormant(
+        cutoff_days: int = 60,
+        user: dict = Depends(require_role("admin")),
+    ):
+        """Auto-move "Contacted" pipeline rows older than ``cutoff_days``
+        days into the "Dormant" stage. Reversible: only changes
+        ``pipeline_status`` from ``"contacted"`` → ``"dormant"`` for rows
+        whose newest activity date is older than the cutoff. Idempotent.
+
+        Date detection is permissive — the row is "old" if EVERY
+        timestamp we know about (received_at, pipeline_updated_at,
+        last_touched_at, updated_at, created_at, date) is older than
+        the cutoff. A single recent timestamp keeps the row in
+        Contacted.
+        """
+        cutoff_dt = datetime.now(timezone.utc) - timedelta(days=cutoff_days)
+        cutoff_iso = cutoff_dt.isoformat()
+        cutoff_date_str = cutoff_dt.strftime("%Y-%m-%d")
+
+        # Activity fields = was a HUMAN action recorded on this row?
+        # If yes, keep it in Contacted (someone's still working it).
+        activity_fields = ("pipeline_updated_at", "last_touched_at", "last_human_touch_at")
+        # Arrival fields = when did the lead originally come in?
+        # Used as the fallback when no human-activity field exists.
+        # NOTE: ``created_at`` and ``updated_at`` are EXCLUDED on purpose —
+        # those reflect DB-write events (migrations, schema patches, etc),
+        # not user activity, so they'd pin every legacy row as "fresh".
+        arrival_fields = ("received_at", "date")
+
+        def _to_iso(v) -> str | None:
+            if not v:
+                return None
+            if isinstance(v, datetime):
+                if v.tzinfo is None:
+                    v = v.replace(tzinfo=timezone.utc)
+                return v.isoformat()
+            return str(v)
+
+        def _row_is_old(doc: dict) -> bool:
+            # 1) If a human touched it after the cutoff → not old.
+            for fld in activity_fields:
+                iso = _to_iso(doc.get(fld))
+                if iso and iso >= cutoff_iso[: len(iso)]:
+                    return False
+            # 2) Otherwise check arrival date — old enough → move it.
+            #    If no arrival date at all, treat as old (safer for stale stubs).
+            for fld in arrival_fields:
+                iso = _to_iso(doc.get(fld))
+                if not iso:
+                    continue
+                # Date-only strings (e.g. "2025-10-15") compare cleanly
+                # against cutoff_date_str ("2025-04-20") via lexicographic.
+                if len(iso) <= 10:
+                    return iso < cutoff_date_str
+                return iso < cutoff_iso
+            return True
+
+        moved_web = 0
+        moved_legacy = 0
+        for coll_name, counter in (("web_form_contacts", "web"), ("contacts", "legacy")):
+            coll = db[coll_name]
+            cursor = coll.find(
+                {"in_pipeline": True, "pipeline_status": "contacted"},
+                {"_id": 0, "id": 1,
+                 **{f: 1 for f in activity_fields + arrival_fields}},
+            )
+            stale_ids: list[str] = []
+            async for doc in cursor:
+                if _row_is_old(doc) and doc.get("id"):
+                    stale_ids.append(doc["id"])
+            if stale_ids:
+                res = await coll.update_many(
+                    {"id": {"$in": stale_ids},
+                     "in_pipeline": True, "pipeline_status": "contacted"},
+                    {"$set": {
+                        "pipeline_status": "dormant",
+                        "pipeline_updated_at": datetime.now(timezone.utc).isoformat(),
+                        "auto_dormant_reason": f"contacted_to_dormant_{cutoff_days}d",
+                    }},
+                )
+                if counter == "web":
+                    moved_web = res.modified_count
+                else:
+                    moved_legacy = res.modified_count
+        logger.warning(
+            "contacted_to_dormant: moved %s web + %s legacy rows older than %s days",
+            moved_web, moved_legacy, cutoff_days,
+        )
+        return {
+            "ok": True, "cutoff_days": cutoff_days,
+            "web_moved": moved_web, "legacy_moved": moved_legacy,
+            "by": user.get("email"),
+        }
 
     return router
 

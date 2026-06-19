@@ -1044,7 +1044,7 @@ async def gravity_forms_intake(payload: GravityFormsIntake, request: Request):
         "form_title": payload.form_title,
         "gravity_entry_id": payload.entry_id,
         "date": payload.date or datetime.now(timezone.utc).isoformat(),
-        "first_name": _pick(f, "First Name", "first_name", "fname", "First", "FirstName", "Name"),
+        "first_name": _pick(f, "First Name", "first_name", "fname", "First", "FirstName", "Name", "Full Name", "Your Name"),
         "last_name": _pick(f, "Last Name", "last_name", "lname", "Last", "Surname"),
         "email": _pick(f, "Email", "Email Address", "email", "email_address"),
         "telephone": _pick(f, "Telephone", "Phone", "Telephone Number", "Mobile", "Phone Number"),
@@ -1066,6 +1066,15 @@ async def gravity_forms_intake(payload: GravityFormsIntake, request: Request):
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
+    # Some forms (e.g. Form 33 popup) send a single "Name" field with the
+    # full name. If we ended up with everything in first_name and nothing
+    # in last_name, split on the first whitespace so the kanban shows a
+    # tidy "First Last" card instead of a giant first_name string.
+    if doc["first_name"] and not doc["last_name"] and " " in doc["first_name"].strip():
+        first_raw = doc["first_name"].strip()
+        parts = first_raw.split(None, 1)
+        doc["first_name"] = parts[0]
+        doc["last_name"] = parts[1] if len(parts) > 1 else None
     await db.web_form_contacts.insert_one(doc)
     logger.info(f"Intake: form_id={payload.form_id} source={source} entry={payload.entry_id} from {request.client.host if request.client else '?'}")
     return {"ok": True, "id": doc["id"], "source": source}

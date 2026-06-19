@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
-import { Download, Eye, EyeOff, Copy, Check, ExternalLink, AlertCircle, Inbox, Activity } from "lucide-react";
+import { Download, Eye, EyeOff, Copy, Check, ExternalLink, AlertCircle, Inbox, Activity, RefreshCw, Archive, Stethoscope } from "lucide-react";
 
 function Panel({ icon: Icon, title, action, children, testid }) {
   return (
@@ -38,6 +38,9 @@ export default function FormIntakePage() {
   const [recent, setRecent] = useState([]);
   const [error, setError] = useState("");
   const [showToken, setShowToken] = useState(false);
+  const [busyAction, setBusyAction] = useState("");        // "refresh" | "dormant" | "diagnose"
+  const [actionResult, setActionResult] = useState(null);  // last operation summary
+  const [diagnoseFormId, setDiagnoseFormId] = useState(33);
 
   const refresh = async () => {
     try {
@@ -71,6 +74,46 @@ export default function FormIntakePage() {
     franchise_enquiry: "Franchise",
     licence_enquiry: "Licence",
   }[s] || s || "Other");
+
+  const runMaintenance = async (kind) => {
+    setBusyAction(kind);
+    setActionResult(null);
+    setError("");
+    try {
+      let resp;
+      if (kind === "refresh") {
+        resp = await api.post("/intake/backfill/run", null, { params: { limit: 50, repair: true } });
+        setActionResult({ kind, ok: true, summary:
+          `Pulled ${resp.data.checked || 0} entries from Gravity Forms. ${resp.data.inserted || 0} new, ${resp.data.updated || 0} repaired.` });
+      } else if (kind === "dormant") {
+        if (!window.confirm("Move all 'Contacted' leads that haven't been touched in 60 days into 'Dormant'? This is safe — only changes the stage, no data deleted.")) {
+          setBusyAction(""); return;
+        }
+        resp = await api.post("/intake/backfill/contacted-to-dormant", null, { params: { cutoff_days: 60 } });
+        setActionResult({ kind, ok: true, summary:
+          `Moved ${(resp.data.web_moved || 0) + (resp.data.legacy_moved || 0)} stale 'Contacted' leads into 'Dormant'.` });
+      } else if (kind === "diagnose") {
+        resp = await api.get(`/intake/backfill/diagnose/${diagnoseFormId}`, { params: { limit: 20 } });
+        const d = resp.data;
+        if (!d.ok) {
+          setActionResult({ kind, ok: false, summary: d.error || d.diagnosis || "Diagnostic failed.", raw: d });
+        } else if (d.wp_entries === 0) {
+          setActionResult({ kind, ok: false, summary:
+            `Form ${diagnoseFormId} has ZERO submissions on the WP side. Either the form has no entries yet, or the form_id is wrong.`, raw: d });
+        } else {
+          const s = d.summary || {};
+          setActionResult({ kind, ok: true, summary:
+            `Form ${diagnoseFormId}: ${d.wp_entries} entries on WP — ${s.would_insert || 0} would insert, ${s.already_in_db || 0} already in DB, ${s.skip_spam_filter || 0} filtered as spam, ${s.skip_tombstoned || 0} tombstoned.`, raw: d });
+        }
+      }
+      // refresh recent feed after a maintenance op
+      try { const { data } = await api.get("/intake/recent", { params: { limit: 20 } }); setRecent(data.items || []); } catch (e) {/* noop */}
+    } catch (e) {
+      setError(`Maintenance failed: ${e?.response?.data?.detail || e.message}`);
+    } finally {
+      setBusyAction("");
+    }
+  };
 
   return (
     <div className="min-h-screen">
@@ -151,6 +194,81 @@ export default function FormIntakePage() {
               </li>
             ))}
           </ol>
+        </Panel>
+
+        {/* Maintenance — manual triggers for the GF backfill, stale-lead cleanup, and per-form diagnostic */}
+        <Panel icon={Activity} title="Pipeline Maintenance" testid="panel-maintenance">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <button
+              onClick={() => runMaintenance("refresh")}
+              disabled={!!busyAction}
+              data-testid="btn-backfill-refresh"
+              className="text-left p-4 border border-stone-200 rounded-xl bg-white hover:border-stone-400 hover:bg-stone-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+              <div className="flex items-center gap-2 text-stone-950 mb-2">
+                <RefreshCw className={`w-3.5 h-3.5 ${busyAction === "refresh" ? "animate-spin" : ""}`} />
+                <span className="text-[10px] uppercase tracking-[0.2em] font-bold">Refresh from Gravity Forms</span>
+              </div>
+              <div className="text-xs text-stone-600 leading-relaxed">
+                Pull the most recent 50 entries per pipeline form (17, 32, 33) and ingest anything missed by the live webhook. Safe to run any time.
+              </div>
+            </button>
+
+            <button
+              onClick={() => runMaintenance("dormant")}
+              disabled={!!busyAction}
+              data-testid="btn-contacted-to-dormant"
+              className="text-left p-4 border border-stone-200 rounded-xl bg-white hover:border-stone-400 hover:bg-stone-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+              <div className="flex items-center gap-2 text-stone-950 mb-2">
+                <Archive className={`w-3.5 h-3.5 ${busyAction === "dormant" ? "animate-pulse" : ""}`} />
+                <span className="text-[10px] uppercase tracking-[0.2em] font-bold">Archive Contacted &gt; 60d → Dormant</span>
+              </div>
+              <div className="text-xs text-stone-600 leading-relaxed">
+                Move any {String.fromCharCode(8220)}Contacted{String.fromCharCode(8221)} lead that hasn{String.fromCharCode(8217)}t been touched in 60 days into the {String.fromCharCode(8220)}Dormant{String.fromCharCode(8221)} stage. Reversible — only changes the stage label.
+              </div>
+            </button>
+
+            <div className="p-4 border border-stone-200 rounded-xl bg-white">
+              <div className="flex items-center gap-2 text-stone-950 mb-2">
+                <Stethoscope className="w-3.5 h-3.5" />
+                <span className="text-[10px] uppercase tracking-[0.2em] font-bold">Diagnose a Form</span>
+              </div>
+              <div className="text-xs text-stone-600 leading-relaxed mb-3">
+                Show the latest 20 entries that Gravity Forms reports for a specific form, and whether each would be inserted, skipped, or already exists in the CRM.
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  value={diagnoseFormId}
+                  onChange={(e) => setDiagnoseFormId(Number(e.target.value) || 0)}
+                  data-testid="input-diagnose-form-id"
+                  className="w-20 px-2 py-1.5 text-sm border border-stone-300 rounded-md tabular-nums"
+                  placeholder="Form ID" />
+                <button
+                  onClick={() => runMaintenance("diagnose")}
+                  disabled={!!busyAction || !diagnoseFormId}
+                  data-testid="btn-diagnose-form"
+                  className="flex-1 px-3 py-1.5 bg-stone-950 text-white text-xs font-bold uppercase tracking-wider rounded-md hover:bg-stone-800 disabled:opacity-50">
+                  {busyAction === "diagnose" ? "Diagnosing…" : "Diagnose"}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {actionResult && (
+            <div className={`mt-4 px-4 py-3 rounded-xl text-sm border ${actionResult.ok ? "bg-emerald-50 border-emerald-200 text-emerald-900" : "bg-red-50 border-red-200 text-red-900"}`}
+              data-testid="maintenance-result">
+              <div className="font-semibold mb-1">{actionResult.ok ? "Done" : "Result"}</div>
+              <div>{actionResult.summary}</div>
+              {actionResult.raw?.entries && actionResult.raw.entries.length > 0 && (
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-xs font-bold uppercase tracking-wider">Show entries ({actionResult.raw.entries.length})</summary>
+                  <pre className="mt-2 p-2 bg-white border border-stone-200 rounded text-[11px] overflow-auto max-h-80">
+{JSON.stringify(actionResult.raw.entries, null, 2)}
+                  </pre>
+                </details>
+              )}
+            </div>
+          )}
         </Panel>
 
         {/* Recent submissions */}
