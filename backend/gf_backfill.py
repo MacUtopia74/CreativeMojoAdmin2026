@@ -28,7 +28,7 @@ import asyncio
 import logging
 import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 import httpx
@@ -468,51 +468,69 @@ def _looks_like_spam(name: str, email: str) -> bool:
 
 
 async def _repair_pipeline_membership(db) -> dict:
-    """Self-healing invariant: every contact whose source is in
-    PIPELINE_SOURCES (franchise/licence enquiry) MUST have
-    ``in_pipeline=True`` and ``pipeline_status="new"`` (when no other
-    stage is set). Older rows imported before this contract was
-    introduced — and any row where an edge-case path forgot to set the
-    flag — would otherwise silently disappear from the Sales Pipeline
-    kanban. Called automatically on every backfill cycle so the bug
-    can't reappear without code changes.
+    """DISABLED — the previous implementation was unsafe: it set
+    ``pipeline_status="new"`` on every franchise/licence row whose
+    ``in_pipeline`` flag wasn't ``True``, which dragged 900+ historically-
+    archived contacts back into the NEW column. Kept as a no-op for the
+    callers but does nothing. Use the dedicated repair endpoints
+    (``/intake/backfill/undo-bad-repair``) instead.
+    """
+    return {"web_repaired": 0, "legacy_repaired": 0, "disabled": True}
 
-    Returns ``{web_repaired, legacy_repaired}``.
+
+async def _undo_bad_repair(db, cutoff_days: int = 14) -> dict:
+    """One-shot remediation: undo the over-eager pipeline_status='new'
+    sweep my earlier code did. Reverts any franchise/licence row whose
+    submission is older than ``cutoff_days`` days back to the archived
+    state (``in_pipeline=false``, ``pipeline_status=None``). Rows
+    submitted within the last ``cutoff_days`` are LEFT ALONE — those are
+    legitimate fresh enquiries that should remain in NEW.
+
+    Returns counts so the admin can sanity-check.
     """
     pipeline_sources_list = list(PIPELINE_SOURCES)
-    # web_form_contacts — fix in_pipeline + pipeline_status together so
-    # the kanban actually picks the row up.
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=cutoff_days)).isoformat()
+
+    # Match rows that LOOK swept-up by the bad repair:
+    #   • in PIPELINE_SOURCES
+    #   • currently flagged in_pipeline=true with pipeline_status='new'
+    #   • but received/created older than cutoff_days days ago
+    #   • AND have never had pipeline_status_history beyond this one entry
+    #
+    # The ``$expr`` clause guards against re-archiving rows where an
+    # admin has actually been working the pipeline — if a row has any
+    # touched_at / contacted_at / engaged_at / replied_at field set
+    # within the cutoff window, we leave it alone.
+    base_filter: dict = {
+        "source": {"$in": pipeline_sources_list},
+        "in_pipeline": True,
+        "pipeline_status": "new",
+        "$or": [
+            {"received_at": {"$lt": cutoff, "$ne": None}},
+            {"created_at": {"$lt": cutoff, "$ne": None}},
+            {"date": {"$lt": cutoff, "$ne": None}},
+        ],
+    }
     web = await db.web_form_contacts.update_many(
-        {
-            "source": {"$in": pipeline_sources_list},
-            "merged_into": {"$in": [None, ""]},
-            "$or": [
-                {"in_pipeline": {"$ne": True}},
-                {"in_pipeline": {"$exists": False}},
-            ],
-        },
-        {"$set": {"in_pipeline": True, "pipeline_status": "new"}},
+        base_filter,
+        {"$set": {"in_pipeline": False, "pipeline_status": None,
+                  "auto_archived_at": datetime.now(timezone.utc).isoformat(),
+                  "auto_archived_reason": "undo_bad_pipeline_repair"}},
     )
-    # legacy contacts — same rule but smaller universe.
     legacy = await db.contacts.update_many(
-        {
-            "source": {"$in": pipeline_sources_list},
-            "merged_into": {"$in": [None, ""]},
-            "$or": [
-                {"in_pipeline": {"$ne": True}},
-                {"in_pipeline": {"$exists": False}},
-            ],
-        },
-        {"$set": {"in_pipeline": True, "pipeline_status": "new"}},
+        base_filter,
+        {"$set": {"in_pipeline": False, "pipeline_status": None,
+                  "auto_archived_at": datetime.now(timezone.utc).isoformat(),
+                  "auto_archived_reason": "undo_bad_pipeline_repair"}},
     )
-    if web.modified_count or legacy.modified_count:
-        logger.info(
-            "Pipeline membership self-heal: web=%s legacy=%s",
-            web.modified_count, legacy.modified_count,
-        )
+    logger.warning(
+        "undo_bad_repair: archived %s web + %s legacy rows older than %s days",
+        web.modified_count, legacy.modified_count, cutoff_days,
+    )
     return {
-        "web_repaired": web.modified_count,
-        "legacy_repaired": legacy.modified_count,
+        "web_archived": web.modified_count,
+        "legacy_archived": legacy.modified_count,
+        "cutoff_days": cutoff_days,
     }
 
 
@@ -539,13 +557,26 @@ def attach(api, db, require_role):
         except Exception as exc:
             raise HTTPException(500, detail=str(exc))
 
+    @router.post("/intake/backfill/undo-bad-repair")
+    async def undo_bad_repair_endpoint(
+        cutoff_days: int = 14,
+        user: dict = Depends(require_role("admin")),
+    ):
+        """EMERGENCY: undo the over-eager pipeline_status='new' sweep
+        that the previous self-heal logic ran. Archives any
+        franchise/licence row currently in NEW that's older than
+        ``cutoff_days`` (default 14). Idempotent.
+        """
+        result = await _undo_bad_repair(db, cutoff_days=cutoff_days)
+        return {"ok": True, **result, "by": user.get("email")}
+
     @router.post("/intake/backfill/repair-pipeline")
     async def repair_pipeline_only(user: dict = Depends(require_role("admin"))):
-        """Standalone pipeline-membership repair. Useful when an admin
-        knows a known-good contact isn't showing up in the kanban and
-        wants to fix it without re-pulling from GF."""
-        heal = await _repair_pipeline_membership(db)
-        return {"ok": True, **heal, "by": user.get("email")}
+        """No-op stub — kept for compatibility with the admin UI but
+        does nothing (the previous self-heal was unsafe). See
+        /intake/backfill/undo-bad-repair to remediate."""
+        return {"ok": True, "web_repaired": 0, "legacy_repaired": 0,
+                "disabled": True, "by": user.get("email")}
 
     @router.get("/intake/backfill/status")
     async def backfill_status(_user: dict = Depends(require_role("admin"))):
