@@ -70,7 +70,45 @@ where applicable.
     Diagnose a Form. Removes need for console snippets.
   • `_repair_pipeline_membership` confirmed permanently disabled (kept
     as no-op) — caused the 951-row resurrection in iter 23.
+- ✅ **Iteration 27 (19 Jun 2026) — Pre-go-live franchisee readiness check**
+  • Comprehensive testing-agent end-to-end pass before Foteini's first
+    login: portal login (2-step), File Vault access (incl. cross-
+    franchisee permission denial), Territory map, HQ Updates, Logout,
+    admin sanity all PASS.
+  • Sandra demo franchisee verified — login lands on /portal (not
+    /admin), sidebar shows My Franchise / Territory / Calendar /
+    File Vault / HQ Updates / Account.
+  • Project Folder modal (iter-26) verified visually end-to-end:
+    opens with folder summary card + List/Grid toggle + DOWNLOAD ALL
+    AS ZIP + per-file downloads. Both view modes render correctly.
+  • Added ``/portal/calendar`` → ``/portal/events`` Navigate redirect
+    so any legacy URL in handover emails / docs still lands on the
+    right page.
+  • Normalised the historic ``must_change_password`` vs
+    ``force_password_change`` naming drift — admin users-list and
+    ``_user_doc_to_response`` (login + me) now BOTH return both
+    fields as equivalent booleans, plus ``handover_pending`` is
+    surfaced consistently.
+  • Cleaned up the 4 stale ``password_reset_requests`` rows left
+    behind by the testing agent (rejected, preserves audit trail).
+  • Backend ZIP-stream perf flagged for follow-up: streaming the
+    full ``shared/`` (6.4 GB / 1217 files) saturates a worker —
+    consider async job + signed URL for the next iteration.
+
 - ✅ **Iteration 26 (19 Jun 2026) — Calendar Project Folder modal aligned with HQ Updates UX**
+  • Calendar → "Projects this month" → "Open Project Folder"
+    (renamed from "Open Project Guide") now opens a modal that
+    mirrors the look and feel of ``PublicFolderSharePage``
+    ("Hello Summer"-style).
+  • Folder summary card + List/Grid toggle (preference persists
+    per browser) + per-file Download buttons + "Download all as
+    ZIP" CTA streaming via ``/api/files/folder-zip``.
+  • Grid view shows real thumbnails for images + first-page PDF
+    previews via pdfjs-dist (lazy IntersectionObserver-driven).
+  • Backend untouched — same listing / download / zip endpoints
+    used everywhere else in the file vault.
+
+
   • Calendar → "Projects this month" → "Open Project Folder" (renamed
     from "Open Project Guide") now opens a modal that mirrors the
     look and feel of the public ``PublicFolderSharePage`` ("Hello

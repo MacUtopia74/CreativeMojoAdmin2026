@@ -1,5 +1,5 @@
 import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Layout from "@/components/Layout";
@@ -98,6 +98,10 @@ export default function App() {
               <Route path="territory" element={<PortalTerritoryPage />} />
               <Route path="territory/basic" element={<PortalTerritoryPage forceBasic={true} />} />
               <Route path="events" element={<PortalEventsPage />} />
+              {/* Legacy alias — older handover emails / docs occasionally
+                  referred to /portal/calendar. Redirect to canonical
+                  /portal/events so the link doesn't 404. */}
+              <Route path="calendar" element={<Navigate to="/portal/events" replace />} />
               <Route path="marketing" element={<PortalMarketingPage />} />
               <Route path="marketing/settings" element={<PortalMarketingSettingsPage />} />
               <Route path="training" element={<PortalTrainingPage />} />

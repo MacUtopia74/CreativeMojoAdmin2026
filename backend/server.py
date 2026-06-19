@@ -200,8 +200,14 @@ def user_to_public(doc: dict) -> dict:
     }
     if doc.get("role") == "franchisee" and doc.get("franchisee_id"):
         out["franchisee_id"] = doc["franchisee_id"]
-    if doc.get("force_password_change"):
+    if doc.get("force_password_change") or doc.get("must_change_password"):
         out["force_password_change"] = True
+        # Surface the historic alias too so any caller still keying off
+        # ``must_change_password`` (admin users-list UI, handover badge,
+        # etc.) keeps working without a coordinated migration.
+        out["must_change_password"] = True
+    if doc.get("handover_pending"):
+        out["handover_pending"] = True
     # nav_permissions is only meaningful for admin role. ``None`` (the
     # default) means full access; an explicit list pins the user to a
     # subset of the sidebar. We always include the key when set so the
@@ -401,6 +407,13 @@ async def list_users(_: dict = Depends(require_role("admin"))):
                 f"{f.get('franchise_number') or '—'} · "
                 f"{f.get('organisation') or f.get('name') or '(unnamed)'}"
             )
+        # Normalize the historic naming drift: SOME rows were written
+        # with ``must_change_password``, OTHERS with
+        # ``force_password_change``. Expose BOTH so the frontend can
+        # key off either; treat them as equivalent.
+        flag = bool(r.get("force_password_change") or r.get("must_change_password"))
+        r["force_password_change"] = flag
+        r["must_change_password"] = flag
     return {"users": rows}
 
 
