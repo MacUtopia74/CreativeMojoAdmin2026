@@ -908,10 +908,10 @@ async def handover_portal_access(
     html = _build_handover_email_html(name, target["email"], temp_password, PORTAL_URL)
     import resend as _resend
     _resend.api_key = RESEND_API_KEY
-    # Always CC paul@creativemojo.co.uk on handover emails so HQ has an
-    # off-system audit trail of every portal invite that's gone out.
-    # Skip the CC if the same address is the recipient — Resend will
-    # 400 otherwise.
+    # Always BCC paul@creativemojo.co.uk on handover emails so HQ has
+    # a silent off-system audit trail of every portal invite. Invisible
+    # to the recipient. Skip when the recipient IS that audit address
+    # (Resend would otherwise 400 on duplicates).
     audit_addr = "paul@creativemojo.co.uk"
     payload = {
         "from": f"{RESEND_FROM_NAME} <{RESEND_FROM_EMAIL}>",
@@ -920,11 +920,11 @@ async def handover_portal_access(
         "html": html,
         "tags": [
             {"name": "kind", "value": "portal-handover"},
-            {"name": "audit_cc", "value": "paul@creativemojo.co.uk"},
+            {"name": "audit_bcc", "value": "paul@creativemojo.co.uk"},
         ],
     }
     if (target.get("email") or "").lower() != audit_addr:
-        payload["cc"] = [audit_addr]
+        payload["bcc"] = [audit_addr]
     try:
         result = _resend.Emails.send(payload)
     except Exception as exc:  # noqa: BLE001
@@ -933,7 +933,7 @@ async def handover_portal_access(
     return {
         "ok": True,
         "email_sent_to": target["email"],
-        "audit_cc": audit_addr if payload.get("cc") else None,
+        "audit_bcc": audit_addr if payload.get("bcc") else None,
         "user_id": user_id,
         "resend_id": (result or {}).get("id") if isinstance(result, dict) else None,
         "sent_at": now_iso,
