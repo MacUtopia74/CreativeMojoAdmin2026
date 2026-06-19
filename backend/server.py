@@ -908,20 +908,32 @@ async def handover_portal_access(
     html = _build_handover_email_html(name, target["email"], temp_password, PORTAL_URL)
     import resend as _resend
     _resend.api_key = RESEND_API_KEY
+    # Always CC paul@creativemojo.co.uk on handover emails so HQ has an
+    # off-system audit trail of every portal invite that's gone out.
+    # Skip the CC if the same address is the recipient — Resend will
+    # 400 otherwise.
+    audit_addr = "paul@creativemojo.co.uk"
+    payload = {
+        "from": f"{RESEND_FROM_NAME} <{RESEND_FROM_EMAIL}>",
+        "to": [target["email"]],
+        "subject": "Welcome to the Creative Mojo Franchise Hub",
+        "html": html,
+        "tags": [
+            {"name": "kind", "value": "portal-handover"},
+            {"name": "audit_cc", "value": "paul@creativemojo.co.uk"},
+        ],
+    }
+    if (target.get("email") or "").lower() != audit_addr:
+        payload["cc"] = [audit_addr]
     try:
-        result = _resend.Emails.send({
-            "from": f"{RESEND_FROM_NAME} <{RESEND_FROM_EMAIL}>",
-            "to": [target["email"]],
-            "subject": "Welcome to the Creative Mojo Franchise Hub",
-            "html": html,
-            "tags": [{"name": "kind", "value": "portal-handover"}],
-        })
+        result = _resend.Emails.send(payload)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(502, detail=f"Resend send failed: {exc}") from exc
 
     return {
         "ok": True,
         "email_sent_to": target["email"],
+        "audit_cc": audit_addr if payload.get("cc") else None,
         "user_id": user_id,
         "resend_id": (result or {}).get("id") if isinstance(result, dict) else None,
         "sent_at": now_iso,
