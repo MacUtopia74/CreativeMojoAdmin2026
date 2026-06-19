@@ -70,6 +70,39 @@ where applicable.
     Diagnose a Form. Removes need for console snippets.
   • `_repair_pipeline_membership` confirmed permanently disabled (kept
     as no-op) — caused the 951-row resurrection in iter 23.
+- ✅ **Iteration 25 (19 Jun 2026) — Manage Gravity Forms admin tool**
+  • Form intake config moved from hardcoded ``form_intake_config.py`` +
+    ``gf_backfill.py if form_id == X:`` ladder to a MongoDB-backed
+    ``gf_form_configs`` collection. Static module kept as a safety
+    fallback if a form's DB row is missing.
+  • New module ``gf_form_config_db.py`` owns the schema, seed
+    migration (forms 1/17/32/33 auto-inserted on first boot), CRUD
+    helpers, generic ``extract_from_entry`` and ``auto_guess_field_map``.
+  • New endpoints under ``/api/intake/forms-config``:
+    - ``GET    /``            list all configured forms
+    - ``GET    /{id}``        single config
+    - ``POST   /``            create
+    - ``PUT    /{id}``        update
+    - ``DELETE /{id}``        remove
+    - ``GET    /{id}/discover``  fetch GF form metadata + auto-guess field map
+    - ``POST   /{id}/preview``   dry-run last 10 entries through any
+                                 config (saved OR unsaved) — returns
+                                 per-entry outcome predictions
+  • ``run_backfill`` now reads field mappings from the DB. The legacy
+    if-ladder remains as a safety net.
+  • New ``<ManageFormsPanel />`` React component on Form Intake page:
+    table of configured forms with badges (category + pipeline?),
+    Add/Edit modal with autodetect button, Preview panel with table
+    of dry-run outcomes. Email is required; first_name OR full_name
+    must be set.
+  • Categories supported: Franchise (pipeline), Licence (pipeline),
+    Care Home, Art Kit, General (contacts only).
+  • Verified end-to-end: existing 4 forms behave identically; CRUD +
+    preview + discover all work; invalid configs (missing email) get
+    400'd; deleting + re-adding doesn't lose data.
+  • Adding a new Gravity Form is now: click Add → enter ID → click
+    Auto-detect → review → Test Import → Save. No code, no deploy.
+
 - ✅ **Iteration 24.3 (19 Jun 2026) — THE actual Form 33 fix**
   • Real root cause #1 (revealed by the per-entry traces in v24.2):
     Production's ``GF_BACKFILL_FORM_IDS`` env var was set to ``1,17,32``

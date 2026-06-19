@@ -5176,6 +5176,17 @@ async def on_startup():
     await db.users.create_index("email", unique=True)
     await db.users.create_index("id", unique=True)
     await db.login_attempts.create_index("identifier")
+    await db.gf_form_configs.create_index("form_id", unique=True)
+
+    # Seed the GF intake form configs from the static module on first
+    # boot so the new DB-backed admin UI starts populated. Idempotent.
+    try:
+        from gf_form_config_db import seed_if_empty as _seed_gf_configs
+        seeded = await _seed_gf_configs(db)
+        if seeded:
+            logger.info("Seeded %s gf_form_configs entries", seeded)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("gf_form_configs seed skipped: %s", exc)
 
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@creativemojo.co.uk").lower()
     admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")

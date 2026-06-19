@@ -184,6 +184,27 @@ _backfill_state: dict = {
     "last_error": None,
 }
 
+async def _fetch_form_meta(form_id: int) -> dict | None:
+    """Fetch a GF form's metadata (title + field definitions). Used by
+    the discover endpoint to auto-guess field IDs. Returns None on
+    failure so the caller degrades gracefully to sample-based detection."""
+    base = (os.environ.get("WP_SITE_URL") or "").rstrip("/")
+    key = os.environ.get("GF_CONSUMER_KEY") or ""
+    secret = os.environ.get("GF_CONSUMER_SECRET") or ""
+    if not (base and key and secret):
+        return None
+    url = f"{base}/wp-json/gf/v2/forms/{int(form_id)}"
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as http:
+            r = await http.get(url, auth=(key, secret))
+            if r.status_code != 200:
+                return None
+            return r.json()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+
 
 async def _fetch_recent_entries(form_id: int, limit: int = 50) -> list[dict]:
     """Most-recent ``limit`` entries from one Gravity Form. Pulls BOTH
@@ -250,7 +271,20 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
     # excluded form 33, causing the Form-33 leads outage. Union >
     # override.
     from form_intake_config import backfill_form_ids
+    from gf_form_config_db import (
+        list_configs as _list_db_configs,
+        backfill_form_ids as _db_backfill_form_ids,
+    )
+
+    # Pull DB-managed form configs once; they become the source of
+    # truth for field mappings + source assignment. The static
+    # form_intake_config module is kept as a safety net so a missing
+    # row doesn't kill ingestion of a known form.
+    db_configs = await _list_db_configs(db)
+    db_configs_by_id: dict[int, dict] = {int(c["form_id"]): c for c in db_configs}
+
     form_ids: set[int] = set(backfill_form_ids())
+    form_ids.update(_db_backfill_form_ids(db_configs))
     env_override = (os.environ.get("GF_BACKFILL_FORM_IDS") or "").strip()
     if env_override:
         form_ids.update(
@@ -364,45 +398,64 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
             county = (entry.get("15") or "").strip() or None
             comments = (entry.get("6") or "").strip() or None
             establishment = (entry.get("21") or "").strip() or None  # form 1 only
+            country = None
+            postcode = None
+            source = None
+            in_pipeline_flag = False
 
-            # Form-specific quirks.
-            if form_id == 32:
-                # Licence: split postcode (28) + country (16)
-                postcode = (entry.get("28") or "").strip() or None
-                country  = (entry.get("16") or "").strip() or None
-                source = "licence_enquiry"
-                in_pipeline_flag = True
-            elif form_id == 33:
-                # Short franchise popup — composite field layout (dotted keys):
-                # Name=5.3 (full single field), Email=4, Phone=6, Postcode=7.5.
-                # Fall back to flat keys (5 / 7) in case the WP form is ever
-                # rebuilt with "Simple" name/address sub-types. 5.3 holds the
-                # WHOLE name ("Lisa", "Donna O'Neill") so we split on the
-                # first whitespace into first/last.
-                raw_name = (entry.get("5.3") or entry.get("5") or "").strip()
-                if raw_name:
-                    parts = raw_name.split(None, 1)
-                    first = parts[0]
-                    last = parts[1] if len(parts) > 1 else None
-                email = (entry.get("4") or "").strip().lower() or email
-                phone = (entry.get("6") or "").strip() or phone
-                postcode = (entry.get("7.5") or entry.get("7") or "").strip() or None
-                country  = None
-                source = "franchise_enquiry"
-                in_pipeline_flag = True
-            elif form_id == 1:
-                postcode = (entry.get("16") or "").strip() or None
-                country  = None
-                reason   = (entry.get("20") or "").strip()
-                source   = FORM1_REASON_TO_SOURCE.get(reason.lower(), "general_enquiry")
-                # Only franchise / licence enquiries enter the sales pipeline;
-                # care-home/art-kit/other land in CRM but stay out of kanban.
-                in_pipeline_flag = source in PIPELINE_SOURCES
+            # DB-managed extraction — preferred path. If the form has a
+            # row in gf_form_configs, that owns the field layout +
+            # source routing. The static if-ladder below remains ONLY
+            # as a safety net for forms whose DB row is missing or
+            # malformed (e.g. mid-deploy migration window).
+            db_cfg = db_configs_by_id.get(int(form_id))
+            if db_cfg:
+                from gf_form_config_db import extract_from_entry as _extract_db
+                extracted = _extract_db(entry, db_cfg)
+                first = extracted.get("first_name") or first
+                last  = extracted.get("last_name") or last
+                email = extracted.get("email") or email
+                phone = extracted.get("phone") or phone
+                postcode = extracted.get("postcode") or None
+                if extracted.get("message"):
+                    comments = extracted["message"]
+                source = extracted.get("source") or source
+                in_pipeline_flag = bool(extracted.get("in_pipeline"))
+                # Form-32-style "country" extra still preserved via extras
+                extras = db_cfg.get("extras") or {}
+                country_fid = extras.get("country_field") if isinstance(extras, dict) else None
+                if country_fid:
+                    country = (entry.get(country_fid) or "").strip() or None
+                # Form title from config if set
+                if db_cfg.get("form_title"):
+                    form_title = db_cfg["form_title"]
             else:
-                # Form 17 (Franchise)
-                postcode = (entry.get("16") or "").strip() or None
-                country  = None
-                source = "franchise_enquiry"
+                # ---- Static fallback (legacy, kept for safety) ----
+                if form_id == 32:
+                    postcode = (entry.get("28") or "").strip() or None
+                    country  = (entry.get("16") or "").strip() or None
+                    source = "licence_enquiry"
+                    in_pipeline_flag = True
+                elif form_id == 33:
+                    raw_name = (entry.get("5.3") or entry.get("5") or "").strip()
+                    if raw_name:
+                        parts = raw_name.split(None, 1)
+                        first = parts[0]
+                        last = parts[1] if len(parts) > 1 else None
+                    email = (entry.get("4") or "").strip().lower() or email
+                    phone = (entry.get("6") or "").strip() or phone
+                    postcode = (entry.get("7.5") or entry.get("7") or "").strip() or None
+                    source = "franchise_enquiry"
+                    in_pipeline_flag = True
+                elif form_id == 1:
+                    postcode = (entry.get("16") or "").strip() or None
+                    reason   = (entry.get("20") or "").strip()
+                    source   = FORM1_REASON_TO_SOURCE.get(reason.lower(), "general_enquiry")
+                    in_pipeline_flag = source in PIPELINE_SOURCES
+                else:
+                    postcode = (entry.get("16") or "").strip() or None
+                    source = "franchise_enquiry"
+                    in_pipeline_flag = True
                 in_pipeline_flag = True
 
             full_name = f"{first or ''} {last or ''}".strip()
@@ -1019,6 +1072,169 @@ def attach(api, db, require_role):
             "web_moved": moved_web, "legacy_moved": moved_legacy,
             "by": user.get("email"),
         }
+
+    # =====================================================================
+    # Form-config CRUD — the "Manage Gravity Forms" admin UI lives here.
+    # =====================================================================
+    from gf_form_config_db import (
+        list_configs as _cfg_list,
+        get_config as _cfg_get,
+        upsert_config as _cfg_upsert,
+        delete_config as _cfg_delete,
+        auto_guess_field_map as _cfg_guess,
+        extract_from_entry as _cfg_extract,
+        KNOWN_SOURCES as _CFG_SOURCES,
+        PIPELINE_SOURCES as _CFG_PIPELINE,
+        STANDARD_FIELDS as _CFG_STD_FIELDS,
+    )
+
+    @router.get("/intake/forms-config")
+    async def forms_config_list(_user: dict = Depends(require_role("admin"))):
+        configs = await _cfg_list(db)
+        return {
+            "ok": True,
+            "configs": configs,
+            "known_sources": list(_CFG_SOURCES),
+            "pipeline_sources": list(_CFG_PIPELINE),
+            "standard_fields": list(_CFG_STD_FIELDS),
+        }
+
+    @router.get("/intake/forms-config/{form_id}")
+    async def forms_config_get(form_id: int, _user: dict = Depends(require_role("admin"))):
+        cfg = await _cfg_get(db, form_id)
+        if not cfg:
+            raise HTTPException(404, detail=f"Form {form_id} not configured")
+        return cfg
+
+    @router.post("/intake/forms-config")
+    async def forms_config_create(payload: dict, user: dict = Depends(require_role("admin"))):
+        try:
+            cfg = await _cfg_upsert(db, payload, allow_create=True)
+        except ValueError as exc:
+            raise HTTPException(400, detail=str(exc))
+        logger.warning("forms_config_create: form_id=%s by %s", payload.get("form_id"), user.get("email"))
+        return {"ok": True, "config": cfg}
+
+    @router.put("/intake/forms-config/{form_id}")
+    async def forms_config_update(form_id: int, payload: dict, user: dict = Depends(require_role("admin"))):
+        payload = dict(payload)
+        payload["form_id"] = form_id
+        try:
+            cfg = await _cfg_upsert(db, payload, allow_create=False)
+        except ValueError as exc:
+            raise HTTPException(400, detail=str(exc))
+        logger.warning("forms_config_update: form_id=%s by %s", form_id, user.get("email"))
+        return {"ok": True, "config": cfg}
+
+    @router.delete("/intake/forms-config/{form_id}")
+    async def forms_config_delete(form_id: int, user: dict = Depends(require_role("admin"))):
+        ok = await _cfg_delete(db, form_id)
+        if not ok:
+            raise HTTPException(404, detail=f"Form {form_id} not configured")
+        logger.warning("forms_config_delete: form_id=%s by %s", form_id, user.get("email"))
+        return {"ok": True, "deleted": form_id}
+
+    @router.get("/intake/forms-config/{form_id}/discover")
+    async def forms_config_discover(form_id: int, _user: dict = Depends(require_role("admin"))):
+        """Fetch the GF form metadata + a recent entry sample, and return
+        a best-guess field map the admin can review before saving. Powers
+        the "Auto-detect fields" button in the Add Form wizard."""
+        # GF form metadata (labels + sub-inputs for composite fields)
+        gf_form_meta = await _fetch_form_meta(form_id)
+        # Recent entries to show as a preview
+        try:
+            entries = await _fetch_recent_entries(form_id, limit=5)
+        except Exception as exc:  # noqa: BLE001
+            entries = []
+            meta_err = str(exc)
+        else:
+            meta_err = None
+        sample = entries[0] if entries else {}
+        guesses = _cfg_guess(sample, gf_form_meta)
+        return {
+            "ok": True,
+            "form_id": form_id,
+            "form_title": (gf_form_meta or {}).get("title") if gf_form_meta else None,
+            "gf_form_meta": gf_form_meta,
+            "guessed_field_map": guesses,
+            "sample_entries": entries,
+            "meta_error": meta_err,
+        }
+
+    @router.post("/intake/forms-config/{form_id}/preview")
+    async def forms_config_preview(form_id: int, payload: dict | None = None,
+                                   _user: dict = Depends(require_role("admin"))):
+        """Dry-run: applies the supplied (or saved) config to the latest
+        GF entries WITHOUT writing anything. Powers the "Test Import"
+        button. Returns per-entry outcome predictions so the admin can
+        sanity-check a mapping before going live."""
+        payload = payload or {}
+        if payload.get("form_id"):
+            cfg = dict(payload)
+            cfg["form_id"] = form_id
+        else:
+            cfg = await _cfg_get(db, form_id)
+            if not cfg:
+                raise HTTPException(404, detail=f"Form {form_id} not configured. Send a config in the body to preview an unsaved mapping.")
+        try:
+            entries = await _fetch_recent_entries(form_id, limit=10)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(502, detail=f"Gravity Forms fetch failed: {exc}")
+
+        ids = [str(e["id"]) for e in entries]
+        existing = await db.web_form_contacts.find(
+            {"gravity_entry_id": {"$in": ids}},
+            {"_id": 0, "gravity_entry_id": 1, "first_name": 1, "last_name": 1, "email": 1, "in_pipeline": 1, "pipeline_status": 1},
+        ).to_list(len(ids))
+        by_eid = {e["gravity_entry_id"]: e for e in existing}
+        emails_in_entries = [
+            (e.get(cfg.get("field_map", {}).get("email") or "4") or "").strip().lower()
+            for e in entries
+        ]
+        emails_in_entries = [e for e in emails_in_entries if e]
+        email_rows = await db.web_form_contacts.find(
+            {"email": {"$in": emails_in_entries}},
+            {"_id": 0, "email": 1, "first_name": 1, "last_name": 1, "in_pipeline": 1, "pipeline_status": 1, "source": 1, "gravity_entry_id": 1, "id": 1},
+        ).to_list(None) if emails_in_entries else []
+        by_email: dict[str, dict] = {}
+        for r in email_rows:
+            em = (r.get("email") or "").lower()
+            if em and em not in by_email:
+                by_email[em] = r
+
+        rows: list[dict] = []
+        for e in entries:
+            eid = str(e["id"])
+            extracted = _cfg_extract(e, cfg)
+            preexisting = by_eid.get(eid)
+            em_match = by_email.get(extracted.get("email") or "") if extracted.get("email") else None
+            if preexisting:
+                outcome = "already_in_db"
+            elif em_match:
+                em_active = em_match.get("in_pipeline") and (em_match.get("pipeline_status") or "") not in ("dormant", "lost", "")
+                if not extracted["in_pipeline"]:
+                    outcome = "would_insert_or_update_non_pipeline"
+                elif em_active:
+                    outcome = "skip_already_active"
+                else:
+                    outcome = "would_promote_existing"
+            else:
+                outcome = "would_insert"
+            rows.append({
+                "entry_id": eid,
+                "name": f"{extracted['first_name'] or ''} {extracted['last_name'] or ''}".strip() or extracted.get("raw_full_name"),
+                "email": extracted.get("email"),
+                "phone": extracted.get("phone"),
+                "postcode": extracted.get("postcode"),
+                "source": extracted["source"],
+                "in_pipeline": extracted["in_pipeline"],
+                "outcome": outcome,
+            })
+
+        summary = {}
+        for r in rows:
+            summary[r["outcome"]] = summary.get(r["outcome"], 0) + 1
+        return {"ok": True, "form_id": form_id, "preview": rows, "summary": summary}
 
     return router
 

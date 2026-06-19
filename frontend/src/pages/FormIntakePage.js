@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
 import { Download, Eye, EyeOff, Copy, Check, ExternalLink, AlertCircle, Inbox, Activity, RefreshCw, Archive, Stethoscope } from "lucide-react";
+import ManageFormsPanel from "@/components/ManageFormsPanel";
 
 function Panel({ icon: Icon, title, action, children, testid }) {
   return (
@@ -304,6 +305,9 @@ export default function FormIntakePage() {
             </div>
           )}
         </Panel>
+
+        {/* Manage Gravity Forms — admin-editable per-form intake config */}
+        <ManageFormsPanel onAfterChange={refresh} />
 
         {/* Recent submissions */}
         <Panel icon={Inbox} title={`Recent Submissions${recent.length ? ` (${recent.length})` : ""}`} action={
