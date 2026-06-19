@@ -486,30 +486,31 @@ async def _undo_bad_repair(db, cutoff_days: int = 14) -> dict:
     submitted within the last ``cutoff_days`` are LEFT ALONE — those are
     legitimate fresh enquiries that should remain in NEW.
 
-    Returns counts so the admin can sanity-check.
+    Date fields can be stored as ISO strings OR datetime objects on
+    different code paths — we test both shapes against both forms of
+    the cutoff so the filter never silently misses rows.
     """
     pipeline_sources_list = list(PIPELINE_SOURCES)
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=cutoff_days)).isoformat()
+    cutoff_dt = datetime.now(timezone.utc) - timedelta(days=cutoff_days)
+    cutoff_iso = cutoff_dt.isoformat()
 
-    # Match rows that LOOK swept-up by the bad repair:
-    #   • in PIPELINE_SOURCES
-    #   • currently flagged in_pipeline=true with pipeline_status='new'
-    #   • but received/created older than cutoff_days days ago
-    #   • AND have never had pipeline_status_history beyond this one entry
-    #
-    # The ``$expr`` clause guards against re-archiving rows where an
-    # admin has actually been working the pipeline — if a row has any
-    # touched_at / contacted_at / engaged_at / replied_at field set
-    # within the cutoff window, we leave it alone.
+    # Match franchise/licence rows currently sitting in NEW that are
+    # genuinely OLD. Any of the timestamp fields can give us age, so
+    # match if ANY says "older than cutoff" — covers webhook intake
+    # (received_at), backfill (received_at), and legacy migrations
+    # (date/created_at).
+    date_or: list[dict] = []
+    for field in ("received_at", "created_at", "date"):
+        # Datetime form
+        date_or.append({field: {"$lt": cutoff_dt, "$ne": None}})
+        # ISO-string form
+        date_or.append({field: {"$lt": cutoff_iso, "$ne": None, "$type": "string"}})
+
     base_filter: dict = {
         "source": {"$in": pipeline_sources_list},
         "in_pipeline": True,
         "pipeline_status": "new",
-        "$or": [
-            {"received_at": {"$lt": cutoff, "$ne": None}},
-            {"created_at": {"$lt": cutoff, "$ne": None}},
-            {"date": {"$lt": cutoff, "$ne": None}},
-        ],
+        "$or": date_or,
     }
     web = await db.web_form_contacts.update_many(
         base_filter,
@@ -523,13 +524,21 @@ async def _undo_bad_repair(db, cutoff_days: int = 14) -> dict:
                   "auto_archived_at": datetime.now(timezone.utc).isoformat(),
                   "auto_archived_reason": "undo_bad_pipeline_repair"}},
     )
+    # Diagnostic count — how many rows are currently in NEW for each
+    # source. Helps the admin sanity-check what just happened.
+    web_remaining_new = await db.web_form_contacts.count_documents({
+        "source": {"$in": pipeline_sources_list},
+        "in_pipeline": True, "pipeline_status": "new",
+    })
     logger.warning(
-        "undo_bad_repair: archived %s web + %s legacy rows older than %s days",
-        web.modified_count, legacy.modified_count, cutoff_days,
+        "undo_bad_repair: archived %s web + %s legacy rows older than %s days "
+        "(%s rows still in NEW)",
+        web.modified_count, legacy.modified_count, cutoff_days, web_remaining_new,
     )
     return {
         "web_archived": web.modified_count,
         "legacy_archived": legacy.modified_count,
+        "web_still_in_new": web_remaining_new,
         "cutoff_days": cutoff_days,
     }
 
