@@ -2,6 +2,7 @@ import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import Logo from "@/components/Logo";
 import PortalNewVersionBanner from "@/components/portal/PortalNewVersionBanner";
+import FollowupNagger from "@/components/FollowupNagger";
 import api from "@/lib/api";
 import {
   LayoutDashboard,
@@ -574,6 +575,8 @@ export default function Layout() {
         <PortalNewVersionBanner />
         <Outlet />
       </main>
+      {/* Admin-only global follow-up nag popup (contract renewals etc.) */}
+      {user?.role === "admin" && <FollowupNagger />}
     </div>
   );
 }

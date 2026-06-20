@@ -3471,6 +3471,49 @@ async def mark_contract_contacted(
             }
         },
     )
+    # Auto-create a "follow-up task" so the admin gets nagged in the
+    # global popup until they explicitly Action or Snooze it. The
+    # task is invisible to the franchisee — pure HQ-side reminder.
+    # Default initial due_at = 3 days out (gives the franchisee time
+    # to reply). Reusing the same contract_id makes the task idempotent
+    # so re-sending a reminder for the same contract doesn't stack
+    # duplicates — we just bump the sent_at + reset due_at.
+    due_at = (datetime.now(timezone.utc) + timedelta(days=3)).isoformat()
+    franchisee_doc = await db.franchisees.find_one(
+        {"id": existing.get("franchisee_id")}, {"_id": 0, "name": 1, "organisation": 1, "email": 1}
+    ) if existing.get("franchisee_id") else None
+    label = (
+        (franchisee_doc or {}).get("organisation")
+        or (franchisee_doc or {}).get("name")
+        or existing.get("franchisee_name")
+        or "Franchisee"
+    )
+    await db.followup_tasks.update_one(
+        {"contract_id": contract_id, "kind": "contract_renewal"},
+        {
+            "$set": {
+                "sent_at": now,
+                "sent_by": user.get("email"),
+                "sent_by_name": user.get("name"),
+                "method": method,
+                "due_at": due_at,
+                "status": "pending",
+                "franchisee_id": existing.get("franchisee_id"),
+                "label": label,
+                "franchisee_email": (franchisee_doc or {}).get("email"),
+                "renewal_date": existing.get("renewal_date"),
+                "updated_at": now,
+            },
+            "$setOnInsert": {
+                "id": str(uuid.uuid4()),
+                "kind": "contract_renewal",
+                "contract_id": contract_id,
+                "created_at": now,
+                "snooze_count": 0,
+            },
+        },
+        upsert=True,
+    )
     return {
         "ok": True,
         "last_reminded_at": now,
@@ -3495,7 +3538,109 @@ async def unmark_contract_contacted(
             "last_reminded_method": "",
         }},
     )
+    # Drop any pending follow-up task too — the admin has reversed
+    # the action, so the nag is no longer relevant.
+    await db.followup_tasks.delete_many(
+        {"contract_id": contract_id, "kind": "contract_renewal"}
+    )
     return {"ok": True}
+
+
+# ============================================================================
+# Follow-up tasks — global nag popup
+# ============================================================================
+# When an admin sends a contract-renewal reminder (or any future "I'm
+# expecting a reply" action), we drop a row into ``followup_tasks``.
+# The admin frontend polls the "due" endpoint on every page and shows
+# a non-dismissible modal until the admin clicks Actioned (deletes the
+# task) or Snooze (pushes due_at forward).
+#
+# Schema (collection ``followup_tasks``)::
+#     {
+#       id: str,                # uuid
+#       kind: "contract_renewal",
+#       contract_id: str | None,
+#       franchisee_id: str | None,
+#       label: str,             # what shows in the popup ("Paloma — Smith Ltd")
+#       franchisee_email: str | None,
+#       method: "email" | "phone" | "other",
+#       sent_at: ISODateString,
+#       sent_by / sent_by_name,
+#       renewal_date: str | None,
+#       due_at: ISODateString,  # nag fires once now >= due_at
+#       status: "pending" | "snoozed",  # actioned = deleted
+#       snooze_count: int,
+#       created_at, updated_at,
+#     }
+
+
+@api.get("/followup-tasks/due")
+async def followup_tasks_due(_user: dict = Depends(require_role("admin"))):
+    """List follow-up tasks whose ``due_at`` is in the past (or null).
+    Returned in the order they should be surfaced to the admin —
+    oldest first so the most pressing one shows on top of the stack."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    cursor = db.followup_tasks.find(
+        {"$or": [
+            {"due_at": {"$lte": now_iso}},
+            {"due_at": None},
+            {"due_at": {"$exists": False}},
+        ]},
+        {"_id": 0},
+    ).sort("due_at", 1)
+    rows = await cursor.to_list(length=50)
+    return {"items": rows, "count": len(rows)}
+
+
+@api.post("/followup-tasks/{task_id}/actioned")
+async def followup_task_actioned(
+    task_id: str, user: dict = Depends(require_role("admin"))
+):
+    """Admin clicked 'Actioned' — task is done. We keep a thin audit
+    record in ``followup_tasks_done`` so we can show a history later
+    without polluting the active-task list."""
+    task = await db.followup_tasks.find_one({"id": task_id}, {"_id": 0})
+    if not task:
+        raise HTTPException(404, "Task not found")
+    now = datetime.now(timezone.utc).isoformat()
+    archive_doc = dict(task)
+    archive_doc.update({
+        "actioned_at": now,
+        "actioned_by": user.get("email"),
+        "actioned_by_name": user.get("name"),
+    })
+    await db.followup_tasks_done.insert_one(archive_doc)
+    await db.followup_tasks.delete_one({"id": task_id})
+    return {"ok": True, "actioned_at": now}
+
+
+@api.post("/followup-tasks/{task_id}/snooze")
+async def followup_task_snooze(
+    task_id: str,
+    body: dict | None = None,
+    user: dict = Depends(require_role("admin")),
+):
+    """Push the task's ``due_at`` forward by ``hours`` (default 24).
+    The nag popup will re-surface once that interval elapses."""
+    task = await db.followup_tasks.find_one({"id": task_id}, {"_id": 0})
+    if not task:
+        raise HTTPException(404, "Task not found")
+    hours = int((body or {}).get("hours") or 24)
+    hours = max(1, min(hours, 24 * 30))  # clamp 1h..30d
+    new_due = (datetime.now(timezone.utc) + timedelta(hours=hours)).isoformat()
+    await db.followup_tasks.update_one(
+        {"id": task_id},
+        {
+            "$set": {
+                "due_at": new_due,
+                "status": "snoozed",
+                "snoozed_by": user.get("email"),
+                "snoozed_at": datetime.now(timezone.utc).isoformat(),
+            },
+            "$inc": {"snooze_count": 1},
+        },
+    )
+    return {"ok": True, "due_at": new_due, "snoozed_hours": hours}
 
 
 # ----------------------------------------------------------------------------

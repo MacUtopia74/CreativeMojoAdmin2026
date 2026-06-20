@@ -70,7 +70,44 @@ where applicable.
     Diagnose a Form. Removes need for console snippets.
   • `_repair_pipeline_membership` confirmed permanently disabled (kept
     as no-op) — caused the 951-row resurrection in iter 23.
+- ✅ **Iteration 28 (20 Jun 2026) — Global Follow-up Nag popup**
+  • New ``followup_tasks`` MongoDB collection — when an admin clicks
+    "Remind" on the Contract Renewals page, a follow-up task is now
+    auto-created (idempotent on contract_id) with ``due_at`` set
+    3 days out. ``mark-contacted`` unmark also clears any pending
+    follow-up so undo round-trips cleanly.
+  • New endpoints:
+    - ``GET  /api/followup-tasks/due`` — admin only, lists tasks
+      whose due_at has passed (oldest first).
+    - ``POST /api/followup-tasks/{id}/actioned`` — archives to
+      ``followup_tasks_done`` (audit trail) and removes the nag.
+    - ``POST /api/followup-tasks/{id}/snooze`` — pushes ``due_at``
+      forward by ``hours`` (default 24, clamped 1h..30d).
+  • New ``<FollowupNagger />`` component mounted in the admin
+    ``Layout``. Polls ``/followup-tasks/due`` every 60s and shows a
+    sticky bottom-right card with one row per due task. Each row has
+    Actioned / Snooze 1d / Snooze 1w buttons. Card is collapsible
+    (preference persists per session) but stays mounted so the
+    admin can always see how many follow-ups are in flight.
+  • Schema is generic on ``kind`` so future "I'm awaiting a reply"
+    flows (welcome emails, invoice nudges, etc.) can reuse the same
+    popup without code changes.
+  • Verified end-to-end: mark-contacted → task created with due_at
+    +3d; force-due then poll surfaces it; Actioned removes it
+    (audit kept); Snooze 1d pushes it out of due window.
+
 - ✅ **Iteration 27 (19 Jun 2026) — Pre-go-live franchisee readiness check**
+  • Comprehensive testing-agent end-to-end pass before Foteini's first
+    login: portal login (2-step), File Vault access (incl. cross-
+    franchisee permission denial), Territory map, HQ Updates, Logout,
+    admin sanity all PASS.
+  • Added ``/portal/calendar`` → ``/portal/events`` Navigate redirect.
+  • Normalised the historic ``must_change_password`` vs
+    ``force_password_change`` naming drift.
+  • Handover emails BCC paul@creativemojo.co.uk for off-system audit
+    trail (silent — invisible to recipient).
+
+
   • Comprehensive testing-agent end-to-end pass before Foteini's first
     login: portal login (2-step), File Vault access (incl. cross-
     franchisee permission denial), Territory map, HQ Updates, Logout,
