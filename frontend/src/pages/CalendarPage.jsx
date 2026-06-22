@@ -27,11 +27,12 @@ function formatDateRange(start, end, allDay) {
   const sameDay = s.toDateString() === e.toDateString();
   const opts = allDay
     ? { weekday: "short", day: "2-digit", month: "short", year: "numeric" }
-    : { weekday: "short", day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" };
+    : { weekday: "short", day: "2-digit", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true };
   if (allDay) return sameDay ? s.toLocaleDateString("en-GB", opts) : `${s.toLocaleDateString("en-GB", opts)} → ${e.toLocaleDateString("en-GB", opts)}`;
   if (sameDay) {
     const dayPart = s.toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" });
-    const timePart = `${s.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} – ${e.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`;
+    const timeOpts = { hour: "numeric", minute: "2-digit", hour12: true };
+    const timePart = `${s.toLocaleTimeString("en-GB", timeOpts)} – ${e.toLocaleTimeString("en-GB", timeOpts)}`;
     return `${dayPart} · ${timePart}`;
   }
   return `${s.toLocaleString("en-GB", opts)} → ${e.toLocaleString("en-GB", opts)}`;
@@ -264,21 +265,30 @@ export default function CalendarPage() {
   // the top of the component body (see above) so this memo just
   // applies the filter.
   const fcEvents = useMemo(() => {
-    const out = events.filter(matchesQuery).map((e) => ({
-      id: e.id,
-      title: e.title,
-      start: e.start,
-      end: e.end,
-      allDay: !!e.all_day,
-      extendedProps: { ...e, _kind: "hq" },
-      // Mojo brand lime — matches the [#dddd16] used in the portal
-      // header, Help modal, and franchisee Zoom chips. Dark olive
-      // border + near-black text for AA contrast on the lime fill.
-      backgroundColor: "#dddd16",
-      borderColor: "#7a7a0c",
-      textColor: "#1c1917",
-      display: "block",
-    }));
+    // "Mojo Grow" events get their own brand-mauve treatment so the
+    // monthly grow-team huddles stand out from the lime HQ events.
+    // Detected by title substring (case-insensitive) — keeps it
+    // zero-config; once HQ tags events with proper categories we can
+    // graduate this to a metadata flag.
+    const isMojoGrow = (e) => /mojo\s*grow/i.test(e?.title || "");
+    const MOJO_GROW_BG = "#9f205b";
+    const MOJO_GROW_TEXT = "#FFFFFF";
+
+    const out = events.filter(matchesQuery).map((e) => {
+      const grow = isMojoGrow(e);
+      return {
+        id: e.id,
+        title: e.title,
+        start: e.start,
+        end: e.end,
+        allDay: !!e.all_day,
+        extendedProps: { ...e, _kind: grow ? "mojo_grow" : "hq" },
+        backgroundColor: grow ? MOJO_GROW_BG : "#dddd16",
+        borderColor: grow ? "#7a1844" : "#7a7a0c",
+        textColor: grow ? MOJO_GROW_TEXT : "#1c1917",
+        display: "block",
+      };
+    });
     // Yearly events get the same light-blue solid block the franchisee
     // portal uses (so admins can verify visual parity at a glance).
     yearlyEvents.forEach((y) => {
@@ -481,7 +491,11 @@ export default function CalendarPage() {
               <div className="flex items-center gap-4 mb-3 text-[11px] text-stone-600 flex-wrap" data-testid="cal-legend">
                 <span className="inline-flex items-center gap-1.5">
                   <span className="w-3 h-3 rounded-sm" style={{ background: "#dddd16", border: "1px solid #7a7a0c" }} />
-                  Google Calendar events
+                  HQ events (Google Calendar)
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-sm" style={{ background: "#9f205b" }} />
+                  Mojo Grow meetings
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                   <span className="w-3 h-3 rounded-sm" style={{ background: "#3B82F6" }} />
@@ -1055,8 +1069,12 @@ function ZoomMeetingModal({ defaultTopic, defaultStart, defaultEnd, allDay, onCl
   })();
 
   const [duration, setDuration] = useState(defaultDuration);
-  const [requirePasscode, setRequirePasscode] = useState(true);
-  const [waitingRoom, setWaitingRoom] = useState(false);
+  // Per-product spec: passcode is always OFF (Zoom forces one anyway if
+  // the account-level setting requires it, but we don't surface the
+  // toggle to the admin). Waiting room is the security guard — default
+  // ON so franchisees don't crash into a meeting that hasn't started,
+  // but the admin can still untick it for casual drop-ins.
+  const [waitingRoom, setWaitingRoom] = useState(true);
   const [creating, setCreating] = useState(false);
   const [err, setErr] = useState("");
 
@@ -1064,10 +1082,6 @@ function ZoomMeetingModal({ defaultTopic, defaultStart, defaultEnd, allDay, onCl
     setErr("");
     if (allDay) {
       setErr("Zoom needs a specific start time — switch off 'All-day' first.");
-      return;
-    }
-    if (!requirePasscode && !waitingRoom) {
-      setErr("Zoom requires either a passcode OR a waiting room. Tick at least one.");
       return;
     }
     setCreating(true);
@@ -1078,7 +1092,7 @@ function ZoomMeetingModal({ defaultTopic, defaultStart, defaultEnd, allDay, onCl
         start_time: startIso,
         duration,
         timezone: "Europe/London",
-        require_passcode: requirePasscode,
+        require_passcode: false,
         enable_waiting_room: waitingRoom,
         agenda: defaultTopic || null,
       });
@@ -1123,22 +1137,6 @@ function ZoomMeetingModal({ defaultTopic, defaultStart, defaultEnd, allDay, onCl
               className="w-full px-3 py-2 text-sm border border-stone-300 rounded-lg tabular-nums"
             />
           </div>
-
-          <label className={`flex items-start gap-3 p-3 border-2 rounded-xl cursor-pointer transition ${requirePasscode ? "border-blue-400 bg-blue-50/60" : "border-stone-200 hover:border-stone-300 bg-white"}`}>
-            <input
-              type="checkbox"
-              checked={requirePasscode}
-              onChange={(e) => setRequirePasscode(e.target.checked)}
-              data-testid="zoom-passcode"
-              className="mt-0.5 accent-blue-600"
-            />
-            <div className="flex-1">
-              <div className="text-sm font-bold text-stone-950">Require passcode</div>
-              <div className="text-[11px] text-stone-600 mt-0.5">
-                Zoom auto-generates a 6-digit passcode and embeds it in the join link.
-              </div>
-            </div>
-          </label>
 
           <label className={`flex items-start gap-3 p-3 border-2 rounded-xl cursor-pointer transition ${waitingRoom ? "border-blue-400 bg-blue-50/60" : "border-stone-200 hover:border-stone-300 bg-white"}`}>
             <input
@@ -1195,10 +1193,27 @@ function Input({ label, value, onChange, placeholder, testid, icon: Icon }) {
 }
 
 function DateInput({ label, value, onChange, allDay, testid }) {
+  // step=900 → minute picker only offers 15-minute increments
+  // (00 / 15 / 30 / 45). Lines up with how HQ runs meetings and
+  // avoids the firehose of every individual minute the browser
+  // picker shows by default.
+  const snapTo15 = (raw) => {
+    if (!raw || allDay) return raw;
+    // raw is "YYYY-MM-DDTHH:MM" — snap MM down to the nearest 15.
+    const [datePart, timePart] = raw.split("T");
+    if (!timePart) return raw;
+    const [hh, mm] = timePart.split(":");
+    const snapped = String(Math.floor(Number(mm || 0) / 15) * 15).padStart(2, "0");
+    return `${datePart}T${hh}:${snapped}`;
+  };
   return (
     <div>
       <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-1">{label}</label>
-      <input type={allDay ? "date" : "datetime-local"} value={allDay ? value.slice(0, 10) : value} onChange={(e) => onChange(e.target.value)}
+      <input
+        type={allDay ? "date" : "datetime-local"}
+        value={allDay ? value.slice(0, 10) : value}
+        step={allDay ? undefined : 900}
+        onChange={(e) => onChange(allDay ? e.target.value : snapTo15(e.target.value))}
         data-testid={testid}
         className="w-full px-3 py-2 text-sm border border-stone-300 rounded-lg tabular-nums" />
     </div>
