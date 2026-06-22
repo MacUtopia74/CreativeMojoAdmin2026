@@ -2202,7 +2202,7 @@ async def portal_subscription_request(
             who = fname.get("organisation") or f"{fname.get('first_name','')} {fname.get('last_name','')}".strip() or fname.get("mojo_email") or "A franchisee"
             _resend.Emails.send({
                 "from": f"{RESEND_FROM_NAME} <{RESEND_FROM_EMAIL}>",
-                "to": ["paul@creativemojo.co.uk"],
+                "to": ["hub@creativemojo.co.uk"],
                 "subject": f"New bolt-on request: {addon_label} — {who}",
                 "html": (
                     f"<p>{who} has requested <strong>{addon_label}</strong> via their portal.</p>"
@@ -5276,7 +5276,7 @@ async def send_anniversary_email(
         result = _resend.Emails.send({
             "from": f"{RESEND_FROM_NAME} <{RESEND_FROM_EMAIL}>",
             "to": [to_email],
-            "bcc": ["sandra@creativemojo.co.uk", "paul@creativemojo.co.uk"],
+            "bcc": ["sandra@creativemojo.co.uk"],
             "subject": f"Happy Mojo anniversary{f' — {years} years!' if years else ''}",
             "html": body_html,
             "text": body_text,
