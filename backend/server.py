@@ -908,11 +908,13 @@ async def handover_portal_access(
     html = _build_handover_email_html(name, target["email"], temp_password, PORTAL_URL)
     import resend as _resend
     _resend.api_key = RESEND_API_KEY
-    # Always BCC paul@creativemojo.co.uk on handover emails so HQ has
+    # Always BCC hub@creativemojo.co.uk on handover emails so HQ has
     # a silent off-system audit trail of every portal invite. Invisible
-    # to the recipient. Skip when the recipient IS that audit address
-    # (Resend would otherwise 400 on duplicates).
-    audit_addr = "paul@creativemojo.co.uk"
+    # to the recipient. Note: previously this was paul@creativemojo.co.uk
+    # but M365 bounced BCCs to paul with `550 5.7.10 Unable to establish
+    # TLS-protected SMTP session` because the FROM is also paul@ → M365's
+    # anti-spoof catches it. hub@ is a separate mailbox so it routes fine.
+    audit_addr = "hub@creativemojo.co.uk"
     payload = {
         "from": f"{RESEND_FROM_NAME} <{RESEND_FROM_EMAIL}>",
         "to": [target["email"]],
@@ -920,7 +922,7 @@ async def handover_portal_access(
         "html": html,
         "tags": [
             {"name": "kind", "value": "portal-handover"},
-            {"name": "audit_bcc", "value": "paul@creativemojo.co.uk"},
+            {"name": "audit_bcc", "value": "hub-creativemojo-co-uk"},
         ],
     }
     if (target.get("email") or "").lower() != audit_addr:
