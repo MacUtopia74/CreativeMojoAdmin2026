@@ -679,51 +679,26 @@ def attach(api, db, require_role):
         }
         await db.announcements.insert_one(ann)
 
-        # Send via Resend (re-use the existing client)
-        from resend_routes import (
-            RESEND_API_KEY, RESEND_FROM_EMAIL, RESEND_FROM_NAME,
-        )
-        if not RESEND_API_KEY:
-            await db.announcements.update_one(
-                {"id": ann["id"]},
-                {"$set": {"delivery.status": "skipped",
-                          "delivery.errors": ["Resend not configured"]}},
-            )
-            return {"ok": False, "announcement_id": ann["id"], "sent": 0,
-                    "reason": "Resend not configured"}
-        import resend as _resend
-        _resend.api_key = RESEND_API_KEY
-
-        base_html = _build_html(ann)
-        succeeded = 0
-        failed: list[str] = []
-        for r in recipients:
-            personal = base_html.replace("{{first_name}}", r["first_name"])
-            try:
-                _resend.Emails.send({
-                    "from": f"{RESEND_FROM_NAME} <{RESEND_FROM_EMAIL}>",
-                    "to": [r["email"]],
-                    "subject": title,
-                    "html": personal,
-                    "tags": [{"name": "kind", "value": "announcement"},
-                             {"name": "ann_id", "value": ann["id"]}],
-                })
-                succeeded += 1
-            except Exception as exc:  # noqa: BLE001
-                failed.append(f"{r['email']}: {exc}")
-                logger.warning("Announcement send failed for %s: %s", r["email"], exc)
-
-        delivery = {
-            "status": "sent" if succeeded and not failed
-                      else ("partial" if succeeded else "failed"),
-            "succeeded": succeeded, "failed": len(failed),
-            "errors": failed[:10],
-        }
+        # HQ Updates are PORTAL-ONLY notifications — no email is sent.
+        # Franchisees receive a notification badge on the "HQ Updates"
+        # menu item; the announcement itself lives at /portal/updates.
+        # The recipients list above still controls *who sees it on
+        # their portal feed*. We mark delivery as ``portal_only`` so
+        # Resend bounce metrics aren't polluted by no-mailbox addresses
+        # like ``demo@creativemojo.co.uk``.
         await db.announcements.update_one(
             {"id": ann["id"]},
-            {"$set": {"delivery": delivery, "sent_at": _now_iso()}},
+            {"$set": {"delivery": {"status": "portal_only",
+                                   "succeeded": len(recipients),
+                                   "failed": 0,
+                                   "errors": []},
+                      "sent_at": _now_iso()}},
         )
-        return {"ok": True, "announcement_id": ann["id"], **delivery}
+        return {"ok": True, "announcement_id": ann["id"],
+                "status": "portal_only",
+                "succeeded": len(recipients),
+                "failed": 0,
+                "errors": []}
 
     @api.put("/admin/announcements/{ann_id}")
     async def edit_announcement(
@@ -840,53 +815,21 @@ def attach(api, db, require_role):
             "pinned_until": pinned_until,
             "category": category,
             "body_html": _sanitise_body_html(body_html_in) if category == "general" else "",
-            "delivery": {"status": "pending", "succeeded": 0, "failed": 0, "errors": []},
+            "delivery": {"status": "portal_only",
+                          "succeeded": len(recipients),
+                          "failed": 0, "errors": []},
+            "sent_at": _now_iso(),
         }
         await db.announcements.update_one({"id": ann_id}, {"$set": updated})
 
-        # Re-send via Resend
-        from resend_routes import (
-            RESEND_API_KEY, RESEND_FROM_EMAIL, RESEND_FROM_NAME,
-        )
-        if not RESEND_API_KEY:
-            await db.announcements.update_one(
-                {"id": ann_id},
-                {"$set": {"delivery.status": "skipped",
-                          "delivery.errors": ["Resend not configured"]}},
-            )
-            return {"ok": False, "announcement_id": ann_id, "sent": 0,
-                    "reason": "Resend not configured"}
-        import resend as _resend
-        _resend.api_key = RESEND_API_KEY
-        base_html = _build_html({"title": title, "intro": intro, "panels": panels})
-        succeeded = 0
-        failed: list[str] = []
-        for r in recipients:
-            personal = base_html.replace("{{first_name}}", r["first_name"])
-            try:
-                _resend.Emails.send({
-                    "from": f"{RESEND_FROM_NAME} <{RESEND_FROM_EMAIL}>",
-                    "to": [r["email"]],
-                    "subject": title,
-                    "html": personal,
-                    "tags": [{"name": "kind", "value": "announcement-edit"},
-                             {"name": "ann_id", "value": ann_id}],
-                })
-                succeeded += 1
-            except Exception as exc:  # noqa: BLE001
-                failed.append(f"{r['email']}: {exc}")
-                logger.warning("Announcement re-send failed for %s: %s", r["email"], exc)
-        delivery = {
-            "status": "sent" if succeeded and not failed
-                      else ("partial" if succeeded else "failed"),
-            "succeeded": succeeded, "failed": len(failed),
-            "errors": failed[:10],
-        }
-        await db.announcements.update_one(
-            {"id": ann_id},
-            {"$set": {"delivery": delivery, "sent_at": _now_iso()}},
-        )
-        return {"ok": True, "announcement_id": ann_id, **delivery}
+        # HQ Updates are PORTAL-ONLY notifications — no email is sent
+        # on edit either. Recipients see the latest version on their
+        # /portal/updates feed and via the unread badge.
+        return {"ok": True, "announcement_id": ann_id,
+                "status": "portal_only",
+                "succeeded": len(recipients),
+                "failed": 0,
+                "errors": []}
 
     @api.get("/admin/announcements")
     async def list_announcements(_: dict = Depends(require_role("admin"))):

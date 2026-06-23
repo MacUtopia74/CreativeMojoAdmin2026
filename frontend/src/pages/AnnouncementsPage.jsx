@@ -1,5 +1,7 @@
 // AnnouncementsPage — `/admin/announcements`. Composer + history for
-// branded "Updates" e-shots sent to franchisees via Resend.
+// "HQ Updates" published to the franchisee portal feed at
+// `/portal/updates`. Recipients see an unread badge on their HQ
+// Updates menu item — no email is sent.
 //
 // Layout (after rebuild):
 //   • LIST view (default) — table of past announcements, newest first.
@@ -83,9 +85,9 @@ function AnnouncementsList({ onCompose, onView, refresh }) {
           </div>
           <h1 className="font-display text-4xl font-black text-stone-950 mt-1">HQ Updates</h1>
           <p className="text-sm text-stone-600 mt-1 max-w-2xl">
-            Send a branded &ldquo;What&rsquo;s New&rdquo; e-shot to franchisees. Each one is archived to
+            Publish updates to franchisees&rsquo;
             <code className="px-1 py-0.5 bg-stone-100 rounded mx-1">/portal/updates</code>
-            so they can refer back any time.
+            page. Recipients see an unread badge on their HQ Updates menu — no email is sent.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -95,7 +97,7 @@ function AnnouncementsList({ onCompose, onView, refresh }) {
           </button>
           <button onClick={onCompose} data-testid="announcements-compose-btn"
             className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 text-[#dddd16] hover:bg-stone-800 rounded-lg flex items-center gap-1.5">
-            <Send className="w-3.5 h-3.5" /> Send Update
+            <Send className="w-3.5 h-3.5" /> New Update
           </button>
         </div>
       </div>
@@ -117,7 +119,7 @@ function AnnouncementsList({ onCompose, onView, refresh }) {
             {loading && data.items.length === 0 ? (
               <tr><td colSpan={7} className="px-4 py-10 text-center text-stone-500"><Loader2 className="w-4 h-4 animate-spin inline" /> Loading…</td></tr>
             ) : data.items.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-12 text-center text-stone-500 text-xs">No announcements yet. Click <strong>Send Update</strong> to send your first.</td></tr>
+              <tr><td colSpan={7} className="px-4 py-12 text-center text-stone-500 text-xs">No updates yet. Click <strong>New Update</strong> to publish your first.</td></tr>
             ) : data.items.map((it) => {
               const s = it.delivery?.status || "unknown";
               const colour = s === "sent" ? "bg-emerald-50 text-emerald-900 border-emerald-200"
@@ -175,7 +177,7 @@ function AnnouncementsList({ onCompose, onView, refresh }) {
                           <PinOff className="w-4 h-4" />
                         </button>
                       )}
-                      <button onClick={(e) => { e.stopPropagation(); if (window.confirm("Remove from /portal/updates? The original email already sent cannot be unsent.")) { api.delete(`/admin/announcements/${it.id}`).then(load); } }}
+                      <button onClick={(e) => { e.stopPropagation(); if (window.confirm("Remove this update from the franchisee portal? Recipients will no longer see it.")) { api.delete(`/admin/announcements/${it.id}`).then(load); } }}
                         title="Delete from archive" data-testid={`announcement-delete-${it.id}`} className="text-stone-400 hover:text-rose-600">
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -577,8 +579,8 @@ function ComposeModal({ open, onClose, onSent, seed }) {
         {/* Header */}
         <div className="px-6 py-4 border-b border-stone-200 flex items-start justify-between gap-4">
           <div>
-            <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 flex items-center gap-1.5"><Megaphone className="w-3 h-3" /> {mode === "edit" ? "Edit Update" : mode === "duplicate" ? "Duplicate Update" : "Send Update"}</div>
-            <h2 className="font-display text-2xl font-black text-stone-950 mt-1">{mode === "edit" ? "Edit & Resend" : mode === "duplicate" ? "Duplicate Announcement" : "Compose Announcement"}</h2>
+            <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 flex items-center gap-1.5"><Megaphone className="w-3 h-3" /> {mode === "edit" ? "Edit Update" : mode === "duplicate" ? "Duplicate Update" : "New Update"}</div>
+            <h2 className="font-display text-2xl font-black text-stone-950 mt-1">{mode === "edit" ? "Edit & Republish" : mode === "duplicate" ? "Duplicate Update" : "New HQ Update"}</h2>
           </div>
           <button onClick={onClose} className="w-9 h-9 rounded-full border border-stone-300 hover:bg-stone-50 flex items-center justify-center" data-testid="announcement-modal-close"><X className="w-4 h-4" /></button>
         </div>
@@ -973,25 +975,20 @@ function ComposeModal({ open, onClose, onSent, seed }) {
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="px-5 py-3 border-t border-stone-200 bg-stone-50 flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-2 flex-1 min-w-[280px]">
-            <input type="email" value={testTo} onChange={(e) => setTestTo(e.target.value)}
-              placeholder="Send a test to (defaults to your admin email)…"
-              data-testid="announcement-test-to"
-              className="flex-1 px-3 py-1.5 text-sm bg-white border border-stone-300 rounded-lg" />
-            <button onClick={sendTest} disabled={testing || panels.length === 0 || !title.trim()}
-              data-testid="announcement-send-test"
-              className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider bg-white border border-stone-300 text-stone-900 hover:bg-stone-100 rounded-lg flex items-center gap-1.5 disabled:opacity-50">
-              {testing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
-              Send test
-            </button>
+        {/* Footer — HQ Updates publish straight to the franchisee
+            portal feed (no email sent). The "Send test" route was
+            removed because the live preview above shows the same
+            rendering. */}
+        <div className="px-5 py-3 border-t border-stone-200 bg-stone-50 flex items-center justify-between gap-3 flex-wrap">
+          <div className="text-xs text-stone-500 flex items-center gap-1.5">
+            <Megaphone className="w-3.5 h-3.5" />
+            <span>Publishes directly to the franchisee portal — no email is sent.</span>
           </div>
           <button onClick={send} disabled={!canSend}
             data-testid="announcement-send"
             className="px-5 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 text-[#dddd16] hover:bg-stone-800 rounded-lg flex items-center gap-1.5 disabled:bg-stone-300 disabled:text-stone-500">
             {sending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
-            {sending ? (mode === "edit" ? "Resending…" : "Sending…") : (mode === "edit" ? "Save & resend" : "Send to franchisees")}
+            {sending ? (mode === "edit" ? "Updating…" : "Publishing…") : (mode === "edit" ? "Save & republish" : "Publish to portal")}
           </button>
         </div>
       </div>
