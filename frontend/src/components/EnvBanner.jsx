@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 
 // Production hostname is the only "live" environment. Anything else
 // (preview deploys, localhost, the .preview.emergentagent.com domain)
@@ -43,6 +44,12 @@ export default function EnvBanner() {
   const [open, setOpen] = useState(false);
   const [now, setNow] = useState(Date.now());
   const isProd = isProductionHost();
+  const { user } = useAuth();
+
+  // Admin-only badge. Franchisees should never see a "PRODUCTION
+  // deployed Xh ago" pill — it leaks dev-affordances and on mobile it
+  // covers Save/Cancel CTAs at the bottom of edit modals.
+  const isAdmin = (user?.role === "admin");
 
   useEffect(() => {
     let cancelled = false;
@@ -61,6 +68,8 @@ export default function EnvBanner() {
   // Touch ``now`` so eslint doesn't flag the unused state — the timer
   // re-renders the component which recomputes ``relTime`` below.
   void now;
+
+  if (!isAdmin) return null;
 
   const label = isProd ? "PRODUCTION" : "PREVIEW";
   const baseCls = isProd

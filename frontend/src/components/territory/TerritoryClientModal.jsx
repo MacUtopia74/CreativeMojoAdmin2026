@@ -203,7 +203,7 @@ export default function TerritoryClientModal({ initial, onClose, onSaved, onDele
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-stone-950/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center p-5 sm:p-6 bg-stone-950/60 backdrop-blur-sm"
       onClick={onClose}
       data-testid="t-plus-client-modal"
     >
@@ -211,7 +211,7 @@ export default function TerritoryClientModal({ initial, onClose, onSaved, onDele
         className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[92vh] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-5 sm:px-6 py-4 border-b border-stone-200 flex items-center justify-between gap-3">
+        <div className="px-6 sm:px-7 py-4 border-b border-stone-200 flex items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">
               {isRegularClient
@@ -227,7 +227,7 @@ export default function TerritoryClientModal({ initial, onClose, onSaved, onDele
           </button>
         </div>
 
-        <form onSubmit={save} className="flex-1 overflow-y-auto px-5 sm:px-6 py-5 space-y-4">
+        <form onSubmit={save} className="flex-1 overflow-y-auto px-6 sm:px-7 py-5 space-y-4">
           {isLinked && (
             <div className="px-3 py-2.5 bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-lg flex items-start gap-3">
               <div className="flex-1">
@@ -471,7 +471,7 @@ export default function TerritoryClientModal({ initial, onClose, onSaved, onDele
           </div>
         </form>
 
-        <div className="px-5 sm:px-6 py-4 border-t border-stone-200 flex items-center justify-between gap-3">
+        <div className="px-6 sm:px-7 py-4 border-t border-stone-200 flex items-center justify-between gap-3">
           <div>
             {editing && (
               <button
