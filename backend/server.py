@@ -1316,6 +1316,58 @@ async def list_franchisees(
         q = {"$or": [{"organisation": rx}, {"first_name": rx}, {"last_name": rx},
                      {"mojo_email": rx}, {"franchise_number": rx}, {"city": rx}, {"postcode": rx}]}
     items = await db.franchisees.find(q, {"_id": 0}).sort(sort_by, sort_dir).limit(limit).to_list(limit)
+
+    # Enrich each row with contract roll-ups so the admin table can show
+    # configurable "Current Contract", "Contracts (#)" and "Tenure"
+    # columns without per-row API calls. One contracts query + grouping
+    # in Python is cheaper than $lookup and easier to evolve.
+    franchisee_ids = [f.get("id") for f in items if f.get("id")]
+    if franchisee_ids:
+        cur = db.contracts.find(
+            {"franchisee_id": {"$in": franchisee_ids},
+             "cancelled_early": {"$ne": True}},
+            {"_id": 0, "franchisee_id": 1, "commencement_date": 1,
+             "renewal_date": 1, "start_date": 1, "end_date": 1},
+        )
+        by_fid: dict = {}
+        async for c in cur:
+            fid = c.get("franchisee_id")
+            if not fid:
+                continue
+            rec = by_fid.setdefault(fid, {"count": 0, "earliest_start": None, "latest_renewal": None})
+            rec["count"] += 1
+            start = c.get("commencement_date") or c.get("start_date")
+            renew = c.get("renewal_date") or c.get("end_date")
+            if start and (rec["earliest_start"] is None or str(start) < str(rec["earliest_start"])):
+                rec["earliest_start"] = start
+            if renew and (rec["latest_renewal"] is None or str(renew) > str(rec["latest_renewal"])):
+                rec["latest_renewal"] = renew
+        today = datetime.now(timezone.utc).date()
+        for f in items:
+            rec = by_fid.get(f.get("id")) or {"count": 0, "earliest_start": None, "latest_renewal": None}
+            f["contracts_count"] = rec["count"]
+            # tenure_start preference: earliest contract start → date_added
+            f["tenure_start"] = rec["earliest_start"] or f.get("date_added")
+            # current_contract = the latest renewal date among active contracts.
+            renew = rec["latest_renewal"]
+            cc: dict = {"renewal_date": None, "days_remaining": None, "status": "none"}
+            if renew:
+                try:
+                    d = renew if isinstance(renew, str) else renew.isoformat()
+                    rd = datetime.fromisoformat(d[:10]).date()
+                    delta = (rd - today).days
+                    cc["renewal_date"] = d[:10]
+                    cc["days_remaining"] = delta
+                    if delta < 0:
+                        cc["status"] = "expired"
+                    elif delta <= 60:
+                        cc["status"] = "due_soon"
+                    else:
+                        cc["status"] = "active"
+                except Exception:  # noqa: BLE001
+                    pass
+            f["current_contract"] = cc
+
     return {"items": items, "total": await db.franchisees.count_documents(q)}
 
 

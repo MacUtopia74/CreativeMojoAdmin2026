@@ -1,7 +1,8 @@
 import { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import api from "@/lib/api";
-import { Search, AlertCircle, RefreshCw, CreditCard, CheckCircle2, X, ChevronDown, LayoutGrid, List as ListIcon, Mail, Phone, ArrowRight } from "lucide-react";
+import { Search, AlertCircle, RefreshCw, CreditCard, CheckCircle2, X, ChevronDown, LayoutGrid, List as ListIcon, Mail, Phone, ArrowRight, Columns3, GripVertical, ExternalLink, FileText, Facebook as FacebookIcon, RotateCcw } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { formatDate } from "@/lib/date";
 
 // Live GoCardless mandate pill — mirrors the one on FranchiseeDetailPage so the
@@ -269,6 +270,314 @@ function MissingMandateRow({ item, onResolved }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Current Contract pill — green if >60d remaining, amber when due soon
+// (0–60d), red when overdue/expired, stone "No contract on file" when no
+// active contract has been linked. Tooltip surfaces the exact day count.
+// ---------------------------------------------------------------------------
+function ContractPill({ franchisee }) {
+  const cc = franchisee.current_contract || { status: "none" };
+  if (cc.status === "none" || !cc.renewal_date) {
+    return (
+      <span
+        data-testid={`contract-pill-${franchisee.id}`}
+        className="inline-block px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-800 border border-amber-200 rounded-md whitespace-nowrap"
+        title="No active contract is linked to this franchisee.">
+        No contract
+      </span>
+    );
+  }
+  const days = cc.days_remaining;
+  let cls = "bg-emerald-100 text-emerald-800 border-emerald-300";
+  let label = `${days}d left`;
+  if (cc.status === "expired") {
+    cls = "bg-red-100 text-red-800 border-red-300";
+    label = `Expired ${Math.abs(days)}d ago`;
+  } else if (cc.status === "due_soon") {
+    cls = "bg-amber-100 text-amber-800 border-amber-300";
+    label = `${days}d left`;
+  }
+  return (
+    <span
+      data-testid={`contract-pill-${franchisee.id}`}
+      className={`inline-block px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-md whitespace-nowrap ${cls}`}
+      title={`Renews ${cc.renewal_date}`}>
+      {label}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Column registry — every column the admin can choose from for the
+// Franchises / Licences table. Each entry is { label, w (tailwind width),
+// sortKey (optional — enables click-to-sort on the header), render(f) }.
+// New columns can be appended without touching the picker UI.
+// ---------------------------------------------------------------------------
+function tenureLabel(startIso) {
+  if (!startIso) return "—";
+  try {
+    const start = new Date(startIso);
+    const now = new Date();
+    const months = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
+    if (months < 0) return "—";
+    const years = Math.floor(months / 12);
+    const rem = months % 12;
+    if (years === 0) return `${months} mo`;
+    if (rem === 0) return `${years} yr${years > 1 ? "s" : ""}`;
+    return `${years}y ${rem}m`;
+  } catch { return "—"; }
+}
+
+function ExternalLinkChip({ href, label, testid }) {
+  if (!href) return <span className="text-stone-300 text-xs">—</span>;
+  let url = href;
+  if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={(e) => e.stopPropagation()}
+      data-testid={testid}
+      className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-white text-stone-700 border border-stone-300 rounded-md hover:bg-stone-50">
+      {label} <ExternalLink className="w-2.5 h-2.5" />
+    </a>
+  );
+}
+
+const COLUMN_DEFS = {
+  photo: {
+    label: "Photo", w: "w-36",
+    render: (f) => {
+      const photo = f.photos?.[0]?.url;
+      return photo ? (
+        <img src={photo} alt="" className="w-32 h-32 object-cover rounded-2xl" />
+      ) : (
+        <div className="w-32 h-32 bg-stone-100 rounded-2xl flex items-center justify-center text-3xl font-bold text-stone-400">
+          {(f.first_name?.[0] || "?") + (f.last_name?.[0] || "")}
+        </div>
+      );
+    },
+  },
+  number: {
+    label: "No.", w: "w-16", sortKey: "franchise_number",
+    render: (f) => <span className="text-xs text-stone-500 tabular-nums">{f.franchise_number || "—"}</span>,
+  },
+  organisation: {
+    label: "Organisation", w: "w-64", sortKey: "organisation",
+    render: (f) => (
+      <Link to={`/franchisees/${f.id}`} className="text-sm font-semibold text-stone-950 hover:text-stone-700 leading-snug line-clamp-2" data-testid={`franchisee-link-${f.id}`}>
+        {f.organisation || "(no organisation)"}
+      </Link>
+    ),
+  },
+  name: {
+    label: "Name", w: "w-40", sortKey: "last_name",
+    render: (f) => <span className="text-sm text-stone-700">{[f.first_name, f.last_name].filter(Boolean).join(" ") || "—"}</span>,
+  },
+  mojo_email: {
+    label: "Mojo Email", w: "w-64",
+    render: (f) => f.mojo_email ? (
+      <a href={`mailto:${f.mojo_email}`} className="text-xs text-stone-700 hover:text-stone-950 hover:underline underline-offset-2 break-all" data-testid={`mailto-${f.id}`}>
+        {f.mojo_email}
+      </a>
+    ) : <span className="text-stone-300 text-xs">—</span>,
+  },
+  mobile: {
+    label: "Mobile", w: "w-36",
+    render: (f) => f.mobile_phone ? (
+      <a href={`tel:${(f.mobile_phone || "").replace(/\s+/g, "")}`} className="text-xs text-stone-700 hover:text-stone-950 hover:underline underline-offset-2 tabular-nums whitespace-nowrap" data-testid={`tel-${f.id}`}>
+        {f.mobile_phone}
+      </a>
+    ) : <span className="text-stone-300 text-xs">—</span>,
+  },
+  postcode: {
+    label: "Postcode", w: "w-24",
+    render: (f) => <span className="text-xs text-stone-700 tabular-nums">{f.postcode || "—"}</span>,
+  },
+  date_added: {
+    label: "Added", w: "w-28", sortKey: "date_added",
+    render: (f) => <span className="text-xs text-stone-500 tabular-nums">{formatDate(f.date_added)}</span>,
+  },
+  mandate: {
+    label: "Mandate", w: "w-28",
+    render: (f) => <MandateCell franchisee={f} />,
+  },
+  // ----- Additional optional columns (hidden by default) ----------------
+  secondary_email: {
+    label: "Secondary Email", w: "w-64", defaultHidden: true,
+    render: (f) => f.secondary_email ? (
+      <a href={`mailto:${f.secondary_email}`} className="text-xs text-stone-700 hover:text-stone-950 hover:underline underline-offset-2 break-all" data-testid={`mailto2-${f.id}`}>
+        {f.secondary_email}
+      </a>
+    ) : <span className="text-stone-300 text-xs">—</span>,
+  },
+  street: {
+    label: "Street Address", w: "w-56", defaultHidden: true,
+    render: (f) => <span className="text-xs text-stone-700 line-clamp-2">{f.address_street || "—"}</span>,
+  },
+  contracts_count: {
+    label: "Contracts (#)", w: "w-24", defaultHidden: true,
+    render: (f) => {
+      const n = f.contracts_count ?? (Array.isArray(f.contract_ids) ? f.contract_ids.length : 0);
+      return <span className="text-xs font-bold text-stone-900 tabular-nums">{n || 0}</span>;
+    },
+  },
+  current_contract: {
+    label: "Current Contract", w: "w-36", defaultHidden: true,
+    render: (f) => <ContractPill franchisee={f} />,
+  },
+  xero: {
+    label: "Xero", w: "w-20", defaultHidden: true,
+    render: (f) => (
+      <ExternalLinkChip
+        href={f.xero_contact_id ? `https://go.xero.com/Contacts/View/${f.xero_contact_id}` : null}
+        label="Xero"
+        testid={`xero-link-${f.id}`}
+      />
+    ),
+  },
+  tenure: {
+    label: "Tenure", w: "w-24", defaultHidden: true,
+    render: (f) => <span className="text-xs text-stone-700 tabular-nums whitespace-nowrap">{tenureLabel(f.tenure_start || f.date_added)}</span>,
+  },
+  facebook: {
+    label: "Facebook", w: "w-24", defaultHidden: true,
+    render: (f) => <ExternalLinkChip href={f.facebook} label="FB" testid={`fb-link-${f.id}`} />,
+  },
+  biography: {
+    label: "Mojo Page", w: "w-24", defaultHidden: true,
+    render: (f) => <ExternalLinkChip href={f.wp_page_url} label="Bio" testid={`bio-link-${f.id}`} />,
+  },
+};
+
+const DEFAULT_COLUMN_ORDER = [
+  "photo", "number", "organisation", "name", "mojo_email",
+  "mobile", "postcode", "date_added", "mandate",
+  "current_contract", "tenure", "contracts_count",
+  "secondary_email", "street", "xero", "facebook", "biography",
+];
+
+const COLUMNS_LS_KEY = "cm.franchisees.columns.v1";
+
+function useColumnsConfig() {
+  const initial = () => {
+    try {
+      const raw = JSON.parse(localStorage.getItem(COLUMNS_LS_KEY) || "null");
+      if (raw?.order && raw?.hidden) {
+        // Heal: append any new columns added since last save.
+        const order = raw.order.filter((id) => COLUMN_DEFS[id]);
+        for (const id of DEFAULT_COLUMN_ORDER) if (!order.includes(id)) order.push(id);
+        return { order, hidden: new Set(raw.hidden.filter((id) => COLUMN_DEFS[id])) };
+      }
+    } catch { /* fall through */ }
+    const hidden = new Set(
+      Object.entries(COLUMN_DEFS).filter(([, def]) => def.defaultHidden).map(([id]) => id)
+    );
+    return { order: [...DEFAULT_COLUMN_ORDER], hidden };
+  };
+  const [config, setConfig] = useState(initial);
+  useEffect(() => {
+    try {
+      localStorage.setItem(COLUMNS_LS_KEY, JSON.stringify({
+        order: config.order,
+        hidden: Array.from(config.hidden),
+      }));
+    } catch (e) { console.debug("[FranchiseesPage] columns LS write blocked", e); }
+  }, [config]);
+  const toggle = (id) => setConfig((c) => {
+    const hidden = new Set(c.hidden);
+    if (hidden.has(id)) hidden.delete(id); else hidden.add(id);
+    return { ...c, hidden };
+  });
+  const move = (fromIdx, toIdx) => setConfig((c) => {
+    if (fromIdx === toIdx || fromIdx < 0 || toIdx < 0) return c;
+    const order = [...c.order];
+    const [it] = order.splice(fromIdx, 1);
+    order.splice(toIdx, 0, it);
+    return { ...c, order };
+  });
+  const reset = () => {
+    const hidden = new Set(
+      Object.entries(COLUMN_DEFS).filter(([, def]) => def.defaultHidden).map(([id]) => id)
+    );
+    setConfig({ order: [...DEFAULT_COLUMN_ORDER], hidden });
+  };
+  const visibleOrder = useMemo(() => config.order.filter((id) => !config.hidden.has(id)), [config]);
+  return { order: config.order, hidden: config.hidden, visibleOrder, toggle, move, reset };
+}
+
+function ColumnPicker({ cfg }) {
+  const [dragId, setDragId] = useState(null);
+  const onDragStart = (id) => (e) => { setDragId(id); e.dataTransfer.effectAllowed = "move"; };
+  const onDragOver = (overId) => (e) => {
+    e.preventDefault();
+    if (!dragId || dragId === overId) return;
+    const fromIdx = cfg.order.indexOf(dragId);
+    const toIdx = cfg.order.indexOf(overId);
+    if (fromIdx >= 0 && toIdx >= 0) cfg.move(fromIdx, toIdx);
+  };
+  const onDragEnd = () => setDragId(null);
+  const visibleCount = cfg.order.length - cfg.hidden.size;
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          data-testid="columns-picker-trigger"
+          className="px-3 py-2 text-xs font-bold uppercase tracking-wider border border-stone-300 bg-white text-stone-900 hover:bg-stone-50 rounded-lg flex items-center gap-1.5">
+          <Columns3 className="w-3.5 h-3.5" />
+          Columns <span className="text-stone-500 normal-case font-medium">({visibleCount})</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-72 p-0 rounded-xl border border-stone-200 shadow-xl">
+        <div className="px-3 py-2 border-b border-stone-200 flex items-center justify-between">
+          <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Show & order columns</div>
+          <button
+            type="button"
+            onClick={cfg.reset}
+            data-testid="columns-reset"
+            className="text-[10px] font-bold uppercase tracking-wider text-stone-500 hover:text-stone-950 flex items-center gap-1">
+            <RotateCcw className="w-3 h-3" /> Reset
+          </button>
+        </div>
+        <div className="max-h-80 overflow-y-auto py-1" data-testid="columns-picker-list">
+          {cfg.order.map((id) => {
+            const def = COLUMN_DEFS[id];
+            if (!def) return null;
+            const hidden = cfg.hidden.has(id);
+            const isDragging = dragId === id;
+            return (
+              <div
+                key={id}
+                draggable
+                onDragStart={onDragStart(id)}
+                onDragOver={onDragOver(id)}
+                onDragEnd={onDragEnd}
+                onDrop={onDragEnd}
+                data-testid={`columns-picker-item-${id}`}
+                className={`flex items-center gap-2 px-3 py-1.5 hover:bg-stone-50 cursor-move group ${isDragging ? "opacity-40" : ""}`}>
+                <GripVertical className="w-3.5 h-3.5 text-stone-300 group-hover:text-stone-500 shrink-0" />
+                <label className="flex-1 flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={!hidden}
+                    onChange={() => cfg.toggle(id)}
+                    onClick={(e) => e.stopPropagation()}
+                    data-testid={`columns-picker-check-${id}`}
+                    className="rounded border-stone-300 accent-stone-950"
+                  />
+                  <span className={`text-sm ${hidden ? "text-stone-400" : "text-stone-900"}`}>{def.label}</span>
+                </label>
+              </div>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export default function FranchiseesPage() {
   const [all, setAll] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -292,6 +601,7 @@ export default function FranchiseesPage() {
   }, [viewMode]);
   // Card click → quick-preview popover instead of a full page nav.
   const [previewId, setPreviewId] = useState(null);
+  const columnsCfg = useColumnsConfig();
   const reload = async () => {
     try {
       const { data } = await api.get("/franchisees", { params: { limit: 500, sort_by: "franchise_number", sort_dir: 1 } });
@@ -364,10 +674,6 @@ export default function FranchiseesPage() {
     else { setSortBy(col); setSortDir(1); }
   };
 
-  const SortArrow = ({ col }) => sortBy === col ? (
-    <span className="text-stone-950 ml-1">{sortDir === 1 ? "↑" : "↓"}</span>
-  ) : <span className="text-stone-300 ml-1">↕</span>;
-
   return (
     <div className="min-h-screen">
       <div className="h-16 border-b border-stone-200 bg-white flex items-center px-8 sticky top-0 z-10" data-testid="topbar">
@@ -381,6 +687,7 @@ export default function FranchiseesPage() {
             className="px-3 py-2 text-xs font-bold uppercase tracking-wider border border-stone-300 bg-white text-stone-900 hover:bg-stone-50 rounded-lg flex items-center gap-1.5">
             <CreditCard className="w-3.5 h-3.5" /> Sync GoCardless
           </button>
+          {viewMode === "list" && <ColumnPicker cfg={columnsCfg} />}
           {/* View toggle: list / grid */}
           <div className="inline-flex border border-stone-300 rounded-lg overflow-hidden" data-testid="view-toggle">
             <button
@@ -502,65 +809,49 @@ export default function FranchiseesPage() {
           <FranchiseeGrid items={filtered} onPreview={setPreviewId} />
         ) : (
           <div className="bg-white border border-stone-200 overflow-hidden rounded-2xl" data-testid="franchisees-table">
-            <table className="w-full">
-              <thead className="bg-[#F2F2F0] border-b border-stone-200">
-                <tr>
-                  <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-36">Photo</th>
-                  <th onClick={headerClick("franchise_number")} className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 cursor-pointer hover:bg-stone-200/50 w-16">No. <SortArrow col="franchise_number" /></th>
-                  <th onClick={headerClick("organisation")} className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 cursor-pointer hover:bg-stone-200/50 w-64">Organisation <SortArrow col="organisation" /></th>
-                  <th onClick={headerClick("last_name")} className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 cursor-pointer hover:bg-stone-200/50 w-40">Name <SortArrow col="last_name" /></th>
-                  <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-64">Mojo Email</th>
-                  <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-36">Mobile</th>
-                  <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-24">Postcode</th>
-                  <th onClick={headerClick("date_added")} className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 cursor-pointer hover:bg-stone-200/50 w-28">Added <SortArrow col="date_added" /></th>
-                  <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-28">Mandate</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.length === 0 ? (
-                  <tr><td colSpan={9} className="px-3 py-10 text-center text-sm text-stone-500">No franchisees in this view.</td></tr>
-                ) : filtered.map((f) => {
-                  const photo = f.photos?.[0]?.url;
-                  return (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-[#F2F2F0] border-b border-stone-200">
+                  <tr>
+                    {columnsCfg.visibleOrder.map((id) => {
+                      const def = COLUMN_DEFS[id];
+                      if (!def) return null;
+                      const sortable = Boolean(def.sortKey);
+                      const isSorted = sortable && sortBy === def.sortKey;
+                      return (
+                        <th
+                          key={id}
+                          onClick={sortable ? headerClick(def.sortKey) : undefined}
+                          className={`text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 ${def.w || ""} ${sortable ? "cursor-pointer hover:bg-stone-200/50" : ""}`}
+                          data-testid={`th-${id}`}>
+                          {def.label}
+                          {sortable && (isSorted ? (
+                            <span className="text-stone-950 ml-1">{sortDir === 1 ? "↑" : "↓"}</span>
+                          ) : <span className="text-stone-300 ml-1">↕</span>)}
+                        </th>
+                      );
+                    })}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.length === 0 ? (
+                    <tr><td colSpan={columnsCfg.visibleOrder.length} className="px-3 py-10 text-center text-sm text-stone-500">No franchisees in this view.</td></tr>
+                  ) : filtered.map((f) => (
                     <tr key={f.id} className="border-b border-stone-100 hover:bg-stone-50 transition-colors" data-testid={`franchisee-row-${f.id}`}>
-                      <td className="px-3 py-2">
-                        {photo ? (
-                          <img src={photo} alt="" className="w-32 h-32 object-cover rounded-2xl" />
-                        ) : (
-                          <div className="w-32 h-32 bg-stone-100 rounded-2xl flex items-center justify-center text-3xl font-bold text-stone-400">
-                            {(f.first_name?.[0] || "?") + (f.last_name?.[0] || "")}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-xs text-stone-500 tabular-nums">{f.franchise_number || "—"}</td>
-                      <td className="px-3 py-2">
-                        <Link to={`/franchisees/${f.id}`} className="text-sm font-semibold text-stone-950 hover:text-stone-700 leading-snug line-clamp-2" data-testid={`franchisee-link-${f.id}`}>
-                          {f.organisation || "(no organisation)"}
-                        </Link>
-                      </td>
-                      <td className="px-3 py-2 text-sm text-stone-700">{[f.first_name, f.last_name].filter(Boolean).join(" ") || "—"}</td>
-                      <td className="px-3 py-2 text-xs text-stone-600 break-all">
-                        {f.mojo_email ? (
-                          <a href={`mailto:${f.mojo_email}`} className="text-stone-700 hover:text-stone-950 hover:underline underline-offset-2" data-testid={`mailto-${f.id}`}>
-                            {f.mojo_email}
-                          </a>
-                        ) : "—"}
-                      </td>
-                      <td className="px-3 py-2 text-xs text-stone-700 tabular-nums whitespace-nowrap">
-                        {f.mobile_phone ? (
-                          <a href={`tel:${(f.mobile_phone || "").replace(/\s+/g, "")}`} className="hover:text-stone-950 hover:underline underline-offset-2" data-testid={`tel-${f.id}`}>
-                            {f.mobile_phone}
-                          </a>
-                        ) : "—"}
-                      </td>
-                      <td className="px-3 py-2 text-xs text-stone-700 tabular-nums">{f.postcode || "—"}</td>
-                      <td className="px-3 py-2 text-xs text-stone-500 tabular-nums">{formatDate(f.date_added)}</td>
-                      <td className="px-3 py-2"><MandateCell franchisee={f} /></td>
+                      {columnsCfg.visibleOrder.map((id) => {
+                        const def = COLUMN_DEFS[id];
+                        if (!def) return null;
+                        return (
+                          <td key={id} className="px-3 py-2 align-middle">
+                            {def.render(f)}
+                          </td>
+                        );
+                      })}
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>
