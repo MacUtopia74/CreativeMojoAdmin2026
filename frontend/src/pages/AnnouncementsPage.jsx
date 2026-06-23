@@ -160,7 +160,36 @@ function AnnouncementsList({ onCompose, onView, refresh }) {
                   </td>
                   <td className="px-3 py-3 text-stone-700 whitespace-nowrap">{fmtDate(it.sent_at || it.created_at)}</td>
                   <td className="px-3 py-3 text-stone-700">{(it.panels || []).length}</td>
-                  <td className="px-3 py-3 text-stone-700">{it.recipient_count}</td>
+                  <td className="px-3 py-3 text-stone-700">
+                    {(() => {
+                      const total = it.recipient_count ?? 0;
+                      const latest = it.last_send_recipient_count;
+                      const history = it.send_history || [];
+                      const tooltip = history.length
+                        ? history.map((h) => `${fmtDate(h.sent_at)} — ${h.recipient_count}`).join("\n")
+                        : "";
+                      return (
+                        <span
+                          data-testid={`announcement-recipients-${it.id}`}
+                          title={tooltip || undefined}
+                          className="inline-flex items-baseline gap-1 cursor-help">
+                          <span className="font-bold text-stone-950 tabular-nums">{total}</span>
+                          {latest != null && latest !== total && (
+                            <span className="text-[10px] text-stone-500">
+                              (latest {latest})
+                            </span>
+                          )}
+                          {history.length > 1 && (
+                            <span
+                              data-testid={`announcement-sendcount-${it.id}`}
+                              className="ml-1 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 bg-stone-100 text-stone-600 border border-stone-200 rounded">
+                              ×{history.length}
+                            </span>
+                          )}
+                        </span>
+                      );
+                    })()}
+                  </td>
                   <td className="px-3 py-3"><span className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded ${colour}`}>{s}</span></td>
                   <td className="px-3 py-3 text-right">
                     <div className="inline-flex items-center gap-2">

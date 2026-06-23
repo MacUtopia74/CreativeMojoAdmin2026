@@ -672,6 +672,12 @@ def attach(api, db, require_role):
             "created_by": user.get("email"),
             "sent_to": [r["id"] for r in recipients],
             "recipient_count": len(recipients),
+            "last_send_recipient_count": len(recipients),
+            "send_history": [{
+                "sent_at": _now_iso(),
+                "sent_by": user.get("email"),
+                "recipient_count": len(recipients),
+            }],
             "pinned_until": pinned_until,
             "category": category,
             "body_html": _sanitise_body_html(body_html_in) if category == "general" else "",
@@ -806,17 +812,44 @@ def attach(api, db, require_role):
         if category not in ("project", "meetings", "general"):
             raise HTTPException(400, "category must be one of: project, meetings, general")
 
+        # Cumulative recipients — once someone receives an update,
+        # they always keep portal access to it. Republishing to a
+        # smaller subset *adds* without removing prior access. This
+        # prevents silent data-loss bugs where a test-publish to one
+        # person would wipe access for the original 34.
+        existing_sent_to = list(original.get("sent_to") or [])
+        new_recipient_ids = [r["id"] for r in recipients]
+        merged_sent_to = list({*existing_sent_to, *new_recipient_ids})
+        # Track each republish event so the admin row can show
+        # "34 (latest 1)" — total cumulative + count of this send.
+        send_history = list(original.get("send_history") or [])
+        # Seed a "send_history" entry for the original POST if the
+        # announcement pre-dates this feature.
+        if not send_history and original.get("sent_at"):
+            send_history.append({
+                "sent_at": original.get("sent_at"),
+                "sent_by": original.get("created_by"),
+                "recipient_count": len(existing_sent_to),
+            })
+        send_history.append({
+            "sent_at": _now_iso(),
+            "sent_by": user.get("email"),
+            "recipient_count": len(new_recipient_ids),
+        })
+
         updated = {
             "title": title, "intro": intro, "panels": panels,
-            "sent_to": [r["id"] for r in recipients],
-            "recipient_count": len(recipients),
+            "sent_to": merged_sent_to,
+            "recipient_count": len(merged_sent_to),
+            "last_send_recipient_count": len(new_recipient_ids),
+            "send_history": send_history,
             "edited_at": _now_iso(),
             "edited_by": user.get("email"),
             "pinned_until": pinned_until,
             "category": category,
             "body_html": _sanitise_body_html(body_html_in) if category == "general" else "",
             "delivery": {"status": "portal_only",
-                          "succeeded": len(recipients),
+                          "succeeded": len(new_recipient_ids),
                           "failed": 0, "errors": []},
             "sent_at": _now_iso(),
         }
@@ -827,7 +860,8 @@ def attach(api, db, require_role):
         # /portal/updates feed and via the unread badge.
         return {"ok": True, "announcement_id": ann_id,
                 "status": "portal_only",
-                "succeeded": len(recipients),
+                "succeeded": len(new_recipient_ids),
+                "total_recipients": len(merged_sent_to),
                 "failed": 0,
                 "errors": []}
 
