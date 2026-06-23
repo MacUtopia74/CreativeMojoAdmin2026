@@ -355,33 +355,37 @@ export default function MyClientsPanel({
                           </span>
                         )}
                       </div>
-                      {/* Marketing deep-link — only when we have an
-                          email to send to AND the franchisee has the
-                          Marketing bolt-on enabled (otherwise the
-                          shortcut would lead to a 403 page). */}
-                      {marketingEnabled && c.email && !c.primary_marketing_unsubscribed && (
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); openMarketing(c.id); }}
-                          data-testid={`my-clients-marketing-${c.id}`}
-                          title="Send a marketing e-shot to this client"
-                          className="shrink-0 w-8 h-8 rounded-md border border-stone-300 text-stone-600 hover:bg-stone-950 hover:text-[#dddd16] hover:border-stone-950 flex items-center justify-center transition-colors"
-                        >
-                          <Megaphone className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                      {/* Unsubscribed badge — small pill so the
-                          franchisee instantly knows this client has
-                          opted out (visible regardless of bolt-on). */}
-                      {c.primary_marketing_unsubscribed && (
-                        <span
-                          data-testid={`my-clients-unsub-${c.id}`}
-                          className="hidden lg:inline-flex shrink-0 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded bg-red-50 text-red-700 border border-red-200"
-                          title="Unsubscribed from marketing emails"
-                        >
-                          Unsub
-                        </span>
-                      )}
+                      {/* Marketing deep-link slot — ALWAYS reserves
+                          the column width so the status/beds columns
+                          line up across every row regardless of
+                          whether the megaphone is rendered or not. */}
+                      <div className="shrink-0 w-8 h-8 flex items-center justify-center">
+                        {marketingEnabled && c.email && !c.primary_marketing_unsubscribed && (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); openMarketing(c.id); }}
+                            data-testid={`my-clients-marketing-${c.id}`}
+                            title="Send a marketing e-shot to this client"
+                            className="w-8 h-8 rounded-md border border-stone-300 text-stone-600 hover:bg-stone-950 hover:text-[#dddd16] hover:border-stone-950 flex items-center justify-center transition-colors"
+                          >
+                            <Megaphone className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                      {/* Unsubscribed badge slot — fixed-width
+                          placeholder keeps row geometry identical
+                          even when the badge isn't shown. */}
+                      <div className="hidden lg:flex shrink-0 w-14 items-center justify-center">
+                        {c.primary_marketing_unsubscribed && (
+                          <span
+                            data-testid={`my-clients-unsub-${c.id}`}
+                            className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded bg-red-50 text-red-700 border border-red-200"
+                            title="Unsubscribed from marketing emails"
+                          >
+                            Unsub
+                          </span>
+                        )}
+                      </div>
                       <ChevronRight className="w-4 h-4 shrink-0 text-stone-400 group-hover:text-stone-950 group-hover:translate-x-0.5 transition-transform" />
                     </>
                   ) : (
