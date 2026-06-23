@@ -12,9 +12,35 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import {
   Megaphone, Send, Loader2, AlertCircle, Plus, Trash2, X, CheckCircle2,
   Search, FileText, Folder, RefreshCw, Calendar, Image as ImageIcon, Eye, Upload,
+  PinOff, Briefcase, Users as UsersIcon, Sparkles,
 } from "lucide-react";
 import api from "@/lib/api";
 import FileThumbnail from "@/components/files/FileThumbnail";
+
+// ---------------------------------------------------------------------------
+// HQ Updates support 3 categories. The portal groups updates under
+// matching section headings. Keeping the registry inline so styling
+// stays consistent across admin (list pill, composer radio) and portal.
+// ---------------------------------------------------------------------------
+export const ANNOUNCEMENT_CATEGORIES = [
+  { id: "project",  label: "Project",  icon: Briefcase, tone: "bg-sky-100 text-sky-900 border-sky-300" },
+  { id: "meetings", label: "Meetings", icon: UsersIcon, tone: "bg-violet-100 text-violet-900 border-violet-300" },
+  { id: "general",  label: "General",  icon: Sparkles,  tone: "bg-stone-100 text-stone-900 border-stone-300" },
+];
+const CATEGORY_BY_ID = Object.fromEntries(ANNOUNCEMENT_CATEGORIES.map((c) => [c.id, c]));
+function CategoryPill({ id }) {
+  const c = CATEGORY_BY_ID[id || "general"] || CATEGORY_BY_ID.general;
+  const Icon = c.icon;
+  return (
+    <span
+      data-testid={`category-pill-${id || "general"}`}
+      className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider border rounded ${c.tone}`}
+    >
+      <Icon className="w-2.5 h-2.5" />
+      {c.label}
+    </span>
+  );
+}
 
 function fmtDate(iso) {
   if (!iso) return "—";
@@ -56,7 +82,7 @@ function AnnouncementsList({ onCompose, onView, refresh }) {
           </div>
           <h1 className="font-display text-4xl font-black text-stone-950 mt-1">HQ Updates</h1>
           <p className="text-sm text-stone-600 mt-1 max-w-2xl">
-            Send a branded "What's New" e-shot to franchisees. Each one is archived to
+            Send a branded &ldquo;What&rsquo;s New&rdquo; e-shot to franchisees. Each one is archived to
             <code className="px-1 py-0.5 bg-stone-100 rounded mx-1">/portal/updates</code>
             so they can refer back any time.
           </p>
@@ -78,6 +104,7 @@ function AnnouncementsList({ onCompose, onView, refresh }) {
           <thead className="bg-stone-50 border-b border-stone-200">
             <tr className="text-left text-[10px] uppercase tracking-wider text-stone-500">
               <th className="px-4 py-2 font-bold">Title</th>
+              <th className="px-3 py-2 font-bold">Category</th>
               <th className="px-3 py-2 font-bold">Sent</th>
               <th className="px-3 py-2 font-bold">Panels</th>
               <th className="px-3 py-2 font-bold">Recipients</th>
@@ -87,9 +114,9 @@ function AnnouncementsList({ onCompose, onView, refresh }) {
           </thead>
           <tbody>
             {loading && data.items.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-10 text-center text-stone-500"><Loader2 className="w-4 h-4 animate-spin inline" /> Loading…</td></tr>
+              <tr><td colSpan={7} className="px-4 py-10 text-center text-stone-500"><Loader2 className="w-4 h-4 animate-spin inline" /> Loading…</td></tr>
             ) : data.items.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-12 text-center text-stone-500 text-xs">No announcements yet. Click <strong>Send Update</strong> to send your first.</td></tr>
+              <tr><td colSpan={7} className="px-4 py-12 text-center text-stone-500 text-xs">No announcements yet. Click <strong>Send Update</strong> to send your first.</td></tr>
             ) : data.items.map((it) => {
               const s = it.delivery?.status || "unknown";
               const colour = s === "sent" ? "bg-emerald-50 text-emerald-900 border-emerald-200"
@@ -111,15 +138,47 @@ function AnnouncementsList({ onCompose, onView, refresh }) {
                       <span>{it.title}</span>
                     </div>
                   </td>
+                  <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+                    <select
+                      value={it.category || "general"}
+                      onChange={async (e) => {
+                        const newCat = e.target.value;
+                        try {
+                          await api.post(`/admin/announcements/${it.id}/category`, { category: newCat });
+                          load();
+                        } catch { /* swallow */ }
+                      }}
+                      data-testid={`announcement-category-${it.id}`}
+                      className="text-[10px] font-bold uppercase tracking-wider bg-white border border-stone-300 rounded px-1.5 py-0.5 cursor-pointer hover:border-stone-500">
+                      {ANNOUNCEMENT_CATEGORIES.map((c) => (
+                        <option key={c.id} value={c.id}>{c.label}</option>
+                      ))}
+                    </select>
+                  </td>
                   <td className="px-3 py-3 text-stone-700 whitespace-nowrap">{fmtDate(it.sent_at || it.created_at)}</td>
                   <td className="px-3 py-3 text-stone-700">{(it.panels || []).length}</td>
                   <td className="px-3 py-3 text-stone-700">{it.recipient_count}</td>
                   <td className="px-3 py-3"><span className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded ${colour}`}>{s}</span></td>
                   <td className="px-3 py-3 text-right">
-                    <button onClick={(e) => { e.stopPropagation(); if (window.confirm("Remove from /portal/updates? The original email already sent cannot be unsent.")) { api.delete(`/admin/announcements/${it.id}`).then(load); } }}
-                      title="Delete from archive" data-testid={`announcement-delete-${it.id}`} className="text-stone-400 hover:text-rose-600">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="inline-flex items-center gap-2">
+                      {it.is_pinned && (
+                        <button onClick={(e) => {
+                          e.stopPropagation();
+                          if (window.confirm("Unpin this update from the top of the portal?")) {
+                            api.post(`/admin/announcements/${it.id}/unpin`).then(load);
+                          }
+                        }}
+                          title="Unpin from top"
+                          data-testid={`announcement-unpin-${it.id}`}
+                          className="text-amber-600 hover:text-amber-800">
+                          <PinOff className="w-4 h-4" />
+                        </button>
+                      )}
+                      <button onClick={(e) => { e.stopPropagation(); if (window.confirm("Remove from /portal/updates? The original email already sent cannot be unsent.")) { api.delete(`/admin/announcements/${it.id}`).then(load); } }}
+                        title="Delete from archive" data-testid={`announcement-delete-${it.id}`} className="text-stone-400 hover:text-rose-600">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -292,6 +351,10 @@ function ComposeModal({ open, onClose, onSent, seed }) {
   // drops the announcement back into the chronological list.
   const [pinned, setPinned] = useState(false);
   const [pinnedUntil, setPinnedUntil] = useState("");
+  // Category dropdown — defaults to "general". The franchisee portal
+  // groups HQ Updates by this value so each section has its own
+  // heading (Project / Meetings / General).
+  const [category, setCategory] = useState("general");
 
   // Mode: 'new' (default), 'edit' (PATCH replaces the original), or
   // 'duplicate' (POST creates a fresh announcement).
@@ -317,6 +380,9 @@ function ComposeModal({ open, onClose, onSent, seed }) {
       } else {
         setPinned(false); setPinnedUntil("");
       }
+      // Seed category from the original (fallback to "general" so old
+      // pre-categorised announcements still load cleanly).
+      setCategory(seededAnn.category || "general");
       // Strip server-minted resolved_url + thumbnail_url so a fresh send
       // re-mints them (avoids re-using a revoked or stale share token).
       setPanels((seededAnn.panels || []).map((p) => ({
@@ -341,6 +407,7 @@ function ComposeModal({ open, onClose, onSent, seed }) {
       setTitle(""); setIntro(""); setPanels([]); setSelectedRecipients(new Set());
       setRecipientFilter("all");
       setPinned(false); setPinnedUntil("");
+      setCategory("general");
     }
     api.get("/admin/announcements/recipients").then(({ data }) => setRecipients(data.items || []));
   }, [open, seededAnn, mode]);
@@ -428,6 +495,7 @@ function ComposeModal({ open, onClose, onSent, seed }) {
     // 14-day default.
     pinned: pinned,
     pinned_until: pinned ? (pinnedUntil || null) : null,
+    category: category,
     // Explicit acknowledgement that we mean to broadcast to everyone.
     // Backend rejects "send to all" without this flag — guardrail against
     // accidental fan-outs from curl tests or stale UI state.
@@ -516,6 +584,35 @@ function ComposeModal({ open, onClose, onSent, seed }) {
                 data-testid="announcement-intro"
                 className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg" />
             </label>
+
+            {/* Category — controls which section the update is filed
+                under on the franchisee portal page. Each portal section
+                renders with its own heading (Project / Meetings /
+                General). */}
+            <div className="mb-4">
+              <div className="text-[10px] uppercase tracking-wider font-bold text-stone-500 mb-1.5">Category</div>
+              <div className="flex items-center gap-2 flex-wrap" data-testid="announcement-category-group">
+                {ANNOUNCEMENT_CATEGORIES.map((c) => {
+                  const Icon = c.icon;
+                  const active = category === c.id;
+                  return (
+                    <button
+                      type="button"
+                      key={c.id}
+                      onClick={() => setCategory(c.id)}
+                      data-testid={`announcement-category-${c.id}`}
+                      className={`px-3 py-1.5 text-xs font-bold uppercase tracking-wider border rounded-lg flex items-center gap-1.5 transition-colors ${
+                        active
+                          ? "bg-stone-950 text-[#dddd16] border-stone-950"
+                          : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"
+                      }`}>
+                      <Icon className="w-3.5 h-3.5" />
+                      {c.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
             {/* Pin-to-top: tick the box to lift this announcement to
                 the top of the portal HQ Updates list. Once the date
@@ -699,7 +796,7 @@ function ComposeModal({ open, onClose, onSent, seed }) {
                     </div>
                     <div className="max-h-72 overflow-y-auto p-1" data-testid="recipients-list">
                       {filtered.length === 0 ? (
-                        <div className="px-3 py-6 text-center text-stone-500 text-xs">No franchisees match "{recipientSearch}".</div>
+                        <div className="px-3 py-6 text-center text-stone-500 text-xs">No franchisees match &ldquo;{recipientSearch}&rdquo;.</div>
                       ) : filtered.map((r) => (
                         <label key={r.id} data-testid={`recipient-row-${r.id}`}
                           className="flex items-center gap-2 px-2 py-1.5 hover:bg-stone-50 text-xs cursor-pointer rounded">

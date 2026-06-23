@@ -479,6 +479,14 @@ def attach(api, db, require_role):
             except ValueError as exc:
                 raise HTTPException(400, "pinned_until must be YYYY-MM-DD") from exc
 
+        # Category — used by the franchisee portal to group HQ Updates
+        # under section headings (Project / Meetings / General). Falls
+        # back to "general" so historic items keep flowing into a
+        # sensible bucket.
+        category = (body.get("category") or "general").strip().lower()
+        if category not in ("project", "meetings", "general"):
+            raise HTTPException(400, "category must be one of: project, meetings, general")
+
         # Resolve recipients
         recipient_ids = body.get("recipient_ids") or None
 
@@ -564,6 +572,7 @@ def attach(api, db, require_role):
             "sent_to": [r["id"] for r in recipients],
             "recipient_count": len(recipients),
             "pinned_until": pinned_until,
+            "category": category,
             "delivery": {"status": "pending", "succeeded": 0, "failed": 0, "errors": []},
         }
         await db.announcements.insert_one(ann)
@@ -706,6 +715,12 @@ def attach(api, db, require_role):
             except ValueError as exc:
                 raise HTTPException(400, "pinned_until must be YYYY-MM-DD") from exc
 
+        # Category — re-validated on edit so an admin can change it on
+        # re-send without losing the override.
+        category = (body.get("category") or "general").strip().lower()
+        if category not in ("project", "meetings", "general"):
+            raise HTTPException(400, "category must be one of: project, meetings, general")
+
         updated = {
             "title": title, "intro": intro, "panels": panels,
             "sent_to": [r["id"] for r in recipients],
@@ -713,6 +728,7 @@ def attach(api, db, require_role):
             "edited_at": _now_iso(),
             "edited_by": user.get("email"),
             "pinned_until": pinned_until,
+            "category": category,
             "delivery": {"status": "pending", "succeeded": 0, "failed": 0, "errors": []},
         }
         await db.announcements.update_one({"id": ann_id}, {"$set": updated})
@@ -874,6 +890,47 @@ def attach(api, db, require_role):
         if not r.deleted_count:
             raise HTTPException(404, "Not found")
         return {"ok": True}
+
+    @api.post("/admin/announcements/{ann_id}/unpin")
+    async def unpin_announcement(
+        ann_id: str,
+        user: dict = Depends(require_role("admin")),
+    ):
+        """Clear the pin on an announcement without re-sending the
+        email. Used by the "Unpin" button on the admin /admin/announcements
+        list. Idempotent — clearing an already-unpinned item is a no-op."""
+        r = await db.announcements.update_one(
+            {"id": ann_id},
+            {"$set": {"pinned_until": None,
+                      "unpinned_at": _now_iso(),
+                      "unpinned_by": user.get("email")}},
+        )
+        if not r.matched_count:
+            raise HTTPException(404, "Not found")
+        return {"ok": True, "announcement_id": ann_id}
+
+    @api.post("/admin/announcements/{ann_id}/category")
+    async def set_category(
+        ann_id: str,
+        body: dict,
+        user: dict = Depends(require_role("admin")),
+    ):
+        """Change the category on a previously-sent announcement
+        without re-sending the email. Lets HQ reorganise the
+        franchisee portal sections retroactively as the pool of
+        updates grows."""
+        category = (body.get("category") or "").strip().lower()
+        if category not in ("project", "meetings", "general"):
+            raise HTTPException(400, "category must be one of: project, meetings, general")
+        r = await db.announcements.update_one(
+            {"id": ann_id},
+            {"$set": {"category": category,
+                      "category_changed_at": _now_iso(),
+                      "category_changed_by": user.get("email")}},
+        )
+        if not r.matched_count:
+            raise HTTPException(404, "Not found")
+        return {"ok": True, "announcement_id": ann_id, "category": category}
 
     @api.post("/admin/announcements/rewrite-urls")
     async def rewrite_urls(

@@ -9,9 +9,18 @@
 // sidebar badge so it clears instantly (no 60s poll wait).
 import { useEffect, useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
-import { Megaphone, Calendar, Loader2, AlertCircle, ChevronDown, Image as ImageIcon, Search, X } from "lucide-react";
+import { Megaphone, Calendar, Loader2, AlertCircle, ChevronDown, Image as ImageIcon, Search, X, Briefcase, Users as UsersIcon, Sparkles } from "lucide-react";
 import api from "@/lib/api";
 import FileThumbnail from "@/components/files/FileThumbnail";
+
+// Category registry — must stay in sync with the admin composer
+// (AnnouncementsPage.jsx → ANNOUNCEMENT_CATEGORIES). Kept inline to
+// avoid a cross-app import path from /portal/ → /admin/.
+const PORTAL_CATEGORIES = [
+  { id: "project",  label: "Project Updates",  icon: Briefcase, tone: "text-sky-700" },
+  { id: "meetings", label: "Meetings",         icon: UsersIcon, tone: "text-violet-700" },
+  { id: "general",  label: "General",          icon: Sparkles,  tone: "text-stone-700" },
+];
 
 // Defensive: rewrite an absolute share URL so the host matches the
 // current window. Old announcements may have been minted with the
@@ -182,93 +191,108 @@ export default function PortalUpdatesPage() {
           <button onClick={() => setQuery("")} className="font-bold underline text-stone-700 hover:text-stone-950">Clear search</button>
         </div>
       ) : (
-        <div className="space-y-3">
-          {filteredItems.map((it) => {
-            const isOpen = openId === it.id;
-            const isUnread = (it.is_unread === true) && !readNow.has(it.id);
+        <div className="space-y-8">
+          {PORTAL_CATEGORIES.map((cat) => {
+            const itemsInCat = filteredItems.filter((it) => (it.category || "general") === cat.id);
+            if (itemsInCat.length === 0) return null;
+            const Icon = cat.icon;
             return (
-              <div
-                key={it.id}
-                className={`bg-white border rounded-2xl overflow-hidden ${
-                  it.is_pinned ? "border-amber-400 ring-2 ring-amber-200"
-                    : isUnread ? "border-rose-300 ring-1 ring-rose-100"
-                    : "border-stone-200"
-                }`}
-                data-testid={`portal-update-${it.id}`}
-              >
-                <button
-                  onClick={() => toggleOpen(it)}
-                  data-testid={`portal-update-toggle-${it.id}`}
-                  className="w-full flex items-center gap-4 px-5 py-4 hover:bg-stone-50/60 text-left transition-colors"
-                >
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
-                    it.is_pinned ? "bg-amber-100 text-amber-800"
-                      : isUnread ? "bg-rose-100 text-rose-700"
-                      : "bg-[#dddd16]/20 text-stone-900"
-                  }`}>
-                    <Megaphone className="w-4 h-4" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {it.is_pinned && (
-                        <span
-                          data-testid={`portal-update-pinned-${it.id}`}
-                          className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-amber-400 text-stone-950 rounded-full shadow-sm"
-                          title={`Pinned until ${(it.pinned_until || "").slice(0, 10)}`}
-                        >
-                          📌 Pinned
-                        </span>
-                      )}
-                      <div className="font-display text-xl font-bold text-stone-950 truncate">{it.title}</div>
-                      {isUnread && (
-                        <span
-                          data-testid={`portal-update-new-${it.id}`}
-                          className="inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-rose-600 text-white rounded-full shadow-sm"
-                        >
-                          New
-                        </span>
-                      )}
-                    </div>
-                    {/* Date — bumped up to text-sm and the brand font
-                        so it reads as proper metadata not micro-print.
-                        (Was text-xs in the previous build.) */}
-                    <div className="text-sm font-semibold text-stone-700 mt-1 flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-stone-500" />
-                      <span data-testid={`portal-update-date-${it.id}`}>
-                        {fmtDate(it.sent_at || it.created_at)}
-                      </span>
-                      <span className="text-stone-400">·</span>
-                      <span className="text-stone-500 font-normal">
-                        {(it.panels || []).length} item{(it.panels || []).length === 1 ? "" : "s"}
-                      </span>
-                    </div>
-                  </div>
-                  <ChevronDown className={`w-4 h-4 text-stone-500 transition-transform ${isOpen ? "rotate-180" : ""}`} />
-                </button>
-                {isOpen && (
-                  <div className="px-5 pb-5 border-t border-stone-100">
-                    {it.intro && <p className="text-sm text-stone-700 whitespace-pre-line mt-3 mb-4">{it.intro}</p>}
-                    {(it.panels || []).map((p, i) => (
+              <section key={cat.id} data-testid={`portal-updates-section-${cat.id}`}>
+                <div className="flex items-center gap-2 mb-3">
+                  <Icon className={`w-5 h-5 ${cat.tone}`} />
+                  <h2 className={`font-display text-2xl font-bold ${cat.tone}`}>{cat.label}</h2>
+                  <span className="text-xs font-bold uppercase tracking-wider text-stone-500 ml-1">
+                    {itemsInCat.length}
+                  </span>
+                </div>
+                <div className="space-y-3">
+                  {itemsInCat.map((it) => {
+                    const isOpen = openId === it.id;
+                    const isUnread = (it.is_unread === true) && !readNow.has(it.id);
+                    return (
                       <div
-                        key={`${p.kind || "panel"}-${p.key || p.folder_key || p.resolved_url || i}`}
-                        className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-4 mb-4 last:mb-0">
-                        <div className="rounded-lg overflow-hidden border border-stone-200 bg-stone-50 aspect-video sm:aspect-square">
-                          <PanelThumb panel={p} />
-                        </div>
-                        <div>
-                          <div className="font-display text-lg font-bold text-stone-950">{p.title}</div>
-                          {p.blurb && <p className="text-sm text-stone-700 whitespace-pre-line mt-1">{p.blurb}</p>}
-                          <a href={shareUrlOnCurrentHost(p.resolved_url)} target="_blank" rel="noopener noreferrer"
-                            data-testid={`portal-update-link-${it.id}-${i}`}
-                            className="inline-block mt-3 px-4 py-2 bg-[#dddd16] text-stone-950 font-bold text-xs uppercase tracking-wider rounded-md hover:brightness-95">
-                            Open {p.kind === "folder" ? "folder" : "file"} →
-                          </a>
-                        </div>
+                        key={it.id}
+                        className={`bg-white border rounded-2xl overflow-hidden ${
+                          it.is_pinned ? "border-amber-400 ring-2 ring-amber-200"
+                            : isUnread ? "border-rose-300 ring-1 ring-rose-100"
+                            : "border-stone-200"
+                        }`}
+                        data-testid={`portal-update-${it.id}`}
+                      >
+                        <button
+                          onClick={() => toggleOpen(it)}
+                          data-testid={`portal-update-toggle-${it.id}`}
+                          className="w-full flex items-center gap-4 px-5 py-4 hover:bg-stone-50/60 text-left transition-colors"
+                        >
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
+                            it.is_pinned ? "bg-amber-100 text-amber-800"
+                              : isUnread ? "bg-rose-100 text-rose-700"
+                              : "bg-[#dddd16]/20 text-stone-900"
+                          }`}>
+                            <Megaphone className="w-4 h-4" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {it.is_pinned && (
+                                <span
+                                  data-testid={`portal-update-pinned-${it.id}`}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-amber-400 text-stone-950 rounded-full shadow-sm"
+                                  title={`Pinned until ${(it.pinned_until || "").slice(0, 10)}`}
+                                >
+                                  📌 Pinned
+                                </span>
+                              )}
+                              <div className="font-display text-xl font-bold text-stone-950 truncate">{it.title}</div>
+                              {isUnread && (
+                                <span
+                                  data-testid={`portal-update-new-${it.id}`}
+                                  className="inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-rose-600 text-white rounded-full shadow-sm"
+                                >
+                                  New
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-sm font-semibold text-stone-700 mt-1 flex items-center gap-2">
+                              <Calendar className="w-4 h-4 text-stone-500" />
+                              <span data-testid={`portal-update-date-${it.id}`}>
+                                {fmtDate(it.sent_at || it.created_at)}
+                              </span>
+                              <span className="text-stone-400">·</span>
+                              <span className="text-stone-500 font-normal">
+                                {(it.panels || []).length} item{(it.panels || []).length === 1 ? "" : "s"}
+                              </span>
+                            </div>
+                          </div>
+                          <ChevronDown className={`w-4 h-4 text-stone-500 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                        </button>
+                        {isOpen && (
+                          <div className="px-5 pb-5 border-t border-stone-100">
+                            {it.intro && <p className="text-sm text-stone-700 whitespace-pre-line mt-3 mb-4">{it.intro}</p>}
+                            {(it.panels || []).map((p, i) => (
+                              <div
+                                key={`${p.kind || "panel"}-${p.key || p.folder_key || p.resolved_url || i}`}
+                                className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-4 mb-4 last:mb-0">
+                                <div className="rounded-lg overflow-hidden border border-stone-200 bg-stone-50 aspect-video sm:aspect-square">
+                                  <PanelThumb panel={p} />
+                                </div>
+                                <div>
+                                  <div className="font-display text-lg font-bold text-stone-950">{p.title}</div>
+                                  {p.blurb && <p className="text-sm text-stone-700 whitespace-pre-line mt-1">{p.blurb}</p>}
+                                  <a href={shareUrlOnCurrentHost(p.resolved_url)} target="_blank" rel="noopener noreferrer"
+                                    data-testid={`portal-update-link-${it.id}-${i}`}
+                                    className="inline-block mt-3 px-4 py-2 bg-[#dddd16] text-stone-950 font-bold text-xs uppercase tracking-wider rounded-md hover:brightness-95">
+                                    Open {p.kind === "folder" ? "folder" : "file"} →
+                                  </a>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+                    );
+                  })}
+                </div>
+              </section>
             );
           })}
         </div>
