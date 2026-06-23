@@ -268,24 +268,43 @@ export default function PortalUpdatesPage() {
                         {isOpen && (
                           <div className="px-5 pb-5 border-t border-stone-100">
                             {it.intro && <p className="text-sm text-stone-700 whitespace-pre-line mt-3 mb-4">{it.intro}</p>}
-                            {(it.panels || []).map((p, i) => (
+
+                            {/* General-category updates render the rich
+                                text body verbatim (server-side
+                                sanitised). Pure HTML — no panel grid. */}
+                            {it.body_html ? (
                               <div
-                                key={`${p.kind || "panel"}-${p.key || p.folder_key || p.resolved_url || i}`}
-                                className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-4 mb-4 last:mb-0">
-                                <div className="rounded-lg overflow-hidden border border-stone-200 bg-stone-50 aspect-video sm:aspect-square">
-                                  <PanelThumb panel={p} />
+                                data-testid={`portal-update-body-${it.id}`}
+                                className="text-sm text-stone-800 leading-relaxed prose prose-sm max-w-none mt-3"
+                                dangerouslySetInnerHTML={{ __html: it.body_html }}
+                              />
+                            ) : (it.panels || []).map((p, i) => {
+                              const isLink = p.kind === "link";
+                              const isFolder = p.kind === "folder";
+                              const btnLabel = isLink
+                                ? ((p.resolved_url || "").toLowerCase().includes("youtu") ? "Watch video" : "Open link")
+                                : isFolder ? "Open folder" : "Open file";
+                              return (
+                                <div
+                                  key={`${p.kind || "panel"}-${p.key || p.folder_key || p.resolved_url || i}`}
+                                  className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-4 mb-4 last:mb-0">
+                                  <div className="rounded-lg overflow-hidden border border-stone-200 bg-stone-50 aspect-video sm:aspect-square">
+                                    <PanelThumb panel={p} />
+                                  </div>
+                                  <div>
+                                    <div className="font-display text-lg font-bold text-stone-950">{p.title || (isLink ? "(link)" : p.kind)}</div>
+                                    {p.blurb && <p className="text-sm text-stone-700 whitespace-pre-line mt-1">{p.blurb}</p>}
+                                    <a
+                                      href={isLink ? (p.resolved_url || p.url) : shareUrlOnCurrentHost(p.resolved_url)}
+                                      target="_blank" rel="noopener noreferrer"
+                                      data-testid={`portal-update-link-${it.id}-${i}`}
+                                      className="inline-block mt-3 px-4 py-2 bg-[#dddd16] text-stone-950 font-bold text-xs uppercase tracking-wider rounded-md hover:brightness-95">
+                                      {btnLabel} →
+                                    </a>
+                                  </div>
                                 </div>
-                                <div>
-                                  <div className="font-display text-lg font-bold text-stone-950">{p.title}</div>
-                                  {p.blurb && <p className="text-sm text-stone-700 whitespace-pre-line mt-1">{p.blurb}</p>}
-                                  <a href={shareUrlOnCurrentHost(p.resolved_url)} target="_blank" rel="noopener noreferrer"
-                                    data-testid={`portal-update-link-${it.id}-${i}`}
-                                    className="inline-block mt-3 px-4 py-2 bg-[#dddd16] text-stone-950 font-bold text-xs uppercase tracking-wider rounded-md hover:brightness-95">
-                                    Open {p.kind === "folder" ? "folder" : "file"} →
-                                  </a>
-                                </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         )}
                       </div>

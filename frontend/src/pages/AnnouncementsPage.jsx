@@ -12,10 +12,11 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import {
   Megaphone, Send, Loader2, AlertCircle, Plus, Trash2, X, CheckCircle2,
   Search, FileText, Folder, RefreshCw, Calendar, Image as ImageIcon, Eye, Upload,
-  PinOff, Briefcase, Users as UsersIcon, Sparkles,
+  PinOff, Briefcase, Users as UsersIcon, Sparkles, Link as LinkIcon, Youtube,
 } from "lucide-react";
 import api from "@/lib/api";
 import FileThumbnail from "@/components/files/FileThumbnail";
+import MarketingIntroEditor from "@/components/portal/marketing/MarketingIntroEditor";
 
 // ---------------------------------------------------------------------------
 // HQ Updates support 3 categories. The portal groups updates under
@@ -355,6 +356,10 @@ function ComposeModal({ open, onClose, onSent, seed }) {
   // groups HQ Updates by this value so each section has its own
   // heading (Project / Meetings / General).
   const [category, setCategory] = useState("general");
+  // Rich-text body — only used when category === "general". Lives
+  // outside the panel grid so switching categories doesn't lose work
+  // on either side. Sanitised on the server before storage.
+  const [bodyHtml, setBodyHtml] = useState("");
 
   // Mode: 'new' (default), 'edit' (PATCH replaces the original), or
   // 'duplicate' (POST creates a fresh announcement).
@@ -383,6 +388,7 @@ function ComposeModal({ open, onClose, onSent, seed }) {
       // Seed category from the original (fallback to "general" so old
       // pre-categorised announcements still load cleanly).
       setCategory(seededAnn.category || "general");
+      setBodyHtml(seededAnn.body_html || "");
       // Strip server-minted resolved_url + thumbnail_url so a fresh send
       // re-mints them (avoids re-using a revoked or stale share token).
       setPanels((seededAnn.panels || []).map((p) => ({
@@ -408,11 +414,12 @@ function ComposeModal({ open, onClose, onSent, seed }) {
       setRecipientFilter("all");
       setPinned(false); setPinnedUntil("");
       setCategory("general");
+      setBodyHtml("");
     }
     api.get("/admin/announcements/recipients").then(({ data }) => setRecipients(data.items || []));
   }, [open, seededAnn, mode]);
 
-  // Live preview — re-render whenever title/intro/panels change (debounced)
+  // Live preview — re-render whenever title/intro/panels/body change (debounced)
   useEffect(() => {
     if (!open) return;
     const t = setTimeout(async () => {
@@ -420,13 +427,15 @@ function ComposeModal({ open, onClose, onSent, seed }) {
         const { data } = await api.post("/admin/announcements/preview-html", {
           title, intro,
           panels: panels.map((p) => ({ ...p })),
+          body_html: bodyHtml,
+          category,
           sample_first_name: "Sandra",
         });
         setPreviewHtml(data.html || "");
       } catch (e) { /* swallow — preview is best-effort */ }
     }, 300);
     return () => clearTimeout(t);
-  }, [open, title, intro, panels]);
+  }, [open, title, intro, panels, bodyHtml, category]);
 
   // ---- panel operations ----
   const addPanel = (kind, ref) => {
@@ -437,6 +446,14 @@ function ComposeModal({ open, onClose, onSent, seed }) {
       title: ref?.name || ref?.prefix || "",
       blurb: "",
       thumbnail_url: "",
+    }]);
+  };
+  // Meetings panels carry an external URL (YouTube replay, Zoom recording
+  // public link, etc.). Title/blurb/thumbnail are all optional.
+  const addLinkPanel = () => {
+    setPanels((p) => [...p, {
+      kind: "link", url: "", title: "", blurb: "",
+      thumbnail_url: "", thumbnail_key: "",
     }]);
   };
   const updatePanel = (idx, patch) => setPanels((arr) => arr.map((p, i) => (i === idx ? { ...p, ...patch } : p)));
@@ -484,11 +501,13 @@ function ComposeModal({ open, onClose, onSent, seed }) {
       kind: p.kind,
       key: p.key || undefined,
       prefix: p.prefix || undefined,
+      url: p.url || undefined,
       title: p.title,
       blurb: p.blurb,
       thumbnail_url: p.thumbnail_url || undefined,
       thumbnail_key: p.thumbnail_key || undefined,
     })),
+    body_html: bodyHtml || "",
     recipient_ids: recipientFilter === "subset" ? Array.from(selectedRecipients) : null,
     // Pin metadata — admin sets the date via the composer; backend
     // treats `pinned: true` without an explicit `pinned_until` as a
@@ -654,7 +673,118 @@ function ComposeModal({ open, onClose, onSent, seed }) {
               )}
             </div>
 
-            {/* Panels */}
+            {/* Panels — the editor surface changes per category:
+                  • PROJECT  → File/Folder picker (existing UX)
+                  • MEETINGS → External-link panels (YouTube etc.)
+                  • GENERAL  → Single rich-text body, no panels
+                The Recipients/Pin/Send block below stays identical
+                across all three so admins keep one mental model. */}
+            {category === "general" ? (
+              <div className="mb-4" data-testid="announcement-general-body">
+                <div className="text-[10px] uppercase tracking-wider font-bold text-stone-500 mb-1.5">Body</div>
+                <MarketingIntroEditor
+                  value={bodyHtml}
+                  onChange={setBodyHtml}
+                  placeholder="Write your update… Use the toolbar for bold, colour, alignment and the franchisee's first name."
+                  testid="announcement-body-editor"
+                />
+                <p className="mt-1.5 text-[11px] text-stone-500">
+                  This is a free-text update — no files, folders or links needed.
+                </p>
+              </div>
+            ) : category === "meetings" ? (
+              <div className="mb-4" data-testid="announcement-meetings-panels">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-[10px] uppercase tracking-wider font-bold text-stone-500">Meeting links ({panels.length})</div>
+                  <button onClick={addLinkPanel} data-testid="add-link-panel"
+                    className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-white border border-stone-300 hover:bg-stone-50 text-stone-700 rounded-md flex items-center gap-1">
+                    <Plus className="w-3 h-3" /> Link
+                  </button>
+                </div>
+                {panels.length === 0 ? (
+                  <div className="px-4 py-8 text-center border-2 border-dashed border-stone-200 rounded-lg text-stone-500 text-xs">
+                    Add a YouTube replay, Zoom recording or any URL above.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {panels.map((p, idx) => (
+                      <div key={idx} className="border border-stone-200 rounded-lg p-3" data-testid={`panel-${idx}`}>
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <div className="flex items-center gap-1.5 text-xs text-stone-600 min-w-0">
+                            {(p.url || "").toLowerCase().includes("youtu") ? (
+                              <Youtube className="w-3.5 h-3.5 shrink-0 text-rose-600" />
+                            ) : (
+                              <LinkIcon className="w-3.5 h-3.5 shrink-0" />
+                            )}
+                            <span className="font-mono truncate">{p.url || "(no URL yet)"}</span>
+                          </div>
+                          <button onClick={() => removePanel(idx)} className="text-stone-400 hover:text-rose-600 shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>
+                        </div>
+                        <label className="block mb-2">
+                          <div className="text-[10px] uppercase tracking-wider font-bold text-stone-500 mb-1">URL <span className="text-rose-600">*</span></div>
+                          <input
+                            type="url" value={p.url || ""}
+                            onChange={(e) => updatePanel(idx, { url: e.target.value })}
+                            placeholder="https://youtu.be/…"
+                            data-testid={`panel-${idx}-url`}
+                            className="w-full px-2 py-1.5 text-sm bg-white border border-stone-300 rounded font-mono" />
+                        </label>
+                        <label className="block mb-1">
+                          <div className="text-[10px] uppercase tracking-wider font-bold text-stone-500 mb-1">Title</div>
+                          <input
+                            value={p.title || ""}
+                            onChange={(e) => updatePanel(idx, { title: e.target.value })}
+                            placeholder="e.g. June Team Meeting Replay"
+                            data-testid={`panel-${idx}-title`}
+                            className="w-full px-2 py-1.5 text-sm bg-white border border-stone-300 rounded" />
+                        </label>
+                        <label className="block mb-2">
+                          <div className="text-[10px] uppercase tracking-wider font-bold text-stone-500 mb-1">Blurb</div>
+                          <textarea rows={2} value={p.blurb || ""}
+                            onChange={(e) => updatePanel(idx, { blurb: e.target.value })}
+                            placeholder="One or two lines of context shown beneath the title."
+                            data-testid={`panel-${idx}-blurb`}
+                            className="w-full px-2 py-1.5 text-sm bg-white border border-stone-300 rounded" />
+                        </label>
+                        <div className="flex items-center justify-between gap-2 pt-1 border-t border-stone-100">
+                          <div className="text-[10px] uppercase tracking-wider font-bold text-stone-500 flex items-center gap-1.5 min-w-0">
+                            <ImageIcon className="w-3 h-3 shrink-0" />
+                            <span>Thumbnail</span>
+                            {p.thumbnail_key ? (
+                              <span className="font-mono normal-case text-stone-400 truncate">· {p.thumbnail_key.split("/").pop()}</span>
+                            ) : (
+                              <span className="normal-case text-stone-400">· optional</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <label className="px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider text-stone-700 border border-stone-300 hover:bg-stone-50 rounded cursor-pointer inline-flex items-center gap-1"
+                              data-testid={`panel-${idx}-upload-thumb`}>
+                              <Upload className="w-3 h-3" /> Upload
+                              <input type="file" accept="image/*" className="hidden"
+                                onChange={(e) => {
+                                  const f = e.target.files?.[0];
+                                  if (f) uploadThumbForPanel(idx, f);
+                                  e.target.value = "";
+                                }} />
+                            </label>
+                            {p.thumbnail_key && (
+                              <button onClick={() => updatePanel(idx, { thumbnail_key: "" })} className="text-stone-400 hover:text-rose-600"><X className="w-3.5 h-3.5" /></button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    <div className="mt-2 flex items-center justify-center py-2 border-t border-stone-200">
+                      <button onClick={addLinkPanel} data-testid="add-another-link"
+                        className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-white border border-stone-300 hover:bg-stone-50 text-stone-700 rounded-full flex items-center gap-1">
+                        <Plus className="w-3 h-3" /> Add another link
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+            /* PROJECT — original file/folder picker UX */
             <div className="mb-4">
               <div className="flex items-center justify-between mb-2">
                 <div className="text-[10px] uppercase tracking-wider font-bold text-stone-500">Project panels ({panels.length})</div>
@@ -744,6 +874,7 @@ function ComposeModal({ open, onClose, onSent, seed }) {
                 </>
               )}
             </div>
+            )}
 
             {/* Recipients */}
             <div className="mb-2">

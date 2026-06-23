@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import secrets
 import uuid
 from datetime import datetime, timezone, timedelta, date as date_cls
@@ -73,14 +74,23 @@ async def _resolve_link_for_panel(db, panel: dict, request: Request | None = Non
     return (file_url, thumbnail_url). For folder panels the thumbnail
     falls back to whatever the admin provided (we don't try to auto-pick).
 
-    Each panel is either a single file (``kind=file``, ``key=...``) or a
-    folder (``kind=folder``, ``prefix=...``). We always create a fresh
-    token so revoking an old announcement's links doesn't break a new
-    one. URLs point at our backend's share resolver which 302s to a
-    freshly signed R2 URL — so the URL embedded in the recipient's
-    email never goes stale.
+    Each panel is either a single file (``kind=file``, ``key=...``), a
+    folder (``kind=folder``, ``prefix=...``), or — for Meetings updates —
+    an arbitrary external URL (``kind=link``, ``url=...``) such as a
+    YouTube replay link.  ``kind=link`` panels are passed through as-is
+    so the franchisee clicks straight through to YouTube/Vimeo/etc.
     """
     base = _frontend_base(request, body_origin)
+    if panel.get("kind") == "link":
+        url = (panel.get("url") or "").strip()
+        if not url:
+            return base, None
+        if not re.match(r"^https?://", url, flags=re.IGNORECASE):
+            url = "https://" + url
+        # Link panels reuse the existing thumbnail_url / thumbnail_key
+        # convention used by file & folder panels — so the outer
+        # resolve loop can populate the thumbnail consistently.
+        return url, panel.get("thumbnail_url") or None
     if panel.get("kind") == "folder":
         prefix = (panel.get("prefix") or "").strip("/")
         if not prefix:
@@ -196,36 +206,107 @@ async def _thumb_base64_for_key(db, key: str) -> Optional[str]:
     return "data:image/jpeg;base64," + base64.b64encode(data).decode("ascii")
 
 
+_BODY_HTML_ALLOWED_TAGS = frozenset({"b", "strong", "i", "em", "u", "br", "div", "p", "span", "font", "a"})
+_BODY_HTML_ALLOWED_ATTRS = {
+    "*": ["style", "color"],
+    "a": ["href", "target", "rel"],
+    "font": ["color"],
+    "span": ["style", "color"],
+    "div": ["style"],
+    "p": ["style"],
+}
+
+
+def _sanitise_body_html(raw: str) -> str:
+    """Server-side guardrail mirroring the MarketingIntroEditor client
+    sanitiser. Strips ``<script>``, ``onerror`` handlers, javascript:
+    URLs etc. so an HQ Updates "General" body can be safely embedded in
+    the recipient email and rendered on the portal via
+    ``dangerouslySetInnerHTML``. Uses ``bleach`` (Mozilla-maintained)
+    because it's the standard for Python HTML sanitisation."""
+    if not raw:
+        return ""
+    try:
+        import bleach
+        from bleach.css_sanitizer import CSSSanitizer
+        # Preserve only the CSS properties the editor is allowed to emit
+        # (colour + text alignment). Anything else is dropped silently
+        # via the CSS sanitiser.
+        css_san = CSSSanitizer(allowed_css_properties=["color", "text-align", "background-color", "font-weight", "font-style", "text-decoration"])
+        cleaned = bleach.clean(
+            raw,
+            tags=_BODY_HTML_ALLOWED_TAGS,
+            attributes=_BODY_HTML_ALLOWED_ATTRS,
+            protocols=["http", "https", "mailto"],
+            css_sanitizer=css_san,
+            strip=True,
+        )
+        # Force-safe links — open in new tab regardless of admin input.
+        cleaned = re.sub(
+            r'<a (?![^>]*\btarget=)([^>]*)>',
+            r'<a target="_blank" rel="noopener noreferrer" \1>',
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+        return cleaned
+    except Exception:  # noqa: BLE001
+        # Defence in depth: never let a sanitisation crash inject raw HTML.
+        from html import escape
+        return escape(raw)
+
+
 def _build_html(announcement: dict) -> str:
     """Branded HTML email. Mirrors the user-supplied example:
     Creative Mojo logo header → yellow title banner → intro text → list
     of panels (thumbnail left, name + blurb + button right) →
     Creative Mojo footer.
+
+    For ``category == "general"`` with a non-empty ``body_html`` the
+    panel grid is replaced by the rich-text body so HQ can broadcast
+    free-form announcements.
     """
-    panels_html: list[str] = []
-    for idx, p in enumerate(announcement.get("panels", [])):
-        thumb = p.get("thumbnail_url") or ""
-        title = p.get("title") or ""
-        blurb = (p.get("blurb") or "").replace("\n", "<br/>")
-        href = p.get("resolved_url") or "#"
-        # Separator: 0.5pt grey horizontal keyline between subsequent
-        # panels (first panel uses the green keyline above the table for
-        # separation, so no top border here).
-        sep_style = ("border-top:1px solid #d4d4d4;padding:28px 0;"
-                     if idx > 0 else "padding:0 0 28px 0;")
-        thumb_html = (
-            f'<img src="{thumb}" alt="{title}" width="320" '
-            'style="max-width:100%;height:auto;border-radius:8px;display:block;margin:0 auto 18px auto;" />'
-        ) if thumb else ""
-        # Order: TITLE → THUMBNAIL → BLURB → BUTTON
-        panels_html.append(f"""
+    category = (announcement.get("category") or "general").lower()
+    body_html_raw = (announcement.get("body_html") or "").strip()
+    middle_html: str
+    if category == "general" and body_html_raw:
+        safe_body = _sanitise_body_html(body_html_raw)
+        middle_html = (
+            f'<tr><td style="padding:0 30px 30px 30px;font-size:15px;'
+            f'line-height:1.6;color:#1a1a1a;">{safe_body}</td></tr>'
+        )
+    else:
+        panels_html: list[str] = []
+        for idx, p in enumerate(announcement.get("panels", [])):
+            thumb = p.get("thumbnail_url") or ""
+            title = p.get("title") or ""
+            blurb = (p.get("blurb") or "").replace("\n", "<br/>")
+            href = p.get("resolved_url") or "#"
+            sep_style = ("border-top:1px solid #d4d4d4;padding:28px 0;"
+                         if idx > 0 else "padding:0 0 28px 0;")
+            thumb_html = (
+                f'<img src="{thumb}" alt="{title}" width="320" '
+                'style="max-width:100%;height:auto;border-radius:8px;display:block;margin:0 auto 18px auto;" />'
+            ) if thumb else ""
+            kind = p.get("kind")
+            if kind == "link":
+                btn_label = "WATCH VIDEO" if "youtu" in href.lower() else "OPEN LINK"
+            elif kind == "folder":
+                btn_label = "OPEN FOLDER"
+            else:
+                btn_label = "OPEN FILE"
+            panels_html.append(f"""
 <tr><td align="center" style="{sep_style}">
   <div style="font-size:22px;font-weight:700;color:#1a1a1a;line-height:1.25;margin:0 auto 18px auto;text-align:center;max-width:480px;word-wrap:break-word;">{title}</div>
   {thumb_html}
   {('<div style="font-size:14px;line-height:1.6;color:#666666;margin:0 auto 16px auto;text-align:center;max-width:480px;">' + blurb + '</div>') if blurb else ''}
-  <a href="{href}" style="display:inline-block;background:#dddd16;color:#1a1a1a;font-weight:700;text-decoration:none;padding:11px 26px;border-radius:4px;font-size:13px;letter-spacing:0.5px;">OPEN {('FOLDER' if p.get('kind')=='folder' else 'FILE')} &rsaquo;</a>
+  <a href="{href}" style="display:inline-block;background:#dddd16;color:#1a1a1a;font-weight:700;text-decoration:none;padding:11px 26px;border-radius:4px;font-size:13px;letter-spacing:0.5px;">{btn_label} &rsaquo;</a>
 </td></tr>
 """)
+        middle_html = (
+            f'<tr><td style="padding:0 30px 30px 30px;">'
+            f'<table cellpadding="0" cellspacing="0" border="0" width="100%">'
+            f'{"".join(panels_html)}</table></td></tr>'
+        )
     intro_html = (announcement.get("intro") or "").replace("\n", "<br/>")
     return f"""
 <!doctype html>
@@ -250,9 +331,7 @@ def _build_html(announcement: dict) -> str:
       <tr><td style="padding:30px 30px 30px 30px;">
         <div style="height:0;border-top:1px solid #dddd16;margin:0;"></div>
       </td></tr>
-      <tr><td style="padding:0 30px 30px 30px;">
-        <table cellpadding="0" cellspacing="0" border="0" width="100%">{''.join(panels_html)}</table>
-      </td></tr>
+      {middle_html}
       <tr><td style="padding:30px;font-size:11px;color:#999999;line-height:1.5;text-align:center;border-top:1px solid #eaeaea;">
         Creative Mojo Ltd · Channings, Brithem Bottom, Cullompton, Devon EX15 1NB<br/>
         This update is for franchisees only. Please don't forward externally.
@@ -354,7 +433,17 @@ def attach(api, db, require_role):
         """
         panels = list(body.get("panels") or [])
         for p in panels:
-            p.setdefault("resolved_url", "#")
+            # For Meetings (kind=link) panels, the resolved_url is just
+            # the admin-typed URL; for other panels the live preview
+            # uses a placeholder "#" because no share token is minted
+            # at preview time.
+            if p.get("kind") == "link":
+                u = (p.get("url") or "").strip()
+                if u and not re.match(r"^https?://", u, flags=re.IGNORECASE):
+                    u = "https://" + u
+                p["resolved_url"] = u or "#"
+            else:
+                p.setdefault("resolved_url", "#")
             if p.get("thumbnail_url"):
                 continue
             # 1. Explicit admin pick
@@ -370,17 +459,21 @@ def attach(api, db, require_role):
                 if b64:
                     p["thumbnail_url"] = b64
                     continue
-            # 3. Placeholder
-            p["thumbnail_url"] = ("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20"
-                                   "width%3D%22320%22%20height%3D%22200%22%3E%3Crect%20width%3D%22100%25%22%20"
-                                   "height%3D%22100%25%22%20fill%3D%22%23f0f0eb%22%2F%3E%3Ctext%20x%3D%2250%25%22%20"
-                                   "y%3D%2250%25%22%20fill%3D%22%23999999%22%20font-family%3D%22sans-serif%22%20"
-                                   "font-size%3D%2213%22%20text-anchor%3D%22middle%22%20dominant-baseline%3D%22middle%22%3E"
-                                   "Pick%20a%20thumbnail%3C%2Ftext%3E%3C%2Fsvg%3E")
+            # 3. Placeholder — skip for link panels (a video URL doesn't
+            # need a placeholder block in the preview).
+            if p.get("kind") != "link":
+                p["thumbnail_url"] = ("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20"
+                                       "width%3D%22320%22%20height%3D%22200%22%3E%3Crect%20width%3D%22100%25%22%20"
+                                       "height%3D%22100%25%22%20fill%3D%22%23f0f0eb%22%2F%3E%3Ctext%20x%3D%2250%25%22%20"
+                                       "y%3D%2250%25%22%20fill%3D%22%23999999%22%20font-family%3D%22sans-serif%22%20"
+                                       "font-size%3D%2213%22%20text-anchor%3D%22middle%22%20dominant-baseline%3D%22middle%22%3E"
+                                       "Pick%20a%20thumbnail%3C%2Ftext%3E%3C%2Fsvg%3E")
         sample = {
             "title": body.get("title") or "(no subject yet)",
             "intro": body.get("intro") or "",
             "panels": panels,
+            "category": (body.get("category") or "general"),
+            "body_html": body.get("body_html") or "",
         }
         html = _build_html(sample).replace("{{first_name}}", body.get("sample_first_name") or "Friend")
         return {"html": html}
@@ -456,8 +549,16 @@ def attach(api, db, require_role):
         if not title:
             raise HTTPException(400, "title is required")
         panels = body.get("panels") or []
-        if not isinstance(panels, list) or not panels:
-            raise HTTPException(400, "At least one panel is required")
+        if not isinstance(panels, list):
+            raise HTTPException(400, "panels must be a list")
+        body_html_in = (body.get("body_html") or "").strip()
+        category_in = (body.get("category") or "general").strip().lower()
+        if category_in == "general":
+            if not body_html_in and not panels:
+                raise HTTPException(400, "General announcements need a body or at least one panel")
+        else:
+            if not panels:
+                raise HTTPException(400, "At least one panel is required")
         intro = body.get("intro") or ""
 
         # Pin-to-top metadata. Backend stores `pinned_until` as an ISO
@@ -573,6 +674,7 @@ def attach(api, db, require_role):
             "recipient_count": len(recipients),
             "pinned_until": pinned_until,
             "category": category,
+            "body_html": _sanitise_body_html(body_html_in) if category == "general" else "",
             "delivery": {"status": "pending", "succeeded": 0, "failed": 0, "errors": []},
         }
         await db.announcements.insert_one(ann)
@@ -643,8 +745,16 @@ def attach(api, db, require_role):
         if not title:
             raise HTTPException(400, "title is required")
         panels = body.get("panels") or []
-        if not isinstance(panels, list) or not panels:
-            raise HTTPException(400, "At least one panel is required")
+        if not isinstance(panels, list):
+            raise HTTPException(400, "panels must be a list")
+        body_html_in = (body.get("body_html") or "").strip()
+        category_in = (body.get("category") or "general").strip().lower()
+        if category_in == "general":
+            if not body_html_in and not panels:
+                raise HTTPException(400, "General announcements need a body or at least one panel")
+        else:
+            if not panels:
+                raise HTTPException(400, "At least one panel is required")
         intro = body.get("intro") or ""
 
         # Resolve recipients (same guardrails as POST /admin/announcements).
@@ -729,6 +839,7 @@ def attach(api, db, require_role):
             "edited_by": user.get("email"),
             "pinned_until": pinned_until,
             "category": category,
+            "body_html": _sanitise_body_html(body_html_in) if category == "general" else "",
             "delivery": {"status": "pending", "succeeded": 0, "failed": 0, "errors": []},
         }
         await db.announcements.update_one({"id": ann_id}, {"$set": updated})
