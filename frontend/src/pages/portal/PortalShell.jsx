@@ -239,7 +239,7 @@ export default function PortalShell() {
               className="px-2.5 sm:px-4 py-2 text-[10px] sm:text-xs font-bold uppercase tracking-wider bg-[#dddd16] hover:bg-[#aaaa11] text-stone-950 rounded-lg flex items-center gap-1.5 sm:gap-2 transition-colors shadow-sm"
             >
               <LifeBuoy className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              <span className="hidden sm:inline">Help</span>
+              <span>Help</span>
             </button>
             <button
               onClick={() => {

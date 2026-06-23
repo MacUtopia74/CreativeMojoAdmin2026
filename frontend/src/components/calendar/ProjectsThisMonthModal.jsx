@@ -100,7 +100,7 @@ export default function ProjectsThisMonthModal({ visibleDate, onClose }) {
               No projects tagged for {MONTH_NAMES[month - 1]} yet. Try a different month, or ask HQ to tag the products.
             </div>
           ) : (
-            <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <ul className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
               {items.map((it) => (
                 <li
                   key={it.id}

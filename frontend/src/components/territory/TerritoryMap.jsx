@@ -121,6 +121,11 @@ export default function TerritoryMap({
       style: initialStyle,
       center: centre ? [centre.lng, centre.lat] : [-2.5, 53.4],
       zoom: centre ? 9 : 5.4,
+      // Mobile / trackpad: require two-finger gesture to pan or pinch
+      // to zoom. Stops the map from "grabbing" the page when the user
+      // is just trying to scroll past it. Desktop one-finger drag
+      // still works as expected.
+      cooperativeGestures: true,
     });
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
     map.addControl(new mapboxgl.ScaleControl({ maxWidth: 100, unit: "imperial" }), "bottom-left");

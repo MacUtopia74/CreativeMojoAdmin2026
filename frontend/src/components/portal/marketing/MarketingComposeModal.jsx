@@ -923,7 +923,7 @@ function PanelEditor({ idx, panel, canRemove, onChange, onRemove, onPickImage, o
           </Field>
           <div className="sm:col-span-2 text-[11px] text-stone-500 flex items-center gap-1.5">
             <Mail className="w-3 h-3" />
-            The button will open the recipient's email app addressed to your franchisee email (set on your <a href="/portal/details" className="underline">My Franchise</a> page).
+            The button will open the recipient&rsquo;s email app addressed to your franchisee email (set on your <a href="/portal/details" className="underline">My Franchise</a> page).
           </div>
         </div>
       )}
@@ -961,9 +961,29 @@ function EyeIcon() {
 // has to be re-attached on every load — that's what onLoad is for.
 function AutosizeIframe({ srcDoc, testid }) {
   const ref = useRef(null);
+  const wrapRef = useRef(null);
   // Start at 420px to avoid a 0-height flash before the first measure
   // resolves. Anything beyond that becomes content-driven.
   const [height, setHeight] = useState(420);
+  // Marketing emails render at a fixed 600px width. On narrow screens
+  // we scale the iframe down so the preview fits edge-to-edge — admin
+  // can still see exactly what the recipient sees, just smaller.
+  const [scale, setScale] = useState(1);
+
+  const computeScale = useCallback(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const w = wrap.clientWidth || 600;
+    const s = Math.min(1, w / 600);
+    setScale((prev) => (Math.abs(s - prev) > 0.01 ? s : prev));
+  }, []);
+
+  useEffect(() => {
+    computeScale();
+    const onResize = () => computeScale();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [computeScale]);
 
   const measure = useCallback(() => {
     const ifr = ref.current;
@@ -988,14 +1008,6 @@ function AutosizeIframe({ srcDoc, testid }) {
     try {
       const doc = ifr.contentDocument;
       if (!doc) return;
-      // Watch for late-loading images (the section thumbnails take a
-      // tick to come back from R2). Each image bumps the height again
-      // as soon as its dimensions resolve. This is sufficient because
-      // emails are otherwise static HTML — no dynamic font/layout
-      // shifts to chase. A ResizeObserver was tempting but its loop
-      // notification ("ResizeObserver loop completed with undelivered
-      // notifications") trips CRA's react-error-overlay even though
-      // the warning is harmless.
       const imgs = Array.from(doc.images || []);
       imgs.forEach((img) => {
         if (!img.complete) {
@@ -1003,22 +1015,27 @@ function AutosizeIframe({ srcDoc, testid }) {
           img.addEventListener("error", measure, { once: true });
         }
       });
-      // Safety net — re-measure once after a short delay to catch
-      // anything that finished settling slightly after onLoad fired.
       setTimeout(measure, 250);
     } catch { /* noop */ }
   }, [measure]);
 
   return (
-    <iframe
-      ref={ref}
-      title="Email preview"
-      srcDoc={srcDoc}
-      onLoad={onLoad}
-      style={{ height: `${height}px` }}
-      className="w-full border-0 block"
-      data-testid={testid}
-    />
+    <div ref={wrapRef} className="w-full overflow-hidden" style={{ height: `${height * scale}px` }}>
+      <iframe
+        ref={ref}
+        title="Email preview"
+        srcDoc={srcDoc}
+        onLoad={onLoad}
+        style={{
+          width: "600px",
+          height: `${height}px`,
+          transform: `scale(${scale})`,
+          transformOrigin: "top left",
+        }}
+        className="border-0 block"
+        data-testid={testid}
+      />
+    </div>
   );
 }
 

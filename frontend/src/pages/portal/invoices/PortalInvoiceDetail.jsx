@@ -259,7 +259,7 @@ function InvoiceDetail() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button variant="outline" onClick={refreshClientInfo} disabled={refreshing} data-testid="refresh-client-btn">
             <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
             {refreshing ? "Refreshing..." : "Refresh Client Info"}

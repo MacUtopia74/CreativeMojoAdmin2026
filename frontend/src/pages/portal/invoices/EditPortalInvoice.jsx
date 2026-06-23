@@ -60,8 +60,17 @@ function LineItemRow({ item, index, onUpdate, onRemove, canRemove }) {
 
 function InvoicePreview({ formData, subtotal, discountAmount, taxAmount, total, settings }) {
   return (
-    <Card className="bg-white shadow-xl sticky top-24 overflow-hidden" data-testid="invoice-preview" style={{ aspectRatio: '210/297' }}>
-      <div className="h-full flex flex-col p-12">
+    <Card
+      className="bg-white shadow-xl sm:sticky sm:top-24 sm:overflow-hidden"
+      data-testid="invoice-preview"
+      style={{
+        // Fixed A4 aspect only on tablets+ where the side-by-side
+        // layout has room. On mobile the preview stacks below the form
+        // and we let it grow to its full natural height instead of
+        // clipping at the "DESCRIPTION / QTY PRICE AMOUNT" line.
+        aspectRatio: typeof window !== "undefined" && window.innerWidth >= 640 ? "210/297" : "auto",
+      }}>
+      <div className="h-full flex flex-col p-5 sm:p-12">
         {/* Brand header — logo top-left + franchise name top-right */}
         <div className="flex items-start justify-between gap-6 border-b border-slate-200 pb-4 mb-6">
           <img
@@ -90,7 +99,7 @@ function InvoicePreview({ formData, subtotal, discountAmount, taxAmount, total, 
           </div>
           
           {/* Business Details & Invoice To */}
-          <div className="grid grid-cols-2 gap-8 mb-8 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-8 mb-6 sm:mb-8 text-sm">
             <div>
               <p className="text-slate-500 uppercase tracking-wider text-xs font-semibold mb-1">Invoice to:</p>
               {formData.client_name ? (
