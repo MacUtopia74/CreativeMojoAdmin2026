@@ -94,8 +94,50 @@ async def _resolve_file_tokens(db, body_html: str) -> str:
             url = presigned_get_url(att["key"], expires_in=30 * 24 * 3600)
             body_html = body_html.replace(f"{{{{file:{ph}}}}}", url)
         except Exception as e:  # noqa: BLE001
-            logger.warning("Couldn't sign R2 url for %s: %s", ph, e)
+            logger.warning("Could not resolve R2 file token %s: %s", ph, e)
     return body_html
+
+
+# Inline style snippets used by the WYSIWYG editor's "Yellow CTA" and
+# "Outline" button options. Email clients (Gmail web, Outlook desktop)
+# strip <style> blocks, so we must inject these as inline ``style=""``
+# attributes at send time so the admin's WYSIWYG view matches what the
+# recipient actually sees.
+_CTA_STYLE = ("display:inline-block;background:#dddd16;color:#1a1a1a;"
+              "font-weight:700;text-decoration:none;padding:11px 26px;"
+              "border-radius:4px;font-size:13px;letter-spacing:0.5px;"
+              "text-transform:uppercase;")
+_OUTLINE_STYLE = ("display:inline-block;background:transparent;color:#1a1a1a;"
+                  "font-weight:700;text-decoration:none;padding:11px 26px;"
+                  "border:2px solid #1a1a1a;border-radius:4px;font-size:13px;"
+                  "letter-spacing:0.5px;text-transform:uppercase;")
+
+
+def _inline_button_styles(body_html: str) -> str:
+    """Convert ``class="cm-btn-cta"`` / ``class="cm-btn-outline"`` anchors
+    into inline-styled buttons. Email clients strip <style> tags so the
+    WYSIWYG editor's CSS class hooks would otherwise render as bare links
+    in Gmail/Outlook/etc. Run this just before despatch.
+    """
+    if not body_html:
+        return body_html
+    def _replace(match: re.Match) -> str:
+        attrs = match.group(1)
+        # Pick the style based on the class token present.
+        if "cm-btn-outline" in attrs:
+            style = _OUTLINE_STYLE
+        else:
+            style = _CTA_STYLE
+        # Inject (or extend) a style attribute. Strip the class so the
+        # final HTML is squeaky-clean.
+        attrs = re.sub(r'\s*class="[^"]*"', "", attrs, count=1)
+        if "style=" in attrs:
+            attrs = re.sub(r'style="([^"]*)"', lambda m: f'style="{m.group(1).rstrip(";")};{style}"', attrs, count=1)
+        else:
+            attrs = f'{attrs} style="{style}"'
+        return f"<a{attrs}>"
+    return re.sub(r'<a([^>]*?class="[^"]*cm-btn-(?:cta|outline)[^"]*"[^>]*)>',
+                  _replace, body_html, flags=re.IGNORECASE)
 
 
 # --------------------------------------------------------------- router
@@ -123,6 +165,10 @@ def build_resend_router(db, require_role):
         first_name = contact.get("first_name") or (contact.get("name") or "").split(" ", 1)[0] or "there"
         rendered_html = body.body_html.replace("{{first_name}}", first_name)
         rendered_html = await _resolve_file_tokens(db, rendered_html)
+        # Convert WYSIWYG button classes → inline styles so email clients
+        # that strip <style> tags still render the yellow CTA / outline
+        # buttons exactly as the admin saw them in the editor.
+        rendered_html = _inline_button_styles(rendered_html)
 
         # Per-send reply-to picks up the logged-in admin's email so the
         # recipient lands their reply in *that* admin's inbox, not the
@@ -146,8 +192,12 @@ def build_resend_router(db, require_role):
         }
         if body.cc:
             params["cc"] = [str(e) for e in body.cc]
-        if body.bcc:
-            params["bcc"] = [str(e) for e in body.bcc]
+        # Always BCC franchises@creativemojo.co.uk so HQ has an off-system
+        # audit trail of every enquiry reply. De-duplicated against any
+        # explicit bcc the admin set.
+        bcc_set = {str(e).strip().lower() for e in (body.bcc or [])}
+        bcc_set.add("franchises@creativemojo.co.uk")
+        params["bcc"] = sorted(bcc_set)
 
         try:
             resp = await asyncio.to_thread(resend.Emails.send, params)

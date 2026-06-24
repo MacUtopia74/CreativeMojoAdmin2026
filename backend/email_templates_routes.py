@@ -97,7 +97,12 @@ def build_email_templates_router(db, require_role):  # noqa: D401
         if for_editor:
             doc["body_html"] = _strip_signature(doc.get("body_html") or "")
         doc["rendered_html"] = full_body
-        doc["signature_html"] = None  # signature is now always system-managed
+        # Expose the static system signature so the WYSIWYG editor can
+        # render it inline (read-only) beneath the body — letting the
+        # admin see the full email layout while editing. This stays
+        # in lockstep with seed_email_templates.SIGNATURE_HTML.
+        from seed_email_templates import SIGNATURE_HTML
+        doc["signature_html"] = SIGNATURE_HTML
         return doc
 
     @router.get("/email-templates")

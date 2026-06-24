@@ -113,8 +113,11 @@ export default function EmailTemplatesPage() {
 function TemplateEditor({ template, onChanged, onDuplicate, onDelete }) {
   const [draft, setDraft] = useState(template);
   const [saving, setSaving] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
   const [showFilePicker, setShowFilePicker] = useState(false);
+  // When the file picker is opened from a CTA toolbar button we capture
+  // which button-style ("cta" / "outline") was clicked, so the chosen
+  // R2 file becomes an inline yellow or outline button.
+  const [filePickerMode, setFilePickerMode] = useState("cta");
 
   useEffect(() => { setDraft(template); }, [template]);
 
@@ -150,9 +153,41 @@ function TemplateEditor({ template, onChanged, onDuplicate, onDelete }) {
   };
 
   const insertFirstName = () => insertAtCursor("{{first_name}}");
+
+  // Insert a yellow CTA button. Pops the link dialog asking for label +
+  // URL; if the admin wants to attach an R2 file instead, they can use
+  // the "Pick from File Vault" file-picker (re-uses same code path).
+  const promptCta = (label, style) => {
+    const text = window.prompt(`Button label (e.g. ${label})`, label);
+    if (!text) return null;
+    const wantFile = window.confirm("Pick from R2 File Vault? Click Cancel to type an external URL instead.");
+    if (wantFile) {
+      // Defer to the file picker — it inserts the styled button itself.
+      setFilePickerMode(style);
+      setShowFilePicker(true);
+      return { text, style, deferred: true };
+    }
+    const url = window.prompt("Button URL (e.g. https://…)", "https://");
+    if (!url) return null;
+    const normalised = /^https?:\/\//i.test(url) || url.startsWith("mailto:") || url.startsWith("{{") ? url : `https://${url}`;
+    return { text, url: normalised, style };
+  };
+  const buildButtonHtml = ({ text, url, style }) => {
+    const cls = style === "outline" ? "cm-btn-outline" : "cm-btn-cta";
+    return `<p><a href="${url}" class="${cls}" target="_blank" rel="noopener noreferrer">${text}</a></p>`;
+  };
+  const insertCta = () => {
+    const r = promptCta("Click here to download", "cta");
+    if (!r || r.deferred) return;
+    insertAtCursor(buildButtonHtml(r));
+  };
+  const insertOutline = () => {
+    const r = promptCta("Watch the video", "outline");
+    if (!r || r.deferred) return;
+    insertAtCursor(buildButtonHtml(r));
+  };
+
   const onPickFile = (f) => {
-    // Pick a unique placeholder slug — derived from the filename so
-    // multiple files in one template don't collide.
     const slug = (f.name || "file").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || `file_${Math.random().toString(36).slice(2, 7)}`;
     setDraft((d) => {
       const existing = d.attachments || [];
@@ -160,10 +195,14 @@ function TemplateEditor({ template, onChanged, onDuplicate, onDelete }) {
         { key: f.key, name: f.name, placeholder: slug }];
       return { ...d, attachments: dedup };
     });
-    insertAtCursor(
-      `<a href="{{file:${slug}}}" style="display:inline-block;background:#dddd16;color:#1a1a1a;padding:12px 22px;text-decoration:none;font-weight:bold;border-radius:6px;">Click here to download ${f.name}</a>`
-    );
+    // Use the styled button class so it picks up the WYSIWYG editor's
+    // canvas CSS — no inline styles needed, and the backend's send-time
+    // resolver still substitutes {{file:…}} for the live R2 share URL.
+    const cls = filePickerMode === "outline" ? "cm-btn-outline" : "cm-btn-cta";
+    const label = filePickerMode === "outline" ? `Watch ${f.name}` : `Click here to download ${f.name}`;
+    insertAtCursor(`<p><a href="{{file:${slug}}}" class="${cls}" target="_blank" rel="noopener noreferrer">${label}</a></p>`);
     setShowFilePicker(false);
+    setFilePickerMode("cta");
   };
 
   return (
@@ -237,37 +276,34 @@ function TemplateEditor({ template, onChanged, onDuplicate, onDelete }) {
         </div>
       </div>
 
-      {/* Body */}
+      {/* Body — WYSIWYG canvas matches the final email layout exactly:
+          logo at the top, your editable body, and the locked Creative
+          Mojo signature beneath. No more "Preview" toggle — what you
+          see is what gets sent. */}
       <div>
         <div className="flex items-center justify-between mb-1">
-          <label className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Email body</label>
+          <label className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Email body (live preview)</label>
           <div className="flex items-center gap-2">
             <button type="button" onClick={insertFirstName} data-testid="template-insert-firstname"
               className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-stone-100 hover:bg-stone-200 text-stone-800 rounded inline-flex items-center gap-1">
               + {`{{first_name}}`}
             </button>
-            <button type="button" onClick={() => setShowFilePicker(true)} data-testid="template-insert-file"
+            <button type="button" onClick={() => { setFilePickerMode("cta"); setShowFilePicker(true); }} data-testid="template-insert-file"
               className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-stone-100 hover:bg-stone-200 text-stone-800 rounded inline-flex items-center gap-1">
               <Paperclip className="w-3 h-3" /> Insert R2 file link
             </button>
-            <button type="button" onClick={() => setShowPreview((v) => !v)} data-testid="template-toggle-preview"
-              className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded inline-flex items-center gap-1 ${showPreview ? "bg-stone-950 text-[#dddd16]" : "bg-stone-100 hover:bg-stone-200 text-stone-800"}`}>
-              {showPreview ? "Editing" : "Preview"}
-            </button>
           </div>
         </div>
-        {showPreview ? (
-          <div data-testid="template-preview" className="border border-stone-300 rounded-lg p-4 bg-white min-h-[480px] prose prose-sm max-w-none">
-            <PreviewHtml html={draft.rendered_html || draft.body_html || ""} sampleFirstName="Sample" />
-          </div>
-        ) : (
-          <RichTextEditor
-            value={draft.body_html || ""}
-            onChange={(html) => setDraft((d) => ({ ...d, body_html: html }))}
-            placeholder="Write your email here. Use the toolbar for formatting, lists, and links."
-            testIdPrefix="template-body"
-          />
-        )}
+        <RichTextEditor
+          value={draft.body_html || ""}
+          onChange={(html) => setDraft((d) => ({ ...d, body_html: html }))}
+          placeholder="Write your email here. Use the toolbar — bold, CTA buttons, lists, links."
+          testIdPrefix="template-body"
+          onInsertCta={insertCta}
+          onInsertOutline={insertOutline}
+          signatureHtml={draft.signature_html || ""}
+          logoUrl="https://creativemojo.co.uk/wp-content/uploads/2023/05/creative-mojo-logo.png"
+        />
       </div>
 
       {/* Attached files */}
