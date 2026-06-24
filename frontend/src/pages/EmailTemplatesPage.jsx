@@ -10,6 +10,7 @@ import RichTextEditor from "@/components/RichTextEditor";
 import {
   Loader2, Plus, Copy, Trash2, Save, X, Mail,
   Paperclip, FileText, ChevronRight, Search, AlertTriangle, CheckCircle2,
+  Folder, FolderOpen, Home, ArrowLeft, Users, Globe, Lock,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -382,65 +383,211 @@ function PreviewHtml({ html, sampleFirstName }) {
 
 
 // ---------------------------------------------------------------------------
-// FilePickerModal — searches the R2 files index for the selected key.
-// Uses the existing /api/files/search endpoint.
+// FilePickerModal — Search + Browse the entire R2 index (admin scope).
+// Search mode: /api/files/search?q=
+// Browse mode: /api/files/tree?prefix=  with breadcrumb navigation, so admins
+// can drill into private folders like admin/franchise-sales-pdf/ that get
+// buried in search results.
 // ---------------------------------------------------------------------------
 function FilePickerModal({ onClose, onPick }) {
-  const [q, setQ] = useState(".pdf");
+  const [tab, setTab] = useState("browse"); // "browse" | "search"
+  const [q, setQ] = useState("");
   const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [searching, setSearching] = useState(false);
   const [err, setErr] = useState("");
 
+  // Browse state
+  const [prefix, setPrefix] = useState(""); // current folder prefix
+  const [tree, setTree] = useState({ folders: [], files: [] });
+  const [browsing, setBrowsing] = useState(false);
+
+  // Debounced search
   useEffect(() => {
+    if (tab !== "search") return;
     if ((q || "").length < 2) { setResults([]); return; }
     const t = setTimeout(async () => {
-      setLoading(true); setErr("");
+      setSearching(true); setErr("");
       try {
-        const { data } = await api.get("/files/search", { params: { q, limit: 30 } });
+        const { data } = await api.get("/files/search", { params: { q, limit: 60 } });
         setResults(data.items || []);
       } catch (e) {
         setErr(e?.response?.data?.detail || "Search failed");
-      } finally { setLoading(false); }
+      } finally { setSearching(false); }
     }, 200);
     return () => clearTimeout(t);
-  }, [q]);
+  }, [q, tab]);
+
+  // Load tree for current prefix
+  useEffect(() => {
+    if (tab !== "browse") return;
+    let cancelled = false;
+    (async () => {
+      setBrowsing(true); setErr("");
+      try {
+        const { data } = await api.get("/files/tree", { params: { prefix } });
+        if (!cancelled) setTree({ folders: data.folders || [], files: data.files || [] });
+      } catch (e) {
+        if (!cancelled) setErr(e?.response?.data?.detail || "Could not load folder");
+      } finally { if (!cancelled) setBrowsing(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [prefix, tab]);
+
+  // Breadcrumbs derived from current prefix
+  const crumbs = useMemo(() => {
+    if (!prefix) return [];
+    const parts = prefix.replace(/\/$/, "").split("/");
+    return parts.map((seg, i) => ({
+      name: seg,
+      prefix: parts.slice(0, i + 1).join("/") + "/",
+    }));
+  }, [prefix]);
+
+  // Icon for a top-level folder name (only at root)
+  const rootIcon = (name) => {
+    if (name === "admin") return <Lock className="w-4 h-4 text-orange-500 shrink-0" />;
+    if (name === "shared") return <Globe className="w-4 h-4 text-emerald-600 shrink-0" />;
+    if (name === "franchisees") return <Users className="w-4 h-4 text-stone-600 shrink-0" />;
+    return <Folder className="w-4 h-4 text-stone-400 shrink-0" />;
+  };
 
   return (
     <div onClick={onClose} className="fixed inset-0 z-[80] bg-stone-950/60 backdrop-blur-sm flex items-center justify-center p-6" data-testid="file-picker-modal">
       <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] flex flex-col shadow-2xl overflow-hidden">
         <div className="px-5 py-3 border-b border-stone-200 flex items-center justify-between">
           <h3 className="font-bold text-stone-900 flex items-center gap-2"><Paperclip className="w-4 h-4" /> Pick a file from R2</h3>
-          <button onClick={onClose} className="w-9 h-9 hover:bg-stone-100 rounded-lg flex items-center justify-center"><X className="w-4 h-4" /></button>
+          <button onClick={onClose} className="w-9 h-9 hover:bg-stone-100 rounded-lg flex items-center justify-center" data-testid="file-picker-close"><X className="w-4 h-4" /></button>
         </div>
-        <div className="px-5 py-3 border-b border-stone-200">
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} autoFocus
-              placeholder="Search files by name (try .pdf)…" data-testid="file-picker-search"
-              className="w-full pl-9 pr-3 py-2 bg-stone-50 border border-stone-300 text-sm rounded-lg focus:outline-none focus:border-stone-900" />
+
+        {/* Tabs */}
+        <div className="px-5 pt-3 border-b border-stone-200 flex items-center gap-1">
+          <button
+            onClick={() => setTab("browse")}
+            data-testid="file-picker-tab-browse"
+            className={`px-3 py-1.5 text-xs font-semibold rounded-t-md border-b-2 transition-colors ${tab === "browse" ? "border-stone-900 text-stone-900" : "border-transparent text-stone-500 hover:text-stone-800"}`}>
+            <FolderOpen className="w-3.5 h-3.5 inline mr-1.5" />Browse
+          </button>
+          <button
+            onClick={() => setTab("search")}
+            data-testid="file-picker-tab-search"
+            className={`px-3 py-1.5 text-xs font-semibold rounded-t-md border-b-2 transition-colors ${tab === "search" ? "border-stone-900 text-stone-900" : "border-transparent text-stone-500 hover:text-stone-800"}`}>
+            <Search className="w-3.5 h-3.5 inline mr-1.5" />Search
+          </button>
+        </div>
+
+        {tab === "search" && (
+          <div className="px-5 py-3 border-b border-stone-200">
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+              <input value={q} onChange={(e) => setQ(e.target.value)} autoFocus
+                placeholder="Search files by name (try .pdf)…" data-testid="file-picker-search"
+                className="w-full pl-9 pr-3 py-2 bg-stone-50 border border-stone-300 text-sm rounded-lg focus:outline-none focus:border-stone-900" />
+            </div>
           </div>
-        </div>
-        <div className="flex-1 overflow-y-auto">
-          {loading && <div className="p-6 text-center text-stone-500"><Loader2 className="w-4 h-4 animate-spin inline mr-2" /> Searching…</div>}
-          {err && <div className="p-4 text-red-700 bg-red-50 text-sm">{err}</div>}
-          {!loading && !err && results.length === 0 && (
-            <div className="p-6 text-center text-stone-500 text-sm">No files match — try a different search.</div>
-          )}
-          <ul className="divide-y divide-stone-100">
-            {results.map((f) => (
-              <li key={f.key}>
-                <button onClick={() => onPick(f)} data-testid={`file-pick-${f.key.replace(/[^a-z0-9]+/gi, "-")}`}
-                  className="w-full text-left px-5 py-2.5 hover:bg-stone-50 flex items-center gap-3">
-                  <FileText className="w-4 h-4 text-stone-400 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm text-stone-900 truncate">{f.name}</div>
-                    <div className="text-[10px] text-stone-500 truncate font-mono">{f.key}</div>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-stone-400 shrink-0" />
+        )}
+
+        {tab === "browse" && (
+          <div className="px-5 py-2.5 border-b border-stone-200 flex items-center gap-1.5 text-xs overflow-x-auto">
+            <button
+              onClick={() => setPrefix("")}
+              data-testid="file-picker-crumb-root"
+              className={`px-2 py-1 rounded flex items-center gap-1 shrink-0 ${prefix === "" ? "bg-stone-900 text-white" : "hover:bg-stone-100 text-stone-700"}`}>
+              <Home className="w-3 h-3" /> Root
+            </button>
+            {crumbs.map((c, i) => (
+              <div key={c.prefix} className="flex items-center gap-1 shrink-0">
+                <ChevronRight className="w-3 h-3 text-stone-400" />
+                <button
+                  onClick={() => setPrefix(c.prefix)}
+                  data-testid={`file-picker-crumb-${i}`}
+                  className={`px-2 py-1 rounded ${i === crumbs.length - 1 ? "bg-stone-900 text-white" : "hover:bg-stone-100 text-stone-700"}`}>
+                  {c.name}
                 </button>
-              </li>
+              </div>
             ))}
-          </ul>
+            {prefix && (
+              <button
+                onClick={() => {
+                  const parts = prefix.replace(/\/$/, "").split("/");
+                  parts.pop();
+                  setPrefix(parts.length ? parts.join("/") + "/" : "");
+                }}
+                data-testid="file-picker-up"
+                className="ml-auto px-2 py-1 rounded hover:bg-stone-100 text-stone-700 flex items-center gap-1 shrink-0">
+                <ArrowLeft className="w-3 h-3" /> Up
+              </button>
+            )}
+          </div>
+        )}
+
+        <div className="flex-1 overflow-y-auto">
+          {err && <div className="p-4 text-red-700 bg-red-50 text-sm">{err}</div>}
+
+          {tab === "search" && (
+            <>
+              {searching && <div className="p-6 text-center text-stone-500"><Loader2 className="w-4 h-4 animate-spin inline mr-2" /> Searching…</div>}
+              {!searching && !err && q.length >= 2 && results.length === 0 && (
+                <div className="p-6 text-center text-stone-500 text-sm">No files match — try a different search or switch to Browse.</div>
+              )}
+              {!searching && !err && q.length < 2 && (
+                <div className="p-6 text-center text-stone-500 text-sm">Type at least 2 characters to search.</div>
+              )}
+              <ul className="divide-y divide-stone-100">
+                {results.map((f) => (
+                  <li key={f.key}>
+                    <button onClick={() => onPick(f)} data-testid={`file-pick-${f.key.replace(/[^a-z0-9]+/gi, "-")}`}
+                      className="w-full text-left px-5 py-2.5 hover:bg-stone-50 flex items-center gap-3">
+                      <FileText className="w-4 h-4 text-stone-400 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-stone-900 truncate">{f.name}</div>
+                        <div className="text-[10px] text-stone-500 truncate font-mono">{f.key}</div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-stone-400 shrink-0" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+
+          {tab === "browse" && (
+            <>
+              {browsing && <div className="p-6 text-center text-stone-500"><Loader2 className="w-4 h-4 animate-spin inline mr-2" /> Loading…</div>}
+              {!browsing && !err && tree.folders.length === 0 && tree.files.length === 0 && (
+                <div className="p-6 text-center text-stone-500 text-sm">This folder is empty.</div>
+              )}
+              <ul className="divide-y divide-stone-100">
+                {tree.folders.map((d) => (
+                  <li key={d.key}>
+                    <button
+                      onClick={() => setPrefix(d.key)}
+                      data-testid={`file-picker-folder-${d.name.replace(/[^a-z0-9]+/gi, "-")}`}
+                      className="w-full text-left px-5 py-2.5 hover:bg-stone-50 flex items-center gap-3">
+                      {prefix === "" ? rootIcon(d.name) : <Folder className="w-4 h-4 text-stone-400 shrink-0" />}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-stone-900 truncate font-medium">{d.name}</div>
+                        <div className="text-[10px] text-stone-500 truncate">{d.files} file{d.files === 1 ? "" : "s"}</div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-stone-400 shrink-0" />
+                    </button>
+                  </li>
+                ))}
+                {tree.files.map((f) => (
+                  <li key={f.key}>
+                    <button onClick={() => onPick(f)} data-testid={`file-pick-${f.key.replace(/[^a-z0-9]+/gi, "-")}`}
+                      className="w-full text-left px-5 py-2.5 hover:bg-stone-50 flex items-center gap-3">
+                      <FileText className="w-4 h-4 text-stone-400 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-stone-900 truncate">{f.name}</div>
+                        <div className="text-[10px] text-stone-500 truncate font-mono">{f.key}</div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-stone-400 shrink-0" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </div>
         <div className="px-5 py-3 border-t border-stone-200 bg-stone-50 text-[11px] text-stone-500">
           Picked file's R2 key + name will be stored on the template. A fresh signed URL is minted at send time.
