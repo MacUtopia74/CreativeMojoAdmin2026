@@ -6,7 +6,7 @@
 // bullet/numbered lists, link, headings (H2/H3), and an "insert HTML"
 // escape hatch for the {{file:*}} CTA buttons we generate when the
 // admin picks an R2 file.
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
@@ -15,6 +15,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 import {
   Bold, Italic, Underline as UnderlineIcon, List, ListOrdered,
   Link2, Heading1, Heading2, Pilcrow, Undo2, Redo2, MousePointerClick, Square,
+  Smartphone, Monitor,
 } from "lucide-react";
 
 // Tiptap exports blank paragraphs as `<p></p>` or `<p><br></p>` (when the
@@ -32,6 +33,10 @@ function normaliseEmptyParagraphs(html) {
 }
 
 export default function RichTextEditor({ value, onChange, placeholder, testIdPrefix = "rte", onInsertCta, onInsertOutline, signatureHtml = "", logoUrl = "" }) {
+  // Mobile preview: when on, the email canvas constrains to a 375px frame
+  // so admins can see exactly how the message wraps on a phone. Editing
+  // still works inside the narrow frame — Tiptap is width-agnostic.
+  const [mobilePreview, setMobilePreview] = useState(false);
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -171,6 +176,19 @@ export default function RichTextEditor({ value, onChange, placeholder, testIdPre
 
         <div className="flex-1" />
 
+        {/* Mobile preview toggle — constrains the canvas to ~375px so the
+            admin can confirm wrapping & button widths look right on a
+            phone before sending. */}
+        <Btn
+          onClick={() => setMobilePreview((v) => !v)}
+          active={mobilePreview}
+          title={mobilePreview ? "Switch to desktop preview" : "Preview on mobile (375px)"}
+          testId="rte-mobile-toggle">
+          {mobilePreview ? <Monitor className="w-4 h-4" /> : <Smartphone className="w-4 h-4" />}
+        </Btn>
+
+        <div className="w-px h-5 bg-stone-300 mx-1" />
+
         <Btn onClick={() => editor.chain().focus().undo().run()}
           disabled={!editor.can().undo()}
           title="Undo (⌘Z)" testId="rte-undo"><Undo2 className="w-4 h-4" /></Btn>
@@ -179,32 +197,65 @@ export default function RichTextEditor({ value, onChange, placeholder, testIdPre
           title="Redo (⌘⇧Z)" testId="rte-redo"><Redo2 className="w-4 h-4" /></Btn>
       </div>
 
-      {/* Email-styled canvas — what you see is what gets sent. */}
-      <div className="bg-[#f7f7f4] py-6 px-3 sm:px-6">
-        <div className="max-w-[640px] mx-auto bg-white shadow border border-stone-200">
-          {/* Logo header — read-only, mirrors the production email */}
-          {logoUrl && (
-            <div className="px-6 pt-7 pb-3 flex justify-center">
-              <img src={logoUrl} alt="Creative Mojo" style={{ maxWidth: 220, height: "auto" }} />
-            </div>
-          )}
-          {/* Editable body — Tiptap with email-style CSS */}
-          <EditorContent editor={editor} className="rte-editor" />
-          {/* Locked signature — visible while editing so admin sees the
-              full final layout, but cannot edit. The 50% opacity + lock
-              badge make the lock state obvious. */}
-          {signatureHtml && (
-            <div className="relative border-t border-stone-100" data-testid="rte-signature-locked">
-              <div className="absolute top-2 right-2 text-[9px] font-bold uppercase tracking-wider bg-stone-900 text-[#dddd16] px-1.5 py-0.5 rounded shadow z-10">
-                🔒 Locked signature
+      {/* Email-styled canvas — what you see is what gets sent. The
+          mobile preview wraps the card in a phone-style bezel so the
+          width difference is unmistakable. */}
+      <div className="bg-[#f7f7f4] py-6 px-3 sm:px-6" data-testid={`${testIdPrefix}-canvas`} data-preview={mobilePreview ? "mobile" : "desktop"}>
+        {mobilePreview ? (
+          <div className="mx-auto" style={{ width: 395 }}>
+            {/* Tiny "iPhone-ish" frame: rounded bezel + status bar tab */}
+            <div className="relative bg-stone-900 rounded-[36px] p-[10px] shadow-xl">
+              <div className="absolute top-1.5 left-1/2 -translate-x-1/2 w-24 h-4 bg-stone-900 rounded-b-2xl z-10" />
+              <div className="bg-white rounded-[28px] overflow-hidden" style={{ width: 375 }}>
+                {logoUrl && (
+                  <div className="px-4 pt-7 pb-3 flex justify-center">
+                    <img src={logoUrl} alt="Creative Mojo" style={{ maxWidth: 180, height: "auto" }} />
+                  </div>
+                )}
+                <EditorContent editor={editor} className="rte-editor rte-editor-mobile" />
+                {signatureHtml && (
+                  <div className="relative border-t border-stone-100" data-testid="rte-signature-locked">
+                    <div className="absolute top-2 right-2 text-[9px] font-bold uppercase tracking-wider bg-stone-900 text-[#dddd16] px-1.5 py-0.5 rounded shadow z-10">
+                      🔒 Locked
+                    </div>
+                    <div
+                      className="px-4 py-4 opacity-50 pointer-events-none select-none"
+                      dangerouslySetInnerHTML={{ __html: signatureHtml }}
+                    />
+                  </div>
+                )}
               </div>
-              <div
-                className="px-6 py-4 opacity-50 pointer-events-none select-none"
-                dangerouslySetInnerHTML={{ __html: signatureHtml }}
-              />
             </div>
-          )}
-        </div>
+            <div className="text-center text-[10px] uppercase tracking-wider text-stone-500 font-bold mt-2">
+              Mobile preview · 375px
+            </div>
+          </div>
+        ) : (
+          <div className="max-w-[640px] mx-auto bg-white shadow border border-stone-200">
+            {/* Logo header — read-only, mirrors the production email */}
+            {logoUrl && (
+              <div className="px-6 pt-7 pb-3 flex justify-center">
+                <img src={logoUrl} alt="Creative Mojo" style={{ maxWidth: 220, height: "auto" }} />
+              </div>
+            )}
+            {/* Editable body — Tiptap with email-style CSS */}
+            <EditorContent editor={editor} className="rte-editor" />
+            {/* Locked signature — visible while editing so admin sees the
+                full final layout, but cannot edit. The 50% opacity + lock
+                badge make the lock state obvious. */}
+            {signatureHtml && (
+              <div className="relative border-t border-stone-100" data-testid="rte-signature-locked">
+                <div className="absolute top-2 right-2 text-[9px] font-bold uppercase tracking-wider bg-stone-900 text-[#dddd16] px-1.5 py-0.5 rounded shadow z-10">
+                  🔒 Locked signature
+                </div>
+                <div
+                  className="px-6 py-4 opacity-50 pointer-events-none select-none"
+                  dangerouslySetInnerHTML={{ __html: signatureHtml }}
+                />
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Email-canvas styling — paragraph rhythm matches Gmail/Outlook
@@ -212,7 +263,9 @@ export default function RichTextEditor({ value, onChange, placeholder, testIdPre
           coloured buttons live so admins see the final look as they edit. */}
       <style>{`
         .rte-editor .ProseMirror { min-height: 300px; padding: 22px 28px; outline: none; font-family: Helvetica, Arial, sans-serif; color: #1a1a1a; }
+        .rte-editor.rte-editor-mobile .ProseMirror { padding: 18px 18px; font-size: 14px; }
         .rte-editor .ProseMirror p { margin: 0 0 0.9em; line-height: 1.6; font-size: 15px; }
+        .rte-editor.rte-editor-mobile .ProseMirror p { font-size: 14px; line-height: 1.55; }
         .rte-editor .ProseMirror p:last-child { margin-bottom: 0; }
         .rte-editor .ProseMirror h2 { font-size: 22px; font-weight: 800; margin: 1.1em 0 0.4em; line-height: 1.25; }
         .rte-editor .ProseMirror h3 { font-size: 17px; font-weight: 700; margin: 0.95em 0 0.3em; }
