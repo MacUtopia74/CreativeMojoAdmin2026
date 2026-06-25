@@ -24,9 +24,15 @@ export default function ReplyWithTemplateModal({ open, contact, onClose, onSent 
   const [subject, setSubject] = useState("");
   const [sending, setSending] = useState(false);
 
-  // Load templates lazily — first time the modal opens. Cached after.
+  // Load templates lazily — first time the modal opens. Refetches on
+  // every open so admins see edits they just made in another tab/section
+  // without having to refresh the whole app. Cache is cleared on close
+  // so the dropdown never flashes stale data on the way in.
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setTemplates([]);
+      return;
+    }
     setLoadingTemplates(true);
     api.get("/email-templates")
       .then(({ data }) => setTemplates(data.items || []))
@@ -153,10 +159,20 @@ export default function ReplyWithTemplateModal({ open, contact, onClose, onSent 
               className="w-full px-3 py-2 bg-white border border-stone-300 text-sm rounded-lg focus:outline-none focus:border-stone-900">
               <option value="">— Choose a template —</option>
               {loadingTemplates && <option disabled>Loading…</option>}
+              {/* Each template is uniquely identified by its `name`. The
+                  category is shown after a separator so admins can tell
+                  similarly-named templates apart, but the NAME is the
+                  primary differentiator — edit it from the Email
+                  Templates page top-left input. */}
               {templates.map((t) => (
-                <option key={t.id} value={t.id}>{t.name}{t.category ? ` · ${t.category}` : ""}</option>
+                <option key={t.id} value={t.id}>
+                  {t.name || "(untitled)"}{t.category ? `   —   ${t.category}` : ""}
+                </option>
               ))}
             </select>
+            <div className="text-[10px] text-stone-500 mt-1">
+              Don&apos;t see your template? Open <a href="/admin/email-templates" target="_blank" rel="noopener noreferrer" className="underline">Email Templates</a> and rename it &mdash; the name shown above is what differentiates options here.
+            </div>
           </div>
 
           {/* To / Cc / Bcc / Subject */}
@@ -206,15 +222,59 @@ export default function ReplyWithTemplateModal({ open, contact, onClose, onSent 
           {/* Live preview */}
           <div>
             <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1">Preview (as {firstName} will see it)</label>
-            <div className="border border-stone-200 bg-white rounded-lg p-4 min-h-[300px] prose prose-sm max-w-none text-sm"
+            <div className="border border-stone-200 bg-white rounded-lg p-4 min-h-[300px] reply-preview-canvas text-sm"
               data-testid="reply-preview"
               // Sanitised with DOMPurify before injection — templates are
               // admin-authored but contacts (and their potential typos)
               // feed in via the {{first_name}} substitution above, so the
               // belt-and-braces sanitise blocks any script injection.
               // eslint-disable-next-line react/no-danger
-              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(rendered || "<p class='text-stone-400'>Pick a template to see the preview.</p>") }} />
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(rendered || "<p class='text-stone-400'>Pick a template to see the preview.</p>", { ADD_ATTR: ["target"] }) }} />
           </div>
+          {/* Scoped CSS so CTA buttons in the template body render here
+              exactly as they will after the backend's send-time inliner
+              runs. Without this the {`<a class="cm-btn-cta">`} tags would
+              show as plain underlined links (matching the user's
+              reported bug). Kept in lock-step with RichTextEditor.jsx. */}
+          <style>{`
+            .reply-preview-canvas { font-family: Helvetica, Arial, sans-serif; color: #1a1a1a; line-height: 1.6; }
+            .reply-preview-canvas p { margin: 0 0 0.9em; font-size: 15px; }
+            .reply-preview-canvas strong { font-weight: 700; }
+            .reply-preview-canvas h1 { font-size: 22px; font-weight: 700; margin: 0.6em 0 0.4em; }
+            .reply-preview-canvas h2 { font-size: 18px; font-weight: 700; margin: 0.6em 0 0.4em; }
+            .reply-preview-canvas ul { list-style: disc; padding-left: 1.4em; margin: 0 0 0.9em; }
+            .reply-preview-canvas ol { list-style: decimal; padding-left: 1.4em; margin: 0 0 0.9em; }
+            .reply-preview-canvas a { color: #1c1917; text-decoration: underline; }
+            .reply-preview-canvas a.cm-btn-cta,
+            .reply-preview-canvas a[href^="{{file:"],
+            .reply-preview-canvas a[href^="{{landing:"] {
+              display: inline-block;
+              background: #dddd16;
+              color: #1a1a1a !important;
+              font-weight: 700;
+              text-decoration: none !important;
+              padding: 11px 26px;
+              border-radius: 4px;
+              font-size: 13px;
+              letter-spacing: 0.5px;
+              text-transform: uppercase;
+              margin: 6px 0;
+            }
+            .reply-preview-canvas a.cm-btn-outline {
+              display: inline-block;
+              background: transparent;
+              color: #1a1a1a !important;
+              font-weight: 700;
+              text-decoration: none !important;
+              padding: 11px 26px;
+              border: 2px solid #1a1a1a;
+              border-radius: 4px;
+              font-size: 13px;
+              letter-spacing: 0.5px;
+              text-transform: uppercase;
+              margin: 6px 0;
+            }
+          `}</style>
         </div>
 
         {/* Footer */}

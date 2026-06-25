@@ -235,15 +235,18 @@ function TemplateEditor({ template, onChanged, onDuplicate, onDelete }) {
     <div className="p-6 max-w-4xl space-y-4">
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 space-y-1">
+          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">
+            Template name <span className="text-stone-400 normal-case font-normal tracking-normal">— shown in the &ldquo;Reply with template&rdquo; dropdown</span>
+          </label>
           <input
             value={draft.name || ""}
             onChange={set("name")}
-            placeholder="Template name"
+            placeholder="e.g. Franchise Enquiry Reply 2026"
             data-testid="template-name"
-            className="text-2xl font-display text-stone-950 w-full bg-transparent border-0 focus:outline-none focus:ring-0"
+            className="text-xl font-bold text-stone-950 w-full bg-stone-50 border border-stone-300 rounded-lg px-3 py-2 focus:outline-none focus:border-stone-900"
           />
-          <div className="text-xs text-stone-500 mt-1">
+          <div className="text-xs text-stone-500">
             {template.updated_at && <>Last saved {new Date(template.updated_at).toLocaleString("en-GB")}{template.updated_by ? ` · ${template.updated_by}` : ""}</>}
           </div>
         </div>
