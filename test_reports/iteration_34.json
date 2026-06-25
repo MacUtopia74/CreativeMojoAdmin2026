@@ -1,0 +1,24 @@
+{
+  "summary": "Verified all 3 UI tweaks for PDF Landing Pages (iteration_34). Admin URL now shows the production hub.creativemojo.co.uk URL (preview origin substring fully absent). 'What's inside' bullets textarea removed from admin editor and no <li> bullets render on the public page. Big red PDF SVG icon (120px, 'PDF' wordmark, red folded-corner outline) sits next to the yellow DOWNLOAD THE INFO PACK button on /info/creative-mojo-franchise-pack; both link to /api/public/landing/<slug>/download which correctly 302's to an R2 Cloudflare presigned URL. Title PATCH regression verified: edited title persists after reload. No regressions on intro_html rendering, logo, footer, or download endpoint.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "AdminLandingPagesPage.jsx line 24: HUB_PUBLIC_BASE hardcoded to https://hub.creativemojo.co.uk — intentional per the agent context note (REACT_APP_BACKEND_URL points at the preview origin). If the production hostname ever changes, this is the one place to update; consider sourcing from a backend-served config endpoint or a separate REACT_APP_PUBLIC_HUB_URL env var to avoid surprises during domain migrations.",
+    "InfoLandingPage.jsx: the PDF icon (<a target='_blank'>) and the yellow CTA both point at the same /download endpoint — that's fine, but two clicks in quick succession will fire two separate 'download' analytics events on the backend visit log (each request increments the counter). Not a bug right now but worth noting if download counts ever look inflated.",
+    "Field labels list in admin editor: ['TITLE', 'SLUG (URL)', 'INTRO', 'CTA BUTTON LABEL', 'ACTIVE', '', 'ATTACHED PDF']. Confirmed no bullets/checkmark label between Intro and CTA, matching the spec. (The empty '' entry is the wrapping label inside the file-display flex row — cosmetic only.)"
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only)", "frontend": "100%"},
+  "test_credentials": "admin@creativemojo.co.uk / CreativeMojo2026!",
+  "seed_data_creation": "None — title was temporarily edited to 'Creative Mojo Franchise Pack (test)' for the persistence regression check, then reverted to original 'Creative Mojo Franchise Pack' before the test ended.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All landing-page UI tweaks verified at iteration_34. Detailed checks: (1) Admin editor (/admin/landing-pages → Creative Mojo Franchise Pack): hint text under Slug input reads 'Public URL: https://hub.creativemojo.co.uk/info/creative-mojo-franchise-pack'; Preview button href = https://hub.creativemojo.co.uk/info/creative-mojo-franchise-pack target=_blank rel='noopener noreferrer'; the substring 'licensee-vault.preview' is fully absent from the editor body. (2) No 'What's inside' textarea / no [data-testid='landing-bullets-input'] anywhere in admin. (3) Public page /info/creative-mojo-franchise-pack: [data-testid='info-landing-pdf-icon'] is a 120x148 SVG anchor with width=120, contains <text>PDF</text> in stone-900 bold, red folded-corner page outline (#dc2626 stroke), href = /api/public/landing/creative-mojo-franchise-pack/download; yellow [data-testid='info-landing-download-btn'] text='DOWNLOAD THE INFO PACK', same href; filename 'Creative Mojo Franchise Pack (Digital March 2026) NEW.pdf' rendered as small font-mono text below the button; no <li> tags inside <main>, no 'What's inside' text. (4) GET /api/public/landing/creative-mojo-franchise-pack/download → 302 with Location header pointing at https://322154d5274cc6a86155a90a68099732.r2.cloudflarestorage.com/creativemojo-files/admin/franchise-sales-pdf/... — R2 presigned URL working. (5) PATCH regression: editing title via [data-testid='landing-title-input'] + clicking [data-testid='landing-save-btn'] persists across reload — backend still accepts request payload without bullets field (model retains it for backwards compat). Logo, intro_html sanitisation, footer all rendering correctly.",
+  "rca of the issue": "n/a — this iteration was a 3-tweak verification, no bugs reported."
+}

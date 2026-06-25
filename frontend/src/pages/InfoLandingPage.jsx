@@ -6,7 +6,7 @@
 // that drove it, so the admin's Activity Timeline picks the click up.
 import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
-import { Download, Loader2, AlertCircle, Check } from "lucide-react";
+import { Download, Loader2, AlertCircle } from "lucide-react";
 import axios from "axios";
 import DOMPurify from "dompurify";
 
@@ -82,38 +82,75 @@ export default function InfoLandingPage() {
                     data-testid="info-landing-intro"
                   />
                 ) : null}
-
-                {(page.bullets || []).length > 0 && (
-                  <ul className="mt-6 space-y-2" data-testid="info-landing-bullets">
-                    {page.bullets.map((b, i) => (
-                      <li key={i} className="flex items-start gap-2.5 text-stone-700">
-                        <Check className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
-                        <span>{b}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
               </div>
 
               <div className="px-6 sm:px-10 pb-10 pt-2 bg-stone-50 border-t border-stone-100">
                 {page.has_file ? (
-                  <a
-                    href={downloadUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2.5 px-6 sm:px-8 py-3.5 bg-[#dddd16] hover:bg-[#c8c814] text-stone-900 font-bold uppercase tracking-wider text-sm rounded-lg shadow-sm transition-colors"
-                    data-testid="info-landing-download-btn"
-                  >
-                    <Download className="w-4 h-4" /> {page.cta_label || "Download"}
-                  </a>
+                  <div className="flex flex-col sm:flex-row items-center gap-6">
+                    {/* Big PDF document icon — visual cue that the CTA
+                        downloads a PDF, not opens a webpage. Custom SVG
+                        styled like the classic Acrobat "PDF page". */}
+                    <a
+                      href={downloadUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={`Download ${page.file_name || "PDF"}`}
+                      data-testid="info-landing-pdf-icon"
+                      className="shrink-0 transition-transform hover:scale-105"
+                    >
+                      <svg
+                        width="120"
+                        height="148"
+                        viewBox="0 0 120 148"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                        aria-label="PDF document"
+                      >
+                        {/* Folded-corner page outline */}
+                        <path
+                          d="M14 6 H88 L114 32 V134 a8 8 0 0 1 -8 8 H14 a8 8 0 0 1 -8 -8 V14 a8 8 0 0 1 8 -8 z"
+                          fill="#ffffff"
+                          stroke="#dc2626"
+                          strokeWidth="6"
+                          strokeLinejoin="round"
+                        />
+                        <path d="M88 6 V32 H114" fill="none" stroke="#dc2626" strokeWidth="6" strokeLinejoin="round" />
+                        {/* PDF wordmark */}
+                        <text
+                          x="60"
+                          y="118"
+                          textAnchor="middle"
+                          fontFamily="Helvetica, Arial, sans-serif"
+                          fontSize="26"
+                          fontWeight="900"
+                          fill="#1a1a1a"
+                          letterSpacing="2"
+                        >
+                          PDF
+                        </text>
+                      </svg>
+                    </a>
+
+                    <div className="flex-1 text-center sm:text-left min-w-0">
+                      <a
+                        href={downloadUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2.5 px-6 sm:px-8 py-3.5 bg-[#dddd16] hover:bg-[#c8c814] text-stone-900 font-bold uppercase tracking-wider text-sm rounded-lg shadow-sm transition-colors"
+                        data-testid="info-landing-download-btn"
+                      >
+                        <Download className="w-4 h-4" /> {page.cta_label || "Download"}
+                      </a>
+                      {page.file_name && (
+                        <div className="mt-2.5 text-[11px] text-stone-500 font-mono truncate" title={page.file_name}>
+                          {page.file_name}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 ) : (
                   <div className="text-sm text-stone-500 italic">
                     No file attached to this page yet.
-                  </div>
-                )}
-                {page.file_name && page.has_file && (
-                  <div className="mt-2.5 text-[11px] text-stone-500 font-mono truncate" title={page.file_name}>
-                    {page.file_name}
                   </div>
                 )}
               </div>

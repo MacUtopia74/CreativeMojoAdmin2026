@@ -16,7 +16,12 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-const HUB_BASE = process.env.REACT_APP_BACKEND_URL || "";
+// Public-facing production URL — what recipients see when an email link
+// resolves. We deliberately don't use REACT_APP_BACKEND_URL here because
+// that points at the preview origin (licensee-vault.preview…) in this
+// environment, and we want the admin to always see the canonical
+// production URL alongside any links they share.
+const HUB_PUBLIC_BASE = "https://hub.creativemojo.co.uk";
 
 // ---------------------------------------------------------------------------
 // R2 file picker — identical UX to the Email Templates page (folder
@@ -181,8 +186,6 @@ function LandingPageEditor({ page, onSaved, onDeleted }) {
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(page);
   const set = (k) => (e) => setDraft((d) => ({ ...d, [k]: e.target.value }));
-  const setBullets = (val) =>
-    setDraft((d) => ({ ...d, bullets: val.split("\n").map((b) => b.trim()).filter(Boolean) }));
 
   const save = async () => {
     setSaving(true);
@@ -192,7 +195,6 @@ function LandingPageEditor({ page, onSaved, onDeleted }) {
         title: draft.title,
         intro_html: draft.intro_html,
         cta_label: draft.cta_label,
-        bullets: draft.bullets || [],
         file_key: draft.file_key,
         file_name: draft.file_name,
         active: draft.active,
@@ -221,7 +223,7 @@ function LandingPageEditor({ page, onSaved, onDeleted }) {
     setShowFilePicker(false);
   };
 
-  const publicUrl = `${HUB_BASE.replace(/\/$/, "")}/info/${draft.slug}`;
+  const publicUrl = `${HUB_PUBLIC_BASE}/info/${draft.slug}`;
 
   return (
     <div className="space-y-4">
@@ -251,7 +253,7 @@ function LandingPageEditor({ page, onSaved, onDeleted }) {
           <input value={draft.title || ""} onChange={set("title")} data-testid="landing-title-input"
             className="w-full px-3 py-2 bg-stone-50 border border-stone-300 text-sm rounded-lg focus:outline-none focus:border-stone-900" />
         </Field>
-        <Field label="Slug (URL)" hint={`Public URL: /info/${draft.slug || ""}`}>
+        <Field label="Slug (URL)" hint={`Public URL: ${publicUrl}`}>
           <input value={draft.slug || ""} onChange={set("slug")} data-testid="landing-slug-input"
             className="w-full px-3 py-2 bg-stone-50 border border-stone-300 text-sm rounded-lg font-mono focus:outline-none focus:border-stone-900" />
         </Field>
@@ -260,16 +262,6 @@ function LandingPageEditor({ page, onSaved, onDeleted }) {
       <Field label="Intro (rich text — basic HTML allowed)" hint="Tip: short and warm. 1–3 sentences works best.">
         <textarea value={draft.intro_html || ""} onChange={set("intro_html")} rows={5} data-testid="landing-intro-input"
           className="w-full px-3 py-2 bg-stone-50 border border-stone-300 text-sm rounded-lg focus:outline-none focus:border-stone-900 font-mono" />
-      </Field>
-
-      <Field label={`"What's inside" bullets (one per line, optional)`}>
-        <textarea
-          value={(draft.bullets || []).join("\n")}
-          onChange={(e) => setBullets(e.target.value)}
-          rows={4}
-          data-testid="landing-bullets-input"
-          className="w-full px-3 py-2 bg-stone-50 border border-stone-300 text-sm rounded-lg focus:outline-none focus:border-stone-900"
-        />
       </Field>
 
       <div className="grid sm:grid-cols-2 gap-3">
