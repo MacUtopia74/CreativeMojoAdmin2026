@@ -199,25 +199,36 @@ export default function ReplyWithTemplateModal({ open, contact, onClose, onSent 
             </div>
           </div>
 
-          {/* Linked files note */}
-          {(selected?.attachments || []).length > 0 && (
-            <div className="border border-stone-200 rounded-lg p-3 bg-stone-50">
-              <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-2">Attached PDFs</div>
-              <ul className="space-y-1 text-xs">
-                {(selected.attachments || []).map((a, i) => (
-                  <li key={i} className="flex items-center gap-2">
-                    <FileText className="w-3 h-3 text-stone-400 shrink-0" />
-                    <span className="text-stone-900">{a.name}</span>
-                    {!a.key && (
-                      <span className="text-[10px] text-amber-700 inline-flex items-center gap-0.5">
-                        <AlertTriangle className="w-3 h-3" /> needs an R2 file picked in template
-                      </span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {/* Linked files note — only show attachments whose
+              `{{file:placeholder}}` token is still referenced in the
+              body. This stops orphan placeholders from old CTAs
+              showing up after the admin replaces the body. */}
+          {(() => {
+            const body = selected?.body_html || selected?.rendered_html || "";
+            const visible = (selected?.attachments || []).filter((a) => {
+              const ph = a?.placeholder;
+              return ph && body.includes(`{{file:${ph}}}`);
+            });
+            if (visible.length === 0) return null;
+            return (
+              <div className="border border-stone-200 rounded-lg p-3 bg-stone-50">
+                <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-2">Attached PDFs</div>
+                <ul className="space-y-1 text-xs">
+                  {visible.map((a, i) => (
+                    <li key={i} className="flex items-center gap-2">
+                      <FileText className="w-3 h-3 text-stone-400 shrink-0" />
+                      <span className="text-stone-900">{a.name}</span>
+                      {!a.key && (
+                        <span className="text-[10px] text-amber-700 inline-flex items-center gap-0.5">
+                          <AlertTriangle className="w-3 h-3" /> needs an R2 file picked in template
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })()}
 
           {/* Live preview */}
           <div>

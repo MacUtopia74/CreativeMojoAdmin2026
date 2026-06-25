@@ -25,7 +25,7 @@ SIGNATURE_HTML = """
         <span style="display:inline-block;">&#9742; 01884 303606 &nbsp;&nbsp; &#128241; 07886 374959</span><br/>
         <span>&#127760; <a href="https://www.creativemojo.com" style="color:#1a1a1a;text-decoration:none;">www.creativemojo.com</a></span><br/>
         <span>&#9993; <a href="mailto:paul@creativemojo.co.uk" style="color:#1a1a1a;text-decoration:none;">paul@creativemojo.co.uk</a></span><br/>
-        <span>&#128205; Channings, Brithem Bottom, Cullompton, Devon EX15 1NB</span>
+        <span>&#128205; Channings, Brithem Bottom, Cullompton, Devon EX15&nbsp;1NB</span>
       </div>
       <div style="margin-top:14px;font-size:13px;line-height:1;">
         <a href="https://www.facebook.com/CreativeMojoLtd" style="text-decoration:none;margin-right:8px;display:inline-block;vertical-align:middle;">
@@ -58,7 +58,7 @@ SIGNATURE_HTML = """
   <strong style="color:#a0a0a0;">IMPORTANT:</strong> The contents of this email and any attachments are confidential. They are intended for the named recipient(s) only. If you have received this email by mistake, please notify the sender immediately and do not disclose the contents to anyone or make copies thereof.
 </p>
 <p style="font-size:11px;line-height:1.6;color:#333333;margin-top:14px;">
-  Creative Mojo Ltd Registered Address: Channings, Brithem Bottom, Cullompton, Devon EX15 1NB.<br/>
+  Creative Mojo Ltd Registered Address: Channings, Brithem Bottom, Cullompton, Devon EX15&nbsp;1NB.<br/>
   Registered in England and Wales No. 10261882<br/>
   <strong>VAT Registration No. 301645048</strong>
 </p>

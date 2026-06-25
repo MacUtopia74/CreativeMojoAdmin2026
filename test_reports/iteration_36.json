@@ -1,0 +1,33 @@
+{
+  "summary": "Iteration 36 — verified the 4 reported fixes: (1) landing-token URL resolver now hardcodes hub.creativemojo.co.uk (production) and ignores the preview cluster URL; (2) signature_html keeps 'Devon EX15 1NB' on a single line via &nbsp; in both occurrences; (3) EnvBanner is pinned bottom-LEFT (left=12px, right=auto), nothing covers the bottom-right modal Send button; (4) Reply modal Attached PDFs list filters by `{{file:<placeholder>}}` tokens present in body_html — orphans are hidden. Both regressions (public /info page renders big red PDF icon + yellow Download button, /admin/email-templates list still loads) pass.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "verified_items": [
+    {"item": "LANDING URL RESOLUTION", "result": "PASS", "evidence": "pytest test_resolve_landing_tokens_uses_production_hub: with PUBLIC_BASE_URL unset and request_base='https://licensee-vault.cluster-7.deploy.emergentcf.cloud', _resolve_landing_tokens returned 'https://hub.creativemojo.co.uk/info/creative-mojo-franchise-pack?t=test-123'. Forbidden tokens (licensee-vault, cluster, emergentcf) absent. Also verified PUBLIC_BASE_URL override path still works."},
+    {"item": "POSTCODE WRAP FIX", "result": "PASS", "evidence": "seed_email_templates.SIGNATURE_HTML contains 'EX15&nbsp;1NB' x2 (signature line + footer registered-address); no plain-space 'EX15 1NB' anywhere. GET /api/email-templates/<id> returns signature_html with the same fix (2 occurrences confirmed live)."},
+    {"item": "ENVBANNER POSITION", "result": "PASS", "evidence": "Computed style at /admin/email-templates: position=fixed, left=12px, right=1709px (i.e. left side of 1920px viewport), bottom=12px, rect.x=12. elementFromPoint(vp.w-50, vp.h-30) returned <main class='flex-1 min-w-0'> — no overlay at bottom-right. Visual screenshot also confirms 'PREVIEW · deployed just now' pill sits in bottom-left."},
+    {"item": "ATTACHED PDFS FILTER", "result": "PASS", "evidence": "Live fetch of /api/email-templates: franchise template has attachments=[franchise_pack] and body_html includes '{{file:franchise_pack}}'. Filter produces [franchise_pack] (visible). Orphan-case simulation (attachment whose placeholder absent from body) correctly produces []. No 'needs an R2 file picked' warnings appear for missing tokens."},
+    {"item": "REGRESSION — /info/creative-mojo-franchise-pack", "result": "PASS", "evidence": "Page renders 'Creative Mojo Franchise Pack' heading, large red PDF icon and yellow 'DOWNLOAD THE INFO PACK' button. Screenshot captured."},
+    {"item": "REGRESSION — Template name editing page loads", "result": "PASS", "evidence": "/admin/email-templates loads, 'Franchise Enquiry Reply' visible in list; 2 templates returned from API."}
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_iter36_email_fixes.py",
+    "/app/test_reports/pytest/iter36_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "resend_routes.py:127-131 — the `or` chain `PUBLIC_BASE_URL or 'https://hub.creativemojo.co.uk' or request_base` makes `request_base` permanently unreachable because the middle string literal is always truthy. The docstring at line 110 still describes request_base as a 'last-resort fallback' which is misleading. Either drop the request_base argument and docstring item, or use `or None` to make the literal a conditional default. Behaviour is correct for this bug fix (cluster URL must NEVER leak), but the code reads confusingly.",
+    "Console: 'tiptap warn: Duplicate extension names found: [link, underline]' still fires 4x on /admin/email-templates load — same warning called out in iteration_35. Non-blocking but accumulates noise; should be cleaned up by removing the explicit Link/Underline extensions from RichTextEditor.jsx (StarterKit already provides them).",
+    "ReplyWithTemplateModal.jsx:206-231 — filter+map IIFE works correctly. Suggestion: extract into a small useMemo hook so the filter doesn't re-run on every keystroke in the WYSIWYG editor; minor perf win only."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter36_email_fixes.py (new)"
+  ],
+  "success_rate": {"backend": "100% (5/5 pytest)", "frontend": "100% (6/6 manual + browser-automated checks)"},
+  "test_credentials": "admin@creativemojo.co.uk / CreativeMojo2026! — working",
+  "seed_data_creation": "Inserted/removed a transient `landing_pages` document with slug='creative-mojo-franchise-pack' (id='test-iter36') if absent, cleaned up by the test's finally block. Actually it already existed so we didn't insert.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "All 4 reported fixes verified end-to-end. The new regression test file /app/backend/tests/test_iter36_email_fixes.py covers (a) landing-token resolver precedence and (b) signature postcode &nbsp; — re-run it any time resend_routes.py or seed_email_templates.py is touched. The frontend filter logic for Attached PDFs is verified via live API + an in-Python simulation of the JS filter; if a future change moves the filter to a hook, also add a Playwright test that opens the Reply modal on a real contact (sales-contacts > drawer > 'Reply with template' button > pick 'Franchise Enquiry Reply' > inspect [data-testid='reply-preview']).",
+  "rca of the issue": "N/A — no bugs found; all reported fixes verified."
+}

@@ -81,7 +81,10 @@ export default function EnvBanner() {
     <div
       data-testid="env-banner"
       data-env={isProd ? "prod" : "preview"}
-      className="fixed bottom-3 right-3 z-[9999] select-none"
+      // Pinned to bottom-LEFT (not right) so the banner never sits on
+      // top of modal Save/Send buttons — every modal in this app puts
+      // its primary action on the right side of its footer.
+      className="fixed bottom-3 left-3 z-[9999] select-none"
       style={{ pointerEvents: "auto" }}>
       <button
         type="button"
