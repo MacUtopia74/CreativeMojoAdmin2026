@@ -329,7 +329,7 @@ function TemplateEditor({ template, onChanged, onDuplicate, onDelete }) {
           onInsertOutline={insertOutline}
           onReady={(ed) => { editorRef.current = ed; }}
           signatureHtml={draft.signature_html || ""}
-          logoUrl="https://creativemojo.co.uk/wp-content/uploads/2023/05/creative-mojo-logo.png"
+          logoUrl="/brand/creative-mojo-logo.png"
         />
       </div>
 

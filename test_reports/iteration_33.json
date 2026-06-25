@@ -1,0 +1,24 @@
+{
+  "summary": "Verified the single UI change (logoUrl prop swap in EmailTemplatesPage.jsx) for Creative Mojo logo rendering. All 4 requested checks pass: Email Templates live-preview logo, Info landing page logo, admin sidebar logo (regression), and mobile-preview toggle all serve the full-resolution /brand/creative-mojo-logo.png (616x241) from the preview origin with img.complete=true. No regressions found.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "EmailTemplatesPage.jsx line 332 now correctly passes logoUrl='/brand/creative-mojo-logo.png' to RichTextEditor — fix is in place and visually verified.",
+    "Note: The locked signature_html block inside the live preview still loads its embedded logo from https://hub.creativemojo.co.uk/brand/creative-mojo-logo.png. This is by design (absolute URL needed for the actual sent email) and is also the full-quality 616x241 file, so visual quality is unaffected.",
+    "Minor (not in scope): Tiptap console warning 'Duplicate extension names found: link, underline' appears repeatedly when opening templates. Cosmetic only but worth deduping the Tiptap extensions list."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only)", "frontend": "100%"},
+  "test_credentials": "admin@creativemojo.co.uk / CreativeMojo2026!",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Logo fix verified at iteration_33. The four image assertions: (a) /admin/email-templates sidebar logo natW=616 rendered 204x80, (b) email template canvas logo (desktop) natW=616 rendered 220x86 from preview origin /brand path, (c) /info/creative-mojo-franchise-pack logo natW=616 rendered 240x94 from preview origin, (d) mobile preview toggle (data-testid='rte-mobile-toggle') still serves /brand/creative-mojo-logo.png natW=616 rendered 180x70. The signature_html area on the live preview still uses absolute hub.creativemojo.co.uk URLs — intentional for production email links.",
+  "rca of the issue": "Original bug: EmailTemplatesPage.jsx passed logoUrl='https://creativemojo.co.uk/wp-content/uploads/2023/05/creative-mojo-logo.png' which returned a small/cached low-res WordPress copy. Fix: swap to local '/brand/creative-mojo-logo.png' (616x241, 25KB) — same asset already used by login page, admin sidebar, and info landing page. Verified naturalWidth==616 on all instances."
+}
