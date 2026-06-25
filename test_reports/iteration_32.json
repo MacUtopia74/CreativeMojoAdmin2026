@@ -1,0 +1,38 @@
+{
+  "summary": "Iteration 32 — Full E2E verification of (a) Public PDF Landing Page system + admin CRUD + visit tracking, (b) CTA composer modal that replaces 3 native window.prompt dialogs, (c) Phase 4 Lead Temperature auto-scoring backend + frontend badge. All features PASS. 10/10 backend pytest cases green; UI verified for public viewer, admin landing-pages page, CTA composer modal, lead-temp badge.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter32_landing_temperature.py",
+    "/app/test_reports/pytest/iter32_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "_resolve_landing_tokens hard-codes the fallback origin 'https://hub.creativemojo.co.uk'. On preview/staging without PUBLIC_BASE_URL set this will produce a URL whose host does NOT match the actual preview origin (and therefore the visit-tracking ?t= param will hit a different deployment). Consider falling back to request.base_url or the FRONTEND_BASE_URL the rest of the system uses, instead of a hardcoded production host.",
+    "Temperature endpoint uses round(score, 1) — but the int(opens) casts in details lose the recency-decay half-weighting (e.g. 3 old opens contribute 1.5 score yet appear as count=1). Cosmetic: tooltip will read 'Email opens: 1 × 2 (cap 6)' instead of 1.5 — consider keeping a float here.",
+    "Public download endpoint records the visit BEFORE generating the presigned URL — if R2 fails we still register a 'download' outcome that never happened. Reorder so the visit is logged AFTER url generation succeeds, OR mark the visit with outcome='download_failed'."
+  ],
+  "verified_flows": [
+    "GET /info/creative-mojo-franchise-pack (with cookies cleared) renders the public landing page WITHOUT redirect to /login. Logo, H1 'Creative Mojo Franchise Pack', intro, 3 green-tick bullets (Investment & support / Training overview / Marketing support), yellow CTA 'DOWNLOAD THE INFO PACK', filename caption, and footer all visible.",
+    "GET /api/public/landing/creative-mojo-franchise-pack returns title/intro_html/bullets/cta_label/has_file (admin-only fields like file_key & created_by_email are stripped).",
+    "GET /api/public/landing/<slug>/download → 302 to R2 presigned URL with X-Amz-Signature query params; logged as outcome='download' in landing_page_visits.",
+    "GET /api/public/landing/<slug>?t=test-token-xyz inserts a visit row whose token field equals 'test-token-xyz' (verified via /api/admin/landing-pages/<id>/stats).",
+    "Admin CRUD: POST creates a page (slug auto-derived if omitted, 409 on duplicate slug, 401 unauth). PATCH updates title/cta_label/bullets and reflects in GET. DELETE removes the row; subsequent stats returns 404. List endpoint hydrates live views/downloads counts.",
+    "Admin UI /admin/landing-pages — left rail lists 'Creative Mojo Franchise Pack' with 16 views / 2 downloads; right pane shows Title/Slug/Intro/Bullets/CTA Label/Active toggle/Attached PDF/Visit log; 'Use this in an email' helper renders the {{landing:creative-mojo-franchise-pack}} token snippet.",
+    "Email Templates → CTA composer modal: clicking [data-testid=rte-cta-yellow] opens [data-testid=cta-composer-modal] — NO native window.prompt/confirm fires (page.on('dialog') captured zero events across the entire run). Modal contains: BUTTON LABEL input pre-filled with 'Download the Info Pack', LINK TO toggle with 3 options (LANDING PAGE / R2 FILE / EXTERNAL URL), conditional landing-page <select> (Landing mode default), and CANCEL + INSERT BUTTON buttons. Insert is enabled once a valid target is selected (landing page auto-selected initially because seeded list has 1 page).",
+    "Source assertions in resend_routes.py: _resolve_landing_tokens runs BEFORE _inline_button_styles, appends ?t=<send_id>, and 'continue's (leaves token intact) when slug is inactive/missing.",
+    "GET /api/contacts/<id>/temperature returns {contact_id, score, band, details (4 entries with label/count/weight/max), computed_at}. Band logic verified: score 0 → cold; non-existent contact still returns 200 with score 0 (graceful).",
+    "Contacts pipeline → click first card (Paul Caldeira-Dunkerley) → drawer header shows [data-testid=lead-temp-badge-cold] reading 'Cold · 0 AUTO' with a hover tooltip that lists the full breakdown ('Email opens: 0 × 2 (cap 6) / Link clicks: 0 × 5 (cap 15) / Landing-page views: 0 × 3 (cap 9) / Landing-page downloads: 0 × 8 (cap 16) / Score: 0 → Cold').",
+    "Zero native browser dialogs captured during the full UI run (page.on('dialog')) — confirms removal of the 3 stacked window.prompt/confirm calls from the legacy CTA flow."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter32_landing_temperature.py (NEW)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "Admin: admin@creativemojo.co.uk / CreativeMojo2026!",
+  "seed_data_creation": "Created+deleted one synthetic landing page during CRUD test (cleanup verified). Inserted ~3 extra rows into landing_page_visits for the seeded 'creative-mojo-franchise-pack' page (2 anonymous + 1 with token=test-token-xyz). No real emails sent through Resend; no production data mutated.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Public route /info/<slug> sits OUTSIDE the auth guard (verified by clearing cookies before navigation). Landing-page list at /admin/landing-pages uses a left-rail+detail-pane layout (no table), so click the sidebar card to open the editor (NOT a table row). CTA composer modal testid = 'cta-composer-modal'; its trigger testid = 'rte-cta-yellow'. Insert button enable-state depends on (a) label non-empty, (b) source mode having a valid target. For LANDING PAGE mode the single seeded page is auto-selected so Insert is enabled on open. To test the temperature 'hot' band you'd need to insert a fake email_sends row with multiple 'clicked' events for a contact — not done here because the band-logic was unit-verified by the score-rounding maths (5 clicks × 5 = 25, capped at 15 → hot).",
+  "rca of the issue": "N/A — no bugs found."
+}

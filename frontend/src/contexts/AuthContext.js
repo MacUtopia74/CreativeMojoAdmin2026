@@ -12,6 +12,7 @@ function isPublicPath(pathname) {
     pathname === "/login"
     || pathname.startsWith("/portal/login")
     || pathname.startsWith("/share/")
+    || pathname.startsWith("/info/")
   );
 }
 

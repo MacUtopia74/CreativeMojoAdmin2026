@@ -33,6 +33,7 @@ import {
   LifeBuoy,
   Sparkles,
   ClipboardList,
+  ExternalLink,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -119,6 +120,7 @@ const SIDEBAR = [
           { kind: "item", to: "/admin/users", label: "Users", icon: KeyRound, testid: "nav-admin-users", permKey: "admin-users" },
           { kind: "item", to: "/admin/shape-orders", label: "Franchise Store", icon: ShoppingBag, testid: "nav-admin-shape-orders", permKey: "admin-shape-orders" },
           { kind: "item", to: "/admin/email-templates", label: "Email Templates", icon: Mail, testid: "nav-admin-email-templates", permKey: "admin-email-templates" },
+          { kind: "item", to: "/admin/landing-pages", label: "Landing Pages", icon: ExternalLink, testid: "nav-admin-landing-pages", permKey: "admin-landing-pages" },
           { kind: "item", to: "/admin/youtube", label: "YouTube Playlists", icon: Youtube, testid: "nav-admin-youtube", permKey: "admin-youtube" },
           { kind: "item", to: "/admin/xero", label: "Xero", icon: Calculator, testid: "nav-admin-xero", permKey: "admin-xero" },
           { kind: "item", to: "/form-intake", label: "Form Intake", icon: Inbox, testid: "nav-form-intake", permKey: "form-intake" },
@@ -184,6 +186,7 @@ const SIDEBAR_V2 = [
           { kind: "item", to: "/admin/xero",            label: "Xero",                      icon: Calculator,  testid: "nav-admin-xero",           permKey: "admin-xero" },
           { kind: "item", to: "/form-intake",           label: "Form Intake",               icon: Inbox,       testid: "nav-form-intake",          permKey: "form-intake" },
           { kind: "item", to: "/admin/email-templates", label: "Email Templates",           icon: Mail,        testid: "nav-admin-email-templates", permKey: "admin-email-templates" },
+          { kind: "item", to: "/admin/landing-pages",   label: "Landing Pages",             icon: ExternalLink, testid: "nav-admin-landing-pages",  permKey: "admin-landing-pages" },
           { kind: "item", to: "/banking",               label: "Invoice Banking Feed",      icon: Banknote,    testid: "nav-banking",              permKey: "banking" },
           { kind: "item", to: "/admin/logs",            label: "Logs",                      icon: ClipboardList, testid: "nav-admin-logs",         permKey: "admin-logs" },
         ],
@@ -223,6 +226,7 @@ export const ADMIN_NAV_KEYS = [
   { key: "admin-users",      label: "Users",                paths: ["/admin/users", "/admin/password-resets"] },
   { key: "admin-shape-orders", label: "Franchise Store", paths: ["/admin/shape-orders"] },
   { key: "admin-email-templates", label: "Email Templates",  paths: ["/admin/email-templates"] },
+  { key: "admin-landing-pages", label: "Landing Pages",      paths: ["/admin/landing-pages"] },
   { key: "admin-youtube",    label: "YouTube Playlists",    paths: ["/admin/youtube"] },
   { key: "admin-announcements", label: "HQ Updates",       paths: ["/admin/announcements"] },
   { key: "admin-logs",       label: "Logs",                paths: ["/admin/logs"] },

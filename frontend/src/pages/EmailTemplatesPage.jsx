@@ -11,6 +11,7 @@ import {
   Loader2, Plus, Copy, Trash2, Save, X, Mail,
   Paperclip, FileText, ChevronRight, Search, AlertTriangle, CheckCircle2,
   Folder, FolderOpen, Home, ArrowLeft, Users, Globe, Lock,
+  MousePointerClick, ExternalLink, Link2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -166,41 +167,52 @@ function TemplateEditor({ template, onChanged, onDuplicate, onDelete }) {
 
   const insertFirstName = () => insertAtCursor("{{first_name}}");
 
-  // Insert a yellow CTA button. Pops the link dialog asking for label +
-  // URL; if the admin wants to attach an R2 file instead, they can use
-  // the "Pick from File Vault" file-picker (re-uses same code path).
-  const promptCta = (defaultLabel, style) => {
-    const text = window.prompt(`Button label (e.g. ${defaultLabel})`, defaultLabel);
-    if (!text) return null;
-    const wantFile = window.confirm("Pick from R2 File Vault? Click Cancel to type an external URL instead.");
-    if (wantFile) {
-      // Defer to the file picker — it inserts the styled button itself.
-      // Stash the typed label so the picker can use it verbatim.
-      setPendingLabel(text);
-      setFilePickerMode(style);
-      setShowFilePicker(true);
-      return { text, style, deferred: true };
-    }
-    const url = window.prompt("Button URL (e.g. https://…)", "https://");
-    if (!url) return null;
-    const normalised = /^https?:\/\//i.test(url) || url.startsWith("mailto:") || url.startsWith("{{") ? url : `https://${url}`;
-    return { text, url: normalised, style };
+  // Open the unified in-app CTA composer (replaces the old 3 stacked
+  // window.prompt/confirm dialogs). The modal handles URL / R2 file /
+  // Landing Page source selection itself and calls back via the
+  // appropriate insertion path.
+  const [showCtaModal, setShowCtaModal] = useState(false);
+  const [ctaStyle, setCtaStyle] = useState("cta");
+
+  const openCtaModal = (style) => {
+    setCtaStyle(style);
+    setShowCtaModal(true);
   };
+  const insertCta = () => openCtaModal("cta");
+  const insertOutline = () => openCtaModal("outline");
+
   const buildButtonHtml = ({ text, url, style }) => {
     const cls = style === "outline" ? "cm-btn-outline" : "cm-btn-cta";
     return `<p><a href="${url}" class="${cls}" target="_blank" rel="noopener noreferrer">${text}</a></p>`;
   };
-  const insertCta = () => {
-    const r = promptCta("Click here to download", "cta");
-    if (!r || r.deferred) return;
-    insertAtCursor(buildButtonHtml(r));
-  };
-  const insertOutline = () => {
-    const r = promptCta("Watch the video", "outline");
-    if (!r || r.deferred) return;
-    insertAtCursor(buildButtonHtml(r));
+
+  // Called by the new CTA modal once the admin has picked source + label
+  // + target. Performs side-effects (attaching file metadata to draft if
+  // an R2 file was chosen) then inserts the styled button at the cursor.
+  const insertCtaButton = ({ label, source, url, file, landingSlug, style }) => {
+    if (source === "file" && file) {
+      const slug = (file.name || "file").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || `file_${Math.random().toString(36).slice(2, 7)}`;
+      setDraft((d) => {
+        const existing = d.attachments || [];
+        const dedup = [...existing.filter((a) => a.placeholder !== slug),
+          { key: file.key, name: file.name, placeholder: slug }];
+        return { ...d, attachments: dedup };
+      });
+      insertAtCursor(buildButtonHtml({ text: label, url: `{{file:${slug}}}`, style }));
+      return;
+    }
+    if (source === "landing" && landingSlug) {
+      insertAtCursor(buildButtonHtml({ text: label, url: `{{landing:${landingSlug}}}`, style }));
+      return;
+    }
+    if (source === "url" && url) {
+      const normalised = /^https?:\/\//i.test(url) || url.startsWith("mailto:") || url.startsWith("{{") ? url : `https://${url}`;
+      insertAtCursor(buildButtonHtml({ text: label, url: normalised, style }));
+    }
   };
 
+  // Legacy onPickFile retained for the standalone "Insert R2 file link"
+  // paperclip button at the top of the editor — uses filename as label.
   const onPickFile = (f) => {
     const slug = (f.name || "file").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || `file_${Math.random().toString(36).slice(2, 7)}`;
     setDraft((d) => {
@@ -209,13 +221,7 @@ function TemplateEditor({ template, onChanged, onDuplicate, onDelete }) {
         { key: f.key, name: f.name, placeholder: slug }];
       return { ...d, attachments: dedup };
     });
-    // Use the styled button class so it picks up the WYSIWYG editor's
-    // canvas CSS — no inline styles needed, and the backend's send-time
-    // resolver still substitutes {{file:…}} for the live R2 share URL.
     const cls = filePickerMode === "outline" ? "cm-btn-outline" : "cm-btn-cta";
-    // Prefer the admin's typed label. Only fall back to a filename-based
-    // label if the file picker was opened without a prior label (e.g.
-    // via the standalone paperclip button).
     const label = (pendingLabel || "").trim() || (filePickerMode === "outline"
       ? `Watch ${f.name}`
       : `Click here to download ${f.name}`);
@@ -356,9 +362,174 @@ function TemplateEditor({ template, onChanged, onDuplicate, onDelete }) {
       )}
 
       {showFilePicker && <FilePickerModal onClose={() => setShowFilePicker(false)} onPick={onPickFile} />}
+      {showCtaModal && (
+        <CtaComposerModal
+          style={ctaStyle}
+          onClose={() => setShowCtaModal(false)}
+          onInsert={(payload) => { setShowCtaModal(false); insertCtaButton({ ...payload, style: ctaStyle }); }}
+        />
+      )}
     </div>
   );
 }
+
+
+// ---------------------------------------------------------------------------
+// CtaComposerModal — single in-app dialog that replaces the previous
+// trio of native window.prompt / window.confirm dialogs. Lets admins
+// type a label, pick a source (external URL, R2 file, Landing Page),
+// and insert the styled button at the cursor in one go.
+// ---------------------------------------------------------------------------
+function CtaComposerModal({ style, onClose, onInsert }) {
+  const [label, setLabel] = useState(style === "outline" ? "Watch the video" : "Download the Info Pack");
+  const [source, setSource] = useState("landing"); // "landing" | "file" | "url"
+  const [url, setUrl] = useState("https://");
+  const [file, setFile] = useState(null); // {key, name}
+  const [landingSlug, setLandingSlug] = useState("");
+  const [landingPages, setLandingPages] = useState([]);
+  const [loadingPages, setLoadingPages] = useState(false);
+  const [showFilePicker, setShowFilePicker] = useState(false);
+
+  // Lazy-load landing pages once on mount.
+  useEffect(() => {
+    setLoadingPages(true);
+    api.get("/admin/landing-pages").then(({ data }) => {
+      const active = (data.items || []).filter((p) => p.active);
+      setLandingPages(active);
+      if (active.length > 0) setLandingSlug(active[0].slug);
+      else if (source === "landing") setSource("file"); // graceful fallback
+    }).catch(() => { /* ignore */ }).finally(() => setLoadingPages(false));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const canInsert = label.trim() && (
+    (source === "url" && url.trim() && url.trim() !== "https://") ||
+    (source === "file" && file) ||
+    (source === "landing" && landingSlug)
+  );
+
+  const submit = () => {
+    if (!canInsert) return;
+    onInsert({
+      label: label.trim(),
+      source,
+      url: source === "url" ? url.trim() : undefined,
+      file: source === "file" ? file : undefined,
+      landingSlug: source === "landing" ? landingSlug : undefined,
+    });
+  };
+
+  const styleLabel = style === "outline" ? "Outline button" : "Yellow CTA button";
+
+  return (
+    <div onClick={onClose} className="fixed inset-0 z-[70] bg-stone-950/60 backdrop-blur-sm flex items-center justify-center p-6" data-testid="cta-composer-modal">
+      <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
+        <div className="px-5 py-3 border-b border-stone-200 flex items-center justify-between">
+          <h3 className="font-bold text-stone-900 flex items-center gap-2">
+            <MousePointerClick className="w-4 h-4" /> Insert {styleLabel}
+          </h3>
+          <button onClick={onClose} className="w-9 h-9 hover:bg-stone-100 rounded-lg flex items-center justify-center" data-testid="cta-composer-close"><X className="w-4 h-4" /></button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Label */}
+          <label className="block">
+            <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1">Button label</div>
+            <input value={label} onChange={(e) => setLabel(e.target.value)} autoFocus data-testid="cta-composer-label"
+              className="w-full px-3 py-2 bg-stone-50 border border-stone-300 text-sm rounded-lg focus:outline-none focus:border-stone-900" />
+          </label>
+
+          {/* Source toggle */}
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1.5">Link to</div>
+            <div className="grid grid-cols-3 gap-1.5">
+              {[
+                { key: "landing", label: "Landing Page", icon: ExternalLink },
+                { key: "file",    label: "R2 File",      icon: Paperclip },
+                { key: "url",     label: "External URL", icon: Link2 },
+              ].map(({ key, label: l, icon: Ic }) => (
+                <button key={key} type="button" onClick={() => setSource(key)} data-testid={`cta-composer-source-${key}`}
+                  className={`px-2 py-2 text-[11px] font-semibold uppercase tracking-wider rounded-lg border-2 inline-flex flex-col items-center gap-1 transition-colors ${
+                    source === key ? "bg-stone-900 text-white border-stone-900" : "bg-white border-stone-200 text-stone-700 hover:bg-stone-50"
+                  }`}>
+                  <Ic className="w-3.5 h-3.5" /> {l}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Conditional inputs */}
+          {source === "url" && (
+            <label className="block">
+              <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1">URL</div>
+              <input value={url} onChange={(e) => setUrl(e.target.value)} data-testid="cta-composer-url"
+                placeholder="https://…"
+                className="w-full px-3 py-2 bg-stone-50 border border-stone-300 text-sm rounded-lg font-mono focus:outline-none focus:border-stone-900" />
+            </label>
+          )}
+
+          {source === "file" && (
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1">R2 File</div>
+              {file ? (
+                <div className="flex items-center gap-2 bg-stone-50 border border-stone-300 rounded-lg p-2.5">
+                  <FileText className="w-4 h-4 text-stone-400 shrink-0" />
+                  <div className="flex-1 min-w-0 text-xs">
+                    <div className="text-stone-900 truncate">{file.name}</div>
+                    <div className="text-stone-500 truncate font-mono text-[10px]">{file.key}</div>
+                  </div>
+                  <button type="button" onClick={() => setShowFilePicker(true)} data-testid="cta-composer-file-change"
+                    className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-stone-100 hover:bg-stone-200 rounded">Change</button>
+                </div>
+              ) : (
+                <button type="button" onClick={() => setShowFilePicker(true)} data-testid="cta-composer-file-pick"
+                  className="w-full px-3 py-2.5 border border-dashed border-stone-300 hover:border-stone-500 text-sm text-stone-600 hover:text-stone-900 rounded-lg inline-flex items-center justify-center gap-2 transition-colors">
+                  <Paperclip className="w-4 h-4" /> Pick a file from R2
+                </button>
+              )}
+            </div>
+          )}
+
+          {source === "landing" && (
+            <label className="block">
+              <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1">Landing Page</div>
+              {loadingPages ? (
+                <div className="px-3 py-2 text-xs text-stone-500"><Loader2 className="w-3 h-3 animate-spin inline mr-1" /> Loading pages…</div>
+              ) : landingPages.length === 0 ? (
+                <div className="px-3 py-2.5 text-xs text-stone-500 bg-stone-50 border border-stone-200 rounded-lg">
+                  No active landing pages — create one at <a href="/admin/landing-pages" target="_blank" rel="noopener noreferrer" className="underline">/admin/landing-pages</a>, then come back.
+                </div>
+              ) : (
+                <select value={landingSlug} onChange={(e) => setLandingSlug(e.target.value)} data-testid="cta-composer-landing"
+                  className="w-full px-3 py-2 bg-stone-50 border border-stone-300 text-sm rounded-lg focus:outline-none focus:border-stone-900">
+                  {landingPages.map((p) => (
+                    <option key={p.id} value={p.slug}>{p.title} ({`/info/${p.slug}`})</option>
+                  ))}
+                </select>
+              )}
+            </label>
+          )}
+        </div>
+
+        <div className="px-5 py-3 border-t border-stone-200 bg-stone-50 flex items-center justify-end gap-2">
+          <button onClick={onClose} data-testid="cta-composer-cancel"
+            className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider bg-white border border-stone-200 hover:bg-stone-100 text-stone-800 rounded">Cancel</button>
+          <button onClick={submit} disabled={!canInsert} data-testid="cta-composer-insert"
+            className="px-4 py-1.5 text-xs font-bold uppercase tracking-wider bg-stone-900 hover:bg-stone-800 disabled:bg-stone-300 disabled:cursor-not-allowed text-white rounded inline-flex items-center gap-1.5">
+            <Plus className="w-3.5 h-3.5" /> Insert button
+          </button>
+        </div>
+
+        {showFilePicker && (
+          <FilePickerModal
+            onClose={() => setShowFilePicker(false)}
+            onPick={(f) => { setFile({ key: f.key, name: f.name }); setShowFilePicker(false); }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 
 
 // ---------------------------------------------------------------------------

@@ -37,6 +37,8 @@ import AdminSubscriptionRequestsPage from "@/pages/AdminSubscriptionRequestsPage
 import EmailTemplatesPage from "@/pages/EmailTemplatesPage";
 import AnnouncementsPage from "@/pages/AnnouncementsPage";
 import LogsPage from "@/pages/LogsPage";
+import InfoLandingPage from "@/pages/InfoLandingPage";
+import AdminLandingPagesPage from "@/pages/AdminLandingPagesPage";
 // Invoices module (merged from Pay-Paperwork)
 import InvoiceList from "@/pages/invoices/InvoiceList";
 import CreateInvoice from "@/pages/invoices/CreateInvoice";
@@ -125,6 +127,9 @@ export default function App() {
             </Route>
             <Route path="/share/folder/:token" element={<PublicFolderSharePage />} />
             <Route path="/share/territory/:token" element={<PublicTerritorySharePage />} />
+            {/* Public PDF landing pages — no auth required so recipients can
+                view from any inbox / forwarded email. */}
+            <Route path="/info/:slug" element={<InfoLandingPage />} />
             <Route
               element={
                 <ProtectedRoute role="admin">
@@ -147,6 +152,7 @@ export default function App() {
               <Route path="/admin/help-centre" element={<AdminHelpCentrePage />} />
               <Route path="/admin/subscription-requests" element={<AdminSubscriptionRequestsPage />} />
               <Route path="/admin/email-templates" element={<EmailTemplatesPage />} />
+              <Route path="/admin/landing-pages" element={<AdminLandingPagesPage />} />
               <Route path="/admin/announcements" element={<AnnouncementsPage />} />
               <Route path="/admin/logs" element={<LogsPage />} />
               <Route path="/admin/youtube" element={<AdminYouTubePage />} />

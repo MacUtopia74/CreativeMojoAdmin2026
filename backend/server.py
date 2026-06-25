@@ -5648,6 +5648,15 @@ api.include_router(build_help_router(db, require_role))
 api.include_router(build_email_templates_router(db, require_role))
 api.include_router(build_resend_router(db, require_role))
 
+# Public PDF landing pages — admin CRUD + public viewer + visit tracking.
+# Imports the body-HTML sanitiser from announcements_routes (where the
+# bleach allow-list lives) so both surfaces enforce the same XSS policy.
+from landing_pages_routes import build_router as build_landing_pages_router  # noqa: E402
+from announcements_routes import _sanitise_body_html as _sanitize_html  # noqa: E402
+api.include_router(build_landing_pages_router(
+    db=db, require_role=require_role, sanitize_html=_sanitize_html,
+))
+
 # Invoices module — merged from the standalone Pay-Paperwork app
 from invoices_routes import build_invoices_router  # noqa: E402
 from franchisee_invoices_routes import build_franchisee_invoices_router  # noqa: E402

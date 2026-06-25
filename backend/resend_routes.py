@@ -98,6 +98,35 @@ async def _resolve_file_tokens(db, body_html: str) -> str:
     return body_html
 
 
+async def _resolve_landing_tokens(db, body_html: str, send_id: str) -> str:
+    """Replace ``{{landing:<slug>}}`` tokens with the public landing-page
+    URL. Appends ``?t=<send_id>`` so the visit-tracker can attribute the
+    open back to the originating ``email_sends`` row.
+
+    Falls back to leaving the token visible if the slug doesn't match an
+    active landing page — that way the admin notices in the sent email
+    rather than the link silently going nowhere.
+    """
+    if "{{landing:" not in body_html:
+        return body_html
+    slugs = set(re.findall(r"\{\{\s*landing:([a-z0-9-]+?)\s*\}\}", body_html))
+    if not slugs:
+        return body_html
+    # Frontend origin — production preferred, falls back to env-configured
+    # PUBLIC_BASE_URL so the link still resolves on preview/staging.
+    import os
+    base = os.environ.get("PUBLIC_BASE_URL", "https://hub.creativemojo.co.uk").rstrip("/")
+    for slug in slugs:
+        page = await db.landing_pages.find_one(
+            {"slug": slug, "active": True}, {"_id": 0, "slug": 1},
+        )
+        if not page:
+            continue
+        url = f"{base}/info/{slug}?t={send_id}"
+        body_html = body_html.replace(f"{{{{landing:{slug}}}}}", url)
+    return body_html
+
+
 # Inline style snippets used by the WYSIWYG editor's "Yellow CTA" and
 # "Outline" button options. Email clients (Gmail web, Outlook desktop)
 # strip <style> blocks, so we must inject these as inline ``style=""``
@@ -163,8 +192,10 @@ def build_resend_router(db, require_role):
             raise HTTPException(404, detail="Contact not found")
 
         first_name = contact.get("first_name") or (contact.get("name") or "").split(" ", 1)[0] or "there"
+        send_id = str(uuid.uuid4())  # our own id, surfaced in headers + landing links
         rendered_html = body.body_html.replace("{{first_name}}", first_name)
         rendered_html = await _resolve_file_tokens(db, rendered_html)
+        rendered_html = await _resolve_landing_tokens(db, rendered_html, send_id)
         # Convert WYSIWYG button classes → inline styles so email clients
         # that strip <style> tags still render the yellow CTA / outline
         # buttons exactly as the admin saw them in the editor.
@@ -177,7 +208,6 @@ def build_resend_router(db, require_role):
         # to guard).
         reply_to = (user.get("email") or RESEND_DEFAULT_REPLY_TO).strip()
 
-        send_id = str(uuid.uuid4())  # our own id, surfaced in headers
         params = {
             "from": f"{RESEND_FROM_NAME} <{RESEND_FROM_EMAIL}>",
             "to": [str(e) for e in body.to],
@@ -237,6 +267,88 @@ def build_resend_router(db, require_role):
         cur = db.email_sends.find({"contact_id": contact_id}, {"_id": 0}).sort("sent_at", -1)
         items = await cur.to_list(100)
         return {"items": items, "count": len(items)}
+
+    # -------------------------------------------------------- lead temperature
+    # Phase 4 — auto-compute a lead-temperature score per contact based
+    # on their engagement signals: email opens/clicks, landing-page
+    # views/downloads. Weights are intentionally simple:
+    #   open      +2 (cap 6  — opening 4+ times doesn't add more signal)
+    #   click     +5 (cap 15)
+    #   page view +3 (cap 9)
+    #   download  +8 (cap 16)
+    # Events older than 30 days are halved (recency decay).
+    #
+    # Bands:
+    #   Hot   ≥ 15
+    #   Warm  8–14
+    #   Cold  0–7
+    @router.get("/contacts/{contact_id}/temperature")
+    async def contact_temperature(
+        contact_id: str,
+        _user: dict = Depends(require_role("admin")),
+    ):
+        from datetime import datetime as _dt, timezone as _tz
+        now = _dt.now(_tz.utc)
+        opens = clicks = views = downloads = 0
+        details: list[dict] = []
+
+        def _decay(at_iso: str | None) -> float:
+            if not at_iso:
+                return 1.0
+            try:
+                dt = _dt.fromisoformat(at_iso.replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=_tz.utc)
+                age_days = (now - dt).days
+                return 0.5 if age_days > 30 else 1.0
+            except Exception:  # noqa: BLE001
+                return 1.0
+
+        # Email engagement
+        async for send in db.email_sends.find({"contact_id": contact_id}, {"_id": 0, "events": 1}):
+            for ev in (send.get("events") or []):
+                t = (ev.get("type") or "").lower()
+                w = _decay(ev.get("at"))
+                if t == "opened":
+                    opens += 1 * w
+                elif t == "clicked":
+                    clicks += 1 * w
+        # Landing page engagement
+        async for v in db.landing_page_visits.find({"contact_id": contact_id}, {"_id": 0, "outcome": 1, "at": 1}):
+            w = _decay(v.get("at"))
+            if v.get("outcome") == "view":
+                views += 1 * w
+            elif v.get("outcome") == "download":
+                downloads += 1 * w
+
+        score = (
+            min(opens * 2, 6)
+            + min(clicks * 5, 15)
+            + min(views * 3, 9)
+            + min(downloads * 8, 16)
+        )
+        score = round(score, 1)
+
+        if score >= 15:
+            band = "hot"
+        elif score >= 8:
+            band = "warm"
+        else:
+            band = "cold"
+
+        details = [
+            {"label": "Email opens", "count": int(opens), "weight": 2, "max": 6},
+            {"label": "Link clicks", "count": int(clicks), "weight": 5, "max": 15},
+            {"label": "Landing-page views", "count": int(views), "weight": 3, "max": 9},
+            {"label": "Landing-page downloads", "count": int(downloads), "weight": 8, "max": 16},
+        ]
+        return {
+            "contact_id": contact_id,
+            "score": score,
+            "band": band,
+            "details": details,
+            "computed_at": now.isoformat(),
+        }
 
     # -------------------------------------------------------- webhook
     @router.post("/email/resend-webhook")

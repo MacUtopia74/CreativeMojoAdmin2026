@@ -8,6 +8,7 @@ import DuplicatesModal from "@/components/contacts/DuplicatesModal";
 import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, ChevronsLeft, ChevronsRight, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus, Plus, Sparkles, Upload, FileText, CheckCircle2, Send, Award, Target, Link2, GitMerge, Home, Package, Flame, Clock, Pencil, RefreshCw } from "lucide-react";
 import ReplyWithTemplateModal from "@/components/ReplyWithTemplateModal";
 import EmailTimeline from "@/components/EmailTimeline";
+import LeadTemperatureBadge from "@/components/LeadTemperatureBadge";
 
 const STAGES = [
   { key: "new", label: "New", color: "bg-stone-100 text-stone-700 border-stone-300", barColor: "bg-stone-400" },
@@ -911,6 +912,10 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
             <div className="flex items-center gap-2 flex-wrap mt-3">
               {isInPipeline && <StageBadge status={contact.pipeline_status} />}
               {isInPipeline && <TemperatureFlame value={contact.temperature} />}
+              {/* Phase 4 — automatic lead-temperature score (Hot/Warm/Cold)
+                  derived from email opens/clicks + landing-page activity.
+                  Sits alongside Sandra's manual flame as a data signal. */}
+              <LeadTemperatureBadge contactId={contact.id} refreshSignal={emailRefreshSignal} />
               <SourcePill source={contact.source} />
               {onChangeSource && (contact.source === "franchise_enquiry" || contact.source === "licence_enquiry" || contact.source === "general_enquiry") && (
                 <div className="relative" data-testid="drawer-change-source">
