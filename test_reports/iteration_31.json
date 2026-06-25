@@ -1,0 +1,40 @@
+{
+  "summary": "E2E verification of Admin Email Templates editor (3 bugs) + Mobile Preview Toggle + per-franchisee Activity & Logs + Login Tracking. ALL 3 BUGS VERIFIED FIXED. Mobile toggle and login log filtering also work.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Admin Email Templates editor toolbar", "issues": ["The CTA button is triggered by 3 stacked window.prompt/confirm dialogs (label → R2 confirm → URL). This is functional but native-browser ugly and breaks the visual flow — consider a small in-app modal instead. Out of scope for this fix but worth noting."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "RichTextEditor.jsx hardcodes testIds 'rte-mobile-toggle' / 'rte-cta-yellow' / 'rte-cta-outline' instead of using the passed-in testIdPrefix ('template-body' in this case). The canvas correctly uses ${testIdPrefix}-canvas. Minor inconsistency — pick one convention (either all hardcoded 'rte-' or all prefix-driven) so future editors mounted with a different prefix don't collide.",
+    "promptCta uses native window.prompt + window.confirm for label/URL/file-picker decision. Three modal dialogs in a row is poor UX and is not styleable; an in-app dialog would be more polished and also let us preserve focus + Tiptap selection more reliably."
+  ],
+  "verified_flows": [
+    "POST /api/auth/login (admin) and /api/auth/login wrong-pw → both written to db.auth_logins with outcome=success/failed.",
+    "GET /api/admin/auth/login-log?limit=5 → returns items with outcome, ip, user_agent, role. ?outcome=failed and ?outcome=success filters work (totals 2 / 10 respectively in this run).",
+    "GET /api/email-templates → 2 templates returned. Both bodies contain youtube.com/watch?v=2gCXgPW_gC8 and no longer reference creativemojo.co.uk/promo-video.",
+    "Editor BUG 1 — Place cursor in middle of body, click CTA, type 'Cursor Test Label', Cancel R2 confirm, type URL 'https://example.com/cursor-test'. Result: inserted <a.cm-btn-cta> at child index 2 of 8 (NOT last child) with text='Cursor Test Label' and correct href.",
+    "Editor BUG 2 — Place cursor in body, click CTA, type 'Download Here', OK on R2 confirm, drill admin → franchise-sales-pdf → click PDF. Result: inserted button text = 'Download Here' (typed label preserved), href = '{{file:creative_mojo_franchise_pack_digital_aug_2025_pdf}}'. NO filename-based fallback used.",
+    "Editor BUG 3 — Rendered ProseMirror body of Franchise Enquiry Reply contains the corrected YouTube URL; DB check on both templates confirms zero references to the broken creativemojo promo-video path.",
+    "Mobile Preview Toggle — [data-testid=template-body-canvas]@data-preview transitions desktop → mobile → desktop on successive clicks of [data-testid=rte-mobile-toggle]. White card width measures 375px in mobile state. Icon swaps between Smartphone and Monitor (active state confirmed).",
+    "Per-franchisee Activity & Logs panel — [data-testid=panel-activity-logs] renders on /franchisees/{id} with all 4 collapsible sub-panels: 'Logins', 'HQ Updates opened', 'File Vault downloads', 'Marketing e-shots sent'.",
+    "Login Log on /admin/logs — 'Login activity' panel header visible; on expand shows 16 of 16 attempts with green Success / red Failed badges and All/Success/Failed filter chips (chips render INSIDE the panel after expand, not at top of page).",
+    "End-to-end login tracking — 1 failed + 1 success login fired during this run both appear in /admin/logs UI with correct timestamps, IPs, user_agent (curl/7.88.1 for backend tests, Chrome/Linux for UI tests)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "Admin: admin@creativemojo.co.uk / CreativeMojo2026!",
+  "seed_data_creation": "Inserted ~10 extra rows into db.auth_logins during testing (mix of success + 1 failed via curl). Plus ~5 UI-driven login successes. No template/franchisee data was modified.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "RichTextEditor testid scheme: canvas wrapper uses ${testIdPrefix}-canvas (so 'template-body-canvas' on the templates page), BUT the CTA buttons + mobile toggle hardcode 'rte-cta-yellow', 'rte-cta-outline', 'rte-mobile-toggle' (NOT prefixed). To trigger the CTA inserter, click [data-testid=rte-cta-yellow] then handle 3 native dialogs in order: prompt(label), confirm(R2-or-URL: accept=R2 picker / dismiss=URL prompt), prompt(URL) if URL path. The R2 file picker is a separate modal (not a native dialog) — click 'Browse' tab then drill folders to find PDFs. Login Log filter chips (ALL/SUCCESS/FAILED) live INSIDE the expanded Login activity panel, not at the top of /admin/logs.",
+  "rca of the issue": "Bugs were RCA'd & fixed by main agent before this run. Verification confirms: (1) BUG1 root cause was using string concatenation onto body_html which always appended to end — fixed by capturing the live Tiptap editor via onReady and calling editor.chain().focus().insertContent(snippet). (2) BUG2 root cause was that onPickFile constructed its label from f.name unconditionally — fixed by stashing the user-typed label in pendingLabel state when CTA is invoked, then preferring it inside onPickFile. (3) BUG3 was stale DB rows — seed_email_templates.py was patched and a migration was applied; DB now contains only the corrected youtube.com/watch?v=2gCXgPW_gC8 URL."
+}

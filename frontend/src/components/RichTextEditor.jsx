@@ -32,7 +32,7 @@ function normaliseEmptyParagraphs(html) {
     .replace(/<p>\s*<br\s*\/?>\s*<\/p>/g, "<p>&nbsp;</p>");
 }
 
-export default function RichTextEditor({ value, onChange, placeholder, testIdPrefix = "rte", onInsertCta, onInsertOutline, signatureHtml = "", logoUrl = "" }) {
+export default function RichTextEditor({ value, onChange, placeholder, testIdPrefix = "rte", onInsertCta, onInsertOutline, onReady, signatureHtml = "", logoUrl = "" }) {
   // Mobile preview: when on, the email canvas constrains to a 375px frame
   // so admins can see exactly how the message wraps on a phone. Editing
   // still works inside the narrow frame — Tiptap is width-agnostic.
@@ -80,6 +80,13 @@ export default function RichTextEditor({ value, onChange, placeholder, testIdPre
       editor.commands.setContent(value || "", { emitUpdate: false });
     }
   }, [value, editor]);
+
+  // Hand the editor instance up to the parent so it can drive
+  // commands like "insert this button at the current cursor" without
+  // having to round-trip through the HTML string.
+  useEffect(() => {
+    if (editor && onReady) onReady(editor);
+  }, [editor, onReady]);
 
   if (!editor) {
     return (

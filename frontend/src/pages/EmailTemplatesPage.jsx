@@ -3,7 +3,7 @@
 // touch raw HTML. The {{first_name}} and {{file:*}} tokens still flow
 // through unchanged because we render them as plain text inside the
 // editor — Tiptap preserves them verbatim through copy/paste/save.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import api from "@/lib/api";
 import DOMPurify from "dompurify";
 import RichTextEditor from "@/components/RichTextEditor";
@@ -119,6 +119,14 @@ function TemplateEditor({ template, onChanged, onDuplicate, onDelete }) {
   // which button-style ("cta" / "outline") was clicked, so the chosen
   // R2 file becomes an inline yellow or outline button.
   const [filePickerMode, setFilePickerMode] = useState("cta");
+  // Label the admin typed BEFORE the file picker opens — preserved here
+  // so we use *their* wording on the button, not the filename.
+  const [pendingLabel, setPendingLabel] = useState("");
+  // Live Tiptap editor instance — exposed via RichTextEditor's `onReady`
+  // callback so we can call `editor.chain().insertContent(...)` and have
+  // the new node land at the actual cursor position instead of always
+  // being appended to the end of the body.
+  const editorRef = useRef(null);
 
   useEffect(() => { setDraft(template); }, [template]);
 
@@ -142,14 +150,17 @@ function TemplateEditor({ template, onChanged, onDuplicate, onDelete }) {
     } finally { setSaving(false); }
   };
 
-  // Append a snippet at the cursor — falls back to end-of-document
-  // for the WYSIWYG editor (we don't have direct caret access through
-  // the Tiptap React wrapper for token strings, so trailing-append
-  // matches user expectations: they click "Insert" after positioning
-  // their cursor and the token appears at the bottom for them to
-  // grab if needed). This is good enough — Paul edits templates
-  // rarely.
+  // Insert a snippet at the live Tiptap cursor. Falls back to string
+  // append if the editor isn't ready yet (shouldn't happen — the
+  // toolbar lives inside RichTextEditor itself).
   const insertAtCursor = (snippet) => {
+    const ed = editorRef.current;
+    if (ed) {
+      // `focus()` restores the last cursor position even if the editor
+      // lost focus while a modal/prompt was open.
+      ed.chain().focus().insertContent(snippet).run();
+      return;
+    }
     setDraft((d) => ({ ...d, body_html: (d.body_html || "") + snippet }));
   };
 
@@ -158,12 +169,14 @@ function TemplateEditor({ template, onChanged, onDuplicate, onDelete }) {
   // Insert a yellow CTA button. Pops the link dialog asking for label +
   // URL; if the admin wants to attach an R2 file instead, they can use
   // the "Pick from File Vault" file-picker (re-uses same code path).
-  const promptCta = (label, style) => {
-    const text = window.prompt(`Button label (e.g. ${label})`, label);
+  const promptCta = (defaultLabel, style) => {
+    const text = window.prompt(`Button label (e.g. ${defaultLabel})`, defaultLabel);
     if (!text) return null;
     const wantFile = window.confirm("Pick from R2 File Vault? Click Cancel to type an external URL instead.");
     if (wantFile) {
       // Defer to the file picker — it inserts the styled button itself.
+      // Stash the typed label so the picker can use it verbatim.
+      setPendingLabel(text);
       setFilePickerMode(style);
       setShowFilePicker(true);
       return { text, style, deferred: true };
@@ -200,10 +213,16 @@ function TemplateEditor({ template, onChanged, onDuplicate, onDelete }) {
     // canvas CSS — no inline styles needed, and the backend's send-time
     // resolver still substitutes {{file:…}} for the live R2 share URL.
     const cls = filePickerMode === "outline" ? "cm-btn-outline" : "cm-btn-cta";
-    const label = filePickerMode === "outline" ? `Watch ${f.name}` : `Click here to download ${f.name}`;
+    // Prefer the admin's typed label. Only fall back to a filename-based
+    // label if the file picker was opened without a prior label (e.g.
+    // via the standalone paperclip button).
+    const label = (pendingLabel || "").trim() || (filePickerMode === "outline"
+      ? `Watch ${f.name}`
+      : `Click here to download ${f.name}`);
     insertAtCursor(`<p><a href="{{file:${slug}}}" class="${cls}" target="_blank" rel="noopener noreferrer">${label}</a></p>`);
     setShowFilePicker(false);
     setFilePickerMode("cta");
+    setPendingLabel("");
   };
 
   return (
@@ -302,6 +321,7 @@ function TemplateEditor({ template, onChanged, onDuplicate, onDelete }) {
           testIdPrefix="template-body"
           onInsertCta={insertCta}
           onInsertOutline={insertOutline}
+          onReady={(ed) => { editorRef.current = ed; }}
           signatureHtml={draft.signature_html || ""}
           logoUrl="https://creativemojo.co.uk/wp-content/uploads/2023/05/creative-mojo-logo.png"
         />

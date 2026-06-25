@@ -49,7 +49,7 @@ SIGNATURE_HTML = """
   </tr>
 </table>
 <p style="margin:16px 0;">
-  <a href="https://www.creativemojo.com/promo-video"
+  <a href="https://www.youtube.com/watch?v=2gCXgPW_gC8&amp;feature=youtu.be"
      style="display:inline-block;border:2px solid #dddd16;color:#666666;padding:10px 26px;text-decoration:none;font-weight:bold;font-family:Helvetica,Arial,sans-serif;font-size:14px;letter-spacing:0.5px;border-radius:4px;">
      WATCH THE MOJO PROMO VIDEO &nbsp;&rsaquo;
   </a>
@@ -80,7 +80,7 @@ through to launch.</p>
 is normally a no-pressure 30-minute call — feel free to reply with a couple of times that suit you,
 or grab a slot from my calendar.</p>
 <p style="margin:20px 0;">
-  <a href="https://www.creativemojo.co.uk/promo-video"
+  <a href="https://www.youtube.com/watch?v=2gCXgPW_gC8&amp;feature=youtu.be"
      style="display:inline-block;background:#1a1a1a;color:#dddd16;padding:10px 18px;text-decoration:none;font-weight:bold;border-radius:6px;">
      ▶ Watch the Mojo promo video
   </a>
@@ -105,7 +105,7 @@ launch works, ongoing creative content, support and what your investment looks l
 <p>The next step is usually a 30-minute video call to walk you through it and answer any questions —
 reply with a couple of times that suit you (and your timezone) and we'll get something in the diary.</p>
 <p style="margin:20px 0;">
-  <a href="https://www.creativemojo.co.uk/promo-video"
+  <a href="https://www.youtube.com/watch?v=2gCXgPW_gC8&amp;feature=youtu.be"
      style="display:inline-block;background:#1a1a1a;color:#dddd16;padding:10px 18px;text-decoration:none;font-weight:bold;border-radius:6px;">
      ▶ Watch the Mojo promo video
   </a>
