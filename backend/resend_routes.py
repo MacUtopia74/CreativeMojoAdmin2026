@@ -107,12 +107,12 @@ async def _resolve_landing_tokens(db, body_html: str, send_id: str, request_base
     these links from real emails forwarded outside the org:
       1. ``PUBLIC_BASE_URL`` env var (explicit override for staging/preview)
       2. ``https://hub.creativemojo.co.uk`` (canonical production)
-      3. ``request_base`` (last-resort fallback if the env is unset)
 
-    Note: we intentionally don't fall back to the request host before
-    the hardcoded production URL — emails sent from preview must still
-    point recipients at the live site, otherwise share-from-inbox flows
-    break (cluster URLs are preview-only and don't authenticate).
+    Note: we intentionally don't fall back to the request host — emails
+    sent from preview must still point recipients at the live site,
+    otherwise share-from-inbox flows break (cluster URLs are
+    preview-only and don't authenticate). ``request_base`` is accepted
+    but only used if PUBLIC_BASE_URL explicitly equals "__request_host__".
 
     Falls back to leaving the token visible if the slug doesn't match an
     active landing page — that way the admin notices in the sent email
@@ -124,11 +124,11 @@ async def _resolve_landing_tokens(db, body_html: str, send_id: str, request_base
     if not slugs:
         return body_html
     import os
-    base = (
-        os.environ.get("PUBLIC_BASE_URL")
-        or "https://hub.creativemojo.co.uk"
-        or (request_base or "").rstrip("/")
-    ).rstrip("/")
+    explicit = os.environ.get("PUBLIC_BASE_URL")
+    if explicit == "__request_host__" and request_base:
+        base = request_base.rstrip("/")
+    else:
+        base = (explicit or "https://hub.creativemojo.co.uk").rstrip("/")
     for slug in slugs:
         page = await db.landing_pages.find_one(
             {"slug": slug, "active": True}, {"_id": 0, "slug": 1},
