@@ -8,6 +8,7 @@ import { ClipboardList } from "lucide-react";
 import AnnouncementReadLog from "@/components/announcements/AnnouncementReadLog";
 import MarketingUsageLog from "@/components/announcements/MarketingUsageLog";
 import FileVaultAuditLog from "@/components/files/FileVaultAuditLog";
+import LoginLog from "@/components/auth/LoginLog";
 
 export default function LogsPage() {
   return (
@@ -25,6 +26,7 @@ export default function LogsPage() {
       </div>
 
       <div className="space-y-3">
+        <LoginLog />
         <AnnouncementReadLog />
         <MarketingUsageLog />
         <FileVaultAuditLog />

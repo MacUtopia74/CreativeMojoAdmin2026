@@ -503,13 +503,17 @@ def build_router(db, require_role) -> APIRouter:
     @router.get("/admin/files/download-log")
     async def admin_file_download_log(
         limit: int = Query(500, ge=1, le=2000),
+        franchisee_id: Optional[str] = Query(None),
         _: dict = Depends(require_role("admin")),
     ):
+        query: dict = {}
+        if franchisee_id:
+            query["franchisee_id"] = franchisee_id
         items: list[dict] = []
-        async for d in db.file_downloads.find({}, {"_id": 0}) \
+        async for d in db.file_downloads.find(query, {"_id": 0}) \
                 .sort("downloaded_at", -1).limit(limit):
             items.append(d)
-        total = await db.file_downloads.count_documents({})
+        total = await db.file_downloads.count_documents(query)
         return {"items": items, "returned": len(items), "total": total}
 
     # -----------------------------------------------------------------

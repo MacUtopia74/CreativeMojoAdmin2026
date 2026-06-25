@@ -19,7 +19,7 @@ function ukDateTime(iso) {
   } catch { return "—"; }
 }
 
-export default function MarketingUsageLog() {
+export default function MarketingUsageLog({ franchiseeId = null }) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState(null);
   const [total, setTotal] = useState(0);
@@ -29,7 +29,9 @@ export default function MarketingUsageLog() {
   const load = async () => {
     setLoading(true); setErr("");
     try {
-      const { data } = await api.get("/admin/marketing/log", { params: { limit: 500 } });
+      const params = { limit: 500 };
+      if (franchiseeId) params.franchisee_id = franchiseeId;
+      const { data } = await api.get("/admin/marketing/log", { params });
       setItems(data.items || []);
       setTotal(data.total || 0);
     } catch (e) {
@@ -54,11 +56,11 @@ export default function MarketingUsageLog() {
       >
         <BarChart3 className="w-4 h-4 text-stone-600 shrink-0" />
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-bold text-stone-950">Marketing usage log</div>
+          <div className="text-sm font-bold text-stone-950">{franchiseeId ? "Marketing e-shots sent" : "Marketing usage log"}</div>
           <div className="text-[11px] text-stone-500">
             {items
-              ? `${items.length} of ${total} campaign${total === 1 ? "" : "s"} sent across all franchisees`
-              : "Admin-only log of franchisee e-shots — recipient counts, opens & clicks"}
+              ? `${items.length} of ${total} campaign${total === 1 ? "" : "s"}${franchiseeId ? "" : " sent across all franchisees"}`
+              : (franchiseeId ? "Admin-only log of this franchisee's e-shots" : "Admin-only log of franchisee e-shots — recipient counts, opens & clicks")}
           </div>
         </div>
         {open && (
@@ -95,7 +97,7 @@ export default function MarketingUsageLog() {
                 <thead className="sticky top-0 bg-stone-50 text-[10px] uppercase tracking-wider text-stone-600 font-bold">
                   <tr>
                     <th className="px-3 py-2 text-left w-40">Sent</th>
-                    <th className="px-3 py-2 text-left w-48">Franchisee</th>
+                    {!franchiseeId && <th className="px-3 py-2 text-left w-48">Franchisee</th>}
                     <th className="px-3 py-2 text-left">Subject</th>
                     <th className="px-3 py-2 text-right w-16">Recip.</th>
                     <th className="px-3 py-2 text-right w-16">Deliv.</th>
@@ -109,10 +111,12 @@ export default function MarketingUsageLog() {
                       <td className="px-3 py-1.5 font-mono text-stone-700 tabular-nums whitespace-nowrap">
                         {ukDateTime(r.sent_at || r.created_at)}
                       </td>
-                      <td className="px-3 py-1.5 truncate">
-                        <div className="font-semibold text-stone-900 truncate">{r.franchisee_name}</div>
-                        <div className="text-[10px] text-stone-500 font-mono truncate">{r.franchisee_email || ""}</div>
-                      </td>
+                      {!franchiseeId && (
+                        <td className="px-3 py-1.5 truncate">
+                          <div className="font-semibold text-stone-900 truncate">{r.franchisee_name}</div>
+                          <div className="text-[10px] text-stone-500 font-mono truncate">{r.franchisee_email || ""}</div>
+                        </td>
+                      )}
                       <td className="px-3 py-1.5 truncate">
                         <div className="flex items-center gap-1.5 text-stone-900 truncate">
                           <Mail className="w-3 h-3 text-stone-400 shrink-0" />

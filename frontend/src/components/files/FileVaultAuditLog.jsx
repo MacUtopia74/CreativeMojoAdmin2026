@@ -20,7 +20,7 @@ function ukDateTime(iso) {
   } catch { return "—"; }
 }
 
-export default function FileVaultAuditLog() {
+export default function FileVaultAuditLog({ franchiseeId = null }) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState(null);
   const [total, setTotal] = useState(0);
@@ -30,7 +30,9 @@ export default function FileVaultAuditLog() {
   const load = async () => {
     setLoading(true); setErr("");
     try {
-      const { data } = await api.get("/admin/files/download-log", { params: { limit: 500 } });
+      const params = { limit: 500 };
+      if (franchiseeId) params.franchisee_id = franchiseeId;
+      const { data } = await api.get("/admin/files/download-log", { params });
       setItems(data.items || []);
       setTotal(data.total || 0);
     } catch (e) {
@@ -55,9 +57,9 @@ export default function FileVaultAuditLog() {
       >
         <ClipboardList className="w-4 h-4 text-stone-600 shrink-0" />
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-bold text-stone-950">File Vault download log</div>
+          <div className="text-sm font-bold text-stone-950">{franchiseeId ? "File Vault downloads" : "File Vault download log"}</div>
           <div className="text-[11px] text-stone-500">
-            {items ? `${items.length} of ${total} recent download${total === 1 ? "" : "s"}` : "Admin-only audit trail of franchisee downloads"}
+            {items ? `${items.length} of ${total} download${total === 1 ? "" : "s"}` : (franchiseeId ? "Admin-only audit trail of this franchisee's downloads" : "Admin-only audit trail of franchisee downloads")}
           </div>
         </div>
         {open && (
@@ -94,7 +96,7 @@ export default function FileVaultAuditLog() {
                 <thead className="sticky top-0 bg-stone-50 text-[10px] uppercase tracking-wider text-stone-600 font-bold">
                   <tr>
                     <th className="px-3 py-2 text-left w-44">When</th>
-                    <th className="px-3 py-2 text-left w-44">Franchisee</th>
+                    {!franchiseeId && <th className="px-3 py-2 text-left w-44">Franchisee</th>}
                     <th className="px-3 py-2 text-left">File</th>
                   </tr>
                 </thead>
@@ -102,15 +104,17 @@ export default function FileVaultAuditLog() {
                   {items.map((r) => (
                     <tr key={r.id} className="border-t border-stone-100 hover:bg-stone-50/40" data-testid={`audit-row-${r.id}`}>
                       <td className="px-3 py-1.5 font-mono text-stone-700 tabular-nums">{ukDateTime(r.downloaded_at)}</td>
-                      <td className="px-3 py-1.5 truncate">
-                        <div className="font-semibold text-stone-900 truncate">
-                          {r.franchisee_name || r.user_email || "—"}
-                          {r.user_role === "admin" && (
-                            <span className="ml-1 text-[9px] uppercase tracking-wider bg-stone-200 text-stone-700 px-1 py-0.5 rounded">Admin</span>
-                          )}
-                        </div>
-                        <div className="text-[10px] text-stone-500 font-mono truncate">{r.user_email}</div>
-                      </td>
+                      {!franchiseeId && (
+                        <td className="px-3 py-1.5 truncate">
+                          <div className="font-semibold text-stone-900 truncate">
+                            {r.franchisee_name || r.user_email || "—"}
+                            {r.user_role === "admin" && (
+                              <span className="ml-1 text-[9px] uppercase tracking-wider bg-stone-200 text-stone-700 px-1 py-0.5 rounded">Admin</span>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-stone-500 font-mono truncate">{r.user_email}</div>
+                        </td>
+                      )}
                       <td className="px-3 py-1.5 truncate">
                         <div className="flex items-center gap-1.5 text-stone-900 truncate">
                           <FileText className="w-3 h-3 text-stone-400 shrink-0" />

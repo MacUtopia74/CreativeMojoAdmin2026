@@ -20,6 +20,23 @@ where applicable.
   assets via shared `project_code` (rapidfuzz suggestion engine).
 
 ## Recent (June 2026)
+- ✅ **25 Jun 2026 — Per-franchisee Activity & Logs + Login tracking**
+  • New `auth_logins` collection: every successful AND failed `/auth/login`
+    attempt recorded with role, email, IP, user-agent, franchisee_id.
+  • New `GET /api/admin/auth/login-log?franchisee_id=&outcome=` endpoint.
+  • Added optional `franchisee_id` filter to existing
+    `/admin/announcements/reads`, `/admin/files/download-log`, and
+    `/admin/marketing/log` endpoints.
+  • New `LoginLog.jsx` component (with success/failed filter chips).
+  • Existing 3 log components now accept optional `franchiseeId` prop;
+    column hidden when scoped.
+  • "Activity & Logs" panel added to `FranchiseeDetailPage.js` with 4
+    collapsible sub-logs (Logins, HQ Updates, File downloads, Marketing).
+  • Global Logs page now lists Login activity at the top.
+- ✅ **25 Jun 2026 — Email-template File Picker: full R2 folder browser**
+  • FilePickerModal in EmailTemplatesPage gained Browse/Search tabs.
+  • Browse mode uses `/api/files/tree?prefix=…` with breadcrumbs so admins
+    can drill into `admin/franchise-sales-pdf/…` and other private folders.
 - ✅ YouTube sync hardening (fail-loud on API-key fallback, newest-first + LATEST badge)
 - ✅ Territory Builder legend dropdowns overlay-positioned
 - ✅ CIW Wales importer + cross-border mapping + Wales admin page

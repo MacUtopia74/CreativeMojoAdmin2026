@@ -11,6 +11,10 @@ import RecentFilesStrip from "@/components/files/RecentFilesStrip";
 import FilePreviewModal from "@/components/files/FilePreviewModal";
 import AddContractModal from "@/components/franchisee/AddContractModal";
 import LaunchChecklistModal from "@/components/LaunchChecklistModal";
+import LoginLog from "@/components/auth/LoginLog";
+import AnnouncementReadLog from "@/components/announcements/AnnouncementReadLog";
+import FileVaultAuditLog from "@/components/files/FileVaultAuditLog";
+import MarketingUsageLog from "@/components/announcements/MarketingUsageLog";
 
 // Live GoCardless mandate status pill (read from cached franchisee fields)
 const MANDATE_STYLES = {
@@ -944,6 +948,22 @@ export default function FranchiseeDetailPage() {
             </div>
           </Panel>
         )}
+
+        {/* Per-franchisee activity & audit log. Lazy-loaded sub-panels;
+            each one re-uses the same component as the global Logs page
+            but is scoped to THIS franchisee via the `franchiseeId` prop. */}
+        <Panel icon={ClipboardList} title="Activity &amp; Logs" testid="panel-activity-logs">
+          <p className="text-xs text-stone-500 mb-3">
+            Everything this franchisee has done in the portal — logins, HQ Updates
+            opened, files downloaded, and marketing e-shots they've sent.
+          </p>
+          <div className="space-y-3">
+            <LoginLog franchiseeId={f.id} />
+            <AnnouncementReadLog franchiseeId={f.id} />
+            <FileVaultAuditLog franchiseeId={f.id} />
+            <MarketingUsageLog franchiseeId={f.id} />
+          </div>
+        </Panel>
       </div>
       {previewFile && <FilePreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />}
       <LaunchChecklistModal

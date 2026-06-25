@@ -284,18 +284,50 @@ async def clear_failures(identifier: str) -> None:
 async def login(body: LoginRequest, request: Request, response: Response):
     email = body.email.lower().strip()
     ip = request.client.host if request.client else "unknown"
+    user_agent = (request.headers.get("user-agent") or "")[:300]
     identifier = f"{ip}:{email}"
     await check_lockout(identifier)
 
     user = await db.users.find_one({"email": email}, {"_id": 0})
     if not user or not verify_password(body.password, user.get("password_hash", "")):
         await record_failure(identifier)
+        # Audit-log the failed attempt so admins can spot brute-force.
+        try:
+            await db.auth_logins.insert_one({
+                "id": str(uuid.uuid4()),
+                "at": datetime.now(timezone.utc).isoformat(),
+                "outcome": "failed",
+                "email": email,
+                "user_id": user.get("id") if user else None,
+                "role": user.get("role") if user else None,
+                "franchisee_id": user.get("franchisee_id") if user else None,
+                "ip": ip,
+                "user_agent": user_agent,
+            })
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("auth_logins (failed) insert failed: %s", exc)
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     await clear_failures(identifier)
     access = create_access_token(user["id"], user["email"], user["role"])
     refresh = create_refresh_token(user["id"])
     set_auth_cookies(response, access, refresh)
+    # Audit-log the successful sign-in. Captures role + franchisee_id so
+    # we can surface "Logins" on the per-franchisee admin profile page.
+    try:
+        await db.auth_logins.insert_one({
+            "id": str(uuid.uuid4()),
+            "at": datetime.now(timezone.utc).isoformat(),
+            "outcome": "success",
+            "email": user["email"],
+            "user_id": user["id"],
+            "role": user.get("role"),
+            "franchisee_id": user.get("franchisee_id"),
+            "ip": ip,
+            "user_agent": user_agent,
+        })
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("auth_logins (success) insert failed: %s", exc)
     # Also return tokens in the body so the frontend can fall back to
     # ``Authorization: Bearer`` when the browser blocks cross-site
     # cookies (e.g. when the deployed frontend lives on
@@ -415,6 +447,51 @@ async def list_users(_: dict = Depends(require_role("admin"))):
         r["force_password_change"] = flag
         r["must_change_password"] = flag
     return {"users": rows}
+
+
+# ---------------------------------------------------------------------------
+# Admin-only audit trail of every login attempt (success + failed).
+# Used by the global Logs page and the per-franchisee profile log.
+# ---------------------------------------------------------------------------
+@api.get("/admin/auth/login-log")
+async def admin_login_log(
+    franchisee_id: Optional[str] = None,
+    outcome: Optional[str] = None,
+    limit: int = 500,
+    _: dict = Depends(require_role("admin")),
+):
+    """Returns the most recent login attempts. Filters:
+      - franchisee_id: scope to one franchisee account (and their linked
+        admin/staff logins matched by user_id link if applicable).
+      - outcome: "success" or "failed" — defaults to both.
+    """
+    query: dict = {}
+    if franchisee_id:
+        query["franchisee_id"] = franchisee_id
+    if outcome in ("success", "failed"):
+        query["outcome"] = outcome
+    limit = max(1, min(int(limit), 2000))
+    items: list[dict] = []
+    async for r in db.auth_logins.find(query, {"_id": 0}).sort("at", -1).limit(limit):
+        items.append(r)
+    # Hydrate franchisee names so the UI doesn't have to N+1.
+    fids = {r["franchisee_id"] for r in items if r.get("franchisee_id")}
+    fmap: dict = {}
+    if fids:
+        async for f in db.franchisees.find(
+            {"id": {"$in": list(fids)}},
+            {"_id": 0, "id": 1, "first_name": 1, "last_name": 1, "organisation": 1},
+        ):
+            fmap[f["id"]] = f
+    for r in items:
+        fr = fmap.get(r.get("franchisee_id") or "")
+        if fr:
+            r["franchisee_name"] = (
+                f"{fr.get('first_name') or ''} {fr.get('last_name') or ''}".strip()
+                or fr.get("organisation")
+            )
+    total = await db.auth_logins.count_documents(query)
+    return {"items": items, "returned": len(items), "total": total}
 
 
 @api.patch("/auth/users/{user_id}")

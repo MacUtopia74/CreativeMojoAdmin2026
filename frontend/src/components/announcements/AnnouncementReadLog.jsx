@@ -18,7 +18,7 @@ function ukDateTime(iso) {
   } catch { return "—"; }
 }
 
-export default function AnnouncementReadLog() {
+export default function AnnouncementReadLog({ franchiseeId = null, compact = false }) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState(null);
   const [total, setTotal] = useState(0);
@@ -28,7 +28,9 @@ export default function AnnouncementReadLog() {
   const load = async () => {
     setLoading(true); setErr("");
     try {
-      const { data } = await api.get("/admin/announcements/reads", { params: { limit: 500 } });
+      const params = { limit: 500 };
+      if (franchiseeId) params.franchisee_id = franchiseeId;
+      const { data } = await api.get("/admin/announcements/reads", { params });
       setItems(data.items || []);
       setTotal(data.total || 0);
     } catch (e) {
@@ -53,9 +55,9 @@ export default function AnnouncementReadLog() {
       >
         <Eye className="w-4 h-4 text-stone-600 shrink-0" />
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-bold text-stone-950">HQ Updates — who has opened what</div>
+          <div className="text-sm font-bold text-stone-950">{franchiseeId ? "HQ Updates opened" : "HQ Updates — who has opened what"}</div>
           <div className="text-[11px] text-stone-500">
-            {items ? `${items.length} of ${total} most recent read event${total === 1 ? "" : "s"}` : "Admin-only log of franchisee opens"}
+            {items ? `${items.length} of ${total} read event${total === 1 ? "" : "s"}` : (franchiseeId ? "Admin-only log of this franchisee's opens" : "Admin-only log of franchisee opens")}
           </div>
         </div>
         {open && (
@@ -92,7 +94,7 @@ export default function AnnouncementReadLog() {
                 <thead className="sticky top-0 bg-stone-50 text-[10px] uppercase tracking-wider text-stone-600 font-bold">
                   <tr>
                     <th className="px-3 py-2 text-left w-44">Opened</th>
-                    <th className="px-3 py-2 text-left w-56">Franchisee</th>
+                    {!franchiseeId && <th className="px-3 py-2 text-left w-56">Franchisee</th>}
                     <th className="px-3 py-2 text-left">Announcement</th>
                   </tr>
                 </thead>
@@ -100,10 +102,12 @@ export default function AnnouncementReadLog() {
                   {items.map((r, idx) => (
                     <tr key={`${r.franchisee_id}-${r.announcement_id}-${idx}`} className="border-t border-stone-100 hover:bg-stone-50/40">
                       <td className="px-3 py-1.5 font-mono text-stone-700 tabular-nums">{ukDateTime(r.read_at)}</td>
-                      <td className="px-3 py-1.5 truncate">
-                        <div className="font-semibold text-stone-900 truncate">{r.franchisee_name || "—"}</div>
-                        <div className="text-[10px] text-stone-500 font-mono truncate">{r.franchisee_email || ""}</div>
-                      </td>
+                      {!franchiseeId && (
+                        <td className="px-3 py-1.5 truncate">
+                          <div className="font-semibold text-stone-900 truncate">{r.franchisee_name || "—"}</div>
+                          <div className="text-[10px] text-stone-500 font-mono truncate">{r.franchisee_email || ""}</div>
+                        </td>
+                      )}
                       <td className="px-3 py-1.5 truncate">
                         <div className="flex items-center gap-1.5 text-stone-900 truncate">
                           <Megaphone className="w-3 h-3 text-stone-400 shrink-0" />

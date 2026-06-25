@@ -1615,6 +1615,7 @@ def attach(api, db, require_role):
     async def admin_marketing_log(
         limit: int = 500,
         include_drafts: bool = False,
+        franchisee_id: Optional[str] = None,
         _: dict = Depends(require_role("admin")),
     ):
         fr_by_id: dict[str, dict] = {}
@@ -1623,6 +1624,8 @@ def attach(api, db, require_role):
         ):
             fr_by_id[f["id"]] = f
         query: dict = {} if include_drafts else {"status": {"$ne": "draft"}}
+        if franchisee_id:
+            query["franchisee_id"] = franchisee_id
         items: list[dict] = []
         async for c in db.marketing_campaigns.find(query, {"_id": 0}) \
                 .sort([("sent_at", -1), ("created_at", -1)]).limit(limit):

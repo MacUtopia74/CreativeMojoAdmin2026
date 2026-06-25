@@ -881,7 +881,9 @@ def attach(api, db, require_role):
     # with the franchisees collection to get human-readable names.
     @api.get("/admin/announcements/reads")
     async def list_announcement_reads(
-        limit: int = 500, _: dict = Depends(require_role("admin")),
+        limit: int = 500,
+        franchisee_id: Optional[str] = None,
+        _: dict = Depends(require_role("admin")),
     ):
         # Build small in-memory maps so we can attach titles + names
         # without N+1 queries.
@@ -893,8 +895,13 @@ def attach(api, db, require_role):
             {}, {"_id": 0, "id": 1, "first_name": 1, "last_name": 1, "organisation": 1, "email": 1},
         ):
             fr_by_id[f["id"]] = f
+        # ``announcement_reads`` rows store the franchisee_id under
+        # ``user_key`` (legacy). Filter on that field.
+        read_query: dict = {}
+        if franchisee_id:
+            read_query["user_key"] = franchisee_id
         items: list[dict] = []
-        async for r in db.announcement_reads.find({}, {"_id": 0}) \
+        async for r in db.announcement_reads.find(read_query, {"_id": 0}) \
                 .sort("read_at", -1).limit(limit):
             ann = ann_by_id.get(r.get("announcement_id")) or {}
             fr = fr_by_id.get(r.get("user_key")) or {}
@@ -910,7 +917,7 @@ def attach(api, db, require_role):
                 "franchisee_email": fr.get("email"),
                 "read_at": r.get("read_at"),
             })
-        total = await db.announcement_reads.count_documents({})
+        total = await db.announcement_reads.count_documents(read_query)
         return {"items": items, "returned": len(items), "total": total}
 
     # --------------------- recent files helper for the composer ----
