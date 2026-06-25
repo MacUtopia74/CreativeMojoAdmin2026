@@ -98,10 +98,15 @@ async def _resolve_file_tokens(db, body_html: str) -> str:
     return body_html
 
 
-async def _resolve_landing_tokens(db, body_html: str, send_id: str) -> str:
+async def _resolve_landing_tokens(db, body_html: str, send_id: str, request_base: str | None = None) -> str:
     """Replace ``{{landing:<slug>}}`` tokens with the public landing-page
     URL. Appends ``?t=<send_id>`` so the visit-tracker can attribute the
     open back to the originating ``email_sends`` row.
+
+    Origin resolution order:
+      1. ``PUBLIC_BASE_URL`` env var (explicit override for staging/preview)
+      2. ``request_base`` (the live request's scheme+host — picks up preview)
+      3. ``https://hub.creativemojo.co.uk`` (production fallback)
 
     Falls back to leaving the token visible if the slug doesn't match an
     active landing page — that way the admin notices in the sent email
@@ -112,10 +117,12 @@ async def _resolve_landing_tokens(db, body_html: str, send_id: str) -> str:
     slugs = set(re.findall(r"\{\{\s*landing:([a-z0-9-]+?)\s*\}\}", body_html))
     if not slugs:
         return body_html
-    # Frontend origin — production preferred, falls back to env-configured
-    # PUBLIC_BASE_URL so the link still resolves on preview/staging.
     import os
-    base = os.environ.get("PUBLIC_BASE_URL", "https://hub.creativemojo.co.uk").rstrip("/")
+    base = (
+        os.environ.get("PUBLIC_BASE_URL")
+        or (request_base or "").rstrip("/")
+        or "https://hub.creativemojo.co.uk"
+    ).rstrip("/")
     for slug in slugs:
         page = await db.landing_pages.find_one(
             {"slug": slug, "active": True}, {"_id": 0, "slug": 1},
@@ -175,7 +182,7 @@ def build_resend_router(db, require_role):
 
     # -------------------------------------------------------- send
     @router.post("/email/send-reply")
-    async def send_reply(body: SendReplyRequest, user: dict = Depends(require_role("admin"))):
+    async def send_reply(body: SendReplyRequest, request: Request, user: dict = Depends(require_role("admin"))):
         if not RESEND_API_KEY:
             raise HTTPException(503, detail="Resend not configured — missing RESEND_API_KEY.")
         if not body.to:
@@ -195,7 +202,10 @@ def build_resend_router(db, require_role):
         send_id = str(uuid.uuid4())  # our own id, surfaced in headers + landing links
         rendered_html = body.body_html.replace("{{first_name}}", first_name)
         rendered_html = await _resolve_file_tokens(db, rendered_html)
-        rendered_html = await _resolve_landing_tokens(db, rendered_html, send_id)
+        rendered_html = await _resolve_landing_tokens(
+            db, rendered_html, send_id,
+            request_base=f"{request.url.scheme}://{request.url.netloc}" if request and request.url else None,
+        )
         # Convert WYSIWYG button classes → inline styles so email clients
         # that strip <style> tags still render the yellow CTA / outline
         # buttons exactly as the admin saw them in the editor.
@@ -337,10 +347,10 @@ def build_resend_router(db, require_role):
             band = "cold"
 
         details = [
-            {"label": "Email opens", "count": int(opens), "weight": 2, "max": 6},
-            {"label": "Link clicks", "count": int(clicks), "weight": 5, "max": 15},
-            {"label": "Landing-page views", "count": int(views), "weight": 3, "max": 9},
-            {"label": "Landing-page downloads", "count": int(downloads), "weight": 8, "max": 16},
+            {"label": "Email opens", "count": round(opens, 1), "weight": 2, "max": 6},
+            {"label": "Link clicks", "count": round(clicks, 1), "weight": 5, "max": 15},
+            {"label": "Landing-page views", "count": round(views, 1), "weight": 3, "max": 9},
+            {"label": "Landing-page downloads", "count": round(downloads, 1), "weight": 8, "max": 16},
         ]
         return {
             "contact_id": contact_id,

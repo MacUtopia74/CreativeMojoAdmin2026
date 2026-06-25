@@ -262,7 +262,6 @@ def build_router(*, db, require_role, sanitize_html):
             raise HTTPException(404, "Page not found")
         if not page.get("file_key"):
             raise HTTPException(404, "No file attached")
-        await _record_visit(page=page, request=request, outcome="download", token=t)
         try:
             from file_storage import presigned_get_url  # type: ignore
         except Exception:  # noqa: BLE001
@@ -274,6 +273,9 @@ def build_router(*, db, require_role, sanitize_html):
         except Exception as e:  # noqa: BLE001
             logger.exception("presigned_get_url failed for %s: %s", page["file_key"], e)
             raise HTTPException(500, "Could not generate download URL")
+        # Only log the visit after R2 has minted a URL — that way we
+        # never count a "download" that actually 500'd for the user.
+        await _record_visit(page=page, request=request, outcome="download", token=t)
         return RedirectResponse(url, status_code=302)
 
     return router

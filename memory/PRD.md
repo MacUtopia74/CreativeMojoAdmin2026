@@ -20,6 +20,28 @@ where applicable.
   assets via shared `project_code` (rapidfuzz suggestion engine).
 
 ## Recent (June 2026)
+- ✅ **25 Jun 2026 (PM) — Landing Pages + CTA Composer + Phase 4 Lead Temperature**
+  • **Public PDF Landing Pages** (`/info/:slug`, no auth) — branded
+    viewer with logo, intro, "What's inside" bullets, yellow CTA. Each
+    visit + download is tracked, attributed to the originating email
+    send via `?t=<send-id>` token.
+  • Admin CRUD at `/admin/landing-pages` (slug, title, intro_html,
+    bullets, CTA label, R2 file picker, active toggle, live view/download
+    counters, expandable Visit Log).
+  • `{{landing:<slug>}}` tokens in email templates resolve at send time
+    to the public URL + tracking token. Origin is configurable via
+    `PUBLIC_BASE_URL` env or falls back to the request's own host.
+  • **CTA Composer Modal** replaces the 3 stacked native window.prompt /
+    window.confirm calls with a single in-app dialog. Three sources:
+    Landing Page (dropdown of active pages) · R2 File (existing browser)
+    · External URL.
+  • **Phase 4 Lead Temperature**: `GET /api/contacts/{id}/temperature`
+    scores opens (+2, cap 6), clicks (+5, cap 15), landing-page views
+    (+3, cap 9), downloads (+8, cap 16). Events older than 30 days are
+    halved. Bands: Hot ≥ 15, Warm 8–14, Cold 0–7. New
+    `LeadTemperatureBadge.jsx` chip on the contact drawer (read-only,
+    sits alongside the manual flame).
+  • All verified by testing_agent_v3_fork iteration_32 (100% pass).
 - ✅ **25 Jun 2026 — Per-franchisee Activity & Logs + Login tracking**
   • New `auth_logins` collection: every successful AND failed `/auth/login`
     attempt recorded with role, email, IP, user-agent, franchisee_id.
