@@ -23,7 +23,7 @@ SIGNATURE_HTML = """
       <hr style="border:0;border-top:1px solid #cccccc;margin:6px 0 10px 0;" />
       <div style="font-size:13px;line-height:1.8;">
         <span style="display:inline-block;">&#9742; 01884 303606 &nbsp;&nbsp; &#128241; 07886 374959</span><br/>
-        <span>&#127760; <a href="https://www.creativemojo.com" style="color:#1a1a1a;text-decoration:none;">www.creativemojo.com</a></span><br/>
+        <span>&#127760; <a href="https://www.creativemojo.co.uk" style="color:#1a1a1a;text-decoration:none;">www.creativemojo.co.uk</a></span><br/>
         <span>&#9993; <a href="mailto:paul@creativemojo.co.uk" style="color:#1a1a1a;text-decoration:none;">paul@creativemojo.co.uk</a></span><br/>
         <span>&#128205; Channings, Brithem Bottom,<br/>&nbsp;&nbsp;&nbsp;&nbsp;Cullompton, Devon EX15&nbsp;1NB</span>
       </div>
