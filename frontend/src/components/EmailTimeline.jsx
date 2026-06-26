@@ -10,14 +10,16 @@ import { useCallback, useEffect, useState } from "react";
 import api from "@/lib/api";
 import {
   Mail, Eye, MousePointerClick, AlertTriangle, CheckCircle2,
-  ChevronDown, ChevronRight, Loader2,
+  ChevronDown, ChevronRight, Loader2, Reply, Undo2,
 } from "lucide-react";
+import { toast } from "sonner";
 
 const EVENT_META = {
   sent:       { label: "Sent",       icon: Mail,             classes: "text-stone-600 bg-stone-100" },
   delivered:  { label: "Delivered",  icon: CheckCircle2,     classes: "text-emerald-700 bg-emerald-50" },
   opened:     { label: "Opened",     icon: Eye,              classes: "text-blue-700 bg-blue-50" },
   clicked:    { label: "Clicked",    icon: MousePointerClick,classes: "text-amber-700 bg-amber-50" },
+  replied:    { label: "Replied",    icon: Reply,            classes: "text-emerald-700 bg-emerald-50" },
   bounced:    { label: "Bounced",    icon: AlertTriangle,    classes: "text-red-700 bg-red-50" },
   complained: { label: "Spam",       icon: AlertTriangle,    classes: "text-red-700 bg-red-50" },
   delivery_delayed: { label: "Delayed", icon: AlertTriangle, classes: "text-amber-700 bg-amber-50" },
@@ -94,23 +96,92 @@ export default function EmailTimeline({ contactId, refreshSignal }) {
                   <div><span className="text-stone-400">To:</span> {(s.to || []).join(", ") || "—"}</div>
                   {s.cc?.length > 0 && <div><span className="text-stone-400">Cc:</span> {s.cc.join(", ")}</div>}
                   <div><span className="text-stone-400">Sent by:</span> {s.sent_by || "—"} · {new Date(s.sent_at).toLocaleString("en-GB")}</div>
-                  {/* Mini event ladder so admins can see the full progression */}
+                  {/* Phase 5a — manual "Mark as Replied" button. Until
+                      Resend Inbound + Outlook forwarding lands we rely
+                      on the admin to flag a reply themselves. Idempotent
+                      server-side; the button flips to "Undo" once
+                      marked. */}
+                  {(() => {
+                    const alreadyReplied = (s.events || []).some((e) => e.type === "replied");
+                    return (
+                      <div className="pt-1">
+                        {alreadyReplied ? (
+                          <button
+                            type="button"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              try {
+                                await api.delete(`/email/sends/${s.id}/mark-replied`);
+                                toast.success("Reply marker removed");
+                                load();
+                              } catch (err) {
+                                toast.error(err?.response?.data?.detail || "Could not undo");
+                              }
+                            }}
+                            data-testid={`unmark-replied-${s.id}`}
+                            className="px-2 py-1 text-[10px] uppercase tracking-wider font-bold bg-white border border-stone-200 hover:bg-stone-50 rounded-md inline-flex items-center gap-1 text-stone-700"
+                          >
+                            <Undo2 className="w-3 h-3" /> Undo &ldquo;Replied&rdquo;
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              try {
+                                await api.post(`/email/sends/${s.id}/mark-replied`);
+                                toast.success("Marked as replied — Lead Temperature will lift");
+                                load();
+                              } catch (err) {
+                                toast.error(err?.response?.data?.detail || "Could not mark");
+                              }
+                            }}
+                            data-testid={`mark-replied-${s.id}`}
+                            className="px-2 py-1 text-[10px] uppercase tracking-wider font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-md inline-flex items-center gap-1"
+                          >
+                            <Reply className="w-3 h-3" /> Mark as Replied
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()}
+                  {/* Mini event ladder so admins can see the full progression.
+                      Events are deduped so multiple BCC recipients firing
+                      separate Resend webhooks (e.g. franchises@ + paul@ +
+                      admin@) all collapse into one row per logical event. */}
                   {Array.isArray(s.events) && s.events.length > 1 && (
                     <div className="pt-1 mt-1 border-t border-stone-100">
                       <div className="text-stone-400 mb-1">Activity:</div>
                       <ul className="space-y-0.5">
-                        {s.events.map((e, i) => {
-                          const m = EVENT_META[e.type] || { label: e.type, icon: Mail, classes: "text-stone-600" };
-                          const EvIcon = m.icon;
-                          return (
-                            <li key={`${s.id}-ev-${i}`} className="flex items-center gap-1.5">
-                              <EvIcon className="w-3 h-3 text-stone-400" />
-                              <span>{m.label}</span>
-                              <span className="text-stone-400">· {new Date(e.at).toLocaleString("en-GB")}</span>
-                              {e.link && <a href={e.link} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline truncate max-w-[200px]">{e.link}</a>}
-                            </li>
-                          );
-                        })}
+                        {(() => {
+                          // Group by type + link, bucketed to 10-second
+                          // intervals. The first event wins; subsequent
+                          // duplicates increment a count badge.
+                          const grouped = [];
+                          const seen = new Map();
+                          for (const e of s.events) {
+                            const bucket = Math.floor(new Date(e.at).getTime() / 10000);
+                            const key = `${e.type}|${e.link || ""}|${bucket}`;
+                            if (seen.has(key)) {
+                              grouped[seen.get(key)].count += 1;
+                            } else {
+                              seen.set(key, grouped.length);
+                              grouped.push({ ...e, count: 1 });
+                            }
+                          }
+                          return grouped.map((e, i) => {
+                            const m = EVENT_META[e.type] || { label: e.type, icon: Mail, classes: "text-stone-600" };
+                            const EvIcon = m.icon;
+                            return (
+                              <li key={`${s.id}-ev-${i}`} className="flex items-center gap-1.5">
+                                <EvIcon className="w-3 h-3 text-stone-400" />
+                                <span>{m.label}{e.count > 1 ? ` ×${e.count}` : ""}</span>
+                                <span className="text-stone-400">· {new Date(e.at).toLocaleString("en-GB")}</span>
+                                {e.link && <a href={e.link} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline truncate max-w-[200px]">{e.link}</a>}
+                              </li>
+                            );
+                          });
+                        })()}
                       </ul>
                     </div>
                   )}

@@ -217,12 +217,27 @@ def build_resend_router(db, require_role):
         # buttons exactly as the admin saw them in the editor.
         rendered_html = _inline_button_styles(rendered_html)
 
-        # Per-send reply-to picks up the logged-in admin's email so the
-        # recipient lands their reply in *that* admin's inbox, not the
-        # shared paul@ inbox. Falls back to the configured default if the
-        # admin doesn't have an email on file (shouldn't happen but cheap
-        # to guard).
-        reply_to = (user.get("email") or RESEND_DEFAULT_REPLY_TO).strip()
+        # Reply-to precedence:
+        #   1. Template's `default_from` (where the owner of THIS template
+        #      reads replies — e.g. paul@creativemojo.co.uk on the
+        #      Franchise Reply template).
+        #   2. Logged-in admin's email (only if the template has no
+        #      default_from set).
+        #   3. ``RESEND_DEFAULT_REPLY_TO`` env var as the final safety
+        #      net.
+        # We intentionally DON'T use the logged-in user first — generic
+        # admin accounts like admin@creativemojo.co.uk aren't monitored,
+        # so replies would land in a dead inbox.
+        template_reply_to = ""
+        if body.template_id:
+            tpl = await db.email_templates.find_one(
+                {"id": body.template_id}, {"_id": 0, "default_from": 1},
+            )
+            template_reply_to = (tpl or {}).get("default_from", "").strip()
+        if template_reply_to:
+            reply_to = template_reply_to
+        else:
+            reply_to = (user.get("email") or RESEND_DEFAULT_REPLY_TO).strip()
 
         params = {
             "from": f"{RESEND_FROM_NAME} <{RESEND_FROM_EMAIL}>",
@@ -284,14 +299,73 @@ def build_resend_router(db, require_role):
         items = await cur.to_list(100)
         return {"items": items, "count": len(items)}
 
+    # ----------------------------- Phase 5a — manual reply detection
+    # Until Resend Inbound + Outlook forwarding lands (Phase 5b), admins
+    # mark a send as "replied" themselves when they see the reply in
+    # their inbox. The recorded event surfaces in the EmailTimeline rail
+    # and feeds into the Lead Temperature engine via the +15 reply boost
+    # (which we'll wire up in Phase 4.1).
+    @router.post("/email/sends/{send_id}/mark-replied")
+    async def mark_replied(
+        send_id: str,
+        user: dict = Depends(require_role("admin")),
+    ):
+        from datetime import datetime as _dt, timezone as _tz
+        existing = await db.email_sends.find_one({"id": send_id}, {"_id": 0, "id": 1, "events": 1})
+        if not existing:
+            raise HTTPException(404, "Send not found")
+        # Idempotent — return cleanly if already marked.
+        already = any((e.get("type") == "replied") for e in (existing.get("events") or []))
+        if already:
+            return {"ok": True, "already_marked": True}
+        event = {
+            "type": "replied",
+            "at": _dt.now(_tz.utc).isoformat(),
+            "marked_by": user.get("email"),
+        }
+        await db.email_sends.update_one(
+            {"id": send_id},
+            {
+                "$push": {"events": event},
+                "$set": {"last_event": "replied", "last_event_at": event["at"]},
+            },
+        )
+        return {"ok": True, "event": event}
+
+    @router.delete("/email/sends/{send_id}/mark-replied")
+    async def unmark_replied(
+        send_id: str,
+        _user: dict = Depends(require_role("admin")),
+    ):
+        """Undo a manual 'replied' marker if it was clicked by mistake.
+        Removes the most recent reply event and recomputes last_event
+        from whatever survived (falls back to ``sent`` if empty).
+        """
+        existing = await db.email_sends.find_one({"id": send_id}, {"_id": 0, "id": 1, "events": 1})
+        if not existing:
+            raise HTTPException(404, "Send not found")
+        events = [e for e in (existing.get("events") or []) if e.get("type") != "replied"]
+        last = events[-1] if events else None
+        await db.email_sends.update_one(
+            {"id": send_id},
+            {"$set": {
+                "events": events,
+                "last_event": (last or {}).get("type") or "sent",
+                "last_event_at": (last or {}).get("at"),
+            }},
+        )
+        return {"ok": True}
+
     # -------------------------------------------------------- lead temperature
     # Phase 4 — auto-compute a lead-temperature score per contact based
     # on their engagement signals: email opens/clicks, landing-page
-    # views/downloads. Weights are intentionally simple:
+    # views/downloads, and (Phase 5a) manual "replied" markers.
+    # Weights are intentionally simple:
     #   open      +2 (cap 6  — opening 4+ times doesn't add more signal)
     #   click     +5 (cap 15)
     #   page view +3 (cap 9)
     #   download  +8 (cap 16)
+    #   replied   +15 (capped at one — a reply is conclusive interest)
     # Events older than 30 days are halved (recency decay).
     #
     # Bands:
@@ -306,6 +380,7 @@ def build_resend_router(db, require_role):
         from datetime import datetime as _dt, timezone as _tz
         now = _dt.now(_tz.utc)
         opens = clicks = views = downloads = 0
+        replied = False
         details: list[dict] = []
 
         def _decay(at_iso: str | None) -> float:
@@ -329,6 +404,10 @@ def build_resend_router(db, require_role):
                     opens += 1 * w
                 elif t == "clicked":
                     clicks += 1 * w
+                elif t == "replied":
+                    # A reply is binary — capture once per contact even
+                    # if multiple sends were marked replied.
+                    replied = True
         # Landing page engagement
         async for v in db.landing_page_visits.find({"contact_id": contact_id}, {"_id": 0, "outcome": 1, "at": 1}):
             w = _decay(v.get("at"))
@@ -342,6 +421,7 @@ def build_resend_router(db, require_role):
             + min(clicks * 5, 15)
             + min(views * 3, 9)
             + min(downloads * 8, 16)
+            + (15 if replied else 0)
         )
         score = round(score, 1)
 
@@ -357,6 +437,7 @@ def build_resend_router(db, require_role):
             {"label": "Link clicks", "count": round(clicks, 1), "weight": 5, "max": 15},
             {"label": "Landing-page views", "count": round(views, 1), "weight": 3, "max": 9},
             {"label": "Landing-page downloads", "count": round(downloads, 1), "weight": 8, "max": 16},
+            {"label": "Marked as replied", "count": 1 if replied else 0, "weight": 15, "max": 15},
         ]
         return {
             "contact_id": contact_id,
