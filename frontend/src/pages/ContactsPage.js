@@ -1559,6 +1559,21 @@ export default function ContactsPage() {
   const navigate = useNavigate();
   const [tab, setTab] = useState("pipeline");
   const [view, setView] = useState("pipeline");
+  // Auto-temperature score map (contact_id → {score, band}) for kanban
+  // cards. Loaded once when the pipeline view opens and refreshed when
+  // the user toggles "Sort by hot lead". Empty map = render no badge.
+  const [tempMap, setTempMap] = useState({});
+  // When on, kanban columns sort by AUTO score desc (hottest first).
+  const [sortByHot, setSortByHot] = useState(false);
+
+  useEffect(() => {
+    if (tab !== "pipeline") return;
+    let cancelled = false;
+    api.get("/contacts/temperatures")
+      .then(({ data }) => { if (!cancelled) setTempMap(data.temperatures || {}); })
+      .catch(() => { /* silent — sort still works with score=0 */ });
+    return () => { cancelled = true; };
+  }, [tab]);
   const [stageFilter, setStageFilter] = useState("");
   const [search, setSearch] = useState("");
   const [recentSearches, setRecentSearches] = useState(() => loadRecentSearches());
@@ -1917,8 +1932,16 @@ export default function ContactsPage() {
       const stage = c.pipeline_status && g[c.pipeline_status] ? c.pipeline_status : "new";
       g[stage].push(c);
     });
+    // When the "Sort by Hot Lead" toggle is on, every column sorts its
+    // own cards by AUTO score desc (hottest first). Contacts with no
+    // engagement signal fall to the bottom. Stable for ties.
+    if (sortByHot) {
+      Object.keys(g).forEach((k) => {
+        g[k] = [...g[k]].sort((a, b) => (tempMap[b.id]?.score || 0) - (tempMap[a.id]?.score || 0));
+      });
+    }
     return g;
-  }, [visibleItems]);
+  }, [visibleItems, sortByHot, tempMap]);
 
   const stats = useMemo(() => {
     const s = { total: visibleItems.length };
@@ -1938,6 +1961,20 @@ export default function ContactsPage() {
           <span className="text-xs text-stone-500">{data.total.toLocaleString()} records</span>
         </div>
         <div className="flex items-center gap-3">
+          {isPipeline && view === "pipeline" && (
+            <button
+              type="button"
+              onClick={() => setSortByHot((v) => !v)}
+              data-testid="sort-by-hot-toggle"
+              title="Sort columns by AUTO Lead Temperature score (hottest first)"
+              className={`px-3 py-2 text-xs font-bold uppercase tracking-wider rounded-lg border inline-flex items-center gap-1.5 transition-colors ${
+                sortByHot
+                  ? "bg-orange-600 hover:bg-orange-700 text-white border-orange-600"
+                  : "bg-white hover:bg-stone-50 text-stone-700 border-stone-300"
+              }`}>
+              <Flame className="w-3 h-3" /> Sort by Hot
+            </button>
+          )}
           {isPipeline && (
             <div className="flex border border-stone-300 rounded-lg overflow-hidden">
               <button onClick={() => setView("list")} data-testid="view-list" className={`px-3 py-2 text-xs font-bold uppercase tracking-wider transition-colors flex items-center gap-1.5 ${view === "list" ? "bg-stone-950 text-white" : "bg-white text-stone-700 hover:bg-stone-50"}`}>
@@ -2252,6 +2289,27 @@ export default function ContactsPage() {
                               <span className="truncate">{[c.first_name, c.last_name].filter(Boolean).join(" ") || "Unnamed"}</span>
                               <ManualBadge addedBy={c.manually_added_by} />
                             </div>
+                            {/* Auto-score chip — pulled from bulk
+                                /api/contacts/temperatures. Hidden if
+                                the contact has no engagement (would
+                                always be Cold/0 and clutter the card). */}
+                            {(() => {
+                              const t = tempMap[c.id];
+                              if (!t || t.score === 0) return null;
+                              const bandStyle = t.band === "hot"
+                                ? "bg-orange-50 border-orange-300 text-orange-700"
+                                : t.band === "warm"
+                                ? "bg-amber-50 border-amber-300 text-amber-700"
+                                : "bg-sky-50 border-sky-300 text-sky-700";
+                              return (
+                                <span
+                                  title={`Auto-score: ${t.score} (${t.band})`}
+                                  data-testid={`card-autoscore-${c.id}`}
+                                  className={`inline-flex items-center gap-0.5 px-1 py-0.5 rounded border text-[9px] font-bold uppercase ${bandStyle}`}>
+                                  <Flame className="w-2.5 h-2.5" />{t.score}
+                                </span>
+                              );
+                            })()}
                             {/* Lead-temperature picker. Pipeline-only: any
                                 contact in the kanban is by definition in
                                 the pipeline, so always render here. */}

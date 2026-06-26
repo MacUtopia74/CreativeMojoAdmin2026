@@ -447,6 +447,75 @@ def build_resend_router(db, require_role):
             "computed_at": now.isoformat(),
         }
 
+    @router.get("/contacts/temperatures")
+    async def bulk_temperatures(
+        _user: dict = Depends(require_role("admin")),
+    ):
+        """Bulk lead-temperature for every contact currently in the pipeline.
+        Used by the Sales Pipeline kanban to render the AUTO score on
+        every card without N+1 round-trips. Aggregation pipelines do all
+        the per-contact maths in MongoDB so this scales to hundreds of
+        contacts without falling over.
+
+        Returns: ``{contact_id: {score, band}}`` map.
+        """
+        from datetime import datetime as _dt, timezone as _tz
+        now = _dt.now(_tz.utc)
+        out: dict[str, dict] = {}
+
+        def _decay(at_iso: str | None) -> float:
+            if not at_iso:
+                return 1.0
+            try:
+                dt = _dt.fromisoformat(at_iso.replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=_tz.utc)
+                return 0.5 if (now - dt).days > 30 else 1.0
+            except Exception:  # noqa: BLE001
+                return 1.0
+
+        # Walk email_sends ONCE, then landing_page_visits ONCE — every
+        # contact's score is built up in a single dict.
+        agg: dict[str, dict] = {}
+        async for send in db.email_sends.find({}, {"_id": 0, "contact_id": 1, "events": 1}):
+            cid = send.get("contact_id")
+            if not cid:
+                continue
+            entry = agg.setdefault(cid, {"opens": 0, "clicks": 0, "views": 0, "downloads": 0, "replied": False})
+            for ev in (send.get("events") or []):
+                t = (ev.get("type") or "").lower()
+                w = _decay(ev.get("at"))
+                if t == "opened":
+                    entry["opens"] += w
+                elif t == "clicked":
+                    entry["clicks"] += w
+                elif t == "replied":
+                    entry["replied"] = True
+        async for v in db.landing_page_visits.find({}, {"_id": 0, "contact_id": 1, "outcome": 1, "at": 1}):
+            cid = v.get("contact_id")
+            if not cid:
+                continue
+            entry = agg.setdefault(cid, {"opens": 0, "clicks": 0, "views": 0, "downloads": 0, "replied": False})
+            w = _decay(v.get("at"))
+            if v.get("outcome") == "view":
+                entry["views"] += w
+            elif v.get("outcome") == "download":
+                entry["downloads"] += w
+
+        for cid, e in agg.items():
+            score = (
+                min(e["opens"] * 2, 6)
+                + min(e["clicks"] * 5, 15)
+                + min(e["views"] * 3, 9)
+                + min(e["downloads"] * 8, 16)
+                + (15 if e["replied"] else 0)
+            )
+            score = round(score, 1)
+            band = "hot" if score >= 15 else ("warm" if score >= 8 else "cold")
+            out[cid] = {"score": score, "band": band}
+
+        return {"temperatures": out, "computed_at": now.isoformat()}
+
     # -------------------------------------------------------- webhook
     @router.post("/email/resend-webhook")
     async def resend_webhook(request: Request):
