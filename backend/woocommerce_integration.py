@@ -690,6 +690,60 @@ def attach(api, db, require_role):
         r = await db.woo_orders.delete_one({"id": order_id})
         return {"ok": True, "deleted": r.deleted_count}
 
+    # ---------------------- Duplicate detection / resolution ----------------------
+    # Production sync occasionally inserted two docs sharing the same Woo
+    # ``id`` (race during an early backfill). The UI ends up showing
+    # double rows whose checkboxes both target the same ``id``, so a
+    # plain bulk-delete would nuke both. These two endpoints surface
+    # the dup groups and let the admin pick which document to keep via
+    # the Mongo ``_id`` (the only thing that distinguishes them).
+    @api.get("/order-duplicates")
+    async def find_duplicate_orders(_: dict = Depends(require_role("admin"))):
+        pipeline = [
+            {"$group": {
+                "_id": "$id",
+                "count": {"$sum": 1},
+                "docs": {"$push": {
+                    "mongo_id": {"$toString": "$_id"},
+                    "production_status": "$production_status",
+                    "status": "$status",
+                    "channel": "$channel",
+                    "customer_label": "$customer_label",
+                    "date_created": "$date_created",
+                    "date_modified": "$date_modified",
+                    "updated_at": "$updated_at",
+                    "is_draft": "$is_draft",
+                }},
+            }},
+            {"$match": {"count": {"$gt": 1}}},
+            {"$sort": {"count": -1}},
+            {"$limit": 200},
+        ]
+        groups = await db.woo_orders.aggregate(pipeline).to_list(200)
+        return {"groups": groups, "count": len(groups)}
+
+    @api.post("/order-duplicates/resolve")
+    async def resolve_duplicate_order(
+        body: dict,
+        _: dict = Depends(require_role("admin")),
+    ):
+        """Delete every doc in ``delete_mongo_ids`` (the dup copies the
+        admin chose to discard). Operates by Mongo ``_id`` because every
+        duplicate shares the same business ``id``."""
+        from bson import ObjectId
+        from bson.errors import InvalidId
+        ids = body.get("delete_mongo_ids") or []
+        if not ids:
+            raise HTTPException(400, "delete_mongo_ids required")
+        oids = []
+        for x in ids:
+            try:
+                oids.append(ObjectId(x))
+            except (InvalidId, TypeError):
+                raise HTTPException(400, f"Invalid mongo id: {x!r}")
+        r = await db.woo_orders.delete_many({"_id": {"$in": oids}})
+        return {"ok": True, "deleted": r.deleted_count}
+
     @api.get("/woo/products/autocomplete")
     async def products_autocomplete(
         q: str = Query("", min_length=0),

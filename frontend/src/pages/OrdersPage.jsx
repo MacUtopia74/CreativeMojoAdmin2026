@@ -16,12 +16,13 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   ShoppingBag, Search, X, Plus, RefreshCw, Loader2, AlertCircle,
-  CheckSquare, Square, CheckCircle2, CreditCard, FileText, ExternalLink, Repeat,
+  CheckSquare, Square, CheckCircle2, CreditCard, FileText, ExternalLink, Repeat, Trash2,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import api from "@/lib/api";
 import CreateOrderModal from "@/components/orders/CreateOrderModal";
 import SubscriptionsModal from "@/components/orders/SubscriptionsModal";
+import ResolveDuplicatesModal from "@/components/orders/ResolveDuplicatesModal";
 import ProductionStatusDropdown from "@/components/orders/ProductionStatusDropdown";
 
 // Public-facing WooCommerce site that owns these orders. Surfaced as a
@@ -106,6 +107,7 @@ export default function OrdersPage() {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [createOpen, setCreateOpen] = useState(false);
   const [subscriptionsOpen, setSubscriptionsOpen] = useState(false);
+  const [duplicatesOpen, setDuplicatesOpen] = useState(false);
   const [bulkPending, setBulkPending] = useState(false);
   const [fixingStatuses, setFixingStatuses] = useState(false);
 
@@ -184,7 +186,17 @@ export default function OrdersPage() {
 
   const runBulk = async (action) => {
     if (selectedIds.size === 0) return;
-    if (!window.confirm(`Apply "${action.replace(/_/g, " ")}" to ${selectedIds.size} order(s)?`)) return;
+    // Delete is destructive — require typing the word so the user can't
+    // wipe an order with a misclick on the keyboard shortcut.
+    if (action === "delete") {
+      const word = window.prompt(
+        `Permanently delete ${selectedIds.size} order(s)?\n\nThis is irreversible. Type DELETE to confirm.`,
+        ""
+      );
+      if (word !== "DELETE") return;
+    } else if (!window.confirm(`Apply "${action.replace(/_/g, " ")}" to ${selectedIds.size} order(s)?`)) {
+      return;
+    }
     setBulkPending(true);
     try {
       await api.post("/orders/bulk-action", { ids: Array.from(selectedIds), action });
@@ -250,6 +262,15 @@ export default function OrdersPage() {
               <RefreshCw className="w-3.5 h-3.5" />
             )}
             Fix Shape Statuses
+          </button>
+          <button
+            type="button"
+            onClick={() => setDuplicatesOpen(true)}
+            data-testid="open-duplicates-button"
+            title="Find orders that share an ID (production sync glitch) and pick which copy to keep"
+            className="px-4 py-2 border border-stone-300 bg-white text-stone-900 text-xs font-bold uppercase tracking-wider hover:bg-stone-50 rounded-lg transition-colors flex items-center gap-2"
+          >
+            <Trash2 className="w-3.5 h-3.5" /> Resolve Duplicates
           </button>
           <button
             type="button"
@@ -399,6 +420,20 @@ export default function OrdersPage() {
             >
               <FileText className="w-3.5 h-3.5" /> Send to Xero
             </button>
+            {/* Destructive — separated visually + protected by typed
+                "DELETE" confirmation. Lets the admin nuke test/fake/
+                duplicate orders (a known long-tail data-quality issue
+                from the WooCommerce sync). */}
+            <button
+              type="button"
+              onClick={() => runBulk("delete")}
+              disabled={bulkPending}
+              data-testid="orders-bulk-delete"
+              title="Permanently delete the selected orders (irreversible)"
+              className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-[11px] font-bold uppercase tracking-wider rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <Trash2 className="w-3.5 h-3.5" /> Delete
+            </button>
             <button
               type="button"
               onClick={selectAllVisible}
@@ -512,6 +547,12 @@ export default function OrdersPage() {
       <SubscriptionsModal
         open={subscriptionsOpen}
         onClose={() => setSubscriptionsOpen(false)}
+      />
+
+      <ResolveDuplicatesModal
+        open={duplicatesOpen}
+        onClose={() => setDuplicatesOpen(false)}
+        onResolved={() => { load(); loadCounts(); }}
       />
     </div>
   );
