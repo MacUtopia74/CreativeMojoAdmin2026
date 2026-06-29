@@ -146,28 +146,35 @@ export default function EmailTimeline({ contactId, refreshSignal }) {
                     );
                   })()}
                   {/* Mini event ladder so admins can see the full progression.
-                      Events are deduped so multiple BCC recipients firing
-                      separate Resend webhooks (e.g. franchises@ + paul@ +
-                      admin@) all collapse into one row per logical event. */}
+                      Webhook noise from BCC fan-out (every BCC'd copy fires
+                      its own Resend ``delivered`` / ``opened`` / ``clicked``
+                      event within seconds of the recipient interaction) is
+                      collapsed by bucketing events into 60-second windows
+                      and dropping same-bucket duplicates entirely — so a
+                      single human interaction shows as ONE row, not ×N. */}
                   {Array.isArray(s.events) && s.events.length > 1 && (
                     <div className="pt-1 mt-1 border-t border-stone-100">
                       <div className="text-stone-400 mb-1">Activity:</div>
                       <ul className="space-y-0.5">
                         {(() => {
-                          // Group by type + link, bucketed to 10-second
-                          // intervals. The first event wins; subsequent
-                          // duplicates increment a count badge.
+                          // 60-second bucket — catches BCC simultaneous
+                          // fires (3 recipients × same physical open = 3
+                          // webhooks within ~5s) but still separates a
+                          // legitimate re-open hours later as its own row.
                           const grouped = [];
                           const seen = new Map();
                           for (const e of s.events) {
-                            const bucket = Math.floor(new Date(e.at).getTime() / 10000);
+                            const bucket = Math.floor(new Date(e.at).getTime() / 60000);
                             const key = `${e.type}|${e.link || ""}|${bucket}`;
                             if (seen.has(key)) {
-                              grouped[seen.get(key)].count += 1;
-                            } else {
-                              seen.set(key, grouped.length);
-                              grouped.push({ ...e, count: 1 });
+                              // Same physical event re-fired by another
+                              // BCC copy — silently drop, don't inflate
+                              // the count. The first webhook in the
+                              // bucket already represents this open/click.
+                              continue;
                             }
+                            seen.set(key, grouped.length);
+                            grouped.push({ ...e, count: 1 });
                           }
                           return grouped.map((e, i) => {
                             const m = EVENT_META[e.type] || { label: e.type, icon: Mail, classes: "text-stone-600" };
