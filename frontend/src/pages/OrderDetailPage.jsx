@@ -39,6 +39,7 @@ export default function OrderDetailPage() {
   const [actionsOpen, setActionsOpen] = useState(false);
   const [changeCustomerOpen, setChangeCustomerOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [pushingToXero, setPushingToXero] = useState(false);
 
   // Edit buffers — committed to the server on Save Order
   const [lineItems, setLineItems] = useState([]);
@@ -448,8 +449,39 @@ export default function OrderDetailPage() {
               </div>
             )}
             {deliveryAddress?._source === "billing" && (
-              <div className="mt-2 text-[10px] uppercase tracking-wider font-bold text-amber-700 inline-flex items-center gap-1">
-                <AlertCircle className="w-3 h-3" /> Entered manually — push to Xero from “Change Customer” to keep records in sync.
+              <div className="mt-3 bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
+                <div className="text-[10px] uppercase tracking-wider font-bold text-amber-700 inline-flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" /> Entered manually — not yet synced to Xero
+                </div>
+                <p className="text-[11px] text-amber-900 leading-snug">
+                  Push the customer name, email, billing &amp; delivery address into Xero so future invoices route correctly.
+                </p>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setPushingToXero(true);
+                    try {
+                      const { data } = await api.post(`/orders/${orderId}/push-customer-to-xero`);
+                      const pushed = data?.fields_pushed || {};
+                      const parts = [];
+                      if (pushed.email) parts.push("email");
+                      if (pushed.phone) parts.push("phone");
+                      if (pushed.first_name || pushed.last_name) parts.push("name");
+                      if (pushed.addresses) parts.push(`${pushed.addresses} address${pushed.addresses === 1 ? "" : "es"}`);
+                      const summary = parts.length ? `Pushed: ${parts.join(", ")}.` : "Pushed name only.";
+                      alert(`${data?.created ? "Created" : "Updated"} Xero contact "${data?.name}". ${summary}`);
+                      await load();
+                    } catch (e) {
+                      alert(e?.response?.data?.detail || "Push to Xero failed.");
+                    } finally { setPushingToXero(false); }
+                  }}
+                  disabled={pushingToXero}
+                  data-testid="push-customer-to-xero-btn"
+                  className="px-3 py-1.5 bg-[#13B5EA] hover:bg-[#0e9ed1] text-white text-[11px] font-bold uppercase tracking-wider rounded-md inline-flex items-center gap-1.5 disabled:opacity-60"
+                >
+                  {pushingToXero ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
+                  {order.xero_contact_id ? "Update Xero Contact" : "Create in Xero"}
+                </button>
               </div>
             )}
           </Card>
@@ -470,6 +502,13 @@ export default function OrderDetailPage() {
         onLinkXero={async (body) => {
           try {
             await api.post(`/orders/${orderId}/link-xero-contact`, body);
+            // After linking, also push the order's full billing / shipping /
+            // phone / first+last details so the Xero record actually has
+            // the contact info (not just an empty company shell). Same
+            // endpoint as the explicit "Update Xero Contact" button.
+            try {
+              await api.post(`/orders/${orderId}/push-customer-to-xero`);
+            } catch (_) { /* non-fatal — link still succeeded */ }
             await load();
           } catch (_) { /* non-fatal */ }
         }}

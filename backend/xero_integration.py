@@ -689,6 +689,142 @@ def attach(api, db, require_role):
         )
         return out
 
+    @api.post("/orders/{order_id}/push-customer-to-xero")
+    async def push_customer_to_xero(
+        order_id: str,
+        _: dict = Depends(require_role("admin")),
+    ):
+        """Push the order's customer details (name, email, billing+shipping
+        address, phone, first/last name) up to Xero.
+
+        - If the order is already linked (``xero_contact_id`` set) → the
+          existing Xero contact is UPDATED with whatever the order has
+          that's currently missing in Xero.
+        - If the order is NOT linked → a brand new Xero contact is
+          created and the order is linked to it on the way back.
+
+        Xero merges contacts by POSTing ``{ContactID, ...fields}`` to
+        ``/Contacts``, so the same code path handles both cases."""
+        order = await db.woo_orders.find_one({"id": order_id}, {"_id": 0})
+        if not order:
+            raise HTTPException(404, "Order not found")
+
+        billing = order.get("billing") or {}
+        shipping = order.get("shipping") or {}
+
+        # ----- Pick best values -----
+        # Name (company): prefer the canonical customer_label, fall back
+        # through company / first+last on either address.
+        def _first_nonempty(*vals):
+            for v in vals:
+                if v and str(v).strip():
+                    return str(v).strip()
+            return ""
+
+        name = _first_nonempty(
+            order.get("customer_label"),
+            billing.get("company"),
+            shipping.get("company"),
+            (f"{billing.get('first_name') or ''} {billing.get('last_name') or ''}").strip(),
+        )
+        if not name:
+            raise HTTPException(400, "Order has no customer name/company to push")
+
+        email = _first_nonempty(order.get("customer_email"), billing.get("email"))
+        first_name = _first_nonempty(billing.get("first_name"), shipping.get("first_name"))
+        last_name = _first_nonempty(billing.get("last_name"), shipping.get("last_name"))
+        phone = _first_nonempty(billing.get("phone"), shipping.get("phone"))
+
+        # Shipping (delivery) is usually the address the admin cares about;
+        # fall back to billing if shipping is empty (manual one-line entries).
+        def _addr_from(src):
+            return {
+                "AddressLine1": _first_nonempty(src.get("address_1")),
+                "AddressLine2": _first_nonempty(src.get("address_2")),
+                "City":         _first_nonempty(src.get("city")),
+                "Region":       _first_nonempty(src.get("state")),
+                "PostalCode":   _first_nonempty(src.get("postcode")),
+                "Country":      _first_nonempty(src.get("country")) or "GB",
+            }
+
+        delivery_addr = _addr_from(shipping if shipping.get("address_1") else billing)
+        billing_addr = _addr_from(billing if billing.get("address_1") else shipping)
+
+        addresses_payload: list[dict] = []
+        if any(v for k, v in delivery_addr.items() if k not in ("Country",)):
+            addresses_payload.append({"AddressType": "STREET", **{k: v for k, v in delivery_addr.items() if v}})
+        if any(v for k, v in billing_addr.items() if k not in ("Country",)):
+            addresses_payload.append({"AddressType": "POBOX", **{k: v for k, v in billing_addr.items() if v}})
+        # De-dup if delivery == billing (avoid sending two identical blocks).
+        if len(addresses_payload) == 2:
+            a, b = addresses_payload[0], addresses_payload[1]
+            if {k: v for k, v in a.items() if k != "AddressType"} == {k: v for k, v in b.items() if k != "AddressType"}:
+                addresses_payload = [a, {**a, "AddressType": "POBOX"}]
+
+        xcid = order.get("xero_contact_id")
+        contact_payload: dict = {
+            "Name": name,
+            **({"EmailAddress": email} if email else {}),
+            **({"FirstName": first_name} if first_name else {}),
+            **({"LastName": last_name} if last_name else {}),
+            **({"Phones": [{"PhoneType": "DEFAULT", "PhoneNumber": phone}]} if phone else {}),
+            **({"Addresses": addresses_payload} if addresses_payload else {}),
+        }
+        if xcid:
+            # Update existing Xero contact — Xero merges on ContactID.
+            contact_payload["ContactID"] = xcid
+
+        resp = await _xero_post(db, "/Contacts", {"Contacts": [contact_payload]})
+        contacts = resp.get("Contacts") or []
+        if not contacts:
+            raise HTTPException(502, f"Xero returned no contact: {resp}")
+        new_xcid = contacts[0].get("ContactID")
+        new_name = contacts[0].get("Name") or name
+        new_email = contacts[0].get("EmailAddress") or email
+
+        # Persist the link on the order so future invoices route correctly,
+        # AND update the local Xero contact cache so the picker shows the
+        # fresh data without a full re-sync.
+        await db.woo_orders.update_one(
+            {"id": order_id},
+            {"$set": {
+                "xero_contact_id": new_xcid,
+                "xero_contact_name": new_name,
+                "xero_contact_match_status": "matched",
+                "updated_at": _now().isoformat(),
+            }},
+        )
+        await db.xero_contacts_cache.update_one(
+            {"contact_id": new_xcid},
+            {"$set": {
+                "contact_id": new_xcid,
+                "name": new_name,
+                "email": new_email,
+                "name_lc": (new_name or "").lower(),
+                "email_lc": (new_email or "").lower(),
+                "synced_at": _now().isoformat(),
+                "pushed_via_order": order_id,
+            }},
+            upsert=True,
+        )
+
+        return {
+            "ok": True,
+            "xero_contact_id": new_xcid,
+            "name": new_name,
+            "email": new_email,
+            "fields_pushed": {
+                "name": True,
+                "email": bool(email),
+                "phone": bool(phone),
+                "first_name": bool(first_name),
+                "last_name": bool(last_name),
+                "addresses": len(addresses_payload),
+            },
+            "created": not bool(xcid),
+            "updated": bool(xcid),
+        }
+
     @api.post("/orders/{order_id}/link-xero-contact")
     async def link_order_to_xero_contact(
         order_id: str,
