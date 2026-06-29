@@ -996,6 +996,49 @@ export default function FilesPage() {
                         <Search className="w-8 h-8 text-stone-300 mx-auto mb-2" />
                         <div className="text-sm text-stone-500">No matches in this folder. Try the global search at the top.</div>
                       </div>
+                    ) : viewMode === "grid" ? (
+                      <div className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3" data-testid="folder-search-grid">
+                        {(folderResults.folders || []).map((f) => (
+                          <div key={`fr-${f.prefix}`} className="group flex flex-col items-stretch border border-stone-200 hover:border-stone-400 hover:shadow-md transition-all rounded-xl overflow-hidden text-left bg-white relative">
+                            <button onClick={() => setPrefix(f.prefix)}
+                              data-testid={`folder-search-folder-grid-${f.name}`}
+                              className="aspect-square bg-[#dddd16]/15 flex items-center justify-center border-b border-[#dddd16]/30">
+                              <Folder className="w-14 h-14 text-[#14532D] group-hover:scale-105 transition-transform" />
+                            </button>
+                            <div className="p-2.5">
+                              <button onClick={() => setPrefix(f.prefix)} className="text-left min-w-0 w-full">
+                                <div className="text-xs font-semibold text-stone-900 truncate">{prettyFolderName(f.name)}</div>
+                                <div className="text-[10px] text-stone-500 truncate mt-0.5" title={f.prefix}>{f.prefix}</div>
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                        {(folderResults.items || []).map((it) => (
+                          <div key={`fr-${it.key}`} className="group flex flex-col items-stretch border border-stone-200 hover:border-stone-400 hover:shadow-md transition-all rounded-xl overflow-hidden bg-white relative" data-testid={`folder-search-file-grid-${it.key}`}>
+                            <button onClick={() => setPreview(it)} className="aspect-square overflow-hidden">
+                              <FileThumbnail file={it} className="w-full h-full" />
+                            </button>
+                            <div className="p-2.5 flex-1 flex flex-col">
+                              <div className="text-xs font-semibold text-stone-900 truncate" title={it.name}>{it.name}</div>
+                              <div className="text-[10px] text-stone-500 truncate mt-0.5" title={it.key}>{it.key}</div>
+                              <div className="flex items-center justify-between mt-1">
+                                <span className="text-[10px] text-stone-500 tabular-nums">{fmtBytes(it.size)}</span>
+                              </div>
+                              <div className="flex items-center gap-1 mt-2">
+                                <button onClick={() => setShare(it)}
+                                  title="Share link"
+                                  className="flex-1 px-1.5 py-1 text-[9px] font-bold uppercase tracking-wider bg-white border border-stone-300 hover:bg-stone-50 text-stone-700 rounded-md flex items-center justify-center gap-1">
+                                  <Share2 className="w-3 h-3" /> Share
+                                </button>
+                                <button onClick={() => download(it.key)} disabled={downloadingKey === it.key}
+                                  className="flex-1 px-1.5 py-1 text-[9px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-md flex items-center justify-center gap-1 disabled:opacity-50">
+                                  {downloadingKey === it.key ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     ) : (
                       <div className="divide-y divide-stone-100">
                         {(folderResults.folders || []).map((f) => (
