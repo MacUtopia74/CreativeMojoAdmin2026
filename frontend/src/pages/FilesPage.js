@@ -580,6 +580,12 @@ export default function FilesPage() {
   const [prefix, setPrefix] = useState(initialPrefix);
   const [search, setSearch] = useState("");
   const [results, setResults] = useState(null);
+  // Folder-scoped search — independent of the top-bar global search.
+  // Only appears when the user has drilled into a sub-folder so they
+  // can find content WITHIN that folder rather than across the whole
+  // 1.7k-file bucket. Resets every time the active folder changes.
+  const [folderSearch, setFolderSearch] = useState("");
+  const [folderResults, setFolderResults] = useState(null);
   const [busy, setBusy] = useState(false);
   const [downloadingKey, setDownloadingKey] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -655,6 +661,23 @@ export default function FilesPage() {
     }, 300);
     return () => clearTimeout(id);
   }, [search]);
+
+  // Folder-scoped search debounce. Hits the SAME backend search endpoint
+  // but pins ``prefix`` to the active folder so results are restricted to
+  // files/folders beneath the user's current location. Reset when they
+  // navigate away.
+  useEffect(() => { setFolderSearch(""); setFolderResults(null); }, [prefix]);
+  useEffect(() => {
+    if (!prefix) { setFolderResults(null); return; }
+    if (folderSearch.trim().length < 2) { setFolderResults(null); return; }
+    const id = setTimeout(async () => {
+      try {
+        const { data } = await api.get("/files/search", { params: { q: folderSearch.trim(), prefix, limit: 100 } });
+        setFolderResults(data);
+      } catch (e) { setFolderResults({ items: [], folders: [], count: 0 }); }
+    }, 300);
+    return () => clearTimeout(id);
+  }, [folderSearch, prefix]);
 
   const refreshSearch = useCallback(async () => {
     if (search.trim().length < 2) return;
@@ -908,7 +931,7 @@ export default function FilesPage() {
                   onOpenFolder={(key) => setPrefix(key)} />
                 <div className="bg-[#EEEE86] border border-stone-300 rounded-2xl px-5 py-4 flex items-center justify-between gap-3 flex-wrap shadow-sm" data-testid="files-tree">
                   <Breadcrumb prefix={prefix} onJump={setPrefix} />
-                  <div className="flex items-center gap-2 relative">
+                  <div className="flex items-center gap-2 relative flex-wrap">
                     {/* View mode toggle — list/grid */}
                     <div className="flex items-center bg-stone-100 rounded-lg p-0.5" data-testid="view-toggle">
                       <button onClick={() => setViewMode("list")} data-testid="view-list"
@@ -924,8 +947,97 @@ export default function FilesPage() {
                     </div>
                     <NewFolderButton prefix={prefix} onCreated={() => { reloadTree(prefix); reloadScopes(); }} />
                     <UploadButton ref={uploadRef} prefix={prefix} onUploaded={() => { reloadTree(prefix); reloadScopes(); }} />
+                    {/* Folder-scoped search — only renders when the user has
+                        drilled into a sub-folder. Saves them sifting through
+                        the 1.7k-file global search when they know roughly where
+                        the file lives. */}
+                    {prefix && (
+                      <div className="relative flex-1 min-w-[200px] max-w-[420px]" data-testid="folder-search-wrap">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-500 pointer-events-none" />
+                        <input
+                          type="search"
+                          value={folderSearch}
+                          onChange={(e) => setFolderSearch(e.target.value)}
+                          placeholder="Search in this folder…"
+                          data-testid="folder-search-input"
+                          className="w-full pl-8 pr-8 py-1.5 text-sm bg-white border border-stone-300 focus:border-stone-950 focus:outline-none rounded-md placeholder:text-stone-400"
+                        />
+                        {folderSearch && (
+                          <button
+                            type="button"
+                            onClick={() => setFolderSearch("")}
+                            data-testid="folder-search-clear"
+                            aria-label="Clear folder search"
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-900">
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
+                {folderResults ? (
+                  <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid="folder-search-results">
+                    <div className="px-4 py-2.5 bg-stone-50 border-b border-stone-200 flex items-center justify-between gap-2 text-xs">
+                      <span className="text-stone-700">
+                        <span className="font-semibold">{(folderResults.items || []).length + (folderResults.folders || []).length}</span>
+                        {" "}match{((folderResults.items || []).length + (folderResults.folders || []).length) === 1 ? "" : "es"} for{" "}
+                        <span className="font-mono">&quot;{folderSearch}&quot;</span> in this folder
+                      </span>
+                      <button
+                        onClick={() => setFolderSearch("")}
+                        data-testid="folder-search-results-clear"
+                        className="text-stone-500 hover:text-stone-900 underline">
+                        clear
+                      </button>
+                    </div>
+                    {(folderResults.items || []).length === 0 && (folderResults.folders || []).length === 0 ? (
+                      <div className="px-4 py-12 text-center">
+                        <Search className="w-8 h-8 text-stone-300 mx-auto mb-2" />
+                        <div className="text-sm text-stone-500">No matches in this folder. Try the global search at the top.</div>
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-stone-100">
+                        {(folderResults.folders || []).map((f) => (
+                          <button
+                            key={`fr-${f.prefix}`}
+                            type="button"
+                            onClick={() => setPrefix(f.prefix)}
+                            data-testid={`folder-search-folder-${f.name}`}
+                            className="w-full px-4 py-2 hover:bg-stone-50 flex items-center justify-between gap-3 text-left">
+                            <div className="flex items-center gap-3 truncate min-w-0">
+                              <Folder className="w-4 h-4 text-[#14532D] shrink-0" />
+                              <span className="text-sm text-stone-900 truncate">{prettyFolderName(f.name)}</span>
+                            </div>
+                            <span className="text-[10px] text-stone-500 truncate max-w-[50%]" title={f.prefix}>{f.prefix}</span>
+                          </button>
+                        ))}
+                        {(folderResults.items || []).map((it) => (
+                          <div key={`fr-${it.key}`} className="px-4 py-2 flex items-center justify-between hover:bg-stone-50" data-testid={`folder-search-file-${it.key}`}>
+                            <button onClick={() => setPreview(it)} className="flex items-center gap-3 truncate text-left flex-1 min-w-0">
+                              <FileIcon className="w-3.5 h-3.5 text-stone-500 shrink-0" />
+                              <div className="min-w-0 flex-1">
+                                <div className="text-sm text-stone-900 truncate hover:underline">{it.name}</div>
+                                <div className="text-[10px] text-stone-500 truncate" title={it.key}>{it.key}</div>
+                              </div>
+                            </button>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-xs text-stone-500 tabular-nums">{fmtBytes(it.size)}</span>
+                              <button onClick={() => setShare(it)} title="Share link"
+                                className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-white border border-stone-300 hover:bg-stone-50 text-stone-700 rounded-md flex items-center gap-1">
+                                <Share2 className="w-3 h-3" />
+                              </button>
+                              <button onClick={() => download(it.key)} disabled={downloadingKey === it.key}
+                                className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-md flex items-center gap-1 disabled:opacity-50">
+                                {downloadingKey === it.key ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />} Download
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
                 <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden">
                   {busy && (
                     <div className="px-4 py-8 text-center text-sm text-stone-500 flex items-center justify-center gap-2">
@@ -1051,6 +1163,7 @@ export default function FilesPage() {
                     )
                   )}
                 </div>
+                )}
               </>
             )}
           </main>

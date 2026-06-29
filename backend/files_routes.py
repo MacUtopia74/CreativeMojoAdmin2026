@@ -293,15 +293,25 @@ def build_router(db, require_role) -> APIRouter:
         q: str = Query(..., min_length=2),
         limit: int = Query(50, le=200),
         scope: Optional[str] = Query(None),
+        prefix: Optional[str] = Query(None, description="Restrict search to keys starting with this prefix (folder-scoped search)."),
         user: dict = Depends(require_role("admin", "franchisee")),
     ):
         terms = q.strip().split()
         query: dict = {"$and": [{"name": {"$regex": re.escape(t), "$options": "i"}} for t in terms]}
         if scope:
             query["scope"] = scope
+        # Folder-scoped search: only consider keys living under this prefix.
+        if prefix:
+            # Always treat the prefix as a folder, so trailing slash is enforced
+            # to avoid `foo` accidentally matching `foobar/...`.
+            p = prefix if prefix.endswith("/") else prefix + "/"
+            query["key"] = {"$regex": "^" + re.escape(p)}
         # Hide soft-deleted items and .keep placeholders
         query["hidden"] = {"$ne": True}
-        query["key"] = {"$not": re.compile(r"^\.trash/")}
+        if "key" in query and isinstance(query["key"], dict):
+            query["key"]["$not"] = re.compile(r"^\.trash/")
+        else:
+            query["key"] = {"$not": re.compile(r"^\.trash/")}
         # Apply franchisee scope clause if needed
         scope_clause = await _franchisee_scope_filter(user)
         if scope_clause:
@@ -315,24 +325,40 @@ def build_router(db, require_role) -> APIRouter:
         folders: list[dict] = []
         try:
             seen: set[str] = set()
+            folder_walk_filter: dict = {
+                "hidden": {"$ne": True},
+                "key": {"$not": re.compile(r"^\.trash/")},
+            }
+            if prefix:
+                p = prefix if prefix.endswith("/") else prefix + "/"
+                folder_walk_filter["key"] = {
+                    "$not": re.compile(r"^\.trash/"),
+                    "$regex": "^" + re.escape(p),
+                }
             async for row in db.files_index.find(
-                {"hidden": {"$ne": True}, "key": {"$not": re.compile(r"^\.trash/")}},
+                folder_walk_filter,
                 {"_id": 0, "key": 1},
             ):
                 parts = (row.get("key") or "").split("/")
                 # last element is the filename; everything before is a folder path
-                for end in range(1, len(parts)):
+                # When prefix-scoped, skip the prefix segments — only emit
+                # folders that live STRICTLY below the active folder.
+                start_depth = 0
+                if prefix:
+                    p_parts = [s for s in (prefix if prefix.endswith("/") else prefix + "/").split("/") if s]
+                    start_depth = len(p_parts) + 1
+                for end in range(max(1, start_depth), len(parts)):
                     name = parts[end - 1]
                     if not name:
                         continue
                     haystack = name.lower()
                     if not all(re.search(re.escape(t.lower()), haystack) for t in terms):
                         continue
-                    prefix = "/".join(parts[:end]) + "/"
-                    if prefix in seen:
+                    folder_prefix = "/".join(parts[:end]) + "/"
+                    if folder_prefix in seen:
                         continue
-                    seen.add(prefix)
-                    folders.append({"prefix": prefix, "name": name, "depth": end})
+                    seen.add(folder_prefix)
+                    folders.append({"prefix": folder_prefix, "name": name, "depth": end})
                     if len(folders) >= limit:
                         break
                 if len(folders) >= limit:
