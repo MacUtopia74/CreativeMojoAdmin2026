@@ -20,6 +20,32 @@ where applicable.
   assets via shared `project_code` (rapidfuzz suggestion engine).
 
 ## Recent (29 Jun 2026)
+- ✅ **Phase 5b — Automatic inbound reply detection (Resend Inbound)**
+  Built end-to-end. Outbound emails now stamp a deterministic
+  `Message-ID: <{send_id}@creativemojo.co.uk>` header (stored on
+  `email_sends.message_id`). New webhook at
+  `POST /api/email/resend-inbound` accepts `email.received` events,
+  Svix-verifies with `RESEND_INBOUND_WEBHOOK_SECRET`, fetches the full
+  message from Resend's `/emails/receiving/{id}` API, matches by
+  `In-Reply-To` + `References` headers, and pushes a
+  `{type:"replied", direction:"inbound", auto_matched:true}` event
+  onto the timeline (also fires the +15 Lead Temperature boost).
+  Unmatched replies persist to `email_inbound_unmatched` and surface
+  in a new admin tray at `/admin/inbound-unmatched` with Link/Discard
+  actions. EmailTimeline shows "auto" vs "manual" badges. Also
+  unified outbound: all sends now `From: paul@creativemojo.co.uk` and
+  `Reply-To: paul@creativemojo.co.uk` (template `default_from` no
+  longer overrides); dropped the implicit `franchises@` BCC to avoid
+  self-loops.
+  Requires: env var `RESEND_INBOUND_WEBHOOK_SECRET` + an Outlook
+  server-side forwarding rule on `paul@` → `creativemojo@*.resend.app`.
+  Files: `backend/resend_routes.py`,
+  `frontend/src/pages/AdminInboundUnmatchedPage.jsx`,
+  `frontend/src/components/EmailTimeline.jsx`,
+  `frontend/src/App.js`, `frontend/src/components/Layout.js`.
+
+
+## Recent (29 Jun 2026)
 - ✅ **"New version ready" banner spurious-fire fix** — `BUILD_VERSION`
   was the process start timestamp, so any k8s pod restart (liveness
   probe, OOM, autoscaling) or multi-replica setup produced a different

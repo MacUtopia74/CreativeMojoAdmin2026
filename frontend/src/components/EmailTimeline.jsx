@@ -172,11 +172,33 @@ export default function EmailTimeline({ contactId, refreshSignal }) {
                           return grouped.map((e, i) => {
                             const m = EVENT_META[e.type] || { label: e.type, icon: Mail, classes: "text-stone-600" };
                             const EvIcon = m.icon;
+                            // Distinguish auto-detected inbound replies
+                            // (Phase 5b webhook) from manual "Mark as
+                            // Replied" so admins know which they are
+                            // looking at without opening the contact.
+                            const isAutoReply = e.type === "replied" && e.direction === "inbound" && e.auto_matched;
+                            const isManualReply = e.type === "replied" && !e.direction;
                             return (
-                              <li key={`${s.id}-ev-${i}`} className="flex items-center gap-1.5">
+                              <li key={`${s.id}-ev-${i}`} className="flex items-center gap-1.5 flex-wrap">
                                 <EvIcon className="w-3 h-3 text-stone-400" />
                                 <span>{m.label}{e.count > 1 ? ` ×${e.count}` : ""}</span>
+                                {isAutoReply && (
+                                  <span title="Reply auto-detected via Resend Inbound webhook" className="px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded bg-emerald-100 text-emerald-800">
+                                    auto
+                                  </span>
+                                )}
+                                {isManualReply && (
+                                  <span title="Marked manually by an admin" className="px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded bg-stone-200 text-stone-700">
+                                    manual
+                                  </span>
+                                )}
                                 <span className="text-stone-400">· {new Date(e.at).toLocaleString("en-GB")}</span>
+                                {e.from && isAutoReply && (
+                                  <span className="text-stone-500 truncate max-w-[200px]">from {e.from}</span>
+                                )}
+                                {e.preview && isAutoReply && (
+                                  <div className="basis-full pl-4 text-stone-600 italic line-clamp-2">{e.preview}</div>
+                                )}
                                 {e.link && <a href={e.link} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline truncate max-w-[200px]">{e.link}</a>}
                               </li>
                             );

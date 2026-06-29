@@ -39,6 +39,7 @@ import AnnouncementsPage from "@/pages/AnnouncementsPage";
 import LogsPage from "@/pages/LogsPage";
 import InfoLandingPage from "@/pages/InfoLandingPage";
 import AdminLandingPagesPage from "@/pages/AdminLandingPagesPage";
+import AdminInboundUnmatchedPage from "@/pages/AdminInboundUnmatchedPage";
 // Invoices module (merged from Pay-Paperwork)
 import InvoiceList from "@/pages/invoices/InvoiceList";
 import CreateInvoice from "@/pages/invoices/CreateInvoice";
@@ -153,6 +154,7 @@ export default function App() {
               <Route path="/admin/subscription-requests" element={<AdminSubscriptionRequestsPage />} />
               <Route path="/admin/email-templates" element={<EmailTemplatesPage />} />
               <Route path="/admin/landing-pages" element={<AdminLandingPagesPage />} />
+              <Route path="/admin/inbound-unmatched" element={<AdminInboundUnmatchedPage />} />
               <Route path="/admin/announcements" element={<AnnouncementsPage />} />
               <Route path="/admin/logs" element={<LogsPage />} />
               <Route path="/admin/youtube" element={<AdminYouTubePage />} />

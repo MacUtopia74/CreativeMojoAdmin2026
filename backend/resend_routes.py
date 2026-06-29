@@ -217,27 +217,23 @@ def build_resend_router(db, require_role):
         # buttons exactly as the admin saw them in the editor.
         rendered_html = _inline_button_styles(rendered_html)
 
-        # Reply-to precedence:
-        #   1. Template's `default_from` (where the owner of THIS template
-        #      reads replies — e.g. paul@creativemojo.co.uk on the
-        #      Franchise Reply template).
-        #   2. Logged-in admin's email (only if the template has no
-        #      default_from set).
-        #   3. ``RESEND_DEFAULT_REPLY_TO`` env var as the final safety
-        #      net.
-        # We intentionally DON'T use the logged-in user first — generic
-        # admin accounts like admin@creativemojo.co.uk aren't monitored,
-        # so replies would land in a dead inbox.
-        template_reply_to = ""
-        if body.template_id:
-            tpl = await db.email_templates.find_one(
-                {"id": body.template_id}, {"_id": 0, "default_from": 1},
-            )
-            template_reply_to = (tpl or {}).get("default_from", "").strip()
-        if template_reply_to:
-            reply_to = template_reply_to
-        else:
-            reply_to = (user.get("email") or RESEND_DEFAULT_REPLY_TO).strip()
+        # Reply-to: per user requirement, ALL outbound emails go from and
+        # reply to ``paul@creativemojo.co.uk`` so replies land in a single
+        # monitored mailbox. Outlook's server-side forwarding rule on that
+        # mailbox then copies each reply to the Resend Inbound receiving
+        # address so Phase 5b can attach the reply back onto the contact's
+        # timeline automatically. (Previously this was per-template
+        # ``default_from`` + a per-admin fallback — we've collapsed that
+        # to a single source of truth here.)
+        reply_to = RESEND_FROM_EMAIL
+
+        # Custom Message-ID — Resend would assign one of its own, but we
+        # set our own so Phase 5b can deterministically match the
+        # ``In-Reply-To`` / ``References`` headers in the inbound webhook
+        # back to THIS send record. Format is RFC 5322-compliant
+        # (``<local@domain>``) with our send_id as the local part so
+        # reverse lookups are O(1) without a separate index.
+        custom_message_id = f"<{send_id}@creativemojo.co.uk>"
 
         params = {
             "from": f"{RESEND_FROM_NAME} <{RESEND_FROM_EMAIL}>",
@@ -249,15 +245,19 @@ def build_resend_router(db, require_role):
                 # Lets us correlate webhook events back to this send when
                 # Resend echoes the X-CM-Send-Id header on bounce/open/click.
                 "X-CM-Send-Id": send_id,
+                # Deterministic thread anchor for Phase 5b inbound matching.
+                "Message-ID": custom_message_id,
             },
         }
         if body.cc:
             params["cc"] = [str(e) for e in body.cc]
-        # Always BCC franchises@creativemojo.co.uk so HQ has an off-system
-        # audit trail of every enquiry reply. De-duplicated against any
-        # explicit bcc the admin set.
+        # BCC: previously we always BCC'd franchises@creativemojo.co.uk
+        # for HQ audit. Now that all sends go from/reply-to paul@, that
+        # BCC is no longer required (the audit copy lands in the
+        # ``email_sends`` collection + Outlook Sent Items on paul@).
+        # Honour any explicit BCC the admin set, but drop the implicit
+        # franchises@ one to avoid clutter.
         bcc_set = {str(e).strip().lower() for e in (body.bcc or [])}
-        bcc_set.add("franchises@creativemojo.co.uk")
         params["bcc"] = sorted(bcc_set)
 
         try:
@@ -271,6 +271,10 @@ def build_resend_router(db, require_role):
         doc = {
             "id": send_id,
             "resend_id": resend_id,
+            # RFC 5322 Message-ID we stamped on the outbound headers —
+            # the Phase 5b inbound webhook matches replies' ``In-Reply-To``
+            # / ``References`` headers against this exact string.
+            "message_id": custom_message_id,
             "contact_id": body.contact_id,
             "template_id": body.template_id,
             "sent_by": user.get("email"),
@@ -611,5 +615,211 @@ def build_resend_router(db, require_role):
             },
         )
         return {"ok": True, "matched": True, "event": short_type}
+
+    # ============================================================
+    # Phase 5b — automatic inbound reply detection
+    # ============================================================
+    # Flow:
+    #   1. Lead replies → Outlook receives at paul@creativemojo.co.uk
+    #   2. Server-side forwarding rule forwards a copy to the Resend
+    #      Inbound receiving address (e.g. ``creativemojo@…resend.app``)
+    #   3. Resend's ``email.received`` webhook fires here.
+    #   4. We fetch the full email from Resend's API to get headers/body.
+    #   5. Match by ``In-Reply-To`` / ``References`` against our
+    #      stamped ``message_id`` on ``email_sends``.
+    #   6. If matched → push a ``{type: "replied", direction: "inbound"}``
+    #      event to that send (same shape as the manual "Mark as Replied"
+    #      button, so the EmailTimeline + Lead Temperature engine work
+    #      without changes).
+    #   7. If unmatched → persist into ``email_inbound_unmatched`` so the
+    #      admin can review / manually link later.
+    @router.post("/email/resend-inbound")
+    async def resend_inbound(request: Request):
+        """Receive ``email.received`` events from Resend Inbound."""
+        import httpx
+        raw_body = await request.body()
+
+        # Inbound uses its own webhook signing secret (Resend issues one
+        # per webhook endpoint). Fall back gracefully if not configured.
+        inbound_secret = os.environ.get("RESEND_INBOUND_WEBHOOK_SECRET", "")
+        if inbound_secret:
+            try:
+                from svix.webhooks import Webhook, WebhookVerificationError  # type: ignore
+                Webhook(inbound_secret).verify(raw_body, dict(request.headers))
+            except ImportError:
+                logger.warning("svix not installed — skipping inbound signature check")
+            except WebhookVerificationError as e:
+                logger.warning("Resend inbound signature mismatch: %s", e)
+                raise HTTPException(401, detail="Invalid signature") from e
+
+        try:
+            payload = await request.json()
+        except Exception:  # noqa: BLE001
+            raise HTTPException(400, detail="Invalid JSON")
+
+        if (payload.get("type") or "").lower() != "email.received":
+            # Resend can deliver other event types to this URL — ack.
+            return {"ok": True, "ignored": payload.get("type")}
+
+        data = payload.get("data") or {}
+        email_id = data.get("email_id") or data.get("id")
+        if not email_id:
+            return {"ok": False, "reason": "no_email_id"}
+
+        # Fetch the full received email (Resend's webhook is metadata-only).
+        full: dict = {}
+        if RESEND_API_KEY:
+            try:
+                async with httpx.AsyncClient(timeout=20) as client:
+                    resp = await client.get(
+                        f"https://api.resend.com/emails/receiving/{email_id}",
+                        headers={"Authorization": f"Bearer {RESEND_API_KEY}"},
+                    )
+                    if resp.status_code == 200:
+                        full = resp.json() or {}
+                    else:
+                        logger.warning("Resend retrieve received returned %s for %s", resp.status_code, email_id)
+            except Exception:  # noqa: BLE001
+                logger.exception("Resend retrieve received failed for %s", email_id)
+
+        # Normalise headers — Resend returns them as a dict with original-
+        # case keys; we lowercase for case-insensitive lookup.
+        headers_raw = full.get("headers") or {}
+        if isinstance(headers_raw, list):
+            headers = {(h.get("name") or "").lower(): h.get("value") for h in headers_raw if isinstance(h, dict)}
+        else:
+            headers = {str(k).lower(): v for k, v in (headers_raw or {}).items()}
+
+        def _norm_mid(val: str | None) -> str | None:
+            if not val:
+                return None
+            val = val.strip()
+            return val if val.startswith("<") else f"<{val}>"
+
+        in_reply_to = _norm_mid(headers.get("in-reply-to"))
+        refs_raw = headers.get("references") or ""
+        references = [_norm_mid(s) for s in str(refs_raw).split() if s.strip()]
+        candidate_ids = [m for m in [in_reply_to, *references] if m]
+
+        # Match against our stamped outbound message_id.
+        match: Optional[dict] = None
+        if candidate_ids:
+            match = await db.email_sends.find_one(
+                {"message_id": {"$in": candidate_ids}},
+                {"_id": 0, "id": 1, "contact_id": 1, "events": 1},
+            )
+
+        # Build the canonical reply event — shape matches the manual
+        # "Mark as Replied" button so the EmailTimeline renderer doesn't
+        # need a new branch.
+        now = datetime.now(timezone.utc).isoformat()
+        reply_event = {
+            "type": "replied",
+            "at": now,
+            "direction": "inbound",         # distinguishes auto vs manual
+            "auto_matched": True,
+            "from": full.get("from") or data.get("from"),
+            "subject": full.get("subject") or data.get("subject"),
+            "preview": ((full.get("text") or "").strip()[:280] or None),
+            "resend_inbound_id": email_id,
+            "in_reply_to": in_reply_to,
+        }
+
+        if match:
+            # Idempotent: don't double-log the same inbound email.
+            already = any(
+                (e.get("type") == "replied") and (e.get("resend_inbound_id") == email_id)
+                for e in (match.get("events") or [])
+            )
+            if already:
+                return {"ok": True, "matched": True, "duplicate": True}
+
+            await db.email_sends.update_one(
+                {"id": match["id"]},
+                {
+                    "$push": {"events": reply_event},
+                    "$set": {"last_event": "replied", "last_event_at": now},
+                },
+            )
+            logger.info("Resend inbound auto-matched reply to send %s (contact %s)",
+                        match["id"], match.get("contact_id"))
+            return {"ok": True, "matched": True, "send_id": match["id"]}
+
+        # No header match — stash for admin review.
+        await db.email_inbound_unmatched.insert_one({
+            "id": str(uuid.uuid4()),
+            "resend_inbound_id": email_id,
+            "received_at": now,
+            "from": full.get("from") or data.get("from"),
+            "to": full.get("to") or data.get("to"),
+            "subject": full.get("subject") or data.get("subject"),
+            "preview": ((full.get("text") or "").strip()[:500] or None),
+            "in_reply_to": in_reply_to,
+            "references": references,
+            "resolved": False,
+        })
+        logger.info("Resend inbound UNMATCHED reply stored for admin review (resend_id=%s)", email_id)
+        return {"ok": True, "matched": False}
+
+    # ----- Admin endpoints for the unmatched-inbound tray -----
+    @router.get("/email/inbound/unmatched")
+    async def list_unmatched(_user: dict = Depends(require_role("admin"))):
+        rows = await db.email_inbound_unmatched.find(
+            {"resolved": False}, {"_id": 0},
+        ).sort("received_at", -1).to_list(100)
+        return {"items": rows, "count": len(rows)}
+
+    @router.post("/email/inbound/unmatched/{unmatched_id}/link")
+    async def link_unmatched(
+        unmatched_id: str,
+        body: dict,
+        _user: dict = Depends(require_role("admin")),
+    ):
+        send_id = (body or {}).get("send_id")
+        if not send_id:
+            raise HTTPException(400, "send_id required")
+        unmatched = await db.email_inbound_unmatched.find_one(
+            {"id": unmatched_id}, {"_id": 0}
+        )
+        if not unmatched:
+            raise HTTPException(404, "Unmatched record not found")
+        send = await db.email_sends.find_one({"id": send_id}, {"_id": 0, "id": 1})
+        if not send:
+            raise HTTPException(404, "Send not found")
+        now = datetime.now(timezone.utc).isoformat()
+        event = {
+            "type": "replied",
+            "at": now,
+            "direction": "inbound",
+            "auto_matched": False,            # admin manually linked
+            "from": unmatched.get("from"),
+            "subject": unmatched.get("subject"),
+            "preview": unmatched.get("preview"),
+            "resend_inbound_id": unmatched.get("resend_inbound_id"),
+        }
+        await db.email_sends.update_one(
+            {"id": send_id},
+            {"$push": {"events": event},
+             "$set": {"last_event": "replied", "last_event_at": now}},
+        )
+        await db.email_inbound_unmatched.update_one(
+            {"id": unmatched_id},
+            {"$set": {"resolved": True, "linked_send_id": send_id, "resolved_at": now}},
+        )
+        return {"ok": True, "linked": send_id}
+
+    @router.delete("/email/inbound/unmatched/{unmatched_id}")
+    async def discard_unmatched(
+        unmatched_id: str,
+        _user: dict = Depends(require_role("admin")),
+    ):
+        res = await db.email_inbound_unmatched.update_one(
+            {"id": unmatched_id},
+            {"$set": {"resolved": True, "discarded": True,
+                      "resolved_at": datetime.now(timezone.utc).isoformat()}},
+        )
+        if res.modified_count == 0:
+            raise HTTPException(404, "Not found")
+        return {"ok": True}
 
     return router
