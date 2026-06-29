@@ -20,6 +20,14 @@ where applicable.
   assets via shared `project_code` (rapidfuzz suggestion engine).
 
 ## Recent (29 Jun 2026)
+- ✅ **"New version ready" banner spurious-fire fix** — `BUILD_VERSION`
+  was the process start timestamp, so any k8s pod restart (liveness
+  probe, OOM, autoscaling) or multi-replica setup produced a different
+  version on each `/api/version` poll → banner fired 3-4× per day with
+  no actual deploy. Now uses a SHA-256 hash of `server.py` +
+  `requirements.txt`, which is stable across pod restarts and identical
+  across all replicas serving the same image. Banner now only appears
+  when real code ships.
 - ✅ **Auto-merge duplicate Gravity Forms submissions** — when the same
   person submits more than one form (e.g. Form 33 quick + Form 17 full
   enquiry), the second submission now folds its richer fields

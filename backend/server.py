@@ -5437,14 +5437,36 @@ async def health():
     return {"ok": True}
 
 
-# Build version stamp — set on module import. Every container restart
-# produces a new value, so the frontend can poll this endpoint to
-# detect when a fresh deploy is live and prompt the franchisee to
-# refresh. We use the process start timestamp (ms) as the version;
-# good enough since two deploys can't share the same millisecond.
-import time as _time_for_version
+# Build version stamp — derived from a hash of the backend source files
+# so it stays STABLE across pod restarts / k8s rescheduling / multiple
+# replicas, and only changes when an actual deploy ships new code.
+#
+# History: previously this was `time.time() * 1000` set at module import,
+# which produced a fresh value on every container restart. In production
+# (Kubernetes), pods recycle for many reasons unrelated to a deploy
+# (liveness-probe restart, OOM kill, autoscaling, rolling node maintenance,
+# multiple replicas each with their own boot time). That caused the
+# "A new version of the Mojo Hub is ready" banner to pop up 3-4× per day
+# even though no code had been redeployed. Hashing the source files
+# guarantees identical images report identical versions.
+import hashlib as _hashlib_for_version
 
-BUILD_VERSION = str(int(_time_for_version.time() * 1000))
+def _compute_build_version() -> str:
+    h = _hashlib_for_version.sha256()
+    # Files whose content meaningfully changes on a real deploy. We include
+    # requirements.txt so a dependency-only deploy is also detected.
+    for path in (
+        "/app/backend/server.py",
+        "/app/backend/requirements.txt",
+    ):
+        try:
+            with open(path, "rb") as f:
+                h.update(f.read())
+        except Exception:  # noqa: BLE001
+            pass
+    return h.hexdigest()[:16]
+
+BUILD_VERSION = _compute_build_version()
 
 
 @api.get("/version")
