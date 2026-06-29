@@ -1243,6 +1243,43 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
           {/* Recent email sends — only visible if there's history */}
           <EmailTimeline contactId={contact.id} refreshSignal={emailRefreshSignal} />
 
+          {/* Auto-merged duplicate submissions — surfaces when the same
+              person filled a second form (e.g. Form 33 quick + Form 17 full)
+              and the backfill folded their richer data into this record.
+              Visible only when there's history so the drawer stays clean. */}
+          {Array.isArray(contact.merged_from_history) && contact.merged_from_history.length > 0 && (
+            <div data-testid="merged-from-history">
+              <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-2">Auto-merged submissions</div>
+              <div className="bg-violet-50 border border-violet-200 rounded-xl p-3 space-y-2">
+                {contact.merged_from_history.map((h, idx) => (
+                  <div key={idx} className="text-xs text-stone-700">
+                    <div className="flex items-start gap-2">
+                      <span className="text-violet-600 font-bold">↳</span>
+                      <div className="flex-1 min-w-0">
+                        <div>
+                          <span className="font-semibold">{h.loser_form_title || `Form ${h.loser_form_id || ""}`}</span>
+                          {h.loser_gravity_entry_id && (
+                            <span className="text-stone-500"> · entry #{h.loser_gravity_entry_id}</span>
+                          )}
+                        </div>
+                        {h.merged_at && (
+                          <div className="text-[10px] text-stone-500">Merged {new Date(h.merged_at).toLocaleString("en-GB")} · by {h.merged_by || "system"}</div>
+                        )}
+                        {Array.isArray(h.fields_added) && h.fields_added.length > 0 ? (
+                          <div className="text-[10px] text-violet-700 mt-0.5">
+                            Added: {h.fields_added.join(", ")}
+                          </div>
+                        ) : h.fields_added ? (
+                          <div className="text-[10px] text-stone-500 mt-0.5">No new fields — submission logged for audit only.</div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* 10. Internal Notes */}
           {contact.notes && (
             <div>

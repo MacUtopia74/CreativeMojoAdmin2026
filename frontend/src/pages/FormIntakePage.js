@@ -92,12 +92,16 @@ export default function FormIntakePage() {
           acc[t.outcome] = (acc[t.outcome] || 0) + 1;
           return acc;
         }, {});
+        const mergedCount = (byOutcome["merged_into_existing"] || 0) + (byOutcome["merge_history_only"] || 0);
+        const mergedLine = mergedCount > 0
+          ? ` 🔗 ${mergedCount} duplicate submission(s) merged into existing contact(s) — see Activity log on each contact.`
+          : "";
         const outcomeLine = Object.keys(byOutcome).length
           ? ` Per-entry: ${Object.entries(byOutcome).map(([k, v]) => `${k}=${v}`).join(", ")}.`
           : "";
         const formsLine = formIds.length ? ` Forms pulled: [${formIds.join(", ")}].` : "";
         setActionResult({ kind, ok: errs.length === 0, summary:
-          `Pulled ${resp.data.checked || 0} entries from Gravity Forms.${formsLine} ${resp.data.inserted || 0} new, ${resp.data.updated || 0} repaired/promoted.${outcomeLine}${errSuffix}`,
+          `Pulled ${resp.data.checked || 0} entries from Gravity Forms.${formsLine} ${resp.data.inserted || 0} new, ${resp.data.updated || 0} repaired/promoted.${mergedLine}${outcomeLine}${errSuffix}`,
           raw: { entries: traces.concat(errs.map((e, i) => ({ idx: i, error: e }))) }});
       } else if (kind === "dormant") {
         if (!window.confirm("Move all 'Contacted' leads that haven't been touched in 60 days into 'Dormant'? This is safe — only changes the stage, no data deleted.")) {

@@ -20,6 +20,17 @@ where applicable.
   assets via shared `project_code` (rapidfuzz suggestion engine).
 
 ## Recent (29 Jun 2026)
+- ✅ **Auto-merge duplicate Gravity Forms submissions** — when the same
+  person submits more than one form (e.g. Form 33 quick + Form 17 full
+  enquiry), the second submission now folds its richer fields
+  (address, county, "Heard about us", phone, etc.) into the existing
+  contact instead of being silently skipped. Every merge is logged
+  in `merged_from_history` and surfaced on the contact drawer under
+  "Auto-merged submissions" so no data is hidden. Refresh button
+  toast now shows a "🔗 N duplicate submissions merged" line.
+  Files: `backend/gf_backfill.py` (`_merge_into_active_contact`),
+  `frontend/src/pages/ContactsPage.js` (drawer panel),
+  `frontend/src/pages/FormIntakePage.js` (toast summary).
 - ✅ **Kanban Hot-lozenge bulk endpoint fixed** — `/api/contacts/temperatures`
   was shadowed by the earlier-registered catch-all `/api/contacts/{contact_id}`
   (returning 404 "Contact not found"). Renamed bulk route to

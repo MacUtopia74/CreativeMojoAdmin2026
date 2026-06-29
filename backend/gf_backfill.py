@@ -598,10 +598,25 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
                 )
             )
             if not (is_stub or re_engaged_by_email):
-                traces.append({"entry_id": eid, "outcome": "skip_already_active",
-                               "email": email, "name": full_name,
-                               "form_id": form_id,
-                               "existing_stage": existing.get("pipeline_status")})
+                # Active contact — DON'T re-stage them, but DO merge any
+                # newly-populated fields from this fresh submission so we
+                # never silently lose richer data when the same person
+                # fills more than one form (e.g. Form 33 quick-signup
+                # arrives first, then Form 17 with the full address).
+                # Per-user requirement: every merge MUST be audited so
+                # they can spot what was combined.
+                merge_outcome = await _merge_into_active_contact(
+                    db, existing, doc_core, eid, form_id, form_title, now,
+                )
+                merge_outcome.update({
+                    "entry_id": eid, "email": email, "name": full_name,
+                    "form_id": form_id,
+                    "existing_stage": existing.get("pipeline_status"),
+                    "existing_id": existing.get("id"),
+                })
+                traces.append(merge_outcome)
+                if merge_outcome.get("outcome") == "merged_into_existing":
+                    updated += 1
                 continue
 
             update_set = dict(doc_core)
@@ -660,6 +675,114 @@ async def run_backfill(db, limit_per_form: int = 50, repair_stubs: bool = True) 
 def _uuid() -> str:
     import uuid
     return str(uuid.uuid4())
+
+
+# Fields we'll auto-merge from a duplicate submission into an active
+# contact. Anything not in this list is NEVER copied (we don't want
+# overwriting things like ``id``, ``pipeline_status``, audit timestamps).
+# Special cases (raw_fields dict merge, merged_from_history append) are
+# handled explicitly in _merge_into_active_contact.
+_MERGEABLE_FIELDS: tuple[str, ...] = (
+    "first_name", "last_name", "telephone",
+    "address_line_1", "address_line_2", "town_city", "county",
+    "postcode", "country", "establishment_name",
+    "comments", "heard_about_us", "facebook", "google",
+    "reason_for_contacting",
+)
+
+
+def _is_empty(val) -> bool:
+    """Truthy-empty: missing, None, empty string, or just whitespace."""
+    if val is None:
+        return True
+    if isinstance(val, str) and not val.strip():
+        return True
+    return False
+
+
+async def _merge_into_active_contact(
+    db, existing: dict, doc_core: dict, eid: str,
+    form_id: int, form_title: str, now: datetime,
+) -> dict:
+    """Auto-merge a duplicate Gravity submission into an existing active
+    contact. Only fields that are EMPTY on the existing record get
+    populated — admin-edited values are never overwritten. Always logs
+    a ``merged_from_history`` entry so the admin can see what merged.
+
+    Returns a trace dict with outcome ``merged_into_existing`` (if any
+    new fields were copied) or ``skip_already_active`` (if the inbound
+    entry added nothing new — still logs the history entry so the
+    admin sees the submission was seen-and-considered, just not used).
+    """
+    survivor_id = existing.get("id")
+    # Need the full doc to know which fields are empty vs populated.
+    full = await db.web_form_contacts.find_one(
+        {"id": survivor_id},
+        {"_id": 0, **{f: 1 for f in _MERGEABLE_FIELDS},
+         "raw_fields": 1, "merged_from_history": 1, "gravity_entry_id": 1},
+    ) or {}
+
+    # Guard: re-processing the contact's own original submission isn't
+    # a "merge" at all — it's the same row being scanned by a later
+    # refresh. Silently noop so the history stays clean.
+    if (full.get("gravity_entry_id") or "") == str(eid):
+        return {"outcome": "skip_self"}
+
+    merge_set: dict = {}
+    filled_keys: list[str] = []
+    for field in _MERGEABLE_FIELDS:
+        new_val = doc_core.get(field)
+        if _is_empty(new_val):
+            continue
+        if _is_empty(full.get(field)):
+            merge_set[field] = new_val
+            filled_keys.append(field)
+
+    # raw_fields: union the two dicts, existing keys win (preserve any
+    # admin edits / earlier-form data).
+    new_raw = doc_core.get("raw_fields") or {}
+    existing_raw = full.get("raw_fields") or {}
+    if isinstance(new_raw, dict) and new_raw:
+        merged_raw = {**new_raw, **existing_raw}  # existing wins
+        if merged_raw != existing_raw:
+            merge_set["raw_fields"] = merged_raw
+
+    # Always append a history entry — even when no fields were
+    # absorbed, the admin should be able to see we received a second
+    # submission and intentionally didn't overwrite anything.
+    history_entry = {
+        "loser_gravity_entry_id": eid,
+        "loser_form_id": str(form_id),
+        "loser_form_title": form_title,
+        "merged_at": now.isoformat() if hasattr(now, "isoformat") else str(now),
+        "merged_by": "gf_backfill_auto",
+        "fields_added": filled_keys,
+    }
+    history = list(full.get("merged_from_history") or [])
+    # De-dupe: if we've already logged this exact gravity entry merging
+    # into this contact, don't add it again on the next refresh.
+    already = any(
+        (h.get("loser_gravity_entry_id") == eid) for h in history
+    )
+    if already:
+        # Already processed — silent skip, no further action.
+        return {"outcome": "skip_already_merged"}
+    history.append(history_entry)
+    merge_set["merged_from_history"] = history
+    merge_set["updated_at"] = now
+
+    await db.web_form_contacts.update_one(
+        {"id": survivor_id}, {"$set": merge_set}
+    )
+    logger.info(
+        "GF backfill MERGED entry %s (form %s) into active contact %s; "
+        "added fields=%s",
+        eid, form_id, survivor_id, filled_keys or "none (history-only)",
+    )
+    return {
+        "outcome": "merged_into_existing" if filled_keys else "merge_history_only",
+        "fields_added": filled_keys,
+    }
 
 
 _SPAM_PATTERNS = [
