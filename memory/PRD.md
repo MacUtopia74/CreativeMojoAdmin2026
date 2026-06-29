@@ -19,6 +19,14 @@ where applicable.
 - **Project Linking** — maps WooCommerce products ↔ Cloudflare R2 project
   assets via shared `project_code` (rapidfuzz suggestion engine).
 
+## Recent (29 Jun 2026)
+- ✅ **Kanban Hot-lozenge bulk endpoint fixed** — `/api/contacts/temperatures`
+  was shadowed by the earlier-registered catch-all `/api/contacts/{contact_id}`
+  (returning 404 "Contact not found"). Renamed bulk route to
+  `/api/pipeline/temperatures` and updated `ContactsPage.js` to match.
+  The AUTO score chip now renders on every kanban card across all stage
+  columns (including Contacted). User must redeploy to push to production.
+
 ## Recent (June 2026)
 - ✅ **25 Jun 2026 (PM) — Landing Pages + CTA Composer + Phase 4 Lead Temperature**
   • **Public PDF Landing Pages** (`/info/:slug`, no auth) — branded

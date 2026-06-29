@@ -1569,7 +1569,7 @@ export default function ContactsPage() {
   useEffect(() => {
     if (tab !== "pipeline") return;
     let cancelled = false;
-    api.get("/contacts/temperatures")
+    api.get("/pipeline/temperatures")
       .then(({ data }) => { if (!cancelled) setTempMap(data.temperatures || {}); })
       .catch(() => { /* silent — sort still works with score=0 */ });
     return () => { cancelled = true; };
@@ -2290,7 +2290,7 @@ export default function ContactsPage() {
                               <ManualBadge addedBy={c.manually_added_by} />
                             </div>
                             {/* Auto-score chip — pulled from bulk
-                                /api/contacts/temperatures. Hidden if
+                                /api/pipeline/temperatures. Hidden if
                                 the contact has no engagement (would
                                 always be Cold/0 and clutter the card). */}
                             {(() => {

@@ -447,7 +447,7 @@ def build_resend_router(db, require_role):
             "computed_at": now.isoformat(),
         }
 
-    @router.get("/contacts/temperatures")
+    @router.get("/pipeline/temperatures")
     async def bulk_temperatures(
         _user: dict = Depends(require_role("admin")),
     ):
