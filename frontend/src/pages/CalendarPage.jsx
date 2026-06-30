@@ -316,6 +316,20 @@ export default function CalendarPage() {
             <CalendarDays className="w-7 h-7" /> Calendar
           </h1>
           <p className="text-sm text-stone-600 mt-1">Live view of the shared Creative Mojo Google Calendar.</p>
+          {/* Mojo Grow Meeting one-click shortcut — sits up here next to
+              the page title (rather than in the event-creation toolbar)
+              so it reads as a top-level workflow shortcut, not a variant
+              of the regular "+ New event" button. Opens the standard
+              event modal with the Mojo Grow preset (portal-visible to
+              all franchisees, Zoom auto-mint, draft HQ Update on save). */}
+          <button
+            onClick={() => setModal({ event: null, preset: "mojo_grow" })}
+            data-testid="cal-new-mojo-grow"
+            title="Create a Mojo Grow Meeting — auto-creates Zoom and a draft HQ Update"
+            className="mt-3 px-3 py-2 text-xs font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-[#c2c213] rounded-lg inline-flex items-center gap-1.5 shadow-sm"
+          >
+            <Video className="w-3.5 h-3.5" /> Create New Mojo Grow Meeting
+          </button>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {/* Yearly events manager is always available — they live in
@@ -381,18 +395,6 @@ export default function CalendarPage() {
               <button onClick={() => setModal({ event: null })} data-testid="cal-new-event"
                 className="px-3 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-lg flex items-center gap-1.5">
                 <Plus className="w-3.5 h-3.5" /> New event
-              </button>
-              {/* Mojo Grow Meeting one-click — opens the standard event
-                  modal but pre-fills the franchise-wide setup: portal
-                  visibility on, "all franchisees" audience, and a flag
-                  that drives Zoom + draft HQ Update creation on save. */}
-              <button
-                onClick={() => setModal({ event: null, preset: "mojo_grow" })}
-                data-testid="cal-new-mojo-grow"
-                title="Create a Mojo Grow Meeting — auto-creates Zoom and a draft HQ Update"
-                className="px-3 py-2 text-xs font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-[#c2c213] rounded-lg flex items-center gap-1.5"
-              >
-                <Video className="w-3.5 h-3.5" /> Mojo Grow Meeting
               </button>
             </>
           )}
