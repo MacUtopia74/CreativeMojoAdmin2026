@@ -505,10 +505,16 @@ async def franchisees_login_status(
       - ``users``        → which franchisees have an account at all
       - ``auth_logins``  → most-recent successful login per user/email
     """
-    # All franchisees, with the fields we need to display.
+    # All franchisees (active only — ex-franchisees/licensees are
+    # excluded; HQ has no actionable use for nudging them to log in).
+    # Mirrors the "active" filter used elsewhere: skip anything tagged
+    # EX-* or with lifecycle_status == "ex_franchisee".
     franchisees: list[dict] = []
     async for f in db.franchisees.find(
-        {},
+        {
+            "lifecycle_status": {"$ne": "ex_franchisee"},
+            "tags": {"$nin": ["EX-Franchisee", "EX-Licencee", "EX-Licensee"]},
+        },
         {"_id": 0, "id": 1, "organisation": 1, "first_name": 1, "last_name": 1,
          "mojo_email": 1, "secondary_email": 1},
     ).sort([("first_name", 1)]):
