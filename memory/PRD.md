@@ -1,6 +1,25 @@
 # Creative Mojo — Admin & Franchisee Hub PRD
 
 ## Recent (Feb 2026)
+- ✅ **Franchisee project-folder grid thumbnails — production whitescreen icons**
+  In the franchisee portal Calendar → "Open Project Folder" modal (Grid
+  view), every file tile rendered as a red "failed" PDF icon on
+  production (`hub.creativemojo.co.uk`). The component
+  (`ProjectGuideModal.jsx`) was minting an R2 presigned URL and
+  fetching the bytes from the browser to render with pdfjs — that
+  browser-side fetch was blocked because the R2 bucket CORS policy
+  doesn't allow the production domain (preview's
+  `*.emergentagent.com` is allowed, so it worked in dev). Replaced
+  the inline pdfjs + signed-URL approach with the existing
+  `<FileThumbnail>` component which uses the same-origin authed
+  `GET /api/files/thumbnail?key=&size=md` proxy (server-renders to
+  JPEG, caches in R2 `_thumbs/`). Side-benefits: no multi-MB PDF
+  download per tile, no client-side pdfjs worker, instant subsequent
+  loads from the thumbnail cache. Verified end-to-end on Preview —
+  Beatles - Abbey Road PDFs now render their first-page previews.
+  Files: `frontend/src/components/calendar/ProjectGuideModal.jsx`.
+  ⚠️ Production fix requires Save to GitHub → Redeploy.
+
 - ✅ **Franchisee post-login whitescreen fix — `profile.tags.some is not a function`**
   Legacy Airtable franchisee records imported `tags` as a comma-separated
   string (e.g. `"demo, vip"`) instead of a JSON array, so PortalShell.jsx

@@ -11,20 +11,24 @@
 //   - "Download all as ZIP" → streams the whole folder via
 //     /api/files/folder-zip.
 //   - List / Grid toggle (preference persists per browser).
-//   - PDFs + images get real thumbnails in Grid view.
-import { useEffect, useMemo, useRef, useState } from "react";
+//   - PDFs + images get real thumbnails in Grid view via the authed
+//     /api/files/thumbnail proxy (same-origin, cached). The previous
+//     implementation fetched R2 signed URLs directly from the browser
+//     and rendered PDFs with pdfjs in-page — that broke on production
+//     because the R2 bucket CORS policy doesn't allow
+//     hub.creativemojo.co.uk, so every tile fell back to the red
+//     "failed" icon. Reusing FileThumbnail (same approach already
+//     proven on PortalUpdatesPage / AnnouncementsPage) makes it
+//     CORS-free and dramatically faster (no multi-MB PDF download per
+//     tile).
+import { useEffect, useMemo, useState } from "react";
 import {
   X, Loader2, AlertCircle, Download, Package,
   LayoutGrid, List, FileText, Image as ImageIcon,
   FileAudio, FileVideo, FileArchive, File as FileIcon,
 } from "lucide-react";
-import * as pdfjsLib from "pdfjs-dist";
 import api from "@/lib/api";
-
-if (typeof window !== "undefined" && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
-  pdfjsLib.GlobalWorkerOptions.workerSrc =
-    `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
-}
+import FileThumbnail from "@/components/files/FileThumbnail";
 
 function fmtBytes(b) {
   if (b == null) return "—";
@@ -43,51 +47,6 @@ function pickIcon(name, ct) {
   if (t.startsWith("video/") || ["mp4","mov","webm","mkv","avi"].includes(ext)) return FileVideo;
   if (["zip","rar","7z","tar","gz"].includes(ext)) return FileArchive;
   return FileIcon;
-}
-const isImage = (n, ct) => (ct || "").toLowerCase().startsWith("image/")
-  || ["jpg","jpeg","png","gif","webp","svg"].includes((n?.split(".").pop() || "").toLowerCase());
-const isPdf = (n, ct) => (ct || "").toLowerCase() === "application/pdf"
-  || (n?.split(".").pop() || "").toLowerCase() === "pdf";
-
-// First-page PDF thumbnail rendered into a canvas, lazy on intersection.
-// Same approach used on the public folder-share page — keeps a single
-// pdfjs worker from choking when a folder has 20+ PDFs.
-function PdfThumb({ url }) {
-  const wrapRef = useRef(null);
-  const canvasRef = useRef(null);
-  const [failed, setFailed] = useState(false);
-  const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    if (!url) return;
-    let cancelled = false;
-    const node = wrapRef.current;
-    if (!node) return;
-    const obs = new IntersectionObserver(async (entries) => {
-      if (cancelled || !entries.some((e) => e.isIntersecting)) return;
-      obs.disconnect();
-      try {
-        const r = await fetch(url);
-        if (!r.ok) throw new Error("fetch");
-        const buf = await r.arrayBuffer();
-        const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
-        const page = await pdf.getPage(1);
-        const v = page.getViewport({ scale: 0.6 });
-        const c = canvasRef.current; if (!c || cancelled) return;
-        c.width = v.width; c.height = v.height;
-        await page.render({ canvasContext: c.getContext("2d"), viewport: v }).promise;
-        if (!cancelled) setLoading(false);
-      } catch { if (!cancelled) setFailed(true); }
-    }, { rootMargin: "200px" });
-    obs.observe(node);
-    return () => { cancelled = true; obs.disconnect(); };
-  }, [url]);
-  if (failed) return <FileText className="w-10 h-10 text-red-400" />;
-  return (
-    <div ref={wrapRef} className="w-full h-full relative">
-      {loading && <div className="absolute inset-0 flex items-center justify-center"><Loader2 className="w-4 h-4 animate-spin text-stone-400" /></div>}
-      <canvas ref={canvasRef} className="w-full h-full object-cover" />
-    </div>
-  );
 }
 
 const VIEW_PREF_KEY = "cm.projectFolder.viewMode";
@@ -108,10 +67,6 @@ export default function ProjectGuideModal({ project, onClose }) {
       window.localStorage.setItem(VIEW_PREF_KEY, viewMode);
     }
   }, [viewMode]);
-
-  // Inline (signed) URLs for thumbnail rendering — only minted for
-  // images + PDFs to avoid wasted backend round-trips on bulk folders.
-  const [inlineUrls, setInlineUrls] = useState({});
 
   useEffect(() => {
     let cancelled = false;
@@ -135,28 +90,6 @@ export default function ProjectGuideModal({ project, onClose }) {
     })();
     return () => { cancelled = true; };
   }, [project_code, guide_key]);
-
-  // Once the file list is in, fetch inline signed URLs for the
-  // thumbnail-eligible ones (images + PDFs). Done in one pass to avoid
-  // grid-tile flicker when the user toggles to Grid view.
-  useEffect(() => {
-    if (!files.length) { setInlineUrls({}); return; }
-    let cancelled = false;
-    (async () => {
-      const next = {};
-      await Promise.all(files
-        .filter((f) => isImage(f.name, f.content_type) || isPdf(f.name, f.content_type))
-        .map(async (f) => {
-          try {
-            const { data } = await api.get(f.download_url, { params: { attachment: false } });
-            const u = data?.url || data?.signed_url;
-            if (u) next[f.key] = u;
-          } catch { /* ignore — tile falls back to the generic icon */ }
-        }));
-      if (!cancelled) setInlineUrls(next);
-    })();
-    return () => { cancelled = true; };
-  }, [files]);
 
   const folderLabel = useMemo(() => {
     if (!guide_key) return "";
@@ -321,45 +254,29 @@ export default function ProjectGuideModal({ project, onClose }) {
                 </div>
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                  {files.map((f) => {
-                    const Icon = pickIcon(f.name, f.content_type);
-                    const inlineUrl = inlineUrls[f.key];
-                    const showThumb = isImage(f.name, f.content_type) && inlineUrl;
-                    const showPdf = !showThumb && isPdf(f.name, f.content_type) && inlineUrl;
-                    return (
-                      <div
-                        key={f.key}
-                        className="bg-white border border-stone-200 rounded-2xl overflow-hidden flex flex-col"
-                        data-testid={`project-folder-file-grid-${f.key}`}
-                      >
-                        <div className="aspect-square bg-stone-50 flex items-center justify-center relative overflow-hidden">
-                          {showThumb ? (
-                            <img
-                              src={inlineUrl}
-                              alt={f.name}
-                              loading="lazy"
-                              className="w-full h-full object-cover"
-                              onError={(e) => { e.currentTarget.style.display = "none"; }}
-                            />
-                          ) : showPdf ? (
-                            <PdfThumb url={inlineUrl} />
-                          ) : (
-                            <Icon className="w-10 h-10 text-stone-400" />
-                          )}
-                        </div>
-                        <div className="p-3 flex flex-col gap-1 flex-1">
-                          <div className="text-xs font-semibold text-stone-900 truncate" title={f.name}>{f.name}</div>
-                          <div className="text-[10px] text-stone-500 tabular-nums">{fmtBytes(f.size)}</div>
-                          <button
-                            onClick={() => downloadFile(f, true)}
-                            className="mt-auto inline-flex items-center justify-center gap-1 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-md"
-                          >
-                            <Download className="w-3 h-3" /> Download
-                          </button>
-                        </div>
+                  {files.map((f) => (
+                    <div
+                      key={f.key}
+                      className="bg-white border border-stone-200 rounded-2xl overflow-hidden flex flex-col"
+                      data-testid={`project-folder-file-grid-${f.key}`}
+                    >
+                      <FileThumbnail
+                        file={f}
+                        size="md"
+                        className="aspect-square w-full"
+                      />
+                      <div className="p-3 flex flex-col gap-1 flex-1">
+                        <div className="text-xs font-semibold text-stone-900 truncate" title={f.name}>{f.name}</div>
+                        <div className="text-[10px] text-stone-500 tabular-nums">{fmtBytes(f.size)}</div>
+                        <button
+                          onClick={() => downloadFile(f, true)}
+                          className="mt-auto inline-flex items-center justify-center gap-1 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-md"
+                        >
+                          <Download className="w-3 h-3" /> Download
+                        </button>
                       </div>
-                    );
-                  })}
+                    </div>
+                  ))}
                 </div>
               )}
             </>
