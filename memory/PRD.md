@@ -1,5 +1,23 @@
 # Creative Mojo — Admin & Franchisee Hub PRD
 
+## Recent (Feb 2026)
+- ✅ **Franchisee post-login whitescreen fix — `profile.tags.some is not a function`**
+  Legacy Airtable franchisee records imported `tags` as a comma-separated
+  string (e.g. `"demo, vip"`) instead of a JSON array, so PortalShell.jsx
+  raised a TypeError on `rawTags.some(...)` and whitescreened the
+  franchisee portal (reproduced by helen.bell@). Belt-and-braces fix:
+  • Backend `GET /api/portal/me` (`server.py:2370-2374`) now splits string
+    tags on `[,;]` and returns `[]` for any non-string/non-list value.
+  • Frontend `PortalShell.jsx:172-176` defensively coerces with
+    `Array.isArray(rawTags) ? rawTags : []` before `.some(...)`.
+  • Same defensive guard applied across `FranchiseesPage.js`,
+    `FranchiseeDetailPage.js`, `CalendarPage.jsx`.
+  Regression test added at
+  `/app/backend/tests/test_portal_tags_normalization.py` (7 tests, 1.5s).
+  Verified end-to-end via testing_agent iteration_39 (backend 100%,
+  frontend 100%) — portal renders for both list-shaped and malformed
+  string-shaped tags without crash.
+
 ## Original Problem Statement
 Bespoke admin system for the Creative Mojo franchise business, consolidating
 Airtable, FileCamp, a legacy CRM, Invoicing and Banking modules into a single
