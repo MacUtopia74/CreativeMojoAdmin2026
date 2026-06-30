@@ -108,7 +108,12 @@ const SINGLE_PRICE = 9;
 export default function PortalSubscriptionsPage() {
   const ctx = useOutletContext() || {};
   const profile = ctx.profile || {};
-  const tags = profile?.profile?.tags || [];
+  // Defensive against legacy franchisee records where ``tags`` is a
+  // comma-separated string rather than an array — same as PortalShell.
+  const rawTags = profile?.profile?.tags;
+  const tags = Array.isArray(rawTags)
+    ? rawTags
+    : (typeof rawTags === "string" ? rawTags.split(/[,;]/) : []);
   const isDemo = tags.some((t) => String(t).trim().toLowerCase() === "demo");
   // Real franchisees: render the bolt-ons they actually own as ACTIVE
   // (so the page shows their current plan). Demo: pretend nothing is

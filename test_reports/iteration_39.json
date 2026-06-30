@@ -1,0 +1,23 @@
+{
+  "summary": "Verified the franchisee whitescreen fix end-to-end. Backend GET /api/portal/me correctly normalizes the tags field (string -> list split on [,;], null/garbage -> [], list -> unchanged) and returns the full portal_modules dict with all 8 standard keys as bools. Frontend portal (/portal) renders cleanly for the franchisee with both list-shaped and malformed comma-string tags — no 'tags.some is not a function' error, no whitescreen, sidebar (My Franchise, My Territory, Calendar, Video Hub, HQ Updates, File Vault, Comfort Zone, Account) all visible. Admin login + /franchisees list also verified.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": { "ui_bugs": [], "integration_issues": [], "design_issues": [] },
+  "test_report_links": [
+    "/app/backend/tests/test_portal_tags_normalization.py",
+    "/app/test_reports/pytest/iter39_portal_tags.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is ~5934 lines — exceeds the 700-line guideline. Recommend modularising /portal/* routes into portal_routes.py (already partially done via build_portal_router) and moving auth handlers out. Not blocking this fix.",
+    "PortalShell.jsx (686 lines) is borderline; nav-building logic could be extracted to a hook (useBuildTabs).",
+    "Tags normalization is duplicated across backend (server.py:2370-2374) and 4 frontend files (PortalShell.jsx, FranchiseesPage.js, FranchiseeDetailPage.js, CalendarPage.jsx). Consider a small util `coerceTags(value)` in /app/frontend/src/lib/ to DRY this up — defensive guards are good, but logic drift between layers is a risk."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "100%", "frontend": "100%" },
+  "test_credentials": "Admin: admin@creativemojo.co.uk / CreativeMojo2026!  |  Franchisee: franchisee.tester@creativemojo.co.uk / FranchiseeTest2026! (franchisee_id febd57cf-600d-4b44-bebc-6a9177984832)",
+  "seed_data_creation": "Temporarily mutated franchisees['febd57cf-...'].tags during testing (string 'demo, vip', null, int 12345, semicolon-separated). All scenarios restored to original ['Franchisee', '£3.5k+VAT'] at end of run — confirmed via final Mongo read.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Pytest suite at /app/backend/tests/test_portal_tags_normalization.py is reusable as a regression guard (7 tests, all passing in 1.5s). It uses pymongo directly to mutate and restore the test franchisee's tags via a fixture. Original franchisee.tester tags should remain ['Franchisee', '£3.5k+VAT'] — if you find anything else, the previous run failed to restore.",
+  "rca of the issue": "Legacy Airtable franchisee records imported `tags` as a comma-separated string (e.g. 'demo, vip') instead of a JSON array. PortalShell.jsx called rawTags.some(...) directly, raising TypeError ('tags.some is not a function') which whitescreened the franchisee portal. Mitigation (both verified working): (1) backend server.py:2370-2374 splits string tags on [,;] and returns [] for any non-string/non-list value, and (2) frontend PortalShell.jsx:172-176 defensively coerces via Array.isArray check before .some(). Either layer alone is sufficient; both together provide belt-and-braces safety."
+}

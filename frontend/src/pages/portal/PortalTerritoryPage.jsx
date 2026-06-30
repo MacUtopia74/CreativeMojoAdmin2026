@@ -21,7 +21,13 @@ export default function PortalTerritoryPage({ forceBasic = false }) {
   // e-shot" shortcuts appear in MyClientsPanel. Demo tag overrides
   // because Demo franchisees get to preview every module.
   const modules = data?.profile?.portal_modules || {};
-  const tags = data?.profile?.tags || [];
+  // Defensive against legacy franchisee records where ``tags`` is a
+  // comma-separated string rather than an array — see PortalShell
+  // for the same pattern.
+  const rawTags = data?.profile?.tags;
+  const tags = Array.isArray(rawTags)
+    ? rawTags
+    : (typeof rawTags === "string" ? rawTags.split(/[,;]/) : []);
   const isDemo = tags.some((t) => String(t).trim().toLowerCase() === "demo");
   const marketingEnabled = !!modules.marketing || isDemo;
   const title = forceBasic ? "My Territory" : "My Territory+";

@@ -2363,6 +2363,15 @@ async def portal_me(user: dict = Depends(require_role("franchisee"))):
         "tags",  # Used client-side to detect demo accounts (extra demo-only nav entries)
     }
     profile = {k: f.get(k) for k in keep if k in f}
+    # Normalise ``tags`` to always be an array. Legacy Airtable records
+    # store it as a comma-separated string ("demo, vip") which breaks
+    # ``Array.some(...)`` on the frontend — that whitescreened
+    # helen.bell@'s account.
+    raw_tags = profile.get("tags")
+    if isinstance(raw_tags, str):
+        profile["tags"] = [t.strip() for t in re.split(r"[,;]", raw_tags) if t.strip()]
+    elif not isinstance(raw_tags, list):
+        profile["tags"] = []
     # Backfill default portal_modules so the frontend never has to guess.
     # Defaults: map / calendar / files ON, invoicing OFF.
     existing_mods = (profile.get("portal_modules") or {}) if isinstance(profile.get("portal_modules"), dict) else {}

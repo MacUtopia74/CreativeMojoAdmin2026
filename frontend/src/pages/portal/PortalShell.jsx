@@ -166,7 +166,13 @@ export default function PortalShell() {
   // Demo accounts get extra side-by-side nav entries (e.g. "My Territory"
   // AND "My Territory+") so the user can show off the upgrade to
   // prospective franchisees.
-  const tags = profile?.profile?.tags || [];
+  // Defensive: ``tags`` was expected to be an array but the backend
+  // sometimes stores it as a comma-separated string on legacy
+  // franchisee records (this whitescreened helen.bell@). Coerce.
+  const rawTags = profile?.profile?.tags;
+  const tags = Array.isArray(rawTags)
+    ? rawTags
+    : (typeof rawTags === "string" ? rawTags.split(/[,;]/) : []);
   const isDemo = tags.some((t) => String(t).trim().toLowerCase() === "demo");
 
   // Demo-only toggle: visitors land on the vanilla view; flipping
