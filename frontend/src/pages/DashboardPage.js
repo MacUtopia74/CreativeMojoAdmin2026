@@ -228,11 +228,19 @@ export default function DashboardPage() {
             // panel entirely — the whole point of marking-as-contacted on the
             // Renewals page is to make these stop nagging. The /renewals
             // page still shows them (with a toggle) for audit.
-            const active = renewals.items.filter((r) => !r.last_reminded_at);
-            const reminderItems = active.filter((r) => r.days_remaining >= 0 && r.days_remaining <= 90);
-            const expiringSoon = active.filter((r) => r.days_remaining > 90 && r.days_remaining <= 180);
-            const expiringLater = active.filter((r) => r.days_remaining > 180 && r.days_remaining <= 365);
-            const contactedCount = renewals.items.filter((r) => r.last_reminded_at).length;
+            //
+            // Defensive: previously this assumed ``renewals.items`` was
+            // always an array, but if the API returns a non-array body
+            // (e.g. an error envelope, or the user has zero franchisees
+            // and the endpoint returns a different shape) the filter
+            // throws and there's no boundary to catch it — that white-
+            // screened Helen Bell's account on prod.
+            const allItems = Array.isArray(renewals?.items) ? renewals.items : [];
+            const active = allItems.filter((r) => !r?.last_reminded_at);
+            const reminderItems = active.filter((r) => r?.days_remaining >= 0 && r?.days_remaining <= 90);
+            const expiringSoon = active.filter((r) => r?.days_remaining > 90 && r?.days_remaining <= 180);
+            const expiringLater = active.filter((r) => r?.days_remaining > 180 && r?.days_remaining <= 365);
+            const contactedCount = allItems.filter((r) => r?.last_reminded_at).length;
             if (reminderItems.length === 0 && expiringSoon.length === 0 && expiringLater.length === 0) {
               return (
                 <div className="flex items-center gap-2 text-sm text-emerald-700 py-1">
@@ -330,7 +338,16 @@ export default function DashboardPage() {
             <div className="text-sm text-stone-500">No franchise anniversaries in the next 30 days.</div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3" data-testid="anniversaries-list">
-              {anniversaries.anniversaries.slice(0, 8).map(({ contract, franchisee, anniversary_date, days_until, years, email_sent }) => {
+              {(Array.isArray(anniversaries.anniversaries) ? anniversaries.anniversaries : []).slice(0, 8).map((a) => {
+                // Defensive destructure — earlier this throw'd if an
+                // anniversary row was missing ``contract`` (the optional
+                // chain on ``franchisee`` wasn't enough to save it).
+                const contract = a?.contract || {};
+                const franchisee = a?.franchisee || null;
+                const anniversary_date = a?.anniversary_date;
+                const days_until = a?.days_until ?? 0;
+                const years = a?.years;
+                const email_sent = !!a?.email_sent;
                 const isToday = days_until === 0;
                 const dateLabel = anniversary_date
                   ? new Date(anniversary_date).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })
@@ -338,7 +355,7 @@ export default function DashboardPage() {
                 const fname = [franchisee?.first_name, franchisee?.last_name].filter(Boolean).join(" ");
                 return (
                   <AnniversaryCard
-                    key={`${franchisee?.id || contract.id}-${anniversary_date}`}
+                    key={`${franchisee?.id || contract?.id || anniversary_date || Math.random()}-${anniversary_date || ""}`}
                     contract={contract}
                     franchisee={franchisee}
                     isToday={isToday}
@@ -346,12 +363,12 @@ export default function DashboardPage() {
                     daysUntil={days_until}
                     fname={fname}
                     years={years}
-                    initialSent={!!email_sent}
+                    initialSent={email_sent}
                     onSent={() => refresh()}
                   />
                 );
               })}
-              {anniversaries.anniversaries.length > 8 && (
+              {Array.isArray(anniversaries.anniversaries) && anniversaries.anniversaries.length > 8 && (
                 <Link to="/renewals" className="border border-dashed border-stone-300 rounded-xl p-3 flex items-center justify-center text-xs text-stone-600 hover:bg-stone-50 hover:border-stone-400">
                   + {anniversaries.anniversaries.length - 8} more
                 </Link>

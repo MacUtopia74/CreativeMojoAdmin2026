@@ -2,6 +2,7 @@ import "@/App.css";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import Layout from "@/components/Layout";
 import LoginPage from "@/pages/LoginPage";
 import ResetPasswordPage from "@/pages/ResetPasswordPage";
@@ -86,6 +87,12 @@ export default function App() {
       <AuthProvider>
         <BrowserRouter>
           <EnvBanner />
+          {/* Top-level ErrorBoundary — without this any unhandled render
+              exception in any descendant unmounts the entire tree and
+              shows a blank white screen (instead of a recoverable error
+              page). Originally added to diagnose Helen Bell's account-
+              specific post-login crash on production. */}
+          <ErrorBoundary>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
@@ -183,6 +190,7 @@ export default function App() {
               <Route path="/admin/xero" element={<XeroSettingsPage />} />
             </Route>
           </Routes>
+          </ErrorBoundary>
         </BrowserRouter>
       </AuthProvider>
     </div>

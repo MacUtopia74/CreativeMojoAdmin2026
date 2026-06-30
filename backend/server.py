@@ -387,6 +387,44 @@ async def me(user: dict = Depends(get_current_user)):
     return user_to_public(user)
 
 
+# ----------------------------------------------------------------- ERRORS
+# Frontend error reporting endpoint. The ErrorBoundary POSTs render
+# exceptions here so we can diagnose production crashes that don't repro
+# locally (e.g. an account-specific bad data shape that only Helen has).
+# Intentionally tolerant — we never want this endpoint to itself raise.
+@api.post("/errors/log")
+async def log_frontend_error(body: dict, request: Request):
+    try:
+        user_email: str | None = None
+        # Best effort to pull the JWT/email so we know which user crashed.
+        try:
+            current = await get_current_user(request)
+            user_email = current.get("email")
+        except Exception:  # noqa: BLE001
+            pass
+        await db.frontend_errors.insert_one({
+            "id": str(uuid.uuid4()),
+            "at": datetime.now(timezone.utc).isoformat(),
+            "user_email": user_email,
+            "message": str(body.get("message") or "")[:2000],
+            "stack": str(body.get("stack") or "")[:8000],
+            "component_stack": str(body.get("component_stack") or "")[:4000],
+            "location": str(body.get("location") or "")[:500],
+            "user_agent": str(body.get("user_agent") or "")[:500],
+            "ip": request.client.host if request.client else None,
+        })
+        logger.warning(
+            "Frontend error logged for %s at %s: %s",
+            user_email or "anonymous",
+            body.get("location"),
+            (body.get("message") or "")[:200],
+        )
+    except Exception as exc:  # noqa: BLE001
+        # Never raise from the error logger.
+        logger.warning("/errors/log itself failed: %s", exc)
+    return {"ok": True}
+
+
 @api.post("/auth/users")
 async def create_user(body: CreateUserRequest, _: dict = Depends(require_role("admin"))):
     email = body.email.lower().strip()
