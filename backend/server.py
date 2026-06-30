@@ -491,6 +491,101 @@ async def list_users(_: dict = Depends(require_role("admin"))):
 # Admin-only audit trail of every login attempt (success + failed).
 # Used by the global Logs page and the per-franchisee profile log.
 # ---------------------------------------------------------------------------
+@api.get("/admin/franchisees/login-status")
+async def franchisees_login_status(
+    _: dict = Depends(require_role("admin")),
+):
+    """Login-status report — one row per franchisee with a tick/cross
+    indicator of whether they've ever successfully logged in. Used by
+    the Admin → Logs page's "Franchisee Activation" panel so HQ can see
+    at a glance who's still owed a nudge to start using the portal.
+
+    Joins three collections:
+      - ``franchisees``  → the canonical roster (organisation, contact)
+      - ``users``        → which franchisees have an account at all
+      - ``auth_logins``  → most-recent successful login per user/email
+    """
+    # All franchisees, with the fields we need to display.
+    franchisees: list[dict] = []
+    async for f in db.franchisees.find(
+        {},
+        {"_id": 0, "id": 1, "organisation": 1, "first_name": 1, "last_name": 1,
+         "mojo_email": 1, "secondary_email": 1},
+    ).sort([("first_name", 1)]):
+        franchisees.append(f)
+
+    # Users keyed by franchisee_id, so we know which franchisees have
+    # a portal account at all and what their login email is.
+    user_by_fid: dict = {}
+    async for u in db.users.find(
+        {"role": "franchisee"},
+        {"_id": 0, "id": 1, "email": 1, "franchisee_id": 1, "activated_at": 1, "created_at": 1},
+    ):
+        if u.get("franchisee_id"):
+            user_by_fid[u["franchisee_id"]] = u
+
+    # All successful logins grouped by user_id AND email — group by
+    # both so even old rows (pre-user_id era) still count toward the
+    # right franchisee.
+    login_by_user: dict = {}
+    login_by_email: dict = {}
+    async for r in db.auth_logins.aggregate([
+        {"$match": {"outcome": "success"}},
+        {"$group": {
+            "_id": {"user_id": "$user_id", "email": {"$toLower": "$email"}},
+            "last_at": {"$max": "$at"},
+            "count": {"$sum": 1},
+        }},
+    ]):
+        key = r["_id"] or {}
+        if key.get("user_id"):
+            existing = login_by_user.get(key["user_id"])
+            if not existing or (r.get("last_at") or "") > (existing.get("last_at") or ""):
+                login_by_user[key["user_id"]] = r
+        if key.get("email"):
+            existing = login_by_email.get(key["email"])
+            if not existing or (r.get("last_at") or "") > (existing.get("last_at") or ""):
+                login_by_email[key["email"]] = {**r, "count": (existing or {}).get("count", 0) + r["count"]}
+
+    out: list[dict] = []
+    for f in franchisees:
+        u = user_by_fid.get(f["id"])
+        last_login_at: Optional[str] = None
+        login_count = 0
+        account_status = "not_invited"
+        if u:
+            account_status = "invited"
+            # Match by user_id first, falling back to email match.
+            hit = login_by_user.get(u["id"])
+            if not hit:
+                hit = login_by_email.get((u.get("email") or "").lower())
+            if hit and hit.get("last_at"):
+                last_login_at = hit.get("last_at")
+                login_count = hit.get("count", 0)
+                account_status = "active"
+        out.append({
+            "franchisee_id": f["id"],
+            "organisation": f.get("organisation") or "",
+            "first_name": f.get("first_name") or "",
+            "last_name": f.get("last_name") or "",
+            "mojo_email": f.get("mojo_email") or "",
+            "secondary_email": f.get("secondary_email") or "",
+            "account_email": (u or {}).get("email"),
+            "account_status": account_status,
+            "has_logged_in": last_login_at is not None,
+            "last_login_at": last_login_at,
+            "login_count": login_count,
+        })
+
+    summary = {
+        "total": len(out),
+        "logged_in": sum(1 for r in out if r["has_logged_in"]),
+        "invited_not_yet_logged_in": sum(1 for r in out if r["account_status"] == "invited"),
+        "not_invited": sum(1 for r in out if r["account_status"] == "not_invited"),
+    }
+    return {"items": out, "summary": summary}
+
+
 @api.get("/admin/auth/login-log")
 async def admin_login_log(
     franchisee_id: Optional[str] = None,
