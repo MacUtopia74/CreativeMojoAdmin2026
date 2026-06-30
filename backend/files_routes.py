@@ -296,77 +296,126 @@ def build_router(db, require_role) -> APIRouter:
         prefix: Optional[str] = Query(None, description="Restrict search to keys starting with this prefix (folder-scoped search)."),
         user: dict = Depends(require_role("admin", "franchisee")),
     ):
-        terms = q.strip().split()
-        query: dict = {"$and": [{"name": {"$regex": re.escape(t), "$options": "i"}} for t in terms]}
-        if scope:
-            query["scope"] = scope
-        # Folder-scoped search: only consider keys living under this prefix.
-        if prefix:
-            # Always treat the prefix as a folder, so trailing slash is enforced
-            # to avoid `foo` accidentally matching `foobar/...`.
-            p = prefix if prefix.endswith("/") else prefix + "/"
-            query["key"] = {"$regex": "^" + re.escape(p)}
-        # Hide soft-deleted items and .keep placeholders
-        query["hidden"] = {"$ne": True}
-        if "key" in query and isinstance(query["key"], dict):
-            query["key"]["$not"] = re.compile(r"^\.trash/")
-        else:
-            query["key"] = {"$not": re.compile(r"^\.trash/")}
-        # Apply franchisee scope clause if needed
-        scope_clause = await _franchisee_scope_filter(user)
-        if scope_clause:
-            query["$and"] = (query.get("$and") or []) + [scope_clause]
-        cur = db.files_index.find(query, {"_id": 0}).sort("name", 1).limit(limit)
-        items = await cur.to_list(limit)
-        # Folder search: distinct folder paths whose final segment matches.
-        # Walks all index keys (~1.7k in production) and emits one entry per
-        # unique folder name that matches the search terms. Cheap enough
-        # to run on every keystroke since the admin search debounces.
-        folders: list[dict] = []
+        """File-Vault name search. Hardened against backend crashes that
+        would otherwise surface to franchisees as a Cloudflare 520 (the
+        origin returned a malformed/empty response).
+
+        Any unexpected exception is caught and returns an empty result
+        with ``error`` set, so the franchisee at least sees "0 results"
+        instead of a scary upstream-server error page. Real errors are
+        logged so we can diagnose afterwards."""
         try:
-            seen: set[str] = set()
-            folder_walk_filter: dict = {
-                "hidden": {"$ne": True},
-                "key": {"$not": re.compile(r"^\.trash/")},
-            }
+            terms = q.strip().split()
+            if not terms:
+                return {"items": [], "files": [], "folders": [], "count": 0}
+
+            query: dict = {"$and": [{"name": {"$regex": re.escape(t), "$options": "i"}} for t in terms]}
+            if scope:
+                query["scope"] = scope
+            # Folder-scoped search: only consider keys living under this prefix.
             if prefix:
+                # Always treat the prefix as a folder, so trailing slash is enforced
+                # to avoid `foo` accidentally matching `foobar/...`.
                 p = prefix if prefix.endswith("/") else prefix + "/"
-                folder_walk_filter["key"] = {
-                    "$not": re.compile(r"^\.trash/"),
-                    "$regex": "^" + re.escape(p),
+                query["key"] = {"$regex": "^" + re.escape(p)}
+            # Hide soft-deleted items and .keep placeholders
+            query["hidden"] = {"$ne": True}
+            if "key" in query and isinstance(query["key"], dict):
+                query["key"]["$not"] = re.compile(r"^\.trash/")
+            else:
+                query["key"] = {"$not": re.compile(r"^\.trash/")}
+            # Apply franchisee scope clause if needed. Failing here used
+            # to throw 403 for orphan franchisee accounts (no
+            # franchisee_id) which is unhelpful — degrade to "0 hits"
+            # instead so the UI stays usable.
+            try:
+                scope_clause = await _franchisee_scope_filter(user)
+            except HTTPException:
+                return {"items": [], "files": [], "folders": [], "count": 0,
+                        "error": "Your account isn't linked to a franchisee record yet — contact HQ."}
+            if scope_clause:
+                query["$and"] = (query.get("$and") or []) + [scope_clause]
+
+            cur = db.files_index.find(query, {"_id": 0}).sort("name", 1).limit(limit)
+            items = await cur.to_list(limit)
+
+            # Folder search: distinct folder paths whose final segment matches.
+            # Bounded by ``walk_cap`` so a pathological number of keys
+            # (e.g. a future bulk-import) can't run away and time out
+            # behind Cloudflare's 100-second proxy limit.
+            folders: list[dict] = []
+            walk_cap = 20_000
+            try:
+                seen: set[str] = set()
+                folder_walk_filter: dict = {
+                    "hidden": {"$ne": True},
+                    "key": {"$not": re.compile(r"^\.trash/")},
                 }
-            async for row in db.files_index.find(
-                folder_walk_filter,
-                {"_id": 0, "key": 1},
-            ):
-                parts = (row.get("key") or "").split("/")
-                # last element is the filename; everything before is a folder path
-                # When prefix-scoped, skip the prefix segments — only emit
-                # folders that live STRICTLY below the active folder.
-                start_depth = 0
                 if prefix:
-                    p_parts = [s for s in (prefix if prefix.endswith("/") else prefix + "/").split("/") if s]
-                    start_depth = len(p_parts) + 1
-                for end in range(max(1, start_depth), len(parts)):
-                    name = parts[end - 1]
-                    if not name:
-                        continue
-                    haystack = name.lower()
-                    if not all(re.search(re.escape(t.lower()), haystack) for t in terms):
-                        continue
-                    folder_prefix = "/".join(parts[:end]) + "/"
-                    if folder_prefix in seen:
-                        continue
-                    seen.add(folder_prefix)
-                    folders.append({"prefix": folder_prefix, "name": name, "depth": end})
+                    p = prefix if prefix.endswith("/") else prefix + "/"
+                    folder_walk_filter["key"] = {
+                        "$not": re.compile(r"^\.trash/"),
+                        "$regex": "^" + re.escape(p),
+                    }
+                # Apply franchisee scope to the folder walk too, otherwise
+                # franchisees could see folder names they aren't allowed
+                # to actually browse.
+                if scope_clause:
+                    folder_walk_filter = {"$and": [folder_walk_filter, scope_clause]}
+
+                lower_terms = [t.lower() for t in terms]
+                walked = 0
+                async for row in db.files_index.find(
+                    folder_walk_filter,
+                    {"_id": 0, "key": 1},
+                ):
+                    walked += 1
+                    if walked > walk_cap:
+                        break
+                    key = row.get("key") or ""
+                    parts = key.split("/")
+                    start_depth = 0
+                    if prefix:
+                        p_parts = [s for s in (prefix if prefix.endswith("/") else prefix + "/").split("/") if s]
+                        start_depth = len(p_parts) + 1
+                    for end in range(max(1, start_depth), len(parts)):
+                        name = parts[end - 1]
+                        if not name:
+                            continue
+                        haystack = name.lower()
+                        # Substring check is ~5× faster than re.search
+                        # with escaped patterns and matches the same set.
+                        if not all(t in haystack for t in lower_terms):
+                            continue
+                        folder_prefix = "/".join(parts[:end]) + "/"
+                        if folder_prefix in seen:
+                            continue
+                        seen.add(folder_prefix)
+                        folders.append({"prefix": folder_prefix, "name": name, "depth": end})
+                        if len(folders) >= limit:
+                            break
                     if len(folders) >= limit:
                         break
-                if len(folders) >= limit:
-                    break
-            folders.sort(key=lambda f: (f["depth"], f["name"]))
-        except Exception:  # noqa: BLE001
-            folders = []
-        return {"items": items, "files": items, "folders": folders, "count": len(items)}
+                folders.sort(key=lambda f: (f["depth"], f["name"]))
+            except Exception as walk_exc:  # noqa: BLE001
+                logger.warning("/files/search folder walk failed: %s", walk_exc, exc_info=True)
+                folders = []
+
+            return {"items": items, "files": items, "folders": folders, "count": len(items)}
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            # NEVER let an unhandled backend exception bubble up to the
+            # client — that was producing Cloudflare 520s for franchisees
+            # because the proxy couldn't parse the empty/half-flushed
+            # response. Log the full traceback and degrade to zero
+            # results so the UI stays usable.
+            logger.error(
+                "/files/search FAILED for user=%s q=%r scope=%r prefix=%r: %s",
+                user.get("email"), q, scope, prefix, exc, exc_info=True,
+            )
+            return {"items": [], "files": [], "folders": [], "count": 0,
+                    "error": "Search temporarily unavailable. Please try again or refine your terms."}
 
     # -----------------------------------------------------------------
     # Same-origin proxy for R2 objects. Used by PDF.js (and any other

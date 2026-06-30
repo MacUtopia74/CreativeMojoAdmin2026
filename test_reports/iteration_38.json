@@ -1,0 +1,46 @@
+{
+  "summary": "Verified Cloudflare 520 hardening of /api/files/search. Built /app/backend/tests/test_iter38_files_search.py (16 tests, 16 passed): franchisee + admin login both work via /api/auth/login; the exact production repro 'Armed Forces Day' as franchisee now returns HTTP 200 with the {items, files, folders, count} envelope; single-word + multi-word queries also return 200; short query (q='a') correctly returns 422 (Pydantic), not 5xx; admin global + folder-scoped search regression both pass; 8 adversarial inputs (unicode, regex-meta chars, emoji, dotted, path-ish, punctuation-only, padded spaces) all return <500 with valid envelopes. The original CF-520 root cause path is now closed: no unhandled exception can bubble up.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "PortalLoginPage (/portal/login)",
+        "issue": "Franchisee tester credentials (franchisee.tester@creativemojo.co.uk / FranchiseeTest2026!) are accepted by /api/auth/login (token issued, backend tests pass) but rejected by the portal login pre-check with the message 'We couldn't find a portal account for that email. Please check the address or contact your administrator.' This blocks end-to-end UI verification of /portal/files via the portal flow but does NOT affect the backend /api/files/search fix — that is fully verified via the API tests.",
+        "selector": "input[type=email] on /portal/login + Continue button",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter38_files_search.py",
+    "/app/test_reports/pytest/iter38_results.xml"
+  ],
+  "action_items": [
+    "Investigate why the portal login lookup ('We couldn't find a portal account for that email') rejects franchisee.tester@creativemojo.co.uk while /api/auth/login accepts the same credentials. The franchisee_id (febd57cf-600d-4b44-bebc-6a9177984832) is present in test_credentials.md — the portal user/contact link probably isn't seeded on preview. This is a SEPARATE issue from the Cloudflare 520 fix and does not regress it.",
+    "Cloudflare 520 fix itself needs NO further action — all 16 API tests pass including the exact prod repro query."
+  ],
+  "critical_code_review_comments": [
+    "files_routes.py files_search outer try/except correctly re-raises HTTPException so FastAPI's 422 validation path is preserved (good).",
+    "walk_cap=20_000 prevents unbounded folder walks behind Cloudflare's 100s proxy limit (good).",
+    "Orphan-franchisee (HTTPException from _franchisee_scope_filter) → degraded 200 with structured 'error' field is a good UX choice; matches the frontend's results.error display.",
+    "Folder-walk filter correctly composes scope_clause via $and, so franchisees can no longer see folder names they can't browse — regression-safe."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter38_files_search.py (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (16/16)",
+    "frontend": "N/A — UI not exercised due to portal-login seed gap; backend behaviour verified directly via API"
+  },
+  "test_credentials": "Admin admin@creativemojo.co.uk / CreativeMojo2026! and franchisee franchisee.tester@creativemojo.co.uk / FranchiseeTest2026! both authenticate against /api/auth/login successfully. Portal /portal/login flow does NOT accept the franchisee tester (separate seed/portal-account issue).",
+  "seed_data_creation": "None.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "If asked to verify /portal/files UI for the franchisee, first confirm whether franchisee.tester@creativemojo.co.uk has a corresponding 'portal account' row (the /portal/login endpoint pre-checks this and 404s before even attempting password verification). The /api/files/search backend hardening is fully covered by /app/backend/tests/test_iter38_files_search.py.",
+  "rca_of_the_issue": "Original Cloudflare 520 root cause: /api/files/search raised an unhandled exception (most likely _franchisee_scope_filter raising HTTPException(403) for orphan franchisee accounts, or a folder-walk timeout). FastAPI then half-flushed an error response that Cloudflare couldn't parse, surfacing as a 520. Fix wraps the handler in try/except (re-raising HTTPException so 422 validation still works), catches everything else, logs the traceback, and returns 200 with {items:[], files:[], folders:[], count:0, error:'…'}. Bounded folder walk to 20k iterations. Tests confirm the fix holds for the exact prod query and a battery of adversarial inputs."
+}
