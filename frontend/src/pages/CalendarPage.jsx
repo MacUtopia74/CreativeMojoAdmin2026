@@ -382,6 +382,18 @@ export default function CalendarPage() {
                 className="px-3 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-lg flex items-center gap-1.5">
                 <Plus className="w-3.5 h-3.5" /> New event
               </button>
+              {/* Mojo Grow Meeting one-click — opens the standard event
+                  modal but pre-fills the franchise-wide setup: portal
+                  visibility on, "all franchisees" audience, and a flag
+                  that drives Zoom + draft HQ Update creation on save. */}
+              <button
+                onClick={() => setModal({ event: null, preset: "mojo_grow" })}
+                data-testid="cal-new-mojo-grow"
+                title="Create a Mojo Grow Meeting — auto-creates Zoom and a draft HQ Update"
+                className="px-3 py-2 text-xs font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-[#c2c213] rounded-lg flex items-center gap-1.5"
+              >
+                <Video className="w-3.5 h-3.5" /> Mojo Grow Meeting
+              </button>
             </>
           )}
         </div>
@@ -615,6 +627,7 @@ export default function CalendarPage() {
         <EventModal
           event={modal.event}
           defaults={modal.defaults}
+          preset={modal.preset}
           onClose={() => setModal(null)}
           onSaved={() => { setModal(null); setRefreshTick((t) => t + 1); }}
           onDelete={async (id) => { await deleteEvent(id); setModal(null); }}
@@ -677,12 +690,17 @@ function EventRow({ event, onEdit, onDelete }) {
   );
 }
 
-function EventModal({ event, defaults, onClose, onSaved, onDelete }) {
-  const [title, setTitle] = useState(event?.title || "");
+function EventModal({ event, defaults, preset, onClose, onSaved, onDelete }) {
+  const isMojoGrow = preset === "mojo_grow";
+  const [title, setTitle] = useState(event?.title || (isMojoGrow ? "Mojo Grow Meeting" : ""));
+  // Track whether the user has typed in the title — if they haven't,
+  // we re-derive the title from the chosen start date when in
+  // Mojo-Grow mode (e.g. "Mojo Grow Meeting · Fri 15 Aug · 7:00 PM").
+  const titleManuallyEditedRef = useRef(false);
   const [description, setDescription] = useState(event?.description || "");
-  const [location, setLocation] = useState(event?.location || "");
+  const [location, setLocation] = useState(event?.location || (isMojoGrow ? "Online (Zoom)" : ""));
   const [meetingUrl, setMeetingUrl] = useState(event?.meeting_url || "");
-  const [showInPortal, setShowInPortal] = useState(!!event?.show_in_portal);
+  const [showInPortal, setShowInPortal] = useState(isMojoGrow ? true : !!event?.show_in_portal);
   // Audience scope — "all" (default, visible to every franchisee) or
   // "selected" (only the franchisees in selectedFranchiseeIds see it).
   const initialIds = Array.isArray(event?.portal_franchisee_ids)
@@ -762,6 +780,27 @@ function EventModal({ event, defaults, onClose, onSaved, onDelete }) {
     );
   };
 
+  // Auto-derive the title from the chosen start date when in Mojo Grow
+  // mode, but only as long as the admin hasn't typed their own override.
+  // e.g. start "2026-08-15T19:00" → "Mojo Grow Meeting · Fri 15 Aug · 7:00 PM".
+  useEffect(() => {
+    if (!isMojoGrow || titleManuallyEditedRef.current || !start) return;
+    try {
+      const d = new Date(start);
+      if (!Number.isFinite(d.getTime())) return;
+      const day = d.toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" });
+      const time = d.toLocaleTimeString("en-GB", { hour: "numeric", minute: "2-digit" });
+      setTitle(`Mojo Grow Meeting · ${day} · ${time}`);
+    } catch { /* noop */ }
+  }, [isMojoGrow, start]);
+
+  // Treat the title as user-controlled the moment they type — stops the
+  // auto-derive effect from clobbering their edits.
+  const onTitleChange = (v) => {
+    titleManuallyEditedRef.current = true;
+    setTitle(v);
+  };
+
   const save = async () => {
     setErr("");
     if (!title.trim()) { setErr("Title is required."); return; }
@@ -781,6 +820,40 @@ function EventModal({ event, defaults, onClose, onSaved, onDelete }) {
     }
     setSaving(true);
     try {
+      // ----- Mojo Grow: auto-mint a Zoom link if none has been set yet.
+      // Reuses the same /zoom/meetings endpoint as the "Create Zoom"
+      // button so the host (headoffice@), passcode policy, and audit log
+      // all stay identical.
+      let zoomUrlForEvent = meetingUrl;
+      if (isMojoGrow && !zoomUrlForEvent) {
+        try {
+          // Duration in minutes between start/end (or 60 by default).
+          let dur = 60;
+          if (!allDay && start && end) {
+            const s = new Date(start).getTime();
+            const e = new Date(end).getTime();
+            if (Number.isFinite(s) && Number.isFinite(e) && e > s) {
+              dur = Math.max(15, Math.round((e - s) / 60000));
+            }
+          }
+          const { data: zm } = await api.post("/zoom/meetings", {
+            topic: title.trim(),
+            start_time: new Date(start).toISOString().replace(/\.\d{3}Z$/, "Z"),
+            duration: dur,
+            timezone: "Europe/London",
+            require_passcode: true,
+            enable_waiting_room: false,
+            agenda: description || "",
+          });
+          zoomUrlForEvent = zm?.join_url || "";
+          if (zoomUrlForEvent) setMeetingUrl(zoomUrlForEvent);
+        } catch (e) {
+          // Don't block the event save if Zoom mint fails — surface a
+          // warning but let the admin add a link manually afterwards.
+          setZoomNotice("Couldn't auto-create Zoom link — please add it manually after saving.");
+        }
+      }
+
       // Audience scope — empty list when "show in portal" is off OR
       // when "all" is selected. The backend treats null/empty as "all
       // franchisees" (backwards-compatible with existing events).
@@ -790,15 +863,50 @@ function EventModal({ event, defaults, onClose, onSaved, onDelete }) {
         title: title.trim(),
         description: description || null,
         location: location || null,
-        meeting_url: meetingUrl ? meetingUrl.trim() : null,
+        meeting_url: zoomUrlForEvent ? zoomUrlForEvent.trim() : null,
         show_in_portal: showInPortal,
         portal_franchisee_ids: portalIds,
         all_day: allDay,
         start: allDay ? start.slice(0, 10) : new Date(start).toISOString(),
         end: allDay ? end.slice(0, 10) : new Date(end).toISOString(),
       };
-      if (event?.id) await api.patch(`/calendar/events/${event.id}`, body);
-      else await api.post("/calendar/events", body);
+      let savedEvent = null;
+      if (event?.id) {
+        const { data } = await api.patch(`/calendar/events/${event.id}`, body);
+        savedEvent = data || { id: event.id };
+      } else {
+        const { data } = await api.post("/calendar/events", body);
+        savedEvent = data || null;
+      }
+
+      // ----- Mojo Grow: after the event saves, also create a DRAFT HQ
+      // Update so the admin can review + publish in one click rather
+      // than having to rebuild it from scratch. Category=meetings,
+      // recipients=all active, source=mojo_grow_meeting (audit).
+      if (isMojoGrow && zoomUrlForEvent) {
+        try {
+          await api.post("/admin/announcements/draft", {
+            title: title.trim(),
+            intro: `Hi everyone,\n\nJoin us for the next Mojo Grow meeting on ${
+              new Date(start).toLocaleString("en-GB", { weekday: "long", day: "2-digit", month: "long", hour: "numeric", minute: "2-digit" })
+            }.\n\nClick the Zoom link below to join.`,
+            category: "meetings",
+            recipient_ids: null,
+            panels: [{
+              kind: "link",
+              title: "Join the Zoom meeting",
+              blurb: title.trim(),
+              resolved_url: zoomUrlForEvent,
+              url: zoomUrlForEvent,
+            }],
+            source: "mojo_grow_meeting",
+            source_calendar_event_id: savedEvent?.id || null,
+          });
+        } catch (e) {
+          // Non-fatal — the event itself saved; surface a hint.
+          setZoomNotice((n) => (n ? n + " " : "") + "Calendar event saved, but couldn't create the draft HQ Update — please add it manually from the HQ Updates page.");
+        }
+      }
       onSaved?.();
     } catch (e) {
       // Surface the user-friendly translation for the most common
@@ -816,11 +924,22 @@ function EventModal({ event, defaults, onClose, onSaved, onDelete }) {
     <div className="fixed inset-0 z-[60] bg-stone-950/70 backdrop-blur-sm flex items-center justify-center p-6" onClick={onClose} data-testid="cal-event-modal">
       <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl shadow-2xl w-full max-w-xl">
         <div className="px-5 py-4 border-b border-stone-200 flex items-center justify-between">
-          <span className="font-bold text-stone-950">{event ? "Edit event" : "New event"}</span>
+          <span className="font-bold text-stone-950">{event ? "Edit event" : (isMojoGrow ? "New Mojo Grow Meeting" : "New event")}</span>
           <button onClick={onClose} className="w-8 h-8 hover:bg-stone-100 rounded-md flex items-center justify-center"><X className="w-4 h-4" /></button>
         </div>
         <div className="p-5 space-y-4">
-          <Input label="Title" value={title} onChange={setTitle} placeholder="Quarterly franchisee call" testid="cal-title" />
+          {isMojoGrow && !event && (
+            <div className="bg-[#dddd16]/20 border border-[#dddd16] rounded-lg p-3 text-xs text-stone-800 space-y-1" data-testid="mojo-grow-notice">
+              <div className="font-bold inline-flex items-center gap-1.5"><Video className="w-3.5 h-3.5" /> Mojo Grow setup</div>
+              <div>On save we&apos;ll:</div>
+              <ul className="list-disc pl-5 space-y-0.5">
+                <li>Auto-create a Zoom link for the chosen start time</li>
+                <li>Publish this event to the Franchisee Portal calendar for all franchisees</li>
+                <li>Save a DRAFT HQ Update (Meetings) you can review before broadcasting</li>
+              </ul>
+            </div>
+          )}
+          <Input label="Title" value={title} onChange={onTitleChange} placeholder="Quarterly franchisee call" testid="cal-title" />
           <Input label="Location (optional)" value={location} onChange={setLocation} placeholder="Online / 12 High St, Cullompton" testid="cal-location" />
           <label className="flex items-center gap-2 text-xs text-stone-700">
             <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} data-testid="cal-all-day" />

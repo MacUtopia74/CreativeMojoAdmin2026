@@ -14,7 +14,7 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import {
   Megaphone, Send, Loader2, AlertCircle, Plus, Trash2, X, CheckCircle2,
   Search, FileText, Folder, RefreshCw, Calendar, Image as ImageIcon, Eye, Upload,
-  PinOff, Briefcase, Users as UsersIcon, Sparkles, Link as LinkIcon, Youtube,
+  PinOff, Briefcase, Users as UsersIcon, Sparkles, Link as LinkIcon, Youtube, Pencil,
 } from "lucide-react";
 import api from "@/lib/api";
 import FileThumbnail from "@/components/files/FileThumbnail";
@@ -66,6 +66,12 @@ function fmtBytes(b) {
 function AnnouncementsList({ onCompose, onView, refresh }) {
   const [data, setData] = useState({ items: [], total: 0 });
   const [loading, setLoading] = useState(true);
+  // Drafts (auto-created e.g. by the Calendar "Mojo Grow Meeting" button)
+  // live behind a tab so they don't clutter the sent list but are easy
+  // to find when reviewing before broadcast.
+  const [tab, setTab] = useState("sent");
+  const [drafts, setDrafts] = useState({ items: [], total: 0 });
+  const [draftsLoading, setDraftsLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -74,7 +80,14 @@ function AnnouncementsList({ onCompose, onView, refresh }) {
       setData(data);
     } finally { setLoading(false); }
   }, []);
-  useEffect(() => { load(); }, [refresh, load]);
+  const loadDrafts = useCallback(async () => {
+    setDraftsLoading(true);
+    try {
+      const { data } = await api.get("/admin/announcements", { params: { status: "draft" } });
+      setDrafts(data);
+    } finally { setDraftsLoading(false); }
+  }, []);
+  useEffect(() => { load(); loadDrafts(); }, [refresh, load, loadDrafts]);
 
   return (
     <div className="px-8 py-6">
@@ -101,6 +114,77 @@ function AnnouncementsList({ onCompose, onView, refresh }) {
           </button>
         </div>
       </div>
+
+      <div className="flex items-center gap-2 mb-3" data-testid="announcement-tabs">
+        <button
+          onClick={() => setTab("sent")}
+          data-testid="announcement-tab-sent"
+          className={`px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-lg transition-colors ${tab === "sent" ? "bg-stone-950 text-white" : "bg-white text-stone-700 border border-stone-300 hover:bg-stone-50"}`}
+        >
+          Sent ({data.total ?? data.items.length})
+        </button>
+        <button
+          onClick={() => setTab("drafts")}
+          data-testid="announcement-tab-drafts"
+          className={`px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-lg transition-colors inline-flex items-center gap-1.5 ${tab === "drafts" ? "bg-stone-950 text-white" : "bg-white text-stone-700 border border-stone-300 hover:bg-stone-50"}`}
+        >
+          Drafts ({drafts.total ?? drafts.items.length})
+          {drafts.items.length > 0 && tab !== "drafts" && (
+            <span className="w-2 h-2 rounded-full bg-amber-500" />
+          )}
+        </button>
+      </div>
+
+      {tab === "drafts" ? (
+        <div className="bg-white border border-stone-200 rounded-xl overflow-hidden" data-testid="drafts-panel">
+          {draftsLoading && drafts.items.length === 0 ? (
+            <div className="px-4 py-12 text-center text-stone-500">
+              <Loader2 className="w-4 h-4 animate-spin inline" /> Loading drafts…
+            </div>
+          ) : drafts.items.length === 0 ? (
+            <div className="px-4 py-12 text-center text-stone-500 text-sm">
+              No drafts. Drafts are auto-created when you set up a Mojo Grow Meeting from the Calendar.
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-stone-50 border-b border-stone-200">
+                <tr className="text-left text-[10px] uppercase tracking-wider text-stone-500">
+                  <th className="px-4 py-2 font-bold">Title</th>
+                  <th className="px-3 py-2 font-bold">Category</th>
+                  <th className="px-3 py-2 font-bold">Created</th>
+                  <th className="px-3 py-2 font-bold">Source</th>
+                  <th className="px-3 py-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {drafts.items.map((it) => (
+                  <tr key={it.id} className="border-t border-stone-100 hover:bg-stone-50/50 cursor-pointer" onClick={() => onView(it)} data-testid={`draft-row-${it.id}`}>
+                    <td className="px-4 py-3 font-medium text-stone-950">{it.title}</td>
+                    <td className="px-3 py-3"><CategoryPill id={it.category} /></td>
+                    <td className="px-3 py-3 text-stone-700 whitespace-nowrap">{fmtDate(it.created_at)}</td>
+                    <td className="px-3 py-3 text-stone-500 text-[11px]">
+                      {it.source === "mojo_grow_meeting" ? (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-[#dddd16]/30 text-stone-800 border border-[#dddd16] rounded">
+                          Mojo Grow
+                        </span>
+                      ) : "Manual"}
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onView(it); }}
+                        data-testid={`draft-review-${it.id}`}
+                        className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-md"
+                      >
+                        Review &amp; Send
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      ) : (
 
       <div className="bg-white border border-stone-200 rounded-xl overflow-hidden">
         <table className="w-full text-sm">
@@ -218,6 +302,7 @@ function AnnouncementsList({ onCompose, onView, refresh }) {
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 }
@@ -1070,26 +1155,66 @@ function PanelThumb({ panel }) {
   );
 }
 
-function ViewModal({ ann, onClose, onEdit, onDuplicate }) {
+function ViewModal({ ann, onClose, onEdit, onDuplicate, onPublished }) {
+  const [publishing, setPublishing] = useState(false);
   if (!ann) return null;
+  const isDraft = ann.status === "draft";
+
+  const publish = async () => {
+    if (!window.confirm(`Publish this update to ALL ACTIVE franchisees now? They'll see it on their portal HQ Updates page.`)) return;
+    setPublishing(true);
+    try {
+      await api.post(`/admin/announcements/${ann.id}/publish`, {
+        confirm_send_all: true,
+        frontend_origin: window.location.origin,
+      });
+      onPublished?.();
+      onClose?.();
+    } catch (e) {
+      alert(e?.response?.data?.detail || "Publish failed.");
+    } finally { setPublishing(false); }
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-stone-950/40 backdrop-blur-sm flex items-start justify-center px-4 py-8 overflow-y-auto" onClick={onClose}>
       <div className="bg-white w-full max-w-3xl rounded-2xl border border-stone-200 my-auto" onClick={(e) => e.stopPropagation()}>
         <div className="px-6 py-5 border-b border-stone-200 flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Update</div>
+            <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 flex items-center gap-2">
+              {isDraft ? (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 rounded">DRAFT — not yet sent</span>
+              ) : "Update"}
+            </div>
             <h2 className="font-display text-2xl font-black text-stone-950 truncate">{ann.title}</h2>
-            <div className="text-xs text-stone-500 mt-1 flex items-center gap-3"><Calendar className="w-3 h-3" /> {fmtDate(ann.sent_at || ann.created_at)} · {ann.recipient_count} recipients · {ann.delivery?.status}</div>
+            <div className="text-xs text-stone-500 mt-1 flex items-center gap-3">
+              <Calendar className="w-3 h-3" /> {fmtDate(ann.sent_at || ann.created_at)}
+              {!isDraft && <> · {ann.recipient_count} recipients · {ann.delivery?.status}</>}
+            </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <button onClick={() => onDuplicate?.(ann)} data-testid="ann-view-duplicate"
-              className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider bg-white border border-stone-300 hover:bg-stone-50 text-stone-700 rounded-lg flex items-center gap-1">
-              <Plus className="w-3 h-3" /> Duplicate
-            </button>
-            <button onClick={() => onEdit?.(ann)} data-testid="ann-view-edit"
-              className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider bg-stone-950 text-[#dddd16] hover:bg-stone-800 rounded-lg flex items-center gap-1">
-              <Send className="w-3 h-3" /> Edit / Resend
-            </button>
+            {isDraft ? (
+              <>
+                <button onClick={() => onEdit?.(ann)} data-testid="ann-view-edit"
+                  className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider bg-white border border-stone-300 hover:bg-stone-50 text-stone-700 rounded-lg flex items-center gap-1">
+                  <Pencil className="w-3 h-3" /> Edit
+                </button>
+                <button onClick={publish} disabled={publishing} data-testid="ann-view-publish"
+                  className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg flex items-center gap-1 disabled:opacity-60">
+                  {publishing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />} Publish now
+                </button>
+              </>
+            ) : (
+              <>
+                <button onClick={() => onDuplicate?.(ann)} data-testid="ann-view-duplicate"
+                  className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider bg-white border border-stone-300 hover:bg-stone-50 text-stone-700 rounded-lg flex items-center gap-1">
+                  <Plus className="w-3 h-3" /> Duplicate
+                </button>
+                <button onClick={() => onEdit?.(ann)} data-testid="ann-view-edit"
+                  className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider bg-stone-950 text-[#dddd16] hover:bg-stone-800 rounded-lg flex items-center gap-1">
+                  <Send className="w-3 h-3" /> Edit / Resend
+                </button>
+              </>
+            )}
             <button onClick={onClose} className="w-9 h-9 rounded-full border border-stone-300 hover:bg-stone-50 flex items-center justify-center"><X className="w-4 h-4" /></button>
           </div>
         </div>
@@ -1137,7 +1262,7 @@ export default function AnnouncementsPage() {
         onClose={() => setComposeSeed(null)}
         onSent={() => { setComposeSeed(null); setRefreshKey((k) => k + 1); }}
       />
-      <ViewModal ann={viewing} onClose={() => setViewing(null)} onEdit={openEdit} onDuplicate={openDuplicate} />
+      <ViewModal ann={viewing} onClose={() => setViewing(null)} onEdit={openEdit} onDuplicate={openDuplicate} onPublished={() => setRefreshKey((k) => k + 1)} />
     </>
   );
 }

@@ -866,8 +866,22 @@ def attach(api, db, require_role):
                 "errors": []}
 
     @api.get("/admin/announcements")
-    async def list_announcements(_: dict = Depends(require_role("admin"))):
-        items = await db.announcements.find({}, {"_id": 0}) \
+    async def list_announcements(
+        status: Optional[str] = None,
+        _: dict = Depends(require_role("admin")),
+    ):
+        # Drafts live alongside sent announcements but are hidden by
+        # default — pass ?status=draft (or "sent") to scope the list.
+        # status=all returns both.
+        q: dict = {}
+        if status == "draft":
+            q["status"] = "draft"
+        elif status == "all":
+            pass
+        else:
+            # Default and ?status=sent both hide drafts.
+            q["status"] = {"$ne": "draft"}
+        items = await db.announcements.find(q, {"_id": 0}) \
             .sort("created_at", -1).limit(200).to_list(200)
         today = datetime.now(timezone.utc).date().isoformat()
         for it in items:
@@ -985,6 +999,112 @@ def attach(api, db, require_role):
         if not r.deleted_count:
             raise HTTPException(404, "Not found")
         return {"ok": True}
+
+    # ----- Drafts ---------------------------------------------------------
+    # Drafts are HQ Updates that have been saved but not yet "sent" (i.e.
+    # not yet visible on the franchisee portal). They're filtered out of
+    # ``GET /admin/announcements`` and ``GET /portal/announcements`` by
+    # default, surfacing only in the dedicated Drafts tab on the admin
+    # HQ Updates page. Originally added so the Calendar's "Mojo Grow
+    # Meeting" button can auto-create a meeting + the matching HQ Update
+    # but leave the admin a moment to review before broadcasting.
+    @api.post("/admin/announcements/draft")
+    async def create_draft_announcement(
+        body: dict,
+        user: dict = Depends(require_role("admin")),
+    ):
+        title = (body.get("title") or "").strip()
+        if not title:
+            raise HTTPException(400, "title is required")
+        panels = body.get("panels") or []
+        if not isinstance(panels, list):
+            raise HTTPException(400, "panels must be a list")
+        intro = body.get("intro") or ""
+        category = (body.get("category") or "general").strip().lower()
+        if category not in ("project", "meetings", "general"):
+            raise HTTPException(400, "category must be one of: project, meetings, general")
+        body_html_in = (body.get("body_html") or "").strip()
+        pinned_until = (body.get("pinned_until") or "").strip() or None
+        # Persist the chosen recipients EXACTLY as supplied — null means
+        # "all active" which is resolved at publish-time so the count
+        # is accurate at the moment of send.
+        recipient_ids = body.get("recipient_ids") or None
+        ann = {
+            "id": str(uuid.uuid4()),
+            "title": title,
+            "intro": intro,
+            "panels": panels,
+            "body_html": _sanitise_body_html(body_html_in) if category == "general" else "",
+            "category": category,
+            "pinned_until": pinned_until,
+            "recipient_ids": list(recipient_ids) if recipient_ids else None,
+            "created_at": _now_iso(),
+            "created_by": user.get("email"),
+            "status": "draft",
+            "delivery": {"status": "draft", "succeeded": 0, "failed": 0, "errors": []},
+            # Provenance — let downstream tooling see how a draft was
+            # created. The Calendar Mojo Grow flow sets this to the
+            # event id so the user can trace one back to the other.
+            "source": (body.get("source") or "manual"),
+            "source_calendar_event_id": body.get("source_calendar_event_id") or None,
+        }
+        await db.announcements.insert_one(ann)
+        return {"ok": True, "announcement_id": ann["id"], "status": "draft"}
+
+    @api.post("/admin/announcements/{ann_id}/publish")
+    async def publish_draft_announcement(
+        ann_id: str,
+        body: dict,
+        request: Request,
+        user: dict = Depends(require_role("admin")),
+    ):
+        """Promote a draft to a live HQ Update. Reuses the same recipient
+        resolution + safety guardrails as the regular create+send flow so
+        we get the preview-host lockout and the explicit confirm-send-all
+        protection for free."""
+        draft = await db.announcements.find_one({"id": ann_id}, {"_id": 0})
+        if not draft:
+            raise HTTPException(404, "Draft not found")
+        if draft.get("status") != "draft":
+            raise HTTPException(400, "Announcement is not a draft")
+
+        # Build a payload as if the admin had just clicked "Send Now"
+        # on the original composer and forward to the existing create
+        # endpoint's logic. We replicate the relevant body fields and
+        # delete the draft row only after success (so a failure leaves
+        # the draft editable for retry).
+        proxy_body = {
+            "title": draft.get("title"),
+            "intro": draft.get("intro") or "",
+            "panels": draft.get("panels") or [],
+            "body_html": draft.get("body_html") or "",
+            "category": draft.get("category") or "general",
+            "pinned_until": draft.get("pinned_until"),
+            "recipient_ids": (body or {}).get("recipient_ids") or draft.get("recipient_ids"),
+            "confirm_send_all": (body or {}).get("confirm_send_all", False),
+            "frontend_origin": (body or {}).get("frontend_origin")
+                or request.headers.get("origin") or "",
+        }
+        # Reuse the main create+send pathway. We can't simply call the
+        # other route function (FastAPI dependency injection wouldn't be
+        # set up) so we duplicate the smallest viable subset of its logic
+        # inline. For now: directly POST through the same internal client.
+        # Simpler: just call create_announcement directly.
+        result = await create_announcement(proxy_body, request, user)
+        # Mark the original draft as published — keep the row for audit,
+        # don't delete (so the admin can scroll back through old drafts
+        # if curious). The newly-created announcement row contains the
+        # actual send.
+        await db.announcements.update_one(
+            {"id": ann_id},
+            {"$set": {
+                "status": "published",
+                "published_at": _now_iso(),
+                "published_as_announcement_id": result.get("announcement_id"),
+            }},
+        )
+        return {"ok": True, **(result or {})}
+
 
     @api.post("/admin/announcements/{ann_id}/unpin")
     async def unpin_announcement(
@@ -1153,12 +1273,13 @@ def attach(api, db, require_role):
         ``is_pinned=True`` for the convenience of the portal renderer.
         """
         if user.get("role") == "admin":
-            items = await db.announcements.find({}, {"_id": 0}) \
-                .sort("created_at", -1).limit(200).to_list(200)
+            items = await db.announcements.find(
+                {"status": {"$ne": "draft"}}, {"_id": 0},
+            ).sort("created_at", -1).limit(200).to_list(200)
         else:
             fid = user.get("franchisee_id") or user.get("id")
             items = await db.announcements.find(
-                {"sent_to": fid}, {"_id": 0},
+                {"sent_to": fid, "status": {"$ne": "draft"}}, {"_id": 0},
             ).sort("created_at", -1).limit(200).to_list(200)
 
         # Annotate + sort.
