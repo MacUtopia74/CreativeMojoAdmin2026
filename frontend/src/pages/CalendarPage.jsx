@@ -1314,29 +1314,73 @@ function Input({ label, value, onChange, placeholder, testid, icon: Icon }) {
 }
 
 function DateInput({ label, value, onChange, allDay, testid }) {
-  // step=900 → minute picker only offers 15-minute increments
-  // (00 / 15 / 30 / 45). Lines up with how HQ runs meetings and
-  // avoids the firehose of every individual minute the browser
-  // picker shows by default.
-  const snapTo15 = (raw) => {
-    if (!raw || allDay) return raw;
-    // raw is "YYYY-MM-DDTHH:MM" — snap MM down to the nearest 15.
-    const [datePart, timePart] = raw.split("T");
-    if (!timePart) return raw;
-    const [hh, mm] = timePart.split(":");
-    const snapped = String(Math.floor(Number(mm || 0) / 15) * 15).padStart(2, "0");
-    return `${datePart}T${hh}:${snapped}`;
+  // For datetime fields we replace the browser's native datetime-local
+  // input with a date picker + dedicated hour/minute selects. The
+  // native picker's spinner ignores `step="900"` and shows every minute
+  // 0-59, which made it too easy for admins to pick an awkward time
+  // like 14:23. The constrained selects enforce 06-22 hours and
+  // 15-minute increments by construction.
+  const parts = (value || "").split("T");
+  const datePart = parts[0] || "";
+  const timePart = parts[1] || "09:00";
+  const [hhStr, mmStr] = timePart.split(":");
+  const hh = Number.parseInt(hhStr || "9", 10);
+  const mm = Number.parseInt(mmStr || "0", 10);
+
+  // Snap hour into 6..22 range, minute to 00/15/30/45 — used when we
+  // parse an externally-set value that doesn't already conform.
+  const snapHour = (n) => Math.min(22, Math.max(6, Number.isFinite(n) ? n : 9));
+  const snapMin = (n) => {
+    if (!Number.isFinite(n)) return 0;
+    const buckets = [0, 15, 30, 45];
+    return buckets.reduce((best, b) => (Math.abs(n - b) < Math.abs(n - best) ? b : best), 0);
   };
+
+  const emit = (d, h, m) => {
+    if (!d) return;
+    if (allDay) { onChange(d); return; }
+    onChange(`${d}T${String(snapHour(h)).padStart(2, "0")}:${String(snapMin(m)).padStart(2, "0")}`);
+  };
+
   return (
     <div>
       <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-1">{label}</label>
-      <input
-        type={allDay ? "date" : "datetime-local"}
-        value={allDay ? value.slice(0, 10) : value}
-        step={allDay ? undefined : 900}
-        onChange={(e) => onChange(allDay ? e.target.value : snapTo15(e.target.value))}
-        data-testid={testid}
-        className="w-full px-3 py-2 text-sm border border-stone-300 rounded-lg tabular-nums" />
+      <div className="flex items-center gap-1.5">
+        <input
+          type="date"
+          value={datePart}
+          onChange={(e) => emit(e.target.value, hh, mm)}
+          data-testid={testid}
+          className="flex-1 px-3 py-2 text-sm border border-stone-300 rounded-lg tabular-nums"
+        />
+        {!allDay && (
+          <>
+            <select
+              value={snapHour(hh)}
+              onChange={(e) => emit(datePart, Number(e.target.value), mm)}
+              data-testid={`${testid}-hour`}
+              aria-label="Hour"
+              className="px-2 py-2 text-sm border border-stone-300 rounded-lg tabular-nums bg-white"
+            >
+              {Array.from({ length: 22 - 6 + 1 }, (_, i) => 6 + i).map((h) => (
+                <option key={h} value={h}>{String(h).padStart(2, "0")}</option>
+              ))}
+            </select>
+            <span className="text-stone-500 font-bold">:</span>
+            <select
+              value={snapMin(mm)}
+              onChange={(e) => emit(datePart, hh, Number(e.target.value))}
+              data-testid={`${testid}-minute`}
+              aria-label="Minute"
+              className="px-2 py-2 text-sm border border-stone-300 rounded-lg tabular-nums bg-white"
+            >
+              {[0, 15, 30, 45].map((m) => (
+                <option key={m} value={m}>{String(m).padStart(2, "0")}</option>
+              ))}
+            </select>
+          </>
+        )}
+      </div>
     </div>
   );
 }
