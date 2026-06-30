@@ -1647,15 +1647,24 @@ export default function ContactsPage() {
   };
 
   const clearSelection = () => { setSelectedIds(new Set()); setLastSelectedId(null); };
-  // Visible items (filtered + age + source) — needed so shift-select knows the range
+  // Visible items (filtered + age + source) — needed so shift-select knows the range.
+  // Default order: newest "contacted on" date at the top, oldest at the bottom.
+  // Cards without a date sink to the bottom (rare — usually means an import gap).
   const visibleItems = useMemo(() => {
     const af = AGE_TIERS.find((t) => t.key === ageFilter) || AGE_TIERS[0];
-    return data.items.filter((c) => {
+    const filtered = data.items.filter((c) => {
       if (!af.test(daysSince(c.date || c.date_added))) return false;
       if (sourceFilter === "franchise" && c.source !== "franchise_enquiry") return false;
       if (sourceFilter === "licence"   && c.source !== "licence_enquiry")   return false;
       return true;
     });
+    const ts = (c) => {
+      const d = c.date || c.date_added;
+      if (!d) return -Infinity;
+      const t = Date.parse(d);
+      return Number.isFinite(t) ? t : -Infinity;
+    };
+    return filtered.sort((a, b) => ts(b) - ts(a));
   }, [data.items, ageFilter, sourceFilter]);
 
   const toggleSelect = (id, evt) => {
