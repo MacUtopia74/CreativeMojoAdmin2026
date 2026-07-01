@@ -1818,6 +1818,9 @@ export default function ContactsPage() {
       await api.patch(`/contacts/${contactId}/pipeline`, { pipeline_status: newStage });
       setData((d) => ({ ...d, items: d.items.map((c) => (c.id === contactId ? { ...c, pipeline_status: newStage } : c)) }));
       setSelected((sel) => sel && sel.id === contactId ? { ...sel, pipeline_status: newStage } : sel);
+      // Nudge the sidebar "new leads" badge to re-fetch — Layout listens
+      // for this and decrements as soon as a NEW lead is triaged.
+      window.dispatchEvent(new CustomEvent("pipeline:stage-changed", { detail: { contactId, newStage } }));
     } catch (e) { /* noop */ }
   };
 

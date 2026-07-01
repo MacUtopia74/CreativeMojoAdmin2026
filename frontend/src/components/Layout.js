@@ -70,7 +70,7 @@ const SIDEBAR = [
   },
   { kind: "divider" },
 
-  { kind: "item", to: "/contacts", label: "Sales & Contacts", icon: Contact, testid: "nav-contacts", permKey: "contacts" },
+  { kind: "item", to: "/contacts", label: "Sales & Contacts", icon: Contact, testid: "nav-contacts", permKey: "contacts", alertBadge: "new_pipeline" },
   { kind: "divider" },
 
   // Files promoted to top-level (was a child under Franchises) so it lives
@@ -147,7 +147,7 @@ const SIDEBAR_V2 = [
   { kind: "divider" },
   { kind: "item", to: "/territory-builder",      label: "Territory Builder",    icon: Target,          testid: "nav-territory-builder",     permKey: "territory-builder" },
   { kind: "divider" },
-  { kind: "item", to: "/contacts",               label: "Sales & Contacts",     icon: Contact,         testid: "nav-contacts",              permKey: "contacts" },
+  { kind: "item", to: "/contacts",               label: "Sales & Contacts",     icon: Contact,         testid: "nav-contacts",              permKey: "contacts", alertBadge: "new_pipeline" },
   { kind: "divider" },
   { kind: "item", to: "/files",                  label: "Files",                icon: FolderOpen,      testid: "nav-files",                 permKey: "files" },
   { kind: "divider" },
@@ -481,6 +481,35 @@ export default function Layout() {
     return () => { active = false; clearInterval(id); };
   }, [user?.email]);
 
+  // Poll for the count of pipeline contacts in "new" stage — inbound
+  // leads Sandra hasn't triaged yet. Drives the red badge on the
+  // "Sales & Contacts" sidebar entry. Admin-only endpoint; non-admins
+  // silently see 0.
+  const [newPipelineCount, setNewPipelineCount] = useState(0);
+  useEffect(() => {
+    let active = true;
+    const fetchNewPipeline = async () => {
+      try {
+        const { data } = await api.get("/contacts/alerts/new-pipeline");
+        if (active) setNewPipelineCount(data?.count || 0);
+      } catch {/* ignore */}
+    };
+    if (user?.role === "admin") {
+      fetchNewPipeline();
+      const id = setInterval(fetchNewPipeline, 2 * 60 * 1000);
+      // Refresh immediately whenever a pipeline stage change fires
+      // elsewhere in the app (e.g. Contacts drawer "Mark contacted").
+      const handler = () => fetchNewPipeline();
+      window.addEventListener("pipeline:stage-changed", handler);
+      return () => {
+        active = false;
+        clearInterval(id);
+        window.removeEventListener("pipeline:stage-changed", handler);
+      };
+    }
+    return () => { active = false; };
+  }, [user?.email, user?.role]);
+
   // Poll for "anniversaries today still needing an email" — drives the
   // round badge next to the Dashboard nav item so Sandra remembers to
   // hit Send on the day. Decrements live when she sends from the
@@ -508,6 +537,7 @@ export default function Layout() {
   const resolveBadge = (item) => {
     if (item.alertBadge === "missing_mandate") return missingMandateCount;
     if (item.alertBadge === "anniversary_today") return anniversaryPending;
+    if (item.alertBadge === "new_pipeline") return newPipelineCount;
     return undefined;
   };
 

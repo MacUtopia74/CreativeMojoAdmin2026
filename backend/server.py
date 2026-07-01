@@ -4140,6 +4140,21 @@ async def list_contacts(
     return {"items": items[:limit], "total": len(items)}
 
 
+@api.get("/contacts/alerts/new-pipeline")
+async def new_pipeline_alert_count(_: dict = Depends(require_role("admin"))):
+    """Count of live pipeline contacts currently sitting in the "new"
+    stage — i.e. inbound leads Sandra hasn't triaged yet. Powers the red
+    badge on the "Sales & Contacts" sidebar entry so incoming enquiries
+    are visible without opening the pipeline. Only counts non-merged
+    rows so re-imports / dedupes don't inflate the number."""
+    count = await db.web_form_contacts.count_documents({
+        "in_pipeline": True,
+        "pipeline_status": "new",
+        "merged_into": {"$in": [None, ""]},
+    })
+    return {"count": count}
+
+
 @api.get("/contacts/counts")
 async def contact_counts(_: dict = Depends(require_role("admin"))):
     """Total record counts per Contacts tab. Used for the tab-header badges
