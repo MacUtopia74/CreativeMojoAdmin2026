@@ -1749,6 +1749,28 @@ export default function ContactsPage() {
   // Reset selection whenever the tab/filter changes
   useEffect(() => { clearSelection(); setAgeFilter("all"); setSourceFilter("all"); setDisplayLimit(500); }, [tab, stageFilter, search]);
 
+  // Listen for auto-advance events fired by ReplyWithTemplateModal
+  // (backend moves a "new" contact to "contacted" when a templated
+  // email is sent). We update local state so the card moves columns
+  // immediately without a full reload.
+  useEffect(() => {
+    const handler = (e) => {
+      const { contactId, newStage } = e.detail || {};
+      if (!contactId || !newStage) return;
+      setData((d) => ({
+        ...d,
+        items: d.items.map((c) => (c.id === contactId
+          ? { ...c, pipeline_status: newStage, in_pipeline: true }
+          : c)),
+      }));
+      setSelected((sel) => sel && sel.id === contactId
+        ? { ...sel, pipeline_status: newStage, in_pipeline: true }
+        : sel);
+    };
+    window.addEventListener("pipeline:stage-changed", handler);
+    return () => window.removeEventListener("pipeline:stage-changed", handler);
+  }, []);
+
   const moveContact = async (contactId, target, pipeline_status) => {
     try {
       await api.post(`/contacts/${contactId}/move`, { target, pipeline_status });

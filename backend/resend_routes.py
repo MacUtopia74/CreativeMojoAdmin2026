@@ -291,7 +291,33 @@ def build_resend_router(db, require_role):
         }
         await db.email_sends.insert_one(doc)
         doc.pop("_id", None)
-        return {"ok": True, "send": doc}
+
+        # Auto-advance a "new" pipeline contact to "contacted" as soon
+        # as a templated email is sent — we've now made contact, so
+        # leaving it in NEW is misleading and inflates the sidebar
+        # badge. Only fires for template sends (template_id present)
+        # and only when the current stage is "new". Free-text replies
+        # don't auto-advance (the user is presumably already past NEW
+        # anyway).
+        auto_advanced = False
+        if body.template_id and (contact.get("pipeline_status") == "new"):
+            now_iso = datetime.now(timezone.utc).isoformat()
+            patch = {
+                "pipeline_status": "contacted",
+                "updated_at": now_iso,
+                "pipeline_status_updated_at": now_iso,
+            }
+            r = await db.web_form_contacts.update_one(
+                {"id": body.contact_id},
+                {"$set": {**patch, "in_pipeline": True}},
+            )
+            if r.matched_count == 0:
+                r = await db.contacts.update_one(
+                    {"id": body.contact_id}, {"$set": patch},
+                )
+            auto_advanced = r.matched_count > 0
+
+        return {"ok": True, "send": doc, "auto_advanced_to_contacted": auto_advanced}
 
     # -------------------------------------------------------- list per-contact
     @router.get("/email/sends")

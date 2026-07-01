@@ -126,7 +126,17 @@ export default function ReplyWithTemplateModal({ open, contact, onClose, onSent 
         body_html: selected.rendered_html || selected.body_html || "",
       });
       toast.success(`Email sent to ${toList[0]}${toList.length > 1 ? ` (+${toList.length - 1})` : ""}`);
-      if (onSent) onSent(data.send);
+      // Backend auto-advances "new" contacts to "contacted" on template
+      // send. Fire the same event ContactsPage.updateStage fires so the
+      // sidebar red badge decrements immediately and the kanban card
+      // moves without a full refresh.
+      if (data?.auto_advanced_to_contacted) {
+        toast.success("Moved to Contacted", { duration: 2500 });
+        window.dispatchEvent(new CustomEvent("pipeline:stage-changed", {
+          detail: { contactId: contact.id, newStage: "contacted", source: "template-send" },
+        }));
+      }
+      if (onSent) onSent(data.send, { autoAdvancedToContacted: !!data?.auto_advanced_to_contacted });
       onClose();
     } catch (e) {
       const msg = e?.response?.data?.detail || e?.message || "Failed to send";
