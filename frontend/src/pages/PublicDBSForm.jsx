@@ -33,6 +33,57 @@ function Field({ label, required, children }) {
 
 const inputCls = "w-full px-3 py-2 border border-stone-300 rounded-md focus:outline-none focus:ring-2 focus:ring-stone-950 text-sm";
 
+// Simple Month + Year dropdown picker. Emits an ISO-ish "YYYY-MM"
+// string (or "" when cleared) so it stays compatible with everything
+// that was reading the old <input type="month"> value.
+const MONTHS = [
+  ["01", "Jan"], ["02", "Feb"], ["03", "Mar"], ["04", "Apr"],
+  ["05", "May"], ["06", "Jun"], ["07", "Jul"], ["08", "Aug"],
+  ["09", "Sep"], ["10", "Oct"], ["11", "Nov"], ["12", "Dec"],
+];
+// 60 years back → 5 years forward — covers every plausible address
+// history entry without letting them scroll to 1900.
+const CURRENT_YEAR = new Date().getFullYear();
+const YEARS = Array.from({ length: 66 }, (_, i) => String(CURRENT_YEAR + 5 - i));
+
+function MonthYearPicker({ value, onChange, allowPresent = false, testid }) {
+  // "value" is "YYYY-MM" or "present" or "". Split for the two selects.
+  const isPresent = value === "present";
+  const [y = "", m = ""] = isPresent ? ["", ""] : (value || "").split("-");
+  const emit = (nextY, nextM) => {
+    if (nextY === "present") { onChange("present"); return; }
+    if (!nextY && !nextM) { onChange(""); return; }
+    if (nextY && nextM) { onChange(`${nextY}-${nextM}`); return; }
+    // Partial — hold in-place; parent still gets the partial string so
+    // the fields don't visually reset while the user is picking.
+    onChange(`${nextY || ""}${nextM ? `-${nextM}` : ""}`);
+  };
+  return (
+    <div className="flex gap-2">
+      <select
+        value={isPresent ? "" : m}
+        onChange={(e) => emit(y, e.target.value)}
+        className={inputCls + " flex-1"}
+        data-testid={testid ? `${testid}-month` : undefined}
+        disabled={isPresent}
+      >
+        <option value="">Month</option>
+        {MONTHS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+      </select>
+      <select
+        value={isPresent ? "present" : y}
+        onChange={(e) => emit(e.target.value, m)}
+        className={inputCls + " flex-1"}
+        data-testid={testid ? `${testid}-year` : undefined}
+      >
+        <option value="">Year</option>
+        {allowPresent && <option value="present">Present</option>}
+        {YEARS.map((yy) => <option key={yy} value={yy}>{yy}</option>)}
+      </select>
+    </div>
+  );
+}
+
 export default function PublicDBSForm() {
   const { token } = useParams();
   const [meta, setMeta] = useState(null);
@@ -222,9 +273,9 @@ export default function PublicDBSForm() {
                 <textarea rows={2} className={inputCls} value={a.address} onChange={(e) => setAddr(i, "address", e.target.value)}
                   placeholder="House number/name, street, town, county, postcode" data-testid={`dbs-address-input-${i}`} />
               </Field>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="From (Month/Year)"><input type="month" className={inputCls} value={a.from} onChange={(e) => setAddr(i, "from", e.target.value)} data-testid={`dbs-address-from-${i}`} /></Field>
-                <Field label="To (Month/Year)"><input type="month" className={inputCls} value={a.to} onChange={(e) => setAddr(i, "to", e.target.value)} placeholder="Or 'Present'" data-testid={`dbs-address-to-${i}`} /></Field>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <Field label="From (Month/Year)"><MonthYearPicker value={a.from} onChange={(v) => setAddr(i, "from", v)} testid={`dbs-address-from-${i}`} /></Field>
+                <Field label="To (Month/Year)"><MonthYearPicker value={a.to} onChange={(v) => setAddr(i, "to", v)} allowPresent testid={`dbs-address-to-${i}`} /></Field>
               </div>
             </div>
           ))}
@@ -247,7 +298,7 @@ export default function PublicDBSForm() {
         <Section title="Birth Surname">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Field label="Surname at Birth"><input className={inputCls} value={form.birth_surname} onChange={(e) => set("birth_surname", e.target.value)} /></Field>
-            <Field label="Used Until"><input type="month" className={inputCls} value={form.birth_surname_used_until} onChange={(e) => set("birth_surname_used_until", e.target.value)} /></Field>
+            <Field label="Used Until"><MonthYearPicker value={form.birth_surname_used_until} onChange={(v) => set("birth_surname_used_until", v)} allowPresent testid="dbs-birth-surname-used-until" /></Field>
           </div>
         </Section>
 
