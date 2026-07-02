@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
 import api from "@/lib/api";
 import { formatDate, daysFromToday } from "@/lib/date";
-import { ArrowLeft, MapPin, AlertCircle, User, FileText, Map, MessageSquare, Pencil, Check, X as XIcon, Clock, ShieldCheck, ShieldAlert, Globe, Facebook, CreditCard, RefreshCw, AlertTriangle, Power, PowerOff, BellRing, FolderOpen, LockKeyhole, Calendar, Camera, Loader2, ClipboardList } from "lucide-react";
+import { ArrowLeft, MapPin, AlertCircle, User, FileText, Map, MessageSquare, Pencil, Check, X as XIcon, Clock, ShieldCheck, ShieldAlert, Globe, Facebook, CreditCard, RefreshCw, AlertTriangle, Power, PowerOff, BellRing, FolderOpen, LockKeyhole, Calendar, Camera, Loader2, ClipboardList, BadgeCheck } from "lucide-react";
 import FranchiseeFilesPanel from "@/components/files/FranchiseeFilesPanel";
 import FranchiseePortalControls from "@/components/franchisee/FranchiseePortalControls";
 import PortalModulesPanel from "@/components/franchisee/PortalModulesPanel";
@@ -11,6 +11,7 @@ import RecentFilesStrip from "@/components/files/RecentFilesStrip";
 import FilePreviewModal from "@/components/files/FilePreviewModal";
 import AddContractModal from "@/components/franchisee/AddContractModal";
 import LaunchChecklistModal from "@/components/LaunchChecklistModal";
+import DBSModal from "@/components/dbs/DBSModal";
 import LoginLog from "@/components/auth/LoginLog";
 import AnnouncementReadLog from "@/components/announcements/AnnouncementReadLog";
 import FileVaultAuditLog from "@/components/files/FileVaultAuditLog";
@@ -425,6 +426,9 @@ export default function FranchiseeDetailPage() {
   // In-house Launch Prep checklist modal — only available post-conversion,
   // so it lives on the Franchisee page (not on the Contact drawer).
   const [launchOpen, setLaunchOpen] = useState(false);
+  // DBS Applications modal — mint a tokenized public form URL and
+  // email it to the franchisee. See DBSModal for details.
+  const [dbsOpen, setDbsOpen] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -615,6 +619,13 @@ export default function FranchiseeDetailPage() {
           )}
           {!editing ? (
             <>
+              <button
+                onClick={() => setDbsOpen(true)}
+                data-testid="franchisee-dbs-open"
+                title="DBS Applications for this franchisee"
+                className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider border border-stone-300 bg-white text-stone-900 hover:bg-stone-50 rounded-lg flex items-center gap-1.5">
+                <BadgeCheck className="w-3.5 h-3.5" /> DBS
+              </button>
               <button
                 onClick={() => setLaunchOpen(true)}
                 data-testid="franchisee-launch-checklist-open"
@@ -966,6 +977,12 @@ export default function FranchiseeDetailPage() {
         </Panel>
       </div>
       {previewFile && <FilePreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />}
+      {dbsOpen && (
+        <DBSModal
+          franchisee={f}
+          onClose={() => setDbsOpen(false)}
+        />
+      )}
       <LaunchChecklistModal
         open={launchOpen}
         subject={f}

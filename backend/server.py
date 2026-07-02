@@ -5833,6 +5833,10 @@ api.include_router(build_help_router(db, require_role))
 api.include_router(build_email_templates_router(db, require_role))
 api.include_router(build_resend_router(db, require_role))
 
+# DBS Applications — franchisee onboarding form + admin dashboard.
+from dbs_routes import build_dbs_router  # noqa: E402
+api.include_router(build_dbs_router(db, require_role))
+
 # Public PDF landing pages — admin CRUD + public viewer + visit tracking.
 # Imports the body-HTML sanitiser from announcements_routes (where the
 # bleach allow-list lives) so both surfaces enforce the same XSS policy.

@@ -80,6 +80,7 @@ api.interceptors.response.use(
       || pathNow.startsWith("/portal/login")
       || pathNow.startsWith("/share/")
       || pathNow.startsWith("/info/")
+      || pathNow.startsWith("/dbs/apply/")
     ) {
       throw error;
     }
@@ -108,6 +109,7 @@ api.interceptors.response.use(
         && !path.startsWith("/portal/login")
         && !path.startsWith("/share/")
         && !path.startsWith("/info/")
+        && !path.startsWith("/dbs/apply/")
       ) {
         const target = path.startsWith("/portal") ? "/portal/login" : "/login";
         window.location.href = target;

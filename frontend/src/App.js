@@ -15,6 +15,7 @@ import FilesPage from "@/pages/FilesPage";
 import ContactsPage from "@/pages/ContactsPage";
 import FormIntakePage from "@/pages/FormIntakePage";
 import PublicFolderSharePage from "@/pages/PublicFolderSharePage";
+import PublicDBSForm from "@/pages/PublicDBSForm";
 import PublicTerritorySharePage from "@/pages/PublicTerritorySharePage";
 import PortalLoginPage from "@/pages/PortalLoginPage";
 import TerritoryBuilderPage from "@/pages/TerritoryBuilderPage";
@@ -134,6 +135,7 @@ export default function App() {
               </Route>
             </Route>
             <Route path="/share/folder/:token" element={<PublicFolderSharePage />} />
+            <Route path="/dbs/apply/:token" element={<PublicDBSForm />} />
             <Route path="/share/territory/:token" element={<PublicTerritorySharePage />} />
             {/* Public PDF landing pages — no auth required so recipients can
                 view from any inbox / forwarded email. */}
