@@ -15,6 +15,10 @@ export default function PortalFilesPage() {
   const { profile: data } = useOutletContext();
   const profile = data?.profile;
   const [previewFile, setPreviewFile] = useState(null);
+  // Signal passed to FranchiseeFilesPanel to jump to a folder when the
+  // "Recently added" strip is clicked. Uses an object so re-clicking
+  // the same folder still triggers the effect (stable-value bugbear).
+  const [openFolderSignal, setOpenFolderSignal] = useState(null);
   if (!profile) return null;
 
   const downloadRecent = async (key) => {
@@ -35,9 +39,24 @@ export default function PortalFilesPage() {
       <RecentFilesStrip
         onOpenFile={(f) => setPreviewFile(f)}
         onDownload={downloadRecent}
-        onOpenFolder={() => { /* the panel below is the browser */ }}
+        onOpenFolder={(key) => {
+          // Bump signal into the file browser panel below. Suffix with
+          // a nonce so the useEffect fires even when the same folder is
+          // clicked twice in a row.
+          setOpenFolderSignal({ key, nonce: Date.now() });
+          // Scroll the panel into view so the user sees the change
+          // (the strip is above the panel on tall screens).
+          setTimeout(() => {
+            document.querySelector('[data-testid="franchisee-files-panel"]')
+              ?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }, 50);
+        }}
       />
-      <FranchiseeFilesPanel franchisee={profile} lockedTab="brand" />
+      <FranchiseeFilesPanel
+        franchisee={profile}
+        lockedTab="brand"
+        openPrefixSignal={openFolderSignal?.key}
+      />
       {previewFile && <FilePreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />}
     </div>
   );

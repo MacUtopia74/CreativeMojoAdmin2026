@@ -32,7 +32,7 @@ function fmtBytes(b) {
 
 const BRAND_ROOT = "shared/files-for-all-franchisees/";
 
-export default function FranchiseeFilesPanel({ franchisee, canUpload = true, lockedTab = null, hideZipAll = false, hideRootBreadcrumb = false }) {
+export default function FranchiseeFilesPanel({ franchisee, canUpload = true, lockedTab = null, hideZipAll = false, hideRootBreadcrumb = false, openPrefixSignal = null }) {
   // ``lockedTab`` — when "own" or "brand", the panel renders ONLY that tab and
   // hides the tab strip. Used by the portal which splits the two scopes
   // across two physical sections (own files inside the YOUR FRANCHISE DETAILS
@@ -76,6 +76,21 @@ export default function FranchiseeFilesPanel({ franchisee, canUpload = true, loc
 
   const rootPrefix = tab === "own" ? ownRootPrefix : BRAND_ROOT;
   const fullPrefix = rootPrefix ? rootPrefix + prefix : null;
+
+  // Allow the parent (e.g. PortalFilesPage) to imperatively navigate
+  // this panel to a specific absolute R2 prefix — used by the
+  // "Recently added" strip so franchisees can click a folder tile and
+  // jump straight into it. ``openPrefixSignal`` is an absolute key
+  // (e.g. "shared/files-for-all-franchisees/Foo Bar/"); we strip the
+  // active tab's root prefix to get the panel's relative path.
+  useEffect(() => {
+    if (!openPrefixSignal || !rootPrefix) return;
+    if (!openPrefixSignal.startsWith(rootPrefix)) return; // out of scope
+    const rel = openPrefixSignal.slice(rootPrefix.length);
+    setPrefix(rel);
+    setSearch("");
+    setResults(null);
+  }, [openPrefixSignal, rootPrefix]);
 
   useEffect(() => {
     if (!fullPrefix || search) return;
