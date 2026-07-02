@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState } from "react";
 import api from "@/lib/api";
 import DOMPurify from "dompurify";
 import { toast } from "sonner";
+import { CATEGORY_BUCKETS, groupTemplatesByBucket } from "@/lib/emailTemplateCategories";
 import {
   Loader2, Send, X, AlertTriangle, FileText, Mail,
 } from "lucide-react";
@@ -169,16 +170,24 @@ export default function ReplyWithTemplateModal({ open, contact, onClose, onSent 
               className="w-full px-3 py-2 bg-white border border-stone-300 text-sm rounded-lg focus:outline-none focus:border-stone-900">
               <option value="">— Choose a template —</option>
               {loadingTemplates && <option disabled>Loading…</option>}
-              {/* Each template is uniquely identified by its `name`. The
-                  category is shown after a separator so admins can tell
-                  similarly-named templates apart, but the NAME is the
-                  primary differentiator — edit it from the Email
-                  Templates page top-left input. */}
-              {templates.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name || "(untitled)"}{t.category ? `   —   ${t.category}` : ""}
-                </option>
-              ))}
+              {/* Group by category bucket for at-a-glance scanning. Mirrors
+                  the sidebar grouping on /admin/email-templates. */}
+              {(() => {
+                const buckets = groupTemplatesByBucket(templates);
+                return CATEGORY_BUCKETS.map((b) => {
+                  const rows = buckets[b.id] || [];
+                  if (rows.length === 0) return null;
+                  return (
+                    <optgroup key={b.id} label={b.label}>
+                      {rows.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name || "(untitled)"}{t.category ? `   —   ${t.category}` : ""}
+                        </option>
+                      ))}
+                    </optgroup>
+                  );
+                });
+              })()}
             </select>
             <div className="text-[10px] text-stone-500 mt-1">
               Don&apos;t see your template? Open <a href="/admin/email-templates" target="_blank" rel="noopener noreferrer" className="underline">Email Templates</a> and rename it &mdash; the name shown above is what differentiates options here.

@@ -14,6 +14,7 @@ import { useEffect, useMemo, useState } from "react";
 import { X, Loader2, Send, Eye } from "lucide-react";
 import api from "@/lib/api";
 import { toast } from "sonner";
+import { CATEGORY_BUCKETS, groupTemplatesByBucket } from "@/lib/emailTemplateCategories";
 
 const DEFAULT_INTRO = (name) => (
   `<p>Hi ${name},</p>
@@ -41,17 +42,12 @@ export default function DBSComposeModal({ franchisee, onClose, onSent }) {
   const [sending, setSending] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
 
-  // Load templates (all — but DBS-tagged ones bubble to the top).
+  // Load templates (grouped by category bucket in the dropdown below).
   useEffect(() => {
     (async () => {
       try {
         const { data } = await api.get("/email-templates");
         const list = Array.isArray(data) ? data : (data?.templates || []);
-        // Sort: dbs category first, then franchise, then anything else.
-        list.sort((a, b) => {
-          const rank = (c) => c === "dbs" ? 0 : c === "franchise" ? 1 : 2;
-          return rank(a.category) - rank(b.category);
-        });
         setTemplates(list);
       } catch {
         setTemplates([]);

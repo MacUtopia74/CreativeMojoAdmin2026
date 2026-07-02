@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import api from "@/lib/api";
 import DOMPurify from "dompurify";
 import RichTextEditor from "@/components/RichTextEditor";
+import { CATEGORY_BUCKETS, groupTemplatesByBucket } from "@/lib/emailTemplateCategories";
 import {
   Loader2, Plus, Copy, Trash2, Save, X, Mail,
   Paperclip, FileText, ChevronRight, Search, AlertTriangle, CheckCircle2,
@@ -68,24 +69,44 @@ export default function EmailTemplatesPage() {
         </div>
         <ul className="flex-1 overflow-y-auto">
           {items.length === 0 && <li className="px-4 py-6 text-xs text-stone-500 text-center">No templates yet.</li>}
-          {items.map((t) => {
-            const active = t.id === selectedId;
-            return (
-              <li key={t.id}>
-                <button onClick={() => setSelectedId(t.id)}
-                  data-testid={`template-row-${t.id}`}
-                  className={`w-full text-left px-4 py-3 border-b border-stone-200 transition-colors ${active ? "bg-white" : "hover:bg-white"}`}>
-                  <div className="text-sm font-semibold text-stone-900 truncate">{t.name}</div>
-                  <div className="text-[11px] text-stone-500 truncate mt-0.5">{t.subject || "— no subject —"}</div>
-                  {t.category && (
-                    <span className="inline-block mt-1 px-1.5 py-0.5 text-[9px] uppercase tracking-wider font-bold bg-stone-200 text-stone-700 rounded">
-                      {t.category}
-                    </span>
-                  )}
-                </button>
-              </li>
-            );
-          })}
+          {/* Group templates into buckets driven by the free-text
+              Category tag — cleaner scanning as the library grows. */}
+          {(() => {
+            const buckets = groupTemplatesByBucket(items);
+            return CATEGORY_BUCKETS.map((b) => {
+              const rows = buckets[b.id] || [];
+              if (rows.length === 0) return null;
+              return (
+                <li key={b.id}>
+                  <div className="px-4 pt-4 pb-1 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 bg-stone-100 border-b border-stone-200"
+                       data-testid={`template-bucket-${b.id}`}>
+                    {b.label}
+                    <span className="ml-2 text-stone-400 font-normal">({rows.length})</span>
+                  </div>
+                  <ul>
+                    {rows.map((t) => {
+                      const active = t.id === selectedId;
+                      return (
+                        <li key={t.id}>
+                          <button onClick={() => setSelectedId(t.id)}
+                            data-testid={`template-row-${t.id}`}
+                            className={`w-full text-left px-4 py-3 border-b border-stone-200 transition-colors ${active ? "bg-white" : "hover:bg-white"}`}>
+                            <div className="text-sm font-semibold text-stone-900 truncate">{t.name}</div>
+                            <div className="text-[11px] text-stone-500 truncate mt-0.5">{t.subject || "— no subject —"}</div>
+                            {t.category && (
+                              <span className="inline-block mt-1 px-1.5 py-0.5 text-[9px] uppercase tracking-wider font-bold bg-stone-200 text-stone-700 rounded">
+                                {t.category}
+                              </span>
+                            )}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </li>
+              );
+            });
+          })()}
         </ul>
       </div>
 
