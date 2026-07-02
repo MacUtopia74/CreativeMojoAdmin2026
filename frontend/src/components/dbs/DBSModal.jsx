@@ -5,10 +5,11 @@
 // submit. Once submitted, the "View" button opens a read-only render
 // with document previews.
 import { useEffect, useState } from "react";
-import { X, Plus, Send, Loader2, FileText, Trash2, Copy, ExternalLink, CheckCircle2 } from "lucide-react";
+import { X, Send, Loader2, FileText, Trash2, Copy, ExternalLink, CheckCircle2, Plus } from "lucide-react";
 import api from "@/lib/api";
 import { toast } from "sonner";
 import DBSApplicationView from "./DBSApplicationView";
+import DBSComposeModal from "./DBSComposeModal";
 
 const STATUS_LABEL = {
   pending: { label: "PENDING", color: "bg-stone-100 text-stone-700 border-stone-300" },
@@ -26,7 +27,7 @@ function fmtDate(iso) {
 export default function DBSModal({ franchisee, onClose }) {
   const [apps, setApps] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
+  const [composeOpen, setComposeOpen] = useState(false);
   const [sendingId, setSendingId] = useState(null);
   const [viewingId, setViewingId] = useState(null);
 
@@ -66,26 +67,10 @@ export default function DBSModal({ franchisee, onClose }) {
   };
 
   const create = async () => {
-    setCreating(true);
-    try {
-      const { data } = await api.post("/dbs/applications", { franchisee_id: franchisee.id });
-      toast.success("New DBS application created");
-      // Optimistically send the email right away using our own origin.
-      try {
-        const public_url = `${window.location.origin}/dbs/apply/${data.token}`;
-        const { data: sent } = await api.post(`/dbs/applications/${data.id}/send-email`, {
-          application_id: data.id, public_url,
-        });
-        toast.success(`Sent to ${sent.sent_to}`);
-      } catch (e) {
-        toast.error(e?.response?.data?.detail || "Send failed");
-      }
-      await load();
-    } catch (e) {
-      toast.error(e?.response?.data?.detail || "Create failed");
-    } finally {
-      setCreating(false);
-    }
+    // "New Application" now opens the compose modal. Nothing is
+    // persisted or emailed until the admin confirms in the compose
+    // step (subject + intro editable there).
+    setComposeOpen(true);
   };
 
   const copyLink = async (a) => {
@@ -128,12 +113,11 @@ export default function DBSModal({ franchisee, onClose }) {
         <div className="p-6 space-y-4">
           <button
             onClick={create}
-            disabled={creating}
             data-testid="dbs-new-application"
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 text-sm font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-yellow-300 rounded-lg disabled:opacity-50"
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 text-sm font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-yellow-300 rounded-lg"
           >
-            {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-            {creating ? "Creating…" : "+ New DBS Application"}
+            <Plus className="w-4 h-4" />
+            + New DBS Application
           </button>
 
           <div className="text-[11px] uppercase tracking-widest text-stone-500 font-bold pt-2">Applications</div>
@@ -217,6 +201,13 @@ export default function DBSModal({ franchisee, onClose }) {
         <DBSApplicationView
           applicationId={viewingId}
           onClose={() => setViewingId(null)}
+        />
+      )}
+      {composeOpen && (
+        <DBSComposeModal
+          franchisee={franchisee}
+          onClose={() => setComposeOpen(false)}
+          onSent={() => { setComposeOpen(false); load(); }}
         />
       )}
     </div>

@@ -82,6 +82,7 @@ class SendEmailBody(BaseModel):
     subject: Optional[str] = None
     intro_html: Optional[str] = None  # optional per-send message before the CTA
     public_url: Optional[str] = None  # explicit URL from the admin's browser (window.location.origin + /dbs/apply/{token})
+    override_to: Optional[str] = None  # send to a different address than the franchisee's on-file email
 
 
 class SubmitBody(BaseModel):
@@ -243,9 +244,9 @@ def build_dbs_router(db, require_role):
             raise HTTPException(404, detail="Application not found")
 
         snapshot = app.get("franchisee_snapshot") or {}
-        to_email = snapshot.get("email")
+        to_email = (body.override_to or snapshot.get("email") or "").strip()
         if not to_email:
-            raise HTTPException(400, detail="Franchisee has no email on file — set one before sending.")
+            raise HTTPException(400, detail="No recipient email — either set one on the franchisee or pass override_to.")
 
         first_name = snapshot.get("first_name") or "there"
         # Prefer the URL the admin's browser sent (window.location.origin
