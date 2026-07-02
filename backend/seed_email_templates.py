@@ -15,36 +15,58 @@ from motor.motor_asyncio import AsyncIOMotorClient
 
 SIGNATURE_HTML = """
 <p style="margin:0 0 6px 0;">Best Regards,</p>
-<table cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;border-collapse:collapse;font-family:Helvetica,Arial,sans-serif;color:#1a1a1a;">
+<style>
+  /* Mobile-friendly stacking for the two-column signature. Apple Mail,
+     Gmail Web/iOS, Outlook.com, and Yahoo all honour <style> media
+     queries in the body. Outlook desktop (Word engine) ignores this
+     block and keeps the fallback two-column layout — that's fine
+     because Outlook desktop is only ever viewed on wide screens. */
+  @media only screen and (max-width: 520px) {
+    .cm-sig-details,
+    .cm-sig-logo {
+      display: block !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      padding: 0 !important;
+      text-align: left !important;
+    }
+    .cm-sig-logo { padding-top: 14px !important; }
+    .cm-sig-logo img { margin-left: 0 !important; max-width: 200px !important; }
+    .cm-sig-name { font-size: 20px !important; }
+  }
+</style>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;border-collapse:collapse;font-family:Helvetica,Arial,sans-serif;color:#1a1a1a;word-break:break-word;">
   <tr>
-    <td valign="top" style="padding-right:18px;">
-      <div style="font-size:22px;font-weight:bold;color:#dddd16;line-height:1.1;margin-bottom:2px;">Paul Caldeira-Dunkerley</div>
+    <td class="cm-sig-details" valign="top" style="padding-right:18px;">
+      <div class="cm-sig-name" style="font-size:22px;font-weight:bold;color:#dddd16;line-height:1.1;margin-bottom:2px;white-space:nowrap;">Paul&nbsp;Caldeira&#8209;Dunkerley</div>
       <div style="font-size:14px;font-weight:bold;color:#1a1a1a;margin-bottom:8px;">Director, Creative Mojo Ltd</div>
       <hr style="border:0;border-top:1px solid #cccccc;margin:6px 0 10px 0;" />
       <div style="font-size:13px;line-height:1.8;">
-        <span style="display:inline-block;">&#9742; 01884 303606 &nbsp;&nbsp; &#128241; 07886 374959</span><br/>
-        <span>&#127760; <a href="https://www.creativemojo.co.uk" style="color:#1a1a1a;text-decoration:none;">www.creativemojo.co.uk</a></span><br/>
-        <span>&#9993; <a href="mailto:paul@creativemojo.co.uk" style="color:#1a1a1a;text-decoration:none;">paul@creativemojo.co.uk</a></span><br/>
-        <span>&#128205; Channings, Brithem Bottom,<br/>&nbsp;&nbsp;&nbsp;&nbsp;Cullompton, Devon EX15&nbsp;1NB</span>
+        <span style="white-space:nowrap;">&#9742;&nbsp;01884&nbsp;303606</span>
+        &nbsp;&nbsp;
+        <span style="white-space:nowrap;">&#128241;&nbsp;07886&nbsp;374959</span><br/>
+        <span>&#127760;&nbsp;<a href="https://www.creativemojo.co.uk" style="color:#1a1a1a;text-decoration:none;">www.creativemojo.co.uk</a></span><br/>
+        <span>&#9993;&nbsp;<a href="mailto:paul@creativemojo.co.uk" style="color:#1a1a1a;text-decoration:none;">paul@creativemojo.co.uk</a></span><br/>
+        <span>&#128205;&nbsp;Channings, Brithem Bottom,<br/>&nbsp;&nbsp;&nbsp;&nbsp;Cullompton, Devon EX15&nbsp;1NB</span>
       </div>
-      <div style="margin-top:14px;font-size:13px;line-height:1;">
-        <a href="https://www.facebook.com/CreativeMojoLtd" style="text-decoration:none;margin-right:8px;display:inline-block;vertical-align:middle;">
-          <img src="https://hub.creativemojo.co.uk/brand/social-facebook.png" alt="Facebook" width="32" height="32" style="display:inline-block;border:0;vertical-align:middle;" />
+      <div style="margin-top:14px;font-size:13px;line-height:1;white-space:nowrap;">
+        <a href="https://www.facebook.com/CreativeMojoLtd" style="text-decoration:none;margin-right:6px;display:inline-block;vertical-align:middle;">
+          <img src="https://hub.creativemojo.co.uk/brand/social-facebook.png" alt="Facebook" width="28" height="28" style="display:inline-block;border:0;vertical-align:middle;" />
         </a>
-        <a href="https://www.instagram.com/creativemojoltd" style="text-decoration:none;margin-right:8px;display:inline-block;vertical-align:middle;">
-          <img src="https://hub.creativemojo.co.uk/brand/social-instagram.png" alt="Instagram" width="32" height="32" style="display:inline-block;border:0;vertical-align:middle;" />
+        <a href="https://www.instagram.com/creativemojoltd" style="text-decoration:none;margin-right:6px;display:inline-block;vertical-align:middle;">
+          <img src="https://hub.creativemojo.co.uk/brand/social-instagram.png" alt="Instagram" width="28" height="28" style="display:inline-block;border:0;vertical-align:middle;" />
         </a>
-        <a href="https://twitter.com/creativemojoltd" style="text-decoration:none;margin-right:8px;display:inline-block;vertical-align:middle;">
-          <img src="https://hub.creativemojo.co.uk/brand/social-x.png" alt="X" width="32" height="32" style="display:inline-block;border:0;vertical-align:middle;" />
+        <a href="https://twitter.com/creativemojoltd" style="text-decoration:none;margin-right:6px;display:inline-block;vertical-align:middle;">
+          <img src="https://hub.creativemojo.co.uk/brand/social-x.png" alt="X" width="28" height="28" style="display:inline-block;border:0;vertical-align:middle;" />
         </a>
         <a href="https://www.youtube.com/@creativemojoltd" style="text-decoration:none;display:inline-block;vertical-align:middle;">
-          <img src="https://hub.creativemojo.co.uk/brand/social-youtube.png" alt="YouTube" width="32" height="32" style="display:inline-block;border:0;vertical-align:middle;" />
+          <img src="https://hub.creativemojo.co.uk/brand/social-youtube.png" alt="YouTube" width="28" height="28" style="display:inline-block;border:0;vertical-align:middle;" />
         </a>
       </div>
     </td>
-    <td valign="top" align="right" style="width:240px;">
+    <td class="cm-sig-logo" valign="top" align="right" style="width:200px;">
       <img src="https://hub.creativemojo.co.uk/brand/creative-mojo-logo.png"
-           alt="Creative Mojo" width="220" style="max-width:220px;height:auto;display:block;" />
+           alt="Creative Mojo" width="180" style="max-width:180px;height:auto;display:block;margin-left:auto;" />
     </td>
   </tr>
 </table>
