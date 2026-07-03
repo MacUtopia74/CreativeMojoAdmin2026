@@ -5632,6 +5632,70 @@ def _compute_build_version() -> str:
 BUILD_VERSION = _compute_build_version()
 
 
+# ----------------------------------------------------------------------------
+# Human-readable version string (v{MAJOR}.{SEQ}.{D}.{M}.{YY}.{HH}.{MM})
+# ----------------------------------------------------------------------------
+# ``MAJOR`` is bumped manually by editing /app/backend/VERSION when there's
+# a milestone release (booking system, mobile app etc.). ``SEQ`` is a
+# per-major counter — every unique BUILD_VERSION under the current major
+# increments it. ``D.M.YY.HH.MM`` is the deploy time (server clock, UTC).
+#
+# Example: v2.01.03.07.26.07.02 — v2, deploy #1, 3rd July 2026, 07:02 UTC.
+# Persistence is Mongo ``deployments`` collection keyed by (major,
+# build_hash) so restarting the same container doesn't inflate the seq.
+def _read_major() -> str:
+    try:
+        with open("/app/backend/VERSION", "r", encoding="utf-8") as f:
+            return f.read().strip() or "1.0"
+    except Exception:  # noqa: BLE001
+        return "1.0"
+
+APP_VERSION_MAJOR = _read_major()
+# Populated on startup once we have Mongo — see on_startup below.
+APP_VERSION_STRING = f"v{APP_VERSION_MAJOR}.{BUILD_VERSION[:6]}"  # fallback if Mongo lookup fails
+
+
+async def _compute_and_store_version() -> str:
+    """Compute the pretty version string for this deploy and persist a
+    ``deployments`` row so subsequent restarts of the SAME code report
+    the same seq. Idempotent — safe to call at every startup."""
+    now = datetime.now(timezone.utc)
+    date_part = f"{now.day}.{now.month}.{now.strftime('%y')}.{now.strftime('%H')}.{now.strftime('%M')}"
+    try:
+        # Look for an existing row for this (major, build_hash).
+        existing = await db.deployments.find_one(
+            {"major": APP_VERSION_MAJOR, "build_hash": BUILD_VERSION},
+        )
+        if existing and existing.get("seq"):
+            seq = int(existing["seq"])
+            # Refresh the date_part to reflect the LATEST boot of this
+            # image (helpful when the same code has been running for
+            # weeks — you still see when the pod restarted).
+            await db.deployments.update_one(
+                {"_id": existing["_id"]},
+                {"$set": {"last_seen_at": now.isoformat(), "date_part": date_part}},
+            )
+        else:
+            # New build hash → find the next seq for this major.
+            last = await db.deployments.find_one(
+                {"major": APP_VERSION_MAJOR}, sort=[("seq", -1)],
+            )
+            seq = int((last or {}).get("seq") or 0) + 1
+            await db.deployments.insert_one({
+                "major": APP_VERSION_MAJOR,
+                "build_hash": BUILD_VERSION,
+                "seq": seq,
+                "first_seen_at": now.isoformat(),
+                "last_seen_at": now.isoformat(),
+                "date_part": date_part,
+            })
+        seq_str = f"{seq:02d}"
+        return f"v{APP_VERSION_MAJOR}.{seq_str}.{date_part}"
+    except Exception:  # noqa: BLE001
+        logger.exception("Version computation failed — falling back")
+        return APP_VERSION_STRING
+
+
 @api.get("/version")
 async def get_version():
     """Returns the current backend build identifier. Public — every
@@ -5641,13 +5705,15 @@ async def get_version():
 
 @api.get("/system/info")
 async def get_system_info():
-    """Lightweight env probe consumed by the EnvBanner footer pill on
-    the frontend. Returns the backend boot timestamp so a fresh
-    "last deploy" indicator can be derived without needing CI metadata.
-    Public on purpose — every page mounts the banner."""
+    """Lightweight env probe consumed by the sidebar version footer on
+    the frontend. Returns the backend boot timestamp and the pretty
+    human version string (v{MAJOR}.{SEQ}.{D}.{M}.{YY}.{HH}.{MM}).
+    Public on purpose — every page reads it."""
     return {
         "started_at": getattr(app.state, "started_at", None),
         "version": BUILD_VERSION,
+        "pretty_version": getattr(app.state, "pretty_version", APP_VERSION_STRING),
+        "major": APP_VERSION_MAJOR,
     }
 
 
@@ -5659,6 +5725,17 @@ async def on_startup():
     # Capture server boot time so /api/system/info can surface a
     # "last-deploy" timestamp on the frontend env banner.
     app.state.started_at = datetime.now(timezone.utc).isoformat()
+    # Compute + persist the pretty version string for the sidebar
+    # footer (v{MAJOR}.{SEQ}.{D}.{M}.{YY}.{HH}.{MM}). Uses the
+    # ``deployments`` collection to keep the seq stable across restarts
+    # of the same image. See _compute_and_store_version for details.
+    try:
+        app.state.pretty_version = await _compute_and_store_version()
+        await db.deployments.create_index([("major", 1), ("build_hash", 1)], unique=True)
+        await db.deployments.create_index([("major", 1), ("seq", -1)])
+    except Exception:  # noqa: BLE001
+        logger.exception("Version bootstrap failed — using fallback string")
+        app.state.pretty_version = APP_VERSION_STRING
     await db.users.create_index("email", unique=True)
     await db.users.create_index("id", unique=True)
     await db.login_attempts.create_index("identifier")

@@ -80,14 +80,16 @@ import PortalInvoiceClients from "@/pages/portal/invoices/PortalInvoiceClients";
 import DeletedPortalInvoices from "@/pages/portal/invoices/DeletedPortalInvoices";
 import PortalInvoiceSettings from "@/pages/portal/invoices/PortalInvoiceSettings";
 import PortalReconcile from "@/pages/portal/invoices/PortalReconcile";
-import EnvBanner from "@/components/EnvBanner";
 
 export default function App() {
   return (
     <div className="App">
       <AuthProvider>
         <BrowserRouter>
-          <EnvBanner />
+          {/* EnvBanner floating pill was retired in favour of the
+              SidebarVersionPill (bottom of Layout / PortalShell) so
+              the deploy indicator no longer overlaps the Logout
+              button. Removed 03 Jul 2026. */}
           {/* Top-level ErrorBoundary — without this any unhandled render
               exception in any descendant unmounts the entire tree and
               shows a blank white screen (instead of a recoverable error

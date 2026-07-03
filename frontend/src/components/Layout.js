@@ -3,6 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import Logo from "@/components/Logo";
 import PortalNewVersionBanner from "@/components/portal/PortalNewVersionBanner";
 import FollowupNagger from "@/components/FollowupNagger";
+import SidebarVersionPill from "@/components/SidebarVersionPill";
 import api from "@/lib/api";
 import {
   LayoutDashboard,
@@ -604,6 +605,7 @@ export default function Layout() {
           >
             <LogOut className="w-3.5 h-3.5" /> Logout
           </button>
+          <SidebarVersionPill />
         </div>
       </aside>
 

@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import PortalHelpModal from "@/components/portal/PortalHelpModal";
 import PortalNewVersionBanner from "@/components/portal/PortalNewVersionBanner";
+import SidebarVersionPill from "@/components/SidebarVersionPill";
 
 // Private community Facebook group — every franchisee gets the same
 // button to keep the link consistent and visible across every portal
@@ -457,6 +458,7 @@ export default function PortalShell() {
                 </div>
               )}
             </nav>
+            <SidebarVersionPill />
           </aside>
 
           {/* Main content — page-specific via Outlet. */}
