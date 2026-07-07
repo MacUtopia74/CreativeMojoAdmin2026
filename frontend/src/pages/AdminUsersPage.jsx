@@ -55,7 +55,11 @@ export default function AdminUsersPage() {
   const [tab, setTab] = useState("users");
   const [resetsCount, setResetsCount] = useState(0);
 
-  // Light poll so the badge on the Resets tab updates without a manual refresh.
+  // Light poll so the badge on the Resets tab updates without a manual
+  // refresh. We only badge EDGE CASES — pending requests where either
+  // the self-serve email failed or the franchisee never completed the
+  // reset within 24 hours. Healthy in-flight resets don't need admin
+  // attention and shouldn't scream at Paul in the sidebar.
   useEffect(() => {
     let cancelled = false;
     const tick = async () => {
@@ -63,7 +67,15 @@ export default function AdminUsersPage() {
         const { data } = await api.get(
           "/auth/password-reset/requests", { params: { status: "pending" } }
         );
-        if (!cancelled) setResetsCount(data.pending_count || 0);
+        const rows = data.requests || [];
+        const DAY = 24 * 60 * 60 * 1000;
+        const edgeCases = rows.filter((r) => {
+          if (r.email_send_error) return true;
+          if (!r.email_sent_at) return true;
+          try { return (Date.now() - Date.parse(r.requested_at)) > DAY; }
+          catch { return true; }
+        });
+        if (!cancelled) setResetsCount(edgeCases.length);
       } catch { /* ignore */ }
     };
     tick();
@@ -91,9 +103,9 @@ export default function AdminUsersPage() {
             <UsersIcon className="w-3.5 h-3.5 mr-1.5" /> Users
           </TabButton>
           <TabButton active={tab === "resets"} onClick={() => setTab("resets")} testid="users-tab-resets">
-            <KeyRound className="w-3.5 h-3.5 mr-1.5" /> Password Resets
+            <KeyRound className="w-3.5 h-3.5 mr-1.5" /> Password Reset Audit
             {resetsCount > 0 && (
-              <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-bold bg-red-600 text-white rounded-full" data-testid="resets-pending-badge">
+              <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-bold bg-red-600 text-white rounded-full" data-testid="resets-pending-badge" title="Edge cases needing admin attention">
                 {resetsCount}
               </span>
             )}
@@ -742,7 +754,10 @@ function CredentialsRevealModal({ data, onClose }) {
 // ---------------------------------------------------------------------------
 function ResetsTab() {
   const [requests, setRequests] = useState([]);
-  const [filter, setFilter] = useState("pending");
+  // "edge_cases" = the ONLY set that usually needs admin attention now
+  // that Resend self-serve is live. Filters out requests where the
+  // self-serve email went out AND is still within its 24h window.
+  const [filter, setFilter] = useState("edge_cases");
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [reveal, setReveal] = useState(null);
@@ -750,8 +765,25 @@ function ResetsTab() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await api.get("/auth/password-reset/requests", { params: { status: filter } });
-      setRequests(data.requests || []);
+      // Backend still expects the four canonical statuses; the client-
+      // side "edge_cases" filter is a derived view (see below).
+      const serverStatus = filter === "edge_cases" ? "pending" : filter;
+      const { data } = await api.get("/auth/password-reset/requests", { params: { status: serverStatus } });
+      let rows = data.requests || [];
+      if (filter === "edge_cases") {
+        const DAY = 24 * 60 * 60 * 1000;
+        rows = rows.filter((r) => {
+          // Show pending requests where self-serve failed OR the
+          // franchisee never completed the reset in 24 hours.
+          if (r.email_send_error) return true;
+          if (!r.email_sent_at) return true;
+          try {
+            const age = Date.now() - Date.parse(r.requested_at);
+            return age > DAY;
+          } catch { return true; }
+        });
+      }
+      setRequests(rows);
     } catch { toast.error("Could not load reset requests"); }
     finally { setLoading(false); }
   }, [filter]);
@@ -781,12 +813,18 @@ function ResetsTab() {
   return (
     <>
       <div className="flex items-center justify-between gap-3 mt-2 flex-wrap">
-        <div className="text-sm text-stone-600">
-          Locked-out users who clicked "Forgot Password" on a login page. Generate a temporary
-          password — it shows once. The user will be forced to change it on next login.
+        <div className="text-sm text-stone-600 max-w-2xl">
+          <b>Reset requests only need admin attention when the self-serve email failed</b> — usually a bad email on file, Resend rate-limit, or a franchisee who never clicked the link.
+          The default filter below hides &quot;healthy&quot; requests (sent + within 24h) so you can focus on the edge cases.
         </div>
-        <div className="inline-flex bg-stone-100 rounded-lg p-0.5">
-          {["pending", "fulfilled", "rejected", "all"].map((s) => (
+        <div className="inline-flex bg-stone-100 rounded-lg p-0.5 flex-wrap">
+          {[
+            ["edge_cases", "Edge cases"],
+            ["pending", "All pending"],
+            ["fulfilled", "Fulfilled"],
+            ["rejected", "Rejected"],
+            ["all", "All"],
+          ].map(([s, label]) => (
             <button
               key={s}
               onClick={() => setFilter(s)}
@@ -795,7 +833,7 @@ function ResetsTab() {
                 filter === s ? "bg-white text-stone-950 shadow-sm" : "text-stone-600 hover:text-stone-900"
               }`}
             >
-              {s}
+              {label}
             </button>
           ))}
         </div>
@@ -807,7 +845,11 @@ function ResetsTab() {
       ) : requests.length === 0 ? (
         <div className="bg-white border border-stone-200 rounded-2xl p-10 text-center mt-4">
           <ShieldCheck className="w-10 h-10 text-emerald-500 mx-auto" />
-          <p className="mt-3 text-stone-700 font-bold">No {filter === "all" ? "" : filter} reset requests</p>
+          <p className="mt-3 text-stone-700 font-bold">
+            {filter === "all" ? "No reset requests"
+              : filter === "edge_cases" ? "No edge cases — all self-serve resets going smoothly"
+              : `No ${filter} reset requests`}
+          </p>
         </div>
       ) : (
         <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden mt-4">
@@ -824,6 +866,28 @@ function ResetsTab() {
                     {r.role && (
                       <span className="text-[10px] uppercase tracking-wider font-bold text-stone-500 bg-stone-100 px-2 py-0.5 rounded">
                         {r.role}
+                      </span>
+                    )}
+                    {/* Self-serve status pill — tells Paul at a glance
+                        whether this needs him, or is happily in-flight. */}
+                    {r.email_send_error && (
+                      <span className="text-[10px] uppercase tracking-wider font-bold text-red-800 bg-red-100 px-2 py-0.5 rounded" title={r.email_send_error}>
+                        Self-serve email FAILED
+                      </span>
+                    )}
+                    {!r.email_send_error && r.email_sent_at && r.status === "pending" && (
+                      <span className="text-[10px] uppercase tracking-wider font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded" title={`Sent ${r.email_sent_at}`}>
+                        Self-serve email sent · awaiting user
+                      </span>
+                    )}
+                    {!r.email_sent_at && !r.email_send_error && r.status === "pending" && (
+                      <span className="text-[10px] uppercase tracking-wider font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded">
+                        Legacy manual (no self-serve)
+                      </span>
+                    )}
+                    {r.status === "auto_fulfilled" && (
+                      <span className="text-[10px] uppercase tracking-wider font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded">
+                        Auto-fulfilled by user
                       </span>
                     )}
                   </div>

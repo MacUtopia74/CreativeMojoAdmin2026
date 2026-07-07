@@ -764,6 +764,8 @@ async def password_reset_request(
             "ip": ip,
             "user_agent": request.headers.get("User-Agent", "")[:300],
             "status": "pending",
+            "email_sent_at": None,
+            "email_send_error": None,
         })
         # Self-serve: when Resend is configured, send the user a branded
         # email with a one-time reset link straight away. The admin queue
@@ -801,10 +803,19 @@ async def password_reset_request(
                         "html": html,
                         "tags": [{"name": "kind", "value": "password-reset"}],
                     })
-                except Exception:  # noqa: BLE001
-                    # Don't leak Resend failures back to the requester —
-                    # they'll re-try, admin still sees the queued ticket.
+                    # Stamp the queue row so the "Reset Audit" panel can
+                    # tell self-serve-in-flight from stuck / edge-case
+                    # requests. See ResetsTab in AdminUsersPage.jsx.
+                    await db.password_reset_requests.update_many(
+                        {"email": email, "status": "pending", "email_sent_at": None},
+                        {"$set": {"email_sent_at": now.isoformat()}},
+                    )
+                except Exception as _send_e:  # noqa: BLE001
                     logger.exception("Resend password-reset email failed for %s", email)
+                    await db.password_reset_requests.update_many(
+                        {"email": email, "status": "pending", "email_sent_at": None},
+                        {"$set": {"email_send_error": str(_send_e)[:300]}},
+                    )
         except Exception:  # noqa: BLE001
             logger.exception("Self-serve reset short-circuit failed for %s", email)
     # Bump rate-limit even on miss so we don't leak account existence via
