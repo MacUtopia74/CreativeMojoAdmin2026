@@ -8,7 +8,7 @@
 // brute-force or repeat-failed attempts at a glance.
 import { useEffect, useState } from "react";
 import {
-  ChevronDown, ChevronUp, KeyRound, Loader2, RefreshCw, Check, X as XIcon, Shield,
+  ChevronDown, ChevronUp, KeyRound, Loader2, RefreshCw, Check, X as XIcon, Shield, Search,
 } from "lucide-react";
 import api from "@/lib/api";
 
@@ -92,6 +92,35 @@ export default function LoginLog({ franchiseeId = null }) {
             className="p-1.5 rounded-md hover:bg-stone-100 text-stone-500"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+          </button>
+        )}
+        {open && franchiseeId && (
+          <button
+            type="button"
+            onClick={async (e) => {
+              e.stopPropagation();
+              try {
+                const { data } = await (await import("@/lib/api")).default.get(
+                  `/admin/auth/login-log/diagnose/${franchiseeId}`,
+                );
+                // Simple pop-up JSON viewer — good enough for a one-off
+                // "why don't Joanne's logins show up" diagnosis. Not a
+                // permanent UI, feel free to copy the JSON out.
+                const blob = JSON.stringify(data, null, 2);
+                const w = window.open("", "_blank");
+                if (w) {
+                  w.document.write(`<pre style="font:12px monospace;padding:16px;">${blob.replace(/</g, "&lt;")}</pre>`);
+                  w.document.title = `Diagnose · ${data?.franchisee?.first_name || ""} ${data?.franchisee?.last_name || ""}`.trim();
+                }
+              } catch (err) {
+                alert("Diagnose failed: " + (err?.response?.data?.detail || err?.message));
+              }
+            }}
+            title="Diagnose why login count may be off (opens new tab)"
+            data-testid="login-log-diagnose"
+            className="p-1.5 rounded-md hover:bg-stone-100 text-stone-500"
+          >
+            <Search className="w-3.5 h-3.5" />
           </button>
         )}
         <span className="w-7 h-7 rounded-full border border-stone-300 flex items-center justify-center">

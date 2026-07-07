@@ -613,6 +613,82 @@ async def franchisees_login_status(
     return {"items": out, "summary": summary}
 
 
+@api.get("/admin/auth/login-log/diagnose/{franchisee_id}")
+async def diagnose_franchisee_login_link(franchisee_id: str, _: dict = Depends(require_role("admin"))):
+    """Diagnostic — returns everything we CAN see about a franchisee's
+    login trail so we can spot the mismatch (email casing, missing
+    users row, wrong franchisee_id link etc). Read-only.
+
+    Response shape:
+      {
+        "franchisee": {..stored fields..},
+        "linked_users": [..users rows that reference this franchisee_id..],
+        "email_lookup_users": [..users rows matching mojo_email/secondary_email..],
+        "logins_by_franchisee_id": <count of auth_logins matching franchisee_id>,
+        "logins_by_user_id":       <count matching any linked user_id>,
+        "logins_by_email":         <count matching any known email>,
+        "recent_logins_fuzzy":     [..up to 5 recent successful logins whose
+                                    email CONTAINS the franchisee's surname..]
+      }
+    """
+    fr = await db.franchisees.find_one({"id": franchisee_id}, {"_id": 0})
+    if not fr:
+        raise HTTPException(404, detail="Franchisee not found")
+
+    # Users linked either by franchisee_id or by email match
+    linked_users = [u async for u in db.users.find(
+        {"franchisee_id": franchisee_id},
+        {"_id": 0, "id": 1, "email": 1, "role": 1, "activated_at": 1, "created_at": 1, "franchisee_id": 1},
+    )]
+    stored_emails: list[str] = []
+    for k in ("mojo_email", "secondary_email"):
+        v = (fr.get(k) or "").lower().strip()
+        if v and v not in stored_emails:
+            stored_emails.append(v)
+    email_lookup_users = [u async for u in db.users.find(
+        {"email": {"$in": stored_emails}} if stored_emails else {"email": "__nope__"},
+        {"_id": 0, "id": 1, "email": 1, "role": 1, "franchisee_id": 1, "activated_at": 1},
+    )]
+    user_ids = [u["id"] for u in linked_users + email_lookup_users if u.get("id")]
+    all_emails = list({(u.get("email") or "").lower() for u in linked_users + email_lookup_users if u.get("email")} | set(stored_emails))
+    all_emails = [e for e in all_emails if e]
+
+    logins_by_franchisee_id = await db.auth_logins.count_documents({"franchisee_id": franchisee_id})
+    logins_by_user_id       = await db.auth_logins.count_documents({"user_id": {"$in": user_ids}}) if user_ids else 0
+    logins_by_email         = await db.auth_logins.count_documents({"email": {"$in": all_emails}}) if all_emails else 0
+
+    # Fuzzy — surname substring match, purely for debugging weird
+    # capitalisation / typo scenarios ("Joanne.Goodrum" vs "joanne@…").
+    surname = (fr.get("last_name") or "").strip().lower()
+    fuzzy = []
+    if surname:
+        async for r in db.auth_logins.find(
+            {"outcome": "success", "email": {"$regex": surname, "$options": "i"}},
+            {"_id": 0, "at": 1, "email": 1, "user_id": 1, "franchisee_id": 1, "role": 1},
+        ).sort("at", -1).limit(8):
+            fuzzy.append(r)
+
+    return {
+        "franchisee": {
+            "id": fr.get("id"),
+            "first_name": fr.get("first_name"),
+            "last_name": fr.get("last_name"),
+            "mojo_email": fr.get("mojo_email"),
+            "secondary_email": fr.get("secondary_email"),
+        },
+        "linked_users": linked_users,
+        "email_lookup_users": email_lookup_users,
+        "known_user_ids": user_ids,
+        "known_emails": all_emails,
+        "counts": {
+            "logins_by_franchisee_id": logins_by_franchisee_id,
+            "logins_by_user_id": logins_by_user_id,
+            "logins_by_email": logins_by_email,
+        },
+        "recent_logins_fuzzy": fuzzy,
+    }
+
+
 @api.get("/admin/auth/login-log")
 async def admin_login_log(
     franchisee_id: Optional[str] = None,
