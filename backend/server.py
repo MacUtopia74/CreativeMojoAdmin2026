@@ -397,6 +397,44 @@ async def refresh_token(request: Request, body: dict | None = None, response: Re
     # rather than dying at the 7-day mark.
     new_refresh = create_refresh_token(user["id"])
     set_auth_cookies(response, new_access, new_refresh)
+
+    # Log the refresh so the per-franchisee login panel doesn't stay at
+    # zero for users who never hit /auth/login again after their initial
+    # session — refresh tokens roll indefinitely so an active franchisee
+    # might not go through /auth/login for months. Outcome "refresh"
+    # keeps it distinct from a fresh password login.
+    try:
+        ip = request.client.host if request.client else "unknown"
+        ua = (request.headers.get("user-agent") or "")[:300]
+        fid = user.get("franchisee_id")
+        if not fid and user.get("role") == "franchisee":
+            match = await db.franchisees.find_one(
+                {"$or": [
+                    {"mojo_email": user["email"]},
+                    {"secondary_email": user["email"]},
+                ]},
+                {"_id": 0, "id": 1},
+            )
+            if match:
+                fid = match["id"]
+                await db.users.update_one(
+                    {"id": user["id"]},
+                    {"$set": {"franchisee_id": fid}},
+                )
+        await db.auth_logins.insert_one({
+            "id": str(uuid.uuid4()),
+            "at": datetime.now(timezone.utc).isoformat(),
+            "outcome": "refresh",
+            "email": user["email"],
+            "user_id": user["id"],
+            "role": user.get("role"),
+            "franchisee_id": fid,
+            "ip": ip,
+            "user_agent": ua,
+        })
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("auth_logins (refresh) insert failed: %s", exc)
+
     public = user_to_public(user)
     public["access_token"] = new_access
     public["refresh_token"] = new_refresh
@@ -694,14 +732,25 @@ async def admin_login_log(
     franchisee_id: Optional[str] = None,
     outcome: Optional[str] = None,
     limit: int = 500,
+    include_refresh: bool = False,
     _: dict = Depends(require_role("admin")),
 ):
     """Returns the most recent login attempts. Filters:
       - franchisee_id: scope to one franchisee account (and their linked
         admin/staff logins matched by user_id link if applicable).
       - outcome: "success" or "failed" — defaults to both.
+      - include_refresh: when True, includes automatic ``refresh``
+        events (session token rolls). Default False keeps the UI
+        clean — most callers only care about explicit password
+        logins.
     """
     query: dict = {}
+    if not include_refresh and outcome not in ("refresh",):
+        # Default view excludes noisy refresh events unless the caller
+        # explicitly asked for them. Refresh events fire every few
+        # minutes during an active session so they'd otherwise drown
+        # out password-login entries.
+        query["outcome"] = {"$ne": "refresh"}
     if franchisee_id:
         # A franchisee's login history can be scattered across three
         # keys: the ``franchisee_id`` column on new rows, plus the
@@ -738,7 +787,7 @@ async def admin_login_log(
         if emails_or_ids:
             or_clauses.append({"email": {"$in": emails_or_ids}})
         query["$or"] = or_clauses
-    if outcome in ("success", "failed"):
+    if outcome in ("success", "failed", "refresh"):
         query["outcome"] = outcome
     limit = max(1, min(int(limit), 2000))
     items: list[dict] = []
