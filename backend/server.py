@@ -315,6 +315,27 @@ async def login(body: LoginRequest, request: Request, response: Response):
     # Audit-log the successful sign-in. Captures role + franchisee_id so
     # we can surface "Logins" on the per-franchisee admin profile page.
     try:
+        # Backfill franchisee_id on the fly — some franchisee users
+        # exist without a franchisee_id link on their users row (legacy
+        # or admin-created). Without this, per-franchisee activity
+        # panels report zero logins even after multiple sign-ins.
+        fid = user.get("franchisee_id")
+        if not fid and user.get("role") == "franchisee":
+            match = await db.franchisees.find_one(
+                {"$or": [
+                    {"mojo_email": user["email"]},
+                    {"secondary_email": user["email"]},
+                ]},
+                {"_id": 0, "id": 1},
+            )
+            if match:
+                fid = match["id"]
+                # Persist the link on the users row so future queries
+                # elsewhere in the app (dashboards, reports) find it too.
+                await db.users.update_one(
+                    {"id": user["id"]},
+                    {"$set": {"franchisee_id": fid}},
+                )
         await db.auth_logins.insert_one({
             "id": str(uuid.uuid4()),
             "at": datetime.now(timezone.utc).isoformat(),
@@ -322,7 +343,7 @@ async def login(body: LoginRequest, request: Request, response: Response):
             "email": user["email"],
             "user_id": user["id"],
             "role": user.get("role"),
-            "franchisee_id": user.get("franchisee_id"),
+            "franchisee_id": fid,
             "ip": ip,
             "user_agent": user_agent,
         })
@@ -606,7 +627,41 @@ async def admin_login_log(
     """
     query: dict = {}
     if franchisee_id:
-        query["franchisee_id"] = franchisee_id
+        # A franchisee's login history can be scattered across three
+        # keys: the ``franchisee_id`` column on new rows, plus the
+        # ``user_id`` and ``email`` fields on older rows that pre-date
+        # the franchisee_id link being populated on the users row.
+        # OR them all together so the per-franchisee activity panel
+        # doesn't show a false zero (previously reported for Joanne
+        # Goodrum — 44 downloads + 5 HQ opens but "0 logins").
+        emails_or_ids: list[str] = []
+        user_ids: list[str] = []
+        async for u in db.users.find(
+            {"franchisee_id": franchisee_id},
+            {"_id": 0, "id": 1, "email": 1},
+        ):
+            if u.get("email"):
+                emails_or_ids.append(u["email"].lower())
+            if u.get("id"):
+                user_ids.append(u["id"])
+        # Also fall back to the mojo_email / secondary_email on the
+        # franchisee record so legacy rows with no user_id still count.
+        fr = await db.franchisees.find_one(
+            {"id": franchisee_id},
+            {"_id": 0, "mojo_email": 1, "secondary_email": 1},
+        )
+        if fr:
+            for k in ("mojo_email", "secondary_email"):
+                v = (fr.get(k) or "").lower()
+                if v and v not in emails_or_ids:
+                    emails_or_ids.append(v)
+
+        or_clauses: list[dict] = [{"franchisee_id": franchisee_id}]
+        if user_ids:
+            or_clauses.append({"user_id": {"$in": user_ids}})
+        if emails_or_ids:
+            or_clauses.append({"email": {"$in": emails_or_ids}})
+        query["$or"] = or_clauses
     if outcome in ("success", "failed"):
         query["outcome"] = outcome
     limit = max(1, min(int(limit), 2000))
