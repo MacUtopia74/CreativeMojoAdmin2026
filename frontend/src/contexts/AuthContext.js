@@ -13,6 +13,8 @@ function isPublicPath(pathname) {
     || pathname.startsWith("/portal/login")
     || pathname.startsWith("/share/")
     || pathname.startsWith("/info/")
+    || pathname.startsWith("/reset-password")
+    || pathname.startsWith("/dbs/apply/")
   );
 }
 

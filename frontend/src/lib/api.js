@@ -80,6 +80,7 @@ api.interceptors.response.use(
       || pathNow.startsWith("/portal/login")
       || pathNow.startsWith("/share/")
       || pathNow.startsWith("/info/")
+      || pathNow.startsWith("/reset-password")
       || pathNow.startsWith("/dbs/apply/")
     ) {
       throw error;
@@ -109,6 +110,7 @@ api.interceptors.response.use(
         && !path.startsWith("/portal/login")
         && !path.startsWith("/share/")
         && !path.startsWith("/info/")
+        && !path.startsWith("/reset-password")
         && !path.startsWith("/dbs/apply/")
       ) {
         const target = path.startsWith("/portal") ? "/portal/login" : "/login";

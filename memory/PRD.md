@@ -1,5 +1,23 @@
 # Creative Mojo — Admin & Franchisee Hub PRD
 
+- ✅ **Password reset page auto-redirect to login — P0 fix (08 Jul 2026)**
+  Users clicking the branded Resend reset link (`/reset-password?token=…`)
+  landed on the reset form for a split second before being bounced to
+  `/login`, even in incognito. Root cause: `/reset-password` was missing
+  from BOTH public-path allowlists —
+  • `AuthContext.js:isPublicPath()` — mounted the reset route as an
+    authenticated view and fired `/auth/me`, returning 401.
+  • `api.js` axios 401 interceptor — the 401 then triggered
+    `/auth/refresh`, which also 401'd, and the fallback branch called
+    `window.location.href = "/login"`.
+  Added `/reset-password` (and `/dbs/apply/` in AuthContext for parity)
+  to all three allowlists. The reset page now loads standalone and
+  stays put for unauthenticated users. Verified via Playwright
+  screenshot — URL preserved, form visible, no redirect.
+  Files: `frontend/src/contexts/AuthContext.js`, `frontend/src/lib/api.js`.
+  ⚠️ Production fix requires Save to GitHub → Redeploy.
+
+
 ## Recent (Feb 2026)
 - ✅ **Franchisee project-folder grid thumbnails — production whitescreen icons**
   In the franchisee portal Calendar → "Open Project Folder" modal (Grid
