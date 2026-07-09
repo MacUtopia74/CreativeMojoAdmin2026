@@ -169,9 +169,11 @@ export default function TerritoryMap({
         source: "uk-counties",
         layout: { visibility: "none", "line-join": "round" },
         paint: {
-          "line-color": "#4338CA",
-          "line-width": 1.1,
-          "line-opacity": 0.55,
+          // Deeper indigo + wider stroke so county boundaries read
+          // clearly against both light and streets basemaps.
+          "line-color": "#1E1B4B",
+          "line-width": 1.8,
+          "line-opacity": 0.85,
           "line-dasharray": [3, 2],
         },
       });
@@ -179,25 +181,31 @@ export default function TerritoryMap({
         id: "uk-counties-label",
         type: "symbol",
         source: "uk-counties",
-        minzoom: 7,
+        // No minzoom — county labels are useful from the national view
+        // down. Mapbox auto-decluttering hides labels that don't fit.
         layout: {
           visibility: "none",
           "text-field": ["get", "county"],
           "text-size": [
             "interpolate", ["linear"], ["zoom"],
-            7, 10,
-            9, 13,
-            12, 15,
+            4, 9,
+            6, 11,
+            9, 14,
+            12, 17,
           ],
-          "text-font": ["Open Sans Semibold", "Arial Unicode MS Bold"],
+          "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
           "text-allow-overlap": false,
-          "text-letter-spacing": 0.05,
+          "text-letter-spacing": 0.08,
           "text-transform": "uppercase",
+          // Place inside the polygon (centre-of-mass) rather than along
+          // the edge — reads much cleaner as an overlay label.
+          "symbol-placement": "point",
         },
         paint: {
-          "text-color": "#3730A3",
+          "text-color": "#1E1B4B",
           "text-halo-color": "#ffffff",
-          "text-halo-width": 2.2,
+          "text-halo-width": 2.5,
+          "text-halo-blur": 0.5,
         },
       });
 
