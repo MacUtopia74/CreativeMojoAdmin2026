@@ -682,7 +682,20 @@ function ComposeModal({ open, onClose, onSent, seed }) {
     } finally { setTesting(false); }
   };
 
-  const canSend = title.trim().length > 0 && panels.length > 0 && !sending
+  // "Publishable" = either at least one attached panel (project / files /
+  // folder / link card) OR non-empty free-text body. General updates
+  // often have only a rich-text body and no panels — treating an empty
+  // panels array as invalid would greylock the CTA (as it did in Jul
+  // 2026 on the "Annual Leave" General update). We strip HTML tags &
+  // NBSPs before checking so an empty <p></p> from the editor doesn't
+  // fool the check into thinking there's content.
+  const bodyHasText = (bodyHtml || "")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/g, "")
+    .trim().length > 0;
+  const canSend = title.trim().length > 0
+    && (panels.length > 0 || bodyHasText)
+    && !sending
     && (recipientFilter === "all" || selectedRecipients.size > 0);
 
   if (!open) return null;
