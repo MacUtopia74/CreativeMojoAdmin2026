@@ -88,6 +88,10 @@ export default function TerritoryMap({
                             //   using the same map-click UX.
   onToggleRemoval = null,   // (sector: string) => void — called in
                             //   overlay-edit mode.
+  showCounties = false,     // when true, overlays UK ceremonial county
+                            //   boundaries (translucent stroke) as a
+                            //   contextual reference layer for the
+                            //   Territory Builder / share view.
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -135,6 +139,68 @@ export default function TerritoryMap({
       // Runs on the initial style load AND every time `setStyle` swaps the
       // basemap. We re-add every source/layer because Mapbox wipes them when
       // the style changes.
+
+      // ----- UK ceremonial county boundaries overlay -----
+      // Added FIRST so all our sector / franchisee paint sits on top and
+      // the county lines act purely as a background reference. Static
+      // GeoJSON served from /public/uk-counties.geojson (~900KB, cached).
+      // Visibility is driven by the ``showCounties`` prop via a downstream
+      // effect (see below) — layers exist immediately so the flip is
+      // instant with no flicker.
+      map.addSource("uk-counties", {
+        type: "geojson",
+        data: "/uk-counties.geojson",
+      });
+      map.addLayer({
+        id: "uk-counties-fill",
+        type: "fill",
+        source: "uk-counties",
+        layout: { visibility: "none" },
+        paint: {
+          // Very soft indigo tint so counties read as "context" and never
+          // compete with the yellow territory fill for attention.
+          "fill-color": "#6366F1",
+          "fill-opacity": 0.04,
+        },
+      });
+      map.addLayer({
+        id: "uk-counties-line",
+        type: "line",
+        source: "uk-counties",
+        layout: { visibility: "none", "line-join": "round" },
+        paint: {
+          "line-color": "#4338CA",
+          "line-width": 1.1,
+          "line-opacity": 0.55,
+          "line-dasharray": [3, 2],
+        },
+      });
+      map.addLayer({
+        id: "uk-counties-label",
+        type: "symbol",
+        source: "uk-counties",
+        minzoom: 7,
+        layout: {
+          visibility: "none",
+          "text-field": ["get", "county"],
+          "text-size": [
+            "interpolate", ["linear"], ["zoom"],
+            7, 10,
+            9, 13,
+            12, 15,
+          ],
+          "text-font": ["Open Sans Semibold", "Arial Unicode MS Bold"],
+          "text-allow-overlap": false,
+          "text-letter-spacing": 0.05,
+          "text-transform": "uppercase",
+        },
+        paint: {
+          "text-color": "#3730A3",
+          "text-halo-color": "#ffffff",
+          "text-halo-width": 2.2,
+        },
+      });
+
       // ----- Background: existing franchisee territories (multi-colour) -----
       // Added FIRST so the active builder layers always paint on top of them.
       map.addSource("franchisee-territories", {
@@ -434,6 +500,22 @@ export default function TerritoryMap({
       : "mapbox://styles/mapbox/light-v11";
     mapRef.current.setStyle(styleUrl);
   }, [basemap, ready]);
+
+  // ----------------- county overlay visibility -----------------
+  // Cheap toggle: layers are always registered in ``style.load`` — we
+  // just flip their ``visibility`` when the prop changes. Also re-runs
+  // on ``styleVersion`` bumps so basemap swaps preserve the toggle.
+  useEffect(() => {
+    if (!ready || !mapRef.current) return;
+    const vis = showCounties ? "visible" : "none";
+    for (const id of ["uk-counties-fill", "uk-counties-line", "uk-counties-label"]) {
+      try {
+        if (mapRef.current.getLayer(id)) {
+          mapRef.current.setLayoutProperty(id, "visibility", vis);
+        }
+      } catch { /* ignore — layer might not be ready yet on very first paint */ }
+    }
+  }, [showCounties, ready, styleVersion]);
 
   // ----------------- update features when props change -----------------
   useEffect(() => {

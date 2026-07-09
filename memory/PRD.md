@@ -1,5 +1,26 @@
 # Creative Mojo — Admin & Franchisee Hub PRD
 
+- ✅ **Territory Builder — UK county boundaries overlay + share persistence (09 Jul 2026)**
+  Added a "Counties" toggle button (bottom-right of the Territory
+  Builder map) that overlays the 73 UK ceremonial counties as a soft
+  indigo dashed line + fill + zoom-conditional uppercase label. Toggle
+  state is persisted on the plan (`show_counties` field), so when the
+  admin flips it on and saves, the public share link (`/share/territory/…`)
+  renders the same overlay — perfect for orienting prospective
+  franchisees against familiar county names. GeoJSON bundled at
+  `/public/uk-counties.geojson` (Douglas-Peucker simplified from the
+  evansd/uk-ceremonial-counties dataset, ~900 KB → ~250 KB gzipped).
+  Layers are registered once in `style.load` with `visibility: "none"`
+  and flipped via `setLayoutProperty`, so the toggle is instant with
+  no flicker or re-fetch. Backend: `territory_routes.py`
+  (`TerritoryPlanIn.show_counties`, `public_plan` echoes the flag).
+  Frontend: `TerritoryMap.jsx` (source/layers + visibility effect),
+  `TerritoryBuilderPage.jsx` (state + toggle button + save wiring +
+  hydrate from saved plan), `PublicTerritorySharePage.jsx` (respects
+  the flag). Verified end-to-end via Playwright + curl round-trip.
+  ⚠️ Production fix requires Save to GitHub → Redeploy.
+
+
 - ✅ **Sales & Contacts — per-tab "new" red badges + bold row highlight (09 Jul 2026)**
   Sandra had no in-app signal for new inbound Care Home / Franchise /
   Licence / Art Kit / General enquiries — only the raw notification

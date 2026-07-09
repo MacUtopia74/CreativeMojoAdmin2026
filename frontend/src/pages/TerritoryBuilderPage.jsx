@@ -220,6 +220,7 @@ export default function TerritoryBuilderPage() {
         setSelected(found.sectors || []);
         setSuggestedRemovals(found.suggested_removals || []);
         setShowRemovalOverlay(!!found.show_removal_overlay);
+        setShowCounties(!!found.show_counties);
         if (found.centre_lat && found.centre_lng) {
           setCentre({ lat: found.centre_lat, lng: found.centre_lng });
           setCentreLabel(found.centre_postcode || "");
@@ -360,6 +361,7 @@ export default function TerritoryBuilderPage() {
           notes,
           suggested_removals: suggestedRemovals,
           show_removal_overlay: showRemovalOverlay,
+          show_counties: showCounties,
         };
         if (savedPlan?.id) {
           const { data } = await api.patch(`/territory-plans/${savedPlan.id}`, body);
@@ -470,6 +472,11 @@ export default function TerritoryBuilderPage() {
   // territory's actual sectors or the home count.
   const [suggestedRemovals, setSuggestedRemovals] = useState([]);
   const [showRemovalOverlay, setShowRemovalOverlay] = useState(false);
+  // UK ceremonial counties overlay — off by default. Persisted with the
+  // saved plan (server side) so the share link renders with the same
+  // overlay state the admin last saved. Local before-save toggling
+  // still works — the prop flip is instant.
+  const [showCounties, setShowCounties] = useState(false);
   const toggleRemoval = useCallback((sec) => {
     setSuggestedRemovals((cur) => (
       cur.includes(sec) ? cur.filter((s) => s !== sec) : [...cur, sec]
@@ -884,6 +891,7 @@ export default function TerritoryBuilderPage() {
               suggestedRemovals={showRemovalOverlay ? suggestedRemovals : []}
               overlayMode={showRemovalOverlay}
               onToggleRemoval={toggleRemoval}
+              showCounties={showCounties}
             />
             {/* Floating search box — sits over the top-right corner of
                 the map. Purpose: lets the admin drop a temporary blue
@@ -938,6 +946,27 @@ export default function TerritoryBuilderPage() {
                 <span className="flex-1">{searchErr}</span>
               </div>
             )}
+            {/* County boundaries overlay toggle — floats bottom-right of
+                the map, above the Mapbox scale control. State is stored
+                on the plan (server side) so the same toggle applies to
+                the public share link. */}
+            <button
+              type="button"
+              onClick={() => setShowCounties((v) => !v)}
+              data-testid="toggle-counties"
+              title={showCounties ? "Hide UK county boundaries" : "Show UK county boundaries"}
+              className={`absolute bottom-3 right-3 z-10 px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider shadow-lg border transition-colors flex items-center gap-1.5 ${
+                showCounties
+                  ? "bg-indigo-600 text-white border-indigo-700 hover:bg-indigo-700"
+                  : "bg-white/95 backdrop-blur text-stone-800 border-stone-300 hover:bg-stone-50"
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              Counties
+              <span className={`px-1.5 py-0.5 rounded-md text-[9px] tabular-nums ${showCounties ? "bg-white/25 text-white" : "bg-stone-100 text-stone-500"}`}>
+                {showCounties ? "ON" : "OFF"}
+              </span>
+            </button>
           </div>
           {/* Live homes-count bar — sits directly below the map so the
               number is in the user's eyeline as they click sectors. Sticky

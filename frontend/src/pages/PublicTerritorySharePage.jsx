@@ -137,6 +137,7 @@ export default function PublicTerritorySharePage() {
             interactive={false}
             basemap={basemap}
             suggestedRemovals={data.suggested_removals || []}
+            showCounties={!!data.show_counties}
           />
           {data.show_removal_overlay && (data.suggested_removals?.length || 0) > 0 && (
             <div className="mt-3 px-3 py-2 bg-red-50/80 border border-red-200 rounded-lg text-[12px] text-red-900 flex items-start gap-2">

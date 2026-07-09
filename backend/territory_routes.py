@@ -135,6 +135,10 @@ class TerritoryPlanIn(BaseModel):
     # exposes it).
     suggested_removals: List[str] = Field(default_factory=list)
     show_removal_overlay: Optional[bool] = None
+    # UK ceremonial counties overlay — off by default; when toggled on the
+    # admin's saved plan (and the public share view) renders county
+    # boundaries as a soft indigo reference layer under the territory.
+    show_counties: Optional[bool] = None
 
 
 class FranchiseeTerritoryIn(BaseModel):
@@ -956,6 +960,7 @@ def build_territory_router(db, require_role):  # noqa: D401
                 if plan.get("show_removal_overlay") else []
             ),
             "show_removal_overlay": bool(plan.get("show_removal_overlay")),
+            "show_counties": bool(plan.get("show_counties")),
         }
 
     @router.post("/franchisees/{franchisee_id}/territory/parse")
