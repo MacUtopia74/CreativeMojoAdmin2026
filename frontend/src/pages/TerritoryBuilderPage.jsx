@@ -1066,6 +1066,32 @@ export default function TerritoryBuilderPage() {
                     </div>
                   </label>
                 </div>
+                {/* County boundaries — persisted on the plan so the same
+                    toggle applies to the public share link. Mirror of the
+                    map's floating "Counties" button, exposed here so it's
+                    obvious that the setting travels with the shared plan. */}
+                <div className="mt-2 px-3 py-2.5 bg-stone-50 border border-stone-200 rounded-lg">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={showCounties}
+                      onChange={(e) => setShowCounties(e.target.checked)}
+                      data-testid="toggle-counties-plan"
+                      className="mt-0.5 accent-indigo-600"
+                    />
+                    <div className="flex-1">
+                      <div className="text-[11px] uppercase tracking-[0.2em] font-bold text-stone-700 flex items-center gap-2">
+                        Show county boundaries
+                        {showCounties && (
+                          <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-indigo-600 text-white rounded">On</span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-stone-500 mt-0.5 leading-snug">
+                        Overlay UK ceremonial county names on the map. Helps prospects orient the proposed territory. Visible on the share link while on.
+                      </div>
+                    </div>
+                  </label>
+                </div>
               </>
             )}
             {franchiseeId && (
