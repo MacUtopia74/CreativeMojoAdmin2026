@@ -1,5 +1,25 @@
 # Creative Mojo — Admin & Franchisee Hub PRD
 
+- ✅ **Sales & Contacts — per-tab "new" red badges + bold row highlight (09 Jul 2026)**
+  Sandra had no in-app signal for new inbound Care Home / Franchise /
+  Licence / Art Kit / General enquiries — only the raw notification
+  email. Added a per-contact `seen_at` timestamp (stamped on insert as
+  `null` for webhook inbounds; existing 8k+ Airtable/legacy rows were
+  back-filled at startup so they don't drown the signal). New API:
+  `POST /api/contacts/{id}/mark-seen`. `/api/contacts/counts` now
+  returns `new_*` counters per tab. Frontend renders a red pill badge
+  (matching the sidebar alert style) next to each Sales & Contacts tab
+  when unseen count > 0, and bolds each unseen row with a red-dot
+  indicator + subtle red-tinted row background. Opening a row's drawer
+  auto-marks it seen (optimistic UI, count decrements immediately).
+  Manually-added / imported contacts are stamped as already-seen so
+  admin activity doesn't inflate the badge. Verified end-to-end via
+  Playwright — badge goes 2 → 1 → row un-bolds on click.
+  Files: `backend/server.py` (counts endpoint, mark-seen route,
+  startup backfill, insert-time seen_at), `frontend/src/pages/ContactsPage.js`.
+  ⚠️ Production fix requires Save to GitHub → Redeploy.
+
+
 - ✅ **Password reset page auto-redirect to login — P0 fix (08 Jul 2026)**
   Users clicking the branded Resend reset link (`/reset-password?token=…`)
   landed on the reset form for a split second before being bounced to

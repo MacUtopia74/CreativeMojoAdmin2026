@@ -1716,6 +1716,30 @@ export default function ContactsPage() {
     finally { setLoading(false); }
   };
 
+  // Open a contact drawer AND mark it as seen so its row un-bolds and the
+  // red "new" tab badge decrements. Only fires the mark-seen API call if
+  // the contact was actually unseen — avoids a wasted round-trip every
+  // time someone re-opens the drawer. Pipeline contacts use a different
+  // "new" signal (pipeline_status) so we skip mark-seen for them.
+  const openContact = (c) => {
+    setSelected(c);
+    if (!c || c.seen_at || c.in_pipeline) return;
+    // Optimistic local update so bolding disappears immediately.
+    setData((d) => ({
+      ...d,
+      items: d.items.map((it) => it.id === c.id ? { ...it, seen_at: "pending" } : it),
+    }));
+    api.post(`/contacts/${c.id}/mark-seen`)
+      .then(() => { loadCounts(); })
+      .catch(() => {
+        // Roll back the optimistic tick if the call failed.
+        setData((d) => ({
+          ...d,
+          items: d.items.map((it) => it.id === c.id ? { ...it, seen_at: null } : it),
+        }));
+      });
+  };
+
   // Tab-header badges: total live records per category. Reloads whenever a
   // contact is added / merged / moved so the numbers stay accurate.
   const loadCounts = async () => {
@@ -2136,6 +2160,7 @@ export default function ContactsPage() {
             const active = tab === t.key;
             const Icon = t.icon;
             const count = counts[t.key];
+            const newCount = counts[`new_${t.key}`] || 0;
             return (
               <button key={t.key} onClick={() => { setTab(t.key); setStageFilter(""); }} data-testid={`mode-${t.key}`}
                 className={`px-5 py-3 text-sm font-bold transition-colors rounded-t-xl flex items-start gap-2 ${
@@ -2155,6 +2180,19 @@ export default function ContactsPage() {
                         }`}
                       >
                         {count.toLocaleString()}
+                      </span>
+                    )}
+                    {/* Red "new inbound" badge — mirrors the sidebar Sales
+                        & Contacts alert style so the visual language is
+                        consistent. Only rendered when there's something
+                        new to draw the eye to. */}
+                    {newCount > 0 && (
+                      <span
+                        data-testid={`tab-new-${t.key}`}
+                        title={newCount === 1 ? "1 new" : `${newCount} new`}
+                        className="shrink-0 min-w-[20px] h-5 px-1.5 inline-flex items-center justify-center rounded-full bg-red-600 text-white text-[10px] font-bold tabular-nums shadow-sm"
+                      >
+                        {newCount > 99 ? "99+" : newCount}
                       </span>
                     )}
                   </span>
@@ -2349,7 +2387,7 @@ export default function ContactsPage() {
                       const checked = selectedIds.has(c.id);
                       const srcStyle = SOURCE_STYLE[c.source] || SOURCE_STYLE.general_enquiry;
                       return (
-                        <div key={c.id} onClick={() => setSelected(c)}
+                        <div key={c.id} onClick={() => openContact(c)}
                           className={`bg-white border border-stone-200 rounded-xl p-2.5 hover:border-stone-500 cursor-pointer text-xs ${srcStyle.border} ${checked ? "ring-2 ring-stone-950" : ""}`}
                           data-testid={`pipeline-card-${c.id}`}>
                           <div className="flex items-start justify-between gap-2">
@@ -2462,15 +2500,27 @@ export default function ContactsPage() {
                 ) : visibleItems.slice(0, displayLimit).map((c) => {
                   const checked = selectedIds.has(c.id);
                   const age = daysSince(c.date || c.date_added);
+                  // "Unseen" inbound — bold the row until an admin opens
+                  // the drawer (which fires mark-seen). Pipeline uses its
+                  // own stage-based highlight so we skip the bolding
+                  // there to avoid double-signalling.
+                  const isNew = !isPipeline && !c.seen_at;
                   return (
-                  <tr key={c.id} onClick={() => setSelected(c)} className={`border-b border-stone-100 last:border-0 hover:bg-stone-50 cursor-pointer ${checked ? "bg-[#dddd16]/5" : ""}`} data-testid={`contact-row-${c.id}`}>
+                  <tr key={c.id} onClick={() => openContact(c)} className={`border-b border-stone-100 last:border-0 hover:bg-stone-50 cursor-pointer ${checked ? "bg-[#dddd16]/5" : ""} ${isNew ? "bg-red-50/40" : ""}`} data-testid={`contact-row-${c.id}`}>
                     <td className="px-3 py-2" onClick={(e) => { e.stopPropagation(); toggleSelect(c.id, e); }}>
                       <button data-testid={`select-${c.id}`} className="text-stone-500 hover:text-stone-900">
                         {checked ? <CheckSquare className="w-4 h-4 text-stone-950" /> : <Square className="w-4 h-4" />}
                       </button>
                     </td>
                     <td className="px-3 py-2">
-                      <div className="text-sm text-stone-950 font-semibold flex items-center gap-1.5 flex-wrap">
+                      <div className={`text-sm text-stone-950 flex items-center gap-1.5 flex-wrap ${isNew ? "font-extrabold" : "font-semibold"}`}>
+                        {isNew && (
+                          <span
+                            data-testid={`row-new-dot-${c.id}`}
+                            title="New — not yet reviewed"
+                            className="inline-block w-2 h-2 rounded-full bg-red-600 shrink-0"
+                          />
+                        )}
                         {[c.first_name, c.last_name].filter(Boolean).join(" ") || "(no name)"}
                         <ManualBadge addedBy={c.manually_added_by} />
                         {!isPipeline && c.in_pipeline && (
@@ -2482,19 +2532,19 @@ export default function ContactsPage() {
                           </span>
                         )}
                       </div>
-                      {c.establishment_name && <div className="text-xs text-stone-600">{c.establishment_name}</div>}
+                      {c.establishment_name && <div className={`text-xs ${isNew ? "text-stone-900 font-bold" : "text-stone-600"}`}>{c.establishment_name}</div>}
                     </td>
-                    <td className="px-3 py-2 text-xs text-stone-500">
+                    <td className={`px-3 py-2 text-xs ${isNew ? "text-stone-900 font-bold" : "text-stone-500"}`}>
                       <div className="flex items-center gap-1.5 tabular-nums">
                         <span>{formatDate(c.date || c.date_added)}</span>
                         {isPipeline && <AgeBadge days={age} />}
                       </div>
                     </td>
-                    <td className="px-3 py-2 text-xs text-stone-600">
+                    <td className={`px-3 py-2 text-xs ${isNew ? "text-stone-900 font-bold" : "text-stone-600"}`}>
                       <div>{c.email || c.email_raw || "—"}</div>
-                      <div className="text-stone-400">{c.telephone || c.mobile_phone || ""}</div>
+                      <div className={isNew ? "text-stone-700" : "text-stone-400"}>{c.telephone || c.mobile_phone || ""}</div>
                     </td>
-                    <td className="px-3 py-2 text-xs text-stone-700">{[c.city, c.postcode].filter(Boolean).join(" · ") || "—"}</td>
+                    <td className={`px-3 py-2 text-xs ${isNew ? "text-stone-900 font-bold" : "text-stone-700"}`}>{[c.city, c.postcode].filter(Boolean).join(" · ") || "—"}</td>
                     <td className="px-3 py-2 text-xs text-stone-700"><SourcePill source={c.source} /></td>
                     {isPipeline && <td className="px-3 py-2"><StageBadge status={c.pipeline_status} /></td>}
                     <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>

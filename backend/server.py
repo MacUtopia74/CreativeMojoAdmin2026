@@ -1496,6 +1496,10 @@ async def gravity_forms_intake(payload: GravityFormsIntake, request: Request):
         "raw_fields": f,
         "in_pipeline": in_pipeline,
         "pipeline_status": "new" if in_pipeline else None,
+        # seen_at=None marks this as an unseen inbound so it lights up the
+        # red badge on the tab and renders bold in the list until an admin
+        # opens the drawer (which calls /contacts/{id}/mark-seen).
+        "seen_at": None,
         "received_at": datetime.now(timezone.utc).isoformat(),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -4356,8 +4360,19 @@ async def contact_counts(_: dict = Depends(require_role("admin"))):
     collection (post-May-2026 re-categorisation). General lumps web
     ``general_enquiry`` + legacy rows whose source is still the un-tagged
     ``legacy_general_enquiry`` (or the explicit ``general_enquiry``).
+
+    Also returns ``new_*`` counts — unseen inbound records per tab, powering
+    the red-circle badges + row-bold styling in the Sales & Contacts panel.
+    "Unseen" = a contact document with no ``seen_at`` timestamp (a new
+    contact is stamped ``seen_at=null`` on insert; existing/legacy rows
+    were back-filled at deploy time so they don't drown out real inbound
+    activity). Pipeline uses the existing ``pipeline_status=new`` semantics
+    for consistency with the sidebar alert.
     """
     not_merged = {"merged_into": {"$in": [None, ""]}}
+    # Unseen = seen_at missing OR explicitly null. `$in [None]` matches
+    # both "field absent" and "field is null" in MongoDB.
+    unseen = {"seen_at": {"$in": [None]}}
 
     async def _wfc(filt: dict) -> int:
         return await db.web_form_contacts.count_documents({**filt, **not_merged})
@@ -4374,6 +4389,30 @@ async def contact_counts(_: dict = Depends(require_role("admin"))):
         await _wfc({"source": "general_enquiry"})
         + await _legacy({"source": {"$in": ["legacy_general_enquiry", "general_enquiry", None]}})
     )
+    # Unseen (new) counts per tab. Pipeline reuses the pipeline_status=new
+    # convention (untriaged inbound leads) so the tab badge lines up with
+    # the sidebar alert badge users are already familiar with.
+    new_pipeline = await _wfc({"in_pipeline": True, "pipeline_status": "new"})
+    new_franchise = (
+        await _wfc({"source": "franchise_enquiry", **unseen})
+        + await _legacy({"source": "franchise_enquiry", **unseen})
+    )
+    new_licence = (
+        await _wfc({"source": "licence_enquiry", **unseen})
+        + await _legacy({"source": "licence_enquiry", **unseen})
+    )
+    new_care_home = (
+        await _wfc({"source": "care_home_enquiry", **unseen})
+        + await _legacy({"source": "care_home_enquiry", **unseen})
+    )
+    new_art_kit = (
+        await _wfc({"source": "art_kit_enquiry", **unseen})
+        + await _legacy({"source": "art_kit_enquiry", **unseen})
+    )
+    new_general = (
+        await _wfc({"source": "general_enquiry", **unseen})
+        + await _legacy({"source": {"$in": ["legacy_general_enquiry", "general_enquiry", None]}, **unseen})
+    )
     return {
         "pipeline": pipeline,
         "franchise": franchise,
@@ -4381,7 +4420,36 @@ async def contact_counts(_: dict = Depends(require_role("admin"))):
         "care_home": care_home,
         "art_kit": art_kit,
         "general": general,
+        "new_pipeline": new_pipeline,
+        "new_franchise": new_franchise,
+        "new_licence": new_licence,
+        "new_care_home": new_care_home,
+        "new_art_kit": new_art_kit,
+        "new_general": new_general,
     }
+
+
+@api.post("/contacts/{contact_id}/mark-seen")
+async def mark_contact_seen(contact_id: str, _: dict = Depends(require_role("admin"))):
+    """Stamp ``seen_at`` on a contact so it stops appearing in the "new"
+    tab-badge count and its row un-bolds in the Sales & Contacts list.
+    Idempotent — safe to call multiple times.
+
+    The contact might live in either ``web_form_contacts`` (webhook
+    inbounds) or ``contacts`` (legacy Airtable rows), so we try both.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    r1 = await db.web_form_contacts.update_one(
+        {"id": contact_id}, {"$set": {"seen_at": now}}
+    )
+    if r1.matched_count:
+        return {"ok": True, "seen_at": now}
+    r2 = await db.contacts.update_one(
+        {"id": contact_id}, {"$set": {"seen_at": now}}
+    )
+    if r2.matched_count:
+        return {"ok": True, "seen_at": now}
+    raise HTTPException(404, "Contact not found.")
 
 
 
@@ -4547,6 +4615,9 @@ async def create_contact(body: ContactCreateRequest, user: dict = Depends(requir
         "received_at": now,
         "created_at": now,
         "updated_at": now,
+        # Admin manually adding a contact — they know about it, so stamp
+        # seen_at immediately so it doesn't inflate the "new" tab badge.
+        "seen_at": now,
         "manually_added_by": user.get("email"),
     }
     await db.web_form_contacts.insert_one(doc)
@@ -4666,6 +4737,9 @@ async def import_contacts(body: ContactImportRequest, user: dict = Depends(requi
             "created_at": now,
             "updated_at": now,
             "manually_added_by": user.get("email"),
+            # Import = admin-initiated, so mark as already-seen so it
+            # doesn't inflate the "new" tab badge on the next page load.
+            "seen_at": now,
             "import_batch": now,
         }
         docs_to_insert.append(doc)
@@ -6178,6 +6252,41 @@ async def _banking_indexes():
         await ensure_banking_indexes(db)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Banking index init failed (non-fatal): %s", exc)
+
+
+@app.on_event("startup")
+async def _backfill_contact_seen_at():
+    """One-off backfill: stamp ``seen_at`` on every pre-existing contact
+    that doesn't have one, so the "new" tab-badge counts in the Sales &
+    Contacts panel only reflect actual inbound activity going forward.
+
+    Without this, deploying the unseen-contact tracker would surface
+    every historical Airtable/legacy row (~7,700 records) as "new" and
+    drown the real signal. Idempotent — after the first run every doc
+    has ``seen_at`` set so subsequent boots are near-instant no-ops."""
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        # Use date_added / created_at / received_at when available so the
+        # backfill preserves the original timestamp of the record.
+        r_web = await db.web_form_contacts.update_many(
+            {"seen_at": {"$exists": False}},
+            [{"$set": {"seen_at": {"$ifNull": [
+                "$received_at", {"$ifNull": ["$created_at", {"$ifNull": ["$date_added", now]}]}
+            ]}}}],
+        )
+        r_legacy = await db.contacts.update_many(
+            {"seen_at": {"$exists": False}},
+            [{"$set": {"seen_at": {"$ifNull": [
+                "$date_added", {"$ifNull": ["$created_at", now]}
+            ]}}}],
+        )
+        if r_web.modified_count or r_legacy.modified_count:
+            logger.info(
+                "Contact seen_at backfill: web=%s legacy=%s",
+                r_web.modified_count, r_legacy.modified_count,
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Contact seen_at backfill failed (non-fatal): %s", exc)
 
 # Phase 5 — Google Calendar
 from calendar_routes import attach as build_calendar_router  # noqa: E402
