@@ -79,6 +79,36 @@ export default function CalendarPage() {
   useEffect(() => { try { localStorage.setItem("calendar.view", view); } catch (_) { /* noop */ } }, [view]);
   const fcRef = useRef(null);
 
+  // Responsive FullCalendar height. On landscape phones / small tablets
+  // the fixed 860px eats the whole viewport and pushes controls
+  // off-screen, so we tie the height to the actual viewport (min 380
+  // for landscape phones, max 860 for desktops) and re-measure on
+  // resize/rotate. Also drops toolbar buttons in the header to a
+  // compact set below 700px so the two-row title+buttons don't wrap
+  // awkwardly.
+  const [viewport, setViewport] = useState(() => (
+    typeof window !== "undefined"
+      ? { w: window.innerWidth, h: window.innerHeight }
+      : { w: 1280, h: 900 }
+  ));
+  useEffect(() => {
+    const onResize = () => setViewport({ w: window.innerWidth, h: window.innerHeight });
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+    };
+  }, []);
+  const isNarrow = viewport.w < 900;
+  const isLandscapePhone = viewport.h < 500;
+  // Cap at 860 for desktops; on small screens leave ~180px for the
+  // top toolbar/legend/action row so the calendar body fits inside
+  // one viewport without a page-level scroll.
+  const fcHeight = isNarrow
+    ? Math.max(380, Math.min(viewport.h - 180, 720))
+    : 860;
+
   const loadStatus = async () => {
     try {
       const { data } = await api.get("/calendar/status");
@@ -309,13 +339,13 @@ export default function CalendarPage() {
   }, [events, yearlyEvents, queryNeedle]);
 
   return (
-    <div className="px-6 sm:px-8 py-7 mx-auto w-full" data-testid="calendar-page">
-      <div className="flex items-center justify-between gap-3 mb-7 flex-wrap">
+    <div className="px-3 sm:px-6 lg:px-8 py-4 sm:py-7 mx-auto w-full" data-testid="calendar-page">
+      <div className="flex items-center justify-between gap-3 mb-4 sm:mb-7 flex-wrap">
         <div>
-          <h1 className="font-display text-4xl text-stone-950 flex items-center gap-3">
-            <CalendarDays className="w-7 h-7" /> Calendar
+          <h1 className="font-display text-2xl sm:text-4xl text-stone-950 flex items-center gap-2 sm:gap-3">
+            <CalendarDays className="w-5 h-5 sm:w-7 sm:h-7" /> Calendar
           </h1>
-          <p className="text-sm text-stone-600 mt-1">Live view of the shared Creative Mojo Google Calendar.</p>
+          <p className="hidden sm:block text-sm text-stone-600 mt-1">Live view of the shared Creative Mojo Google Calendar.</p>
           {/* Mojo Grow Meeting one-click shortcut — sits up here next to
               the page title (rather than in the event-creation toolbar)
               so it reads as a top-level workflow shortcut, not a variant
@@ -465,7 +495,7 @@ export default function CalendarPage() {
               yearly events on a standalone grid so admins can preview
               what franchisees will see on their portal calendars. */}
           {yearlyEvents.length > 0 && (
-            <div className="mt-8 bg-white border border-stone-200 rounded-2xl p-4" data-testid="cal-yearly-only-grid">
+            <div className="admin-cal-wrap mt-8 bg-white border border-stone-200 rounded-2xl p-2 sm:p-4" data-testid="cal-yearly-only-grid">
               <div className="flex items-center gap-2 mb-3 text-[11px] text-stone-600">
                 <span className="w-3 h-3 rounded-sm" style={{ background: "#3B82F6" }} />
                 <span>Yearly events ({yearlyEvents.length}) — visible to every franchisee on the portal</span>
@@ -476,11 +506,11 @@ export default function CalendarPage() {
                 initialView="dayGridMonth"
                 headerToolbar={{ left: "prev,next today", center: "title", right: "dayGridMonth" }}
                 events={fcEvents}
-                height={820}
-                contentHeight={820}
+                height={isNarrow ? Math.max(380, Math.min(viewport.h - 180, 700)) : 820}
+                contentHeight={isNarrow ? Math.max(380, Math.min(viewport.h - 180, 700)) : 820}
                 firstDay={1}
                 weekNumbers={false}
-                dayMaxEventRows={6}
+                dayMaxEventRows={isNarrow ? 2 : 6}
                 buttonText={{ today: "Today", month: "Month" }}
                 eventClick={(info) => { info.jsEvent.preventDefault(); setYearlyOpen(true); }}
               />
@@ -499,7 +529,7 @@ export default function CalendarPage() {
               <AlertCircle className="w-4 h-4" /> {err}
             </div>
           ) : view === "grid" ? (
-            <div className="bg-white border border-stone-200 rounded-2xl p-4" data-testid="cal-grid">
+            <div className="admin-cal-wrap bg-white border border-stone-200 rounded-2xl p-2 sm:p-4" data-testid="cal-grid">
               {/* Legend — mirrors the franchisee portal so admins see at
                   a glance which colours map to which event source. */}
               <div className="flex items-center gap-4 mb-3 text-[11px] text-stone-600 flex-wrap" data-testid="cal-legend">
@@ -520,17 +550,25 @@ export default function CalendarPage() {
                 ref={fcRef}
                 plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
                 initialView="dayGridMonth"
-                headerToolbar={{
+                headerToolbar={isNarrow ? {
+                  // Compact landscape/mobile toolbar — title on its own
+                  // row (auto-wraps below the button strip since FC
+                  // stacks toolbar rows when they overflow), nav + view
+                  // switcher stay one-tap accessible.
+                  left: "prev,next",
+                  center: "title",
+                  right: "dayGridMonth,timeGridWeek",
+                } : {
                   left: "prev,next today",
                   center: "title",
                   right: "dayGridMonth,timeGridWeek,timeGridDay",
                 }}
                 events={fcEvents}
-                height={860}
-                contentHeight={860}
+                height={fcHeight}
+                contentHeight={fcHeight}
                 firstDay={1}                 // Monday-first for UK
                 weekNumbers={false}
-                dayMaxEventRows={6}
+                dayMaxEventRows={isNarrow ? 2 : 6}
                 nowIndicator
                 buttonText={{ today: "Today", month: "Month", week: "Week", day: "Day" }}
                 eventTimeFormat={{ hour: "2-digit", minute: "2-digit", meridiem: false }}

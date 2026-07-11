@@ -182,3 +182,75 @@ html, body {
   line-height: 1.1;
 }
 
+
+
+/* ─────────────────────────────────────────────────────────────────
+   Admin calendar (FullCalendar) — landscape/mobile-friendly overrides.
+   Desktop layout is untouched (rule set only applies below 900px).
+   Goal: keep everything readable in landscape phone / small tablet
+   without hiding functionality. Fixes the previous issue where the
+   toolbar buttons wrapped onto three rows, day-of-week headers ran
+   out of horizontal space and event chips ellipsised into "..."
+   with nothing visible.
+   ───────────────────────────────────────────────────────────────── */
+@media (max-width: 899px) {
+  .admin-cal-wrap .fc {
+    font-size: 12px;
+  }
+  .admin-cal-wrap .fc-toolbar {
+    gap: 0.5rem;
+    row-gap: 0.5rem;
+  }
+  .admin-cal-wrap .fc-toolbar-title {
+    font-size: 1rem !important;
+    line-height: 1.2;
+  }
+  .admin-cal-wrap .fc-button {
+    padding: 0.25rem 0.55rem;
+    font-size: 11px;
+  }
+  .admin-cal-wrap .fc-button-group > .fc-button {
+    border-radius: 6px;
+  }
+  .admin-cal-wrap .fc-col-header-cell-cushion {
+    padding: 2px 3px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .admin-cal-wrap .fc-daygrid-day-number {
+    padding: 2px 4px;
+    font-size: 11px;
+  }
+  .admin-cal-wrap .fc-daygrid-event,
+  .admin-cal-wrap .fc-event-title,
+  .admin-cal-wrap .fc-event-time {
+    font-size: 10px;
+    line-height: 1.15;
+  }
+  .admin-cal-wrap .fc-event {
+    padding: 1px 3px;
+  }
+  .admin-cal-wrap .fc-daygrid-more-link {
+    font-size: 10px;
+    padding: 0 2px;
+  }
+  /* Time-grid slot labels shrink so 24 hours still fit vertically. */
+  .admin-cal-wrap .fc-timegrid-slot-label-cushion,
+  .admin-cal-wrap .fc-timegrid-axis-cushion {
+    font-size: 10px;
+    padding: 0 2px;
+  }
+}
+
+/* Landscape phones specifically — even tighter to squeeze 7 columns
+   into ~800px wide. Keeps the day-of-week single letters (M T W…)
+   when the header would otherwise clip. */
+@media (max-width: 899px) and (max-height: 500px) {
+  .admin-cal-wrap .fc-toolbar-title {
+    font-size: 0.95rem !important;
+  }
+  .admin-cal-wrap .fc-daygrid-day-frame {
+    min-height: 42px;
+  }
+}
