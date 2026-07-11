@@ -35,6 +35,8 @@ import {
   Sparkles,
   ClipboardList,
   ExternalLink,
+  Menu,
+  X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -467,6 +469,21 @@ export default function Layout() {
     navigate("/login");
   };
 
+  // Mobile drawer state — sidebar collapses into a hamburger below the
+  // `lg` breakpoint (≤1023px covers phones portrait + landscape and
+  // small tablets). Desktop layout is unchanged. Auto-closes whenever
+  // the route changes so tapping a nav link dismisses the drawer.
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  useEffect(() => { setMobileNavOpen(false); }, [location.pathname]);
+  // Lock body scroll while the drawer is open so background content
+  // doesn't scroll under it on iOS Safari.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = mobileNavOpen ? "hidden" : prev || "";
+    return () => { document.body.style.overflow = prev || ""; };
+  }, [mobileNavOpen]);
+
   // Poll for the "missing GoCardless mandate" alert count.
   const [missingMandateCount, setMissingMandateCount] = useState(0);
   useEffect(() => {
@@ -581,11 +598,65 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen flex bg-[#F9F9F8]">
-      {/* Sidebar */}
-      <aside className="w-[260px] shrink-0 bg-[#F2F2F0] border-r border-stone-200 flex flex-col" data-testid="sidebar">
-        <div className="px-5 py-5 border-b border-stone-200 bg-white flex flex-col items-start gap-1.5">
-          <Logo className="h-20" />
-          <div className="text-[10px] uppercase tracking-[0.2em] text-stone-500 font-bold pl-1">Admin Console</div>
+      {/* Mobile top bar — visible below lg (≤1023px). Contains the
+          hamburger toggle and a compact logo so the admin can always
+          get their bearings. Sticky so it stays put when scrolling
+          long pages. Hidden entirely on desktop where the sidebar
+          already carries the logo. */}
+      <div
+        className="lg:hidden fixed top-0 inset-x-0 z-30 h-14 bg-white/95 backdrop-blur border-b border-stone-200 flex items-center justify-between px-3"
+        data-testid="mobile-topbar"
+      >
+        <button
+          onClick={() => setMobileNavOpen(true)}
+          data-testid="mobile-nav-open"
+          aria-label="Open navigation"
+          className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-stone-100"
+        >
+          <Menu className="w-5 h-5 text-stone-800" />
+        </button>
+        <Logo className="h-8" />
+        <div className="text-[9px] uppercase tracking-[0.2em] font-bold text-stone-500 pr-1">Admin</div>
+      </div>
+
+      {/* Backdrop — click to close drawer. Only rendered when open on
+          mobile; z-index sits between the top bar and the drawer. */}
+      {mobileNavOpen && (
+        <div
+          onClick={() => setMobileNavOpen(false)}
+          data-testid="mobile-nav-backdrop"
+          className="lg:hidden fixed inset-0 z-40 bg-stone-950/40 backdrop-blur-sm"
+        />
+      )}
+
+      {/* Sidebar — always in the DOM. On desktop it's a normal
+          in-flow column. On mobile it's a slide-in fixed drawer
+          controlled by `mobileNavOpen`. `translate-x` transitions
+          give it a native-feeling slide. */}
+      <aside
+        className={`
+          w-[260px] shrink-0 bg-[#F2F2F0] border-r border-stone-200 flex flex-col
+          fixed inset-y-0 left-0 z-50 transition-transform duration-200 ease-out
+          ${mobileNavOpen ? "translate-x-0" : "-translate-x-full"}
+          lg:static lg:translate-x-0
+        `}
+        data-testid="sidebar"
+      >
+        <div className="px-5 py-5 border-b border-stone-200 bg-white flex items-start justify-between gap-2">
+          <div className="flex flex-col items-start gap-1.5">
+            <Logo className="h-20" />
+            <div className="text-[10px] uppercase tracking-[0.2em] text-stone-500 font-bold pl-1">Admin Console</div>
+          </div>
+          {/* Close button inside the drawer — only visible below lg so
+              the desktop layout looks identical to before. */}
+          <button
+            onClick={() => setMobileNavOpen(false)}
+            data-testid="mobile-nav-close"
+            aria-label="Close navigation"
+            className="lg:hidden w-9 h-9 flex items-center justify-center rounded-lg hover:bg-stone-100 shrink-0"
+          >
+            <X className="w-4 h-4 text-stone-700" />
+          </button>
         </div>
 
         <nav className="flex-1 py-3 overflow-y-auto">
@@ -609,8 +680,9 @@ export default function Layout() {
         </div>
       </aside>
 
-      {/* Main */}
-      <main className="flex-1 min-w-0">
+      {/* Main — offset top by the mobile top bar height (`pt-14`) below
+          lg so page content doesn't sit under the sticky top bar. */}
+      <main className="flex-1 min-w-0 pt-14 lg:pt-0">
         <PortalNewVersionBanner />
         <Outlet />
       </main>
