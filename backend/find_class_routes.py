@@ -246,11 +246,15 @@ def attach(api, db, require_role):
             {
                 "_id": 0, "id": 1, "first_name": 1, "last_name": 1,
                 "organisation": 1, "wp_title": 1,
-                "email": 1, "mojo_email": 1,
-                "mobile_phone": 1, "telephone": 1, "home_phone": 1,
                 "photos": 1, "photo_url": 1,
                 "facebook": 1, "wp_page_url": 1, "territory_sectors": 1,
                 "franchise_number": 1,
+                # Franchisee-curated website profile — governs what actually
+                # reaches the public map popup. Admin `email` / phone are
+                # intentionally NOT projected here so they can never leak
+                # into the response.
+                "website_email": 1, "website_phone": 1, "website_bio": 1,
+                "show_website_email": 1, "show_website_phone": 1, "show_website_bio": 1,
             },
         )
 
@@ -304,20 +308,31 @@ def attach(api, db, require_role):
                 scheme = request.headers.get("x-forwarded-proto", "https")
                 if public_origin:
                     photo_url = f"{scheme}://{public_origin}{photo_url}"
-            # Phone — Airtable migration sometimes stored UK mobiles as ints,
-            # stripping the leading 0. Re-add it where it's missing.
-            phone = (franchisee.get("mobile_phone") or franchisee.get("telephone") or franchisee.get("home_phone") or "")
-            phone_str = str(phone).strip()
-            if phone_str and not phone_str.startswith("+") and not phone_str.startswith("0"):
-                phone_str = "0" + phone_str
+            # Franchisee-curated public profile fields. Only surface a
+            # value when the franchisee has explicitly opted in on their
+            # "My Franchise" portal page. This fixed the Jul-2026 issue
+            # where admin-record emails/phones (private) were leaking to
+            # the public map popup for every franchisee.
+            phone_str = None
+            if franchisee.get("show_website_phone") and franchisee.get("website_phone"):
+                phone_str = str(franchisee["website_phone"]).strip() or None
+                # Preserve the Airtable-migration fix — mobiles stored as
+                # ints stripped their leading zero.
+                if phone_str and not phone_str.startswith("+") and not phone_str.startswith("0"):
+                    phone_str = "0" + phone_str
+            email_public = None
+            if franchisee.get("show_website_email") and franchisee.get("website_email"):
+                email_public = str(franchisee["website_email"]).strip() or None
+            bio_public = None
+            if franchisee.get("show_website_bio") and franchisee.get("website_bio"):
+                bio_public = str(franchisee["website_bio"]).strip() or None
             franchisee_payload = {
                 "id": franchisee.get("id"),
                 "area": area,
                 "name": full_name,
-                "phone": phone_str or None,
-                # Prefer the @creativemojo.co.uk address (the one shown on the
-                # public site); fall back to their personal email otherwise.
-                "email": franchisee.get("mojo_email") or franchisee.get("email"),
+                "phone": phone_str,
+                "email": email_public,
+                "bio": bio_public,
                 "facebook": franchisee.get("facebook"),
                 "photo_url": photo_url,
                 "wp_page_url": franchisee.get("wp_page_url"),

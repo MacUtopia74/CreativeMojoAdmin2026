@@ -1,5 +1,47 @@
 # Creative Mojo — Admin & Franchisee Hub PRD
 
+- ✅ **Franchisee-controlled Mojo page profile + fix public-map data leak (15 Jul 2026)**
+  Samantha Whiteman flagged that her private admin email/mobile were
+  leaking to the public `creativemojo.co.uk` map popup. Root cause:
+  `/api/public/find-class` was projecting the admin-record `email`,
+  `mobile_phone`, `telephone`, `home_phone` and `mojo_email` fields
+  directly into the popup payload. Rebuilt as an opt-in curation:
+    • New fields on `franchisees` doc: `website_email`, `website_phone`,
+      `website_bio`, plus three `show_website_*` toggles (all default
+      `false`, so the leak stops the moment this ships even for
+      franchisees who never log in).
+    • Public find-class endpoint stops projecting any admin contact
+      fields. Only the curated `website_*` values are surfaced, and
+      only when the matching `show_*` flag is true. Adds a new `bio`
+      key on the popup payload for the WordPress front-end to render.
+    • New `PATCH /api/portal/me/website-profile` — franchisee-only.
+    • New "Your Mojo page profile" section on the portal "My Franchise"
+      page: bio textarea (4kB cap), phone + email inputs, each with
+      its own "Use this X on your Mojo page" checkbox and one Save
+      button. Optimistic Save + green tick indicator.
+    • WordPress biography one-off importer:
+      `POST /api/admin/franchisees/import-website-bios` — accepts a WP
+      WXR (XML) export, matches posts to franchisees via wp_page_url
+      slug / slugified wp_title / fuzzy title contain. On non-dry-run,
+      stamps `website_bio` and flips `show_website_bio=true` (Paul:
+      "let's just put those live"). Only touches live franchisees
+      (`lifecycle_status != 'ex'`, `tags` contains `Franchisee`).
+      Uses XML instead of live scraping because creativemojo.co.uk is
+      behind Imunify360 bot protection — WXR export is cleaner + safer.
+      Report response lists matched + unmatched + still-missing so
+      Paul can spot-check before/after.
+  Verified: curl round-trip (toggles ON → payload has values, toggles
+  OFF → payload is null on all three fields, name/area/photo still
+  populate); dry-run importer against sample WXR matches Anita Priest
+  correctly and rejects both the draft and the unrelated post.
+  Files: `backend/server.py` (portal PATCH endpoint, importer,
+  portal_me projection), `backend/find_class_routes.py` (drop admin
+  projection, gated public projection), `frontend/src/pages/portal/PortalDetailsPage.jsx`.
+  ⚠️ Production fix requires Save to GitHub → Redeploy, then upload the
+  WP XML export via curl or the admin console. Endpoint takes a
+  `?dry_run=true` param so Paul can eyeball matches first.
+
+
 - ✅ **Territory Builder — UK county boundaries overlay + share persistence (09 Jul 2026)**
   Added a "Counties" toggle button (bottom-right of the Territory
   Builder map) that overlays the 73 UK ceremonial counties as a soft

@@ -2562,6 +2562,11 @@ async def portal_me(user: dict = Depends(require_role("franchisee"))):
         "territory_sectors", "territory_home_count",
         "portal_modules",  # Phase 5 — admin-controlled feature toggles
         "tags",  # Used client-side to detect demo accounts (extra demo-only nav entries)
+        # Franchisee-curated public profile — shown on the creativemojo.co.uk
+        # map popup ONLY when the corresponding show_* flag is true.
+        # See find_class_routes.py for the gating logic.
+        "website_email", "website_phone", "website_bio",
+        "show_website_email", "show_website_phone", "show_website_bio",
     }
     profile = {k: f.get(k) for k in keep if k in f}
     # Normalise ``tags`` to always be an array. Legacy Airtable records
@@ -2690,6 +2695,57 @@ async def portal_subscription_request(
     return {"ok": True, "id": doc["id"]}
 
 
+class PortalWebsiteProfileIn(BaseModel):
+    """Franchisee-editable public profile — governs the map popup on
+    creativemojo.co.uk. All fields optional so the client can PATCH
+    individual toggles/values."""
+    website_email: Optional[str] = None
+    website_phone: Optional[str] = None
+    website_bio: Optional[str] = None
+    show_website_email: Optional[bool] = None
+    show_website_phone: Optional[bool] = None
+    show_website_bio: Optional[bool] = None
+
+
+@api.patch("/portal/me/website-profile")
+async def portal_update_website_profile(
+    body: PortalWebsiteProfileIn,
+    user: dict = Depends(require_role("franchisee")),
+):
+    """Franchisee updates their own public "website profile" — the values
+    that reach the creativemojo.co.uk map popup. Only the six website_*
+    / show_website_* fields are mutable here; nothing else on the
+    franchisee doc can be touched via this route. A missing/None field
+    is treated as "leave as-is" so the client can save one toggle at a
+    time without wiping the rest."""
+    fid = user.get("franchisee_id")
+    if not fid:
+        raise HTTPException(400, detail="Franchisee link missing")
+    payload = body.model_dump(exclude_unset=True)
+    if not payload:
+        return {"ok": True, "changed": 0}
+    # Clean up incoming strings (empty → None so we don't render "").
+    # Bio can be long — cap at 4kB to keep the map popup tidy.
+    if "website_email" in payload:
+        v = (payload["website_email"] or "").strip()
+        payload["website_email"] = v or None
+    if "website_phone" in payload:
+        v = (payload["website_phone"] or "").strip()
+        payload["website_phone"] = v or None
+    if "website_bio" in payload:
+        v = (payload["website_bio"] or "").strip()
+        if v and len(v) > 4000:
+            v = v[:4000]
+        payload["website_bio"] = v or None
+    result = await db.franchisees.update_one(
+        {"id": fid},
+        {"$set": {**payload, "updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(404, detail="Franchisee record not found")
+    return {"ok": True, "changed": result.modified_count}
+
+
 @api.get("/portal/subscriptions/requests")
 async def portal_my_subscription_requests(user: dict = Depends(require_role("franchisee"))):
     """The franchisee's own subscription requests, newest first. Used
@@ -2701,6 +2757,220 @@ async def portal_my_subscription_requests(user: dict = Depends(require_role("fra
         {"_id": 0},
     ).sort("created_at", -1).limit(50)
     return {"requests": await cur.to_list(50)}
+
+
+# --------------------------------------------------------------------- #
+# WordPress biography import — one-off migration                        #
+# --------------------------------------------------------------------- #
+def _wp_slug(text: str) -> str:
+    """Match WordPress's default slug generation (lowercase, spaces →
+    hyphens, ampersands dropped, non-alphanumerics stripped). Used to
+    align a franchisee record against a `<wp:post_name>` from a WXR
+    export when their doc has no `wp_page_url` yet."""
+    if not text:
+        return ""
+    s = text.lower()
+    s = s.replace("&", "").replace("’", "").replace("'", "")
+    s = re.sub(r"[^a-z0-9\s-]", "", s)
+    s = re.sub(r"[\s-]+", "-", s).strip("-")
+    # WP strips very common connectors when generating slugs; matching
+    # them here helps us hit exports that used trimmed versions.
+    return s
+
+
+def _extract_bio_text(html_or_text: str) -> str:
+    """Turn a WP post's `content:encoded` block into the plain-text
+    biography we render in the map popup.
+
+    - Strips HTML tags but preserves paragraph + line-break structure.
+    - Trims "Franchise Testimonial", "WPCode Page Scripts" and later
+      sections — the migrated screenshots showed those blocks live
+      after the biography in the same post body.
+    - Collapses runs of whitespace so the popup renders cleanly.
+    """
+    if not html_or_text:
+        return ""
+    txt = html_or_text
+    # Cut at known post-biography section markers.
+    for marker in ("Franchise Testimonial", "WPCode Page Scripts", "[wpcode"):
+        idx = txt.lower().find(marker.lower())
+        if idx > 0:
+            txt = txt[:idx]
+    # Convert <br> and </p> to newlines so paragraphs survive.
+    txt = re.sub(r"<br\s*/?>", "\n", txt, flags=re.I)
+    txt = re.sub(r"</p\s*>", "\n\n", txt, flags=re.I)
+    # Strip remaining tags.
+    txt = re.sub(r"<[^>]+>", "", txt)
+    # HTML entity decode — WP exports commonly contain &amp; &nbsp; etc.
+    import html as _html
+    txt = _html.unescape(txt)
+    # Normalise smart quotes / non-breaking spaces to plain ASCII.
+    txt = txt.replace("\xa0", " ").replace("\u2019", "'")
+    # Collapse whitespace runs but preserve blank lines between paragraphs.
+    lines = [ln.strip() for ln in txt.split("\n")]
+    out: list[str] = []
+    prev_blank = False
+    for ln in lines:
+        if not ln:
+            if not prev_blank and out:
+                out.append("")
+            prev_blank = True
+        else:
+            out.append(ln)
+            prev_blank = False
+    return "\n".join(out).strip()
+
+
+@api.post("/admin/franchisees/import-website-bios")
+async def admin_import_website_bios(
+    file: UploadFile = File(...),
+    dry_run: bool = Query(False),
+    _: dict = Depends(require_role("admin")),
+):
+    """One-off migration: pulls each live franchisee's biography from a
+    WordPress WXR (XML) export and stores it as ``website_bio``, then
+    flips ``show_website_bio=true`` so it appears on the public map
+    popup straight away (Paul's ask: "let's just put those live").
+
+    Usage:
+      1. In WP admin → Tools → Export → "Franchise" custom post type →
+         Download Export File. That yields a `.xml` WXR document.
+      2. POST it here as multipart form field ``file``. Add
+         ``?dry_run=true`` first if you want to eyeball the matches
+         before committing.
+
+    Match strategy (in order):
+      - `wp_page_url` on the franchisee record contains the post's slug.
+      - Slugified `wp_title` or `organisation` matches `<wp:post_name>`.
+      - Fuzzy contains (post title inside organisation, or vice versa).
+
+    Only ``status=publish`` posts are considered, and only franchisees
+    with ``lifecycle_status != 'ex'`` and tag = ``Franchisee`` are
+    updated. Every un-matched WP post + un-matched franchisee is
+    returned in the response so the admin can spot-check the gaps."""
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(400, detail="Empty upload.")
+    try:
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(raw)
+    except ET.ParseError as exc:
+        raise HTTPException(400, detail=f"Not a valid WordPress XML export: {exc}") from exc
+
+    ns = {
+        "wp": "http://wordpress.org/export/1.2/",
+        "content": "http://purl.org/rss/1.0/modules/content/",
+        "excerpt": "http://wordpress.org/export/1.2/excerpt/",
+    }
+
+    posts: list[dict] = []
+    for item in root.iter("item"):
+        status_el = item.find("wp:status", ns)
+        if status_el is None or (status_el.text or "").lower() != "publish":
+            continue
+        post_type_el = item.find("wp:post_type", ns)
+        # "franchise" is the custom post type shown in the screenshot;
+        # allow the generic "post" too since some WP setups slot bios
+        # under regular posts inside a "franchise" category.
+        if post_type_el is not None and (post_type_el.text or "").lower() not in ("franchise", "post"):
+            continue
+        title_el = item.find("title")
+        slug_el = item.find("wp:post_name", ns)
+        content_el = item.find("content:encoded", ns)
+        title = (title_el.text or "").strip() if title_el is not None else ""
+        slug = (slug_el.text or "").strip().lower() if slug_el is not None else ""
+        raw_content = content_el.text or "" if content_el is not None else ""
+        bio = _extract_bio_text(raw_content)
+        if bio and len(bio) >= 40:  # ignore stubs / placeholder posts
+            posts.append({"title": title, "slug": slug, "bio": bio})
+
+    # Load all live franchisees once.
+    franchisees = await db.franchisees.find(
+        {"lifecycle_status": {"$ne": "ex"}, "tags": "Franchisee"},
+        {"_id": 0, "id": 1, "first_name": 1, "last_name": 1,
+         "organisation": 1, "wp_title": 1, "wp_page_url": 1,
+         "website_bio": 1, "show_website_bio": 1},
+    ).to_list(2000)
+
+    matched: list[dict] = []
+    unmatched_posts: list[dict] = []
+    for post in posts:
+        target = None
+        # 1) wp_page_url contains slug
+        if post["slug"]:
+            slug_frag = f"/{post['slug']}/"
+            for f in franchisees:
+                url = (f.get("wp_page_url") or "").lower()
+                if url and (slug_frag in url or url.rstrip("/").endswith(post["slug"])):
+                    target = f
+                    break
+        # 2) Slugified wp_title / organisation matches
+        if not target and post["slug"]:
+            for f in franchisees:
+                for candidate in (f.get("wp_title"), f.get("organisation")):
+                    if candidate and _wp_slug(candidate) == post["slug"]:
+                        target = f
+                        break
+                if target:
+                    break
+        # 3) Fuzzy title contains
+        if not target and post["title"]:
+            pt = post["title"].lower()
+            # Strip common WP prefixes to increase hit rate.
+            for prefix in ("creative mojo - ", "creative mojo "):
+                if pt.startswith(prefix):
+                    pt = pt[len(prefix):]
+                    break
+            for f in franchisees:
+                cand = ((f.get("wp_title") or f.get("organisation") or "").lower())
+                for prefix in ("creative mojo - ", "creative mojo "):
+                    if cand.startswith(prefix):
+                        cand = cand[len(prefix):]
+                        break
+                if cand and (pt in cand or cand in pt):
+                    target = f
+                    break
+
+        if not target:
+            unmatched_posts.append({"title": post["title"], "slug": post["slug"], "bio_preview": post["bio"][:120]})
+            continue
+
+        matched.append({
+            "franchisee_id": target["id"],
+            "franchisee_name": f'{target.get("first_name","")} {target.get("last_name","")}'.strip(),
+            "organisation": target.get("organisation"),
+            "post_title": post["title"],
+            "post_slug": post["slug"],
+            "bio_length": len(post["bio"]),
+            "bio_preview": post["bio"][:200],
+            "already_had_bio": bool(target.get("website_bio")),
+        })
+        if not dry_run:
+            await db.franchisees.update_one(
+                {"id": target["id"]},
+                {"$set": {
+                    "website_bio": post["bio"],
+                    "show_website_bio": True,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }},
+            )
+        # Prevent the same post being matched twice to different
+        # franchisees on the second-pass search.
+        franchisees = [f for f in franchisees if f["id"] != target["id"]]
+
+    return {
+        "ok": True,
+        "dry_run": dry_run,
+        "posts_in_export": len(posts),
+        "matched_count": len(matched),
+        "unmatched_post_count": len(unmatched_posts),
+        "franchisees_still_missing_bio": [
+            {"id": f["id"], "organisation": f.get("organisation"), "wp_title": f.get("wp_title")}
+            for f in franchisees if not f.get("website_bio")
+        ],
+        "matched": matched,
+        "unmatched_posts": unmatched_posts,
+    }
 
 
 @api.get("/admin/subscription-requests")

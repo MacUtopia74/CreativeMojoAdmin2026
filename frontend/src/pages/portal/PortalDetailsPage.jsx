@@ -7,11 +7,14 @@
 // "MY FRANCHISE DETAILS" and "MY FRANCHISE DOCUMENTS" should read
 // like proper section dividers, not muted micro-labels.
 import { useOutletContext } from "react-router-dom";
+import { useState, useEffect } from "react";
 import {
   Mail, Phone, Globe, MapPin, Calendar, Clock, Smartphone,
   User as UserIcon, FileText, FolderOpen,
   ShieldCheck, ShieldAlert, Home, Facebook,
+  Save, CheckCircle2, AlertCircle, Loader2, ExternalLink,
 } from "lucide-react";
+import api from "@/lib/api";
 import FranchiseeFilesPanel from "@/components/files/FranchiseeFilesPanel";
 import PortalPageHeading from "@/components/portal/PortalPageHeading";
 
@@ -56,8 +59,50 @@ function Field({ icon: Icon, label, value, href }) {
 }
 
 export default function PortalDetailsPage() {
-  const { profile: data } = useOutletContext();
+  const { profile: data, refreshProfile } = useOutletContext();
   const profile = data?.profile;
+
+  // Local editable state for the "Website Profile" section — the values
+  // franchisees curate for the creativemojo.co.uk map popup. Seeded
+  // from the fetched profile; PATCH writes back and refreshes.
+  const [wpForm, setWpForm] = useState({
+    website_email: "",
+    website_phone: "",
+    website_bio: "",
+    show_website_email: false,
+    show_website_phone: false,
+    show_website_bio: false,
+  });
+  const [wpSaving, setWpSaving] = useState(false);
+  const [wpSavedAt, setWpSavedAt] = useState(null);
+  const [wpErr, setWpErr] = useState("");
+
+  useEffect(() => {
+    if (!profile) return;
+    setWpForm({
+      website_email: profile.website_email || "",
+      website_phone: profile.website_phone || "",
+      website_bio: profile.website_bio || "",
+      show_website_email: !!profile.show_website_email,
+      show_website_phone: !!profile.show_website_phone,
+      show_website_bio: !!profile.show_website_bio,
+    });
+  }, [profile?.website_email, profile?.website_phone, profile?.website_bio,
+      profile?.show_website_email, profile?.show_website_phone, profile?.show_website_bio]);
+
+  const saveWebsiteProfile = async () => {
+    setWpSaving(true); setWpErr("");
+    try {
+      await api.patch("/portal/me/website-profile", wpForm);
+      setWpSavedAt(new Date());
+      if (refreshProfile) await refreshProfile();
+    } catch (e) {
+      setWpErr(e?.response?.data?.detail || "Couldn't save — please try again.");
+    } finally {
+      setWpSaving(false);
+    }
+  };
+
   if (!profile) return null;
   const years = yearsBetween(profile.start_date);
   const addressLines = [
@@ -226,6 +271,133 @@ export default function PortalDetailsPage() {
               </div>
             </div>
           )}
+        </div>
+      </section>
+
+      {/* Section: Your Mojo page profile — the fields shown on the
+          creativemojo.co.uk map popup. Franchisee-controlled, opt-in
+          per field, so private admin contact details are never
+          accidentally exposed. */}
+      <section
+        className="bg-white border border-stone-200 rounded-2xl px-4 sm:px-6 py-5 sm:py-6"
+        data-testid="portal-website-profile"
+      >
+        <div className="flex items-start gap-3 mb-4 pb-4 border-b border-stone-200">
+          <ExternalLink className="w-6 h-6 text-stone-700 shrink-0 mt-1" />
+          <div className="flex-1 min-w-0">
+            <h1 className="font-display text-2xl sm:text-3xl font-black text-stone-950 tracking-tight">Your Mojo page profile</h1>
+            <p className="text-sm text-stone-600 mt-1 leading-relaxed">
+              These are the details prospects see when they search for you on the
+              {" "}<a href="https://www.creativemojo.co.uk" target="_blank" rel="noopener noreferrer" className="text-stone-950 underline hover:text-stone-700">creativemojo.co.uk</a>{" "}
+              map. Tick each item you&apos;re happy to share publicly.
+              Untick anything you&apos;d like to keep private — leave those blank on the map.
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-5">
+          {/* Biography */}
+          <div>
+            <label className="text-[11px] uppercase tracking-[0.2em] font-bold text-stone-500 flex items-center gap-2">
+              <FileText className="w-3.5 h-3.5" /> Biography
+            </label>
+            <textarea
+              data-testid="wp-bio-input"
+              value={wpForm.website_bio}
+              onChange={(e) => setWpForm((f) => ({ ...f, website_bio: e.target.value }))}
+              rows={6}
+              maxLength={4000}
+              placeholder="Introduce yourself — a short paragraph or two about you and your Creative Mojo territory. Prospects see this on the website map."
+              className="mt-2 w-full px-3 py-2.5 border border-stone-300 rounded-lg text-sm bg-white focus:outline-none focus:border-stone-950 leading-relaxed"
+            />
+            <div className="flex items-center justify-between mt-1.5 flex-wrap gap-2">
+              <label className="flex items-center gap-2 text-sm text-stone-800 cursor-pointer">
+                <input
+                  type="checkbox"
+                  data-testid="wp-bio-toggle"
+                  checked={wpForm.show_website_bio}
+                  onChange={(e) => setWpForm((f) => ({ ...f, show_website_bio: e.target.checked }))}
+                  className="w-4 h-4 accent-emerald-600"
+                />
+                Use this biography on your Mojo page
+              </label>
+              <div className="text-[11px] text-stone-400 tabular-nums">{wpForm.website_bio.length} / 4000</div>
+            </div>
+          </div>
+
+          {/* Phone */}
+          <div>
+            <label className="text-[11px] uppercase tracking-[0.2em] font-bold text-stone-500 flex items-center gap-2">
+              <Phone className="w-3.5 h-3.5" /> Phone number
+            </label>
+            <input
+              type="tel"
+              data-testid="wp-phone-input"
+              value={wpForm.website_phone}
+              onChange={(e) => setWpForm((f) => ({ ...f, website_phone: e.target.value }))}
+              placeholder="e.g. 07700 900123"
+              className="mt-2 w-full px-3 py-2.5 border border-stone-300 rounded-lg text-sm bg-white focus:outline-none focus:border-stone-950"
+            />
+            <label className="mt-1.5 flex items-center gap-2 text-sm text-stone-800 cursor-pointer">
+              <input
+                type="checkbox"
+                data-testid="wp-phone-toggle"
+                checked={wpForm.show_website_phone}
+                onChange={(e) => setWpForm((f) => ({ ...f, show_website_phone: e.target.checked }))}
+                className="w-4 h-4 accent-emerald-600"
+              />
+              Use this phone number on your Mojo page
+            </label>
+          </div>
+
+          {/* Email */}
+          <div>
+            <label className="text-[11px] uppercase tracking-[0.2em] font-bold text-stone-500 flex items-center gap-2">
+              <Mail className="w-3.5 h-3.5" /> Email address
+            </label>
+            <input
+              type="email"
+              data-testid="wp-email-input"
+              value={wpForm.website_email}
+              onChange={(e) => setWpForm((f) => ({ ...f, website_email: e.target.value }))}
+              placeholder="e.g. yourname@creativemojo.co.uk"
+              className="mt-2 w-full px-3 py-2.5 border border-stone-300 rounded-lg text-sm bg-white focus:outline-none focus:border-stone-950"
+            />
+            <label className="mt-1.5 flex items-center gap-2 text-sm text-stone-800 cursor-pointer">
+              <input
+                type="checkbox"
+                data-testid="wp-email-toggle"
+                checked={wpForm.show_website_email}
+                onChange={(e) => setWpForm((f) => ({ ...f, show_website_email: e.target.checked }))}
+                className="w-4 h-4 accent-emerald-600"
+              />
+              Use this email address on your Mojo page
+            </label>
+          </div>
+
+          {/* Save row */}
+          <div className="flex items-center gap-3 pt-3 border-t border-stone-100 flex-wrap">
+            <button
+              type="button"
+              onClick={saveWebsiteProfile}
+              disabled={wpSaving}
+              data-testid="wp-save"
+              className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 text-[#dddd16] hover:bg-stone-800 rounded-lg flex items-center gap-1.5 disabled:opacity-60"
+            >
+              {wpSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+              Save website profile
+            </button>
+            {wpSavedAt && !wpErr && !wpSaving && (
+              <div className="text-xs text-emerald-800 flex items-center gap-1.5" data-testid="wp-saved-indicator">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Saved · {wpSavedAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+              </div>
+            )}
+            {wpErr && (
+              <div className="text-xs text-red-700 flex items-center gap-1.5" data-testid="wp-save-error">
+                <AlertCircle className="w-3.5 h-3.5" /> {wpErr}
+              </div>
+            )}
+          </div>
         </div>
       </section>
 
