@@ -2932,7 +2932,12 @@ async def admin_import_website_bios(
                     break
 
         if not target:
-            unmatched_posts.append({"title": post["title"], "slug": post["slug"], "bio_preview": post["bio"][:120]})
+            unmatched_posts.append({
+                "title": post["title"],
+                "slug": post["slug"],
+                "bio": post["bio"],
+                "bio_preview": post["bio"][:200],
+            })
             continue
 
         matched.append({
@@ -2971,6 +2976,40 @@ async def admin_import_website_bios(
         "matched": matched,
         "unmatched_posts": unmatched_posts,
     }
+
+
+@api.post("/admin/franchisees/{fid}/set-website-bio")
+async def admin_set_website_bio(
+    fid: str,
+    body: dict = Body(...),
+    _: dict = Depends(require_role("admin")),
+):
+    """Companion to the WXR importer — assigns a single biography to a
+    single franchisee. Used from the "Couldn't auto-match" section of
+    the Import WP Bios modal, where Paul picks a franchisee for each
+    orphan post the automatic matcher couldn't pair up.
+
+    Also flips ``show_website_bio=true`` so the bio hits the public
+    map popup immediately, mirroring the bulk-import behaviour.
+
+    Body: ``{"bio": "<plain-text bio>"}``
+    """
+    bio = (body.get("bio") or "").strip()
+    if not bio:
+        raise HTTPException(400, detail="Biography text is required.")
+    if len(bio) > 4000:
+        bio = bio[:4000]
+    result = await db.franchisees.update_one(
+        {"id": fid, "lifecycle_status": {"$ne": "ex"}, "tags": "Franchisee"},
+        {"$set": {
+            "website_bio": bio,
+            "show_website_bio": True,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(404, detail="Live franchisee not found.")
+    return {"ok": True, "franchisee_id": fid, "bio_length": len(bio)}
 
 
 @api.get("/admin/subscription-requests")

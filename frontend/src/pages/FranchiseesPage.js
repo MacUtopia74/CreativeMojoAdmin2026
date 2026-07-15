@@ -188,20 +188,59 @@ function GoCardlessSyncModal({ open, onClose, onCommitted }) {
 // counts in dry-run, then commits (which stamps ``website_bio`` and
 // flips ``show_website_bio=true`` on every matched franchisee so the
 // bio appears on the public creativemojo.co.uk map popup immediately).
-function WPBioImportModal({ open, onClose, onCommitted }) {
+function WPBioImportModal({ open, onClose, onCommitted, allFranchisees = [] }) {
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
   const [report, setReport] = useState(null);
   const [err, setErr] = useState("");
   const [committed, setCommitted] = useState(false);
+  // Per-row picker/assignment state for the "Couldn't auto-match"
+  // section. Keyed by the post's slug (fallback: title). Value shape:
+  // { fid: string, publishing: boolean, done: boolean, error?: string }
+  const [manual, setManual] = useState({});
 
   // Fresh state whenever the modal is (re-)opened so users don't see
   // a stale report from a previous session.
   useEffect(() => {
     if (open) {
       setFile(null); setBusy(false); setReport(null); setErr(""); setCommitted(false);
+      setManual({});
     }
   }, [open]);
+
+  // Alphabetical franchisee options for the manual-match dropdown.
+  // Only live franchisees (parent already filters ex-franchisees out
+  // of `all` by default). Cached across renders for perf on 100+ rows.
+  const franchiseeOptions = useMemo(() => {
+    const opts = (allFranchisees || [])
+      .filter((f) => (f.lifecycle_status || "").toLowerCase() !== "ex")
+      .map((f) => ({
+        id: f.id,
+        label: [
+          [f.first_name, f.last_name].filter(Boolean).join(" "),
+          f.organisation ? `(${f.organisation})` : "",
+        ].filter(Boolean).join(" ").trim(),
+      }))
+      .filter((o) => o.label);
+    opts.sort((a, b) => a.label.localeCompare(b.label));
+    return opts;
+  }, [allFranchisees]);
+
+  const assignManual = async (postKey, post) => {
+    const chosenId = manual[postKey]?.fid;
+    if (!chosenId) return;
+    setManual((m) => ({ ...m, [postKey]: { ...m[postKey], publishing: true, error: undefined } }));
+    try {
+      await api.post(`/admin/franchisees/${chosenId}/set-website-bio`, { bio: post.bio });
+      setManual((m) => ({ ...m, [postKey]: { ...m[postKey], publishing: false, done: true } }));
+      onCommitted?.();
+    } catch (e) {
+      setManual((m) => ({ ...m, [postKey]: {
+        ...m[postKey], publishing: false,
+        error: e?.response?.data?.detail || "Couldn't publish. Try again.",
+      } }));
+    }
+  };
 
   const run = async (dryRun) => {
     if (!file) { setErr("Choose the WordPress XML export file first."); return; }
@@ -327,18 +366,58 @@ function WPBioImportModal({ open, onClose, onCommitted }) {
               {report.unmatched_posts?.length > 0 && (
                 <div>
                   <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-amber-700 mb-2">
-                    Couldn&apos;t auto-match ({report.unmatched_posts.length})
+                    Couldn&apos;t auto-match ({report.unmatched_posts.filter((u) => !manual[u.slug || u.title]?.done).length})
                   </div>
-                  <div className="border border-amber-200 bg-amber-50/40 rounded-lg divide-y divide-amber-100 max-h-40 overflow-y-auto text-xs">
-                    {report.unmatched_posts.map((u) => (
-                      <div key={u.slug || u.title} className="px-3 py-2">
-                        <div className="font-bold text-stone-900">{u.title || u.slug}</div>
-                        <div className="text-stone-500 mt-0.5 line-clamp-1">{u.bio_preview}…</div>
-                      </div>
-                    ))}
+                  <div className="border border-amber-200 bg-amber-50/40 rounded-lg divide-y divide-amber-100 max-h-[420px] overflow-y-auto text-xs">
+                    {report.unmatched_posts.map((u) => {
+                      const key = u.slug || u.title;
+                      const state = manual[key] || {};
+                      return (
+                        <div key={key} className={`px-3 py-2.5 ${state.done ? "opacity-60" : ""}`} data-testid={`wp-bio-unmatched-${key}`}>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <div className="font-bold text-stone-900">{u.title || u.slug}</div>
+                              <div className="text-stone-600 mt-0.5 leading-relaxed line-clamp-3">{u.bio_preview}…</div>
+                            </div>
+                          </div>
+                          {state.done ? (
+                            <div className="mt-2 text-emerald-700 flex items-center gap-1.5 font-bold" data-testid={`wp-bio-manual-done-${key}`}>
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Published live
+                            </div>
+                          ) : (
+                            <div className="mt-2 flex items-center gap-2 flex-wrap">
+                              <span className="text-[10px] uppercase tracking-[0.15em] font-bold text-stone-500 shrink-0">Assign to</span>
+                              <select
+                                value={state.fid || ""}
+                                onChange={(e) => setManual((m) => ({ ...m, [key]: { ...m[key], fid: e.target.value, error: undefined } }))}
+                                data-testid={`wp-bio-picker-${key}`}
+                                className="flex-1 min-w-[220px] max-w-full px-2 py-1.5 text-xs border border-stone-300 rounded-md bg-white focus:outline-none focus:border-stone-900"
+                              >
+                                <option value="">— pick a franchisee —</option>
+                                {franchiseeOptions.map((o) => (
+                                  <option key={o.id} value={o.id}>{o.label}</option>
+                                ))}
+                              </select>
+                              <button
+                                onClick={() => assignManual(key, u)}
+                                disabled={!state.fid || state.publishing}
+                                data-testid={`wp-bio-publish-${key}`}
+                                className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-[#aaaa11] rounded-md flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                              >
+                                {state.publishing ? <RefreshCw className="w-3 h-3 animate-spin" /> : <ArrowRight className="w-3 h-3" />}
+                                Publish
+                              </button>
+                            </div>
+                          )}
+                          {state.error && (
+                            <div className="mt-1.5 text-red-700 text-[11px]">{state.error}</div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                   <div className="text-[11px] text-stone-500 mt-1.5 leading-relaxed">
-                    These posts weren&apos;t linked to any live franchisee record (name/slug mismatch, or the franchisee isn&apos;t in the hub yet). Fine to ignore — you can always paste the bio manually via a franchisee&apos;s admin page later.
+                    Pick the correct franchisee for each unmatched post and click <strong>Publish</strong>. The biography goes live on the map popup instantly.
                   </div>
                 </div>
               )}
@@ -928,7 +1007,7 @@ export default function FranchiseesPage() {
       </div>
 
       <GoCardlessSyncModal open={gcSyncOpen} onClose={() => setGcSyncOpen(false)} onCommitted={reload} />
-      <WPBioImportModal open={wpBioOpen} onClose={() => setWpBioOpen(false)} onCommitted={reload} />
+      <WPBioImportModal open={wpBioOpen} onClose={() => setWpBioOpen(false)} onCommitted={reload} allFranchisees={all} />
 
       {missingMandate.count > 0 && (
         <div className="px-8 pt-6" data-testid="missing-mandate-banner">
