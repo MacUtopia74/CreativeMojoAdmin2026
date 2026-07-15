@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import api from "@/lib/api";
-import { Search, AlertCircle, RefreshCw, CreditCard, CheckCircle2, X, ChevronDown, LayoutGrid, List as ListIcon, Mail, Phone, ArrowRight, Columns3, GripVertical, ExternalLink, FileText, Facebook as FacebookIcon, RotateCcw } from "lucide-react";
+import { Search, AlertCircle, RefreshCw, CreditCard, CheckCircle2, X, ChevronDown, LayoutGrid, List as ListIcon, Mail, Phone, ArrowRight, Columns3, GripVertical, ExternalLink, FileText, Facebook as FacebookIcon, RotateCcw, Upload, FileCode } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { formatDate } from "@/lib/date";
 
@@ -182,6 +182,205 @@ function GoCardlessSyncModal({ open, onClose, onCommitted }) {
     </div>
   );
 }
+
+// One-off migration modal — accepts the WordPress WXR (XML) export
+// Sandra downloads from WP admin → Tools → Export, previews match
+// counts in dry-run, then commits (which stamps ``website_bio`` and
+// flips ``show_website_bio=true`` on every matched franchisee so the
+// bio appears on the public creativemojo.co.uk map popup immediately).
+function WPBioImportModal({ open, onClose, onCommitted }) {
+  const [file, setFile] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [report, setReport] = useState(null);
+  const [err, setErr] = useState("");
+  const [committed, setCommitted] = useState(false);
+
+  // Fresh state whenever the modal is (re-)opened so users don't see
+  // a stale report from a previous session.
+  useEffect(() => {
+    if (open) {
+      setFile(null); setBusy(false); setReport(null); setErr(""); setCommitted(false);
+    }
+  }, [open]);
+
+  const run = async (dryRun) => {
+    if (!file) { setErr("Choose the WordPress XML export file first."); return; }
+    setBusy(true); setErr("");
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const { data } = await api.post(
+        `/admin/franchisees/import-website-bios?dry_run=${dryRun ? "true" : "false"}`,
+        form,
+        { headers: { "Content-Type": "multipart/form-data" } },
+      );
+      setReport(data);
+      if (!dryRun) { setCommitted(true); onCommitted?.(); }
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Import failed. Check the file is a valid WordPress XML export.");
+    } finally { setBusy(false); }
+  };
+
+  if (!open) return null;
+
+  return (
+    <div onClick={onClose} className="fixed inset-0 z-50 bg-stone-950/40 backdrop-blur-sm flex items-start justify-center p-6 overflow-y-auto" data-testid="wp-bio-modal">
+      <div onClick={(e) => e.stopPropagation()} className="bg-white border border-stone-200 max-w-3xl w-full rounded-2xl shadow-2xl my-4">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200">
+          <div className="flex items-center gap-2">
+            <FileCode className="w-4 h-4 text-stone-700" />
+            <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">Import Biographies from WordPress</div>
+          </div>
+          <button onClick={onClose} data-testid="wp-bio-close" className="w-9 h-9 flex items-center justify-center hover:bg-stone-100 rounded-lg"><X className="w-4 h-4" /></button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          {/* Step-by-step help — kept on-screen the whole time so
+              it's clear what dry-run vs commit means. */}
+          {!committed && (
+            <div className="bg-stone-50 border border-stone-200 rounded-lg p-4 text-sm text-stone-700 space-y-2">
+              <div className="font-bold text-stone-950">How this works</div>
+              <ol className="list-decimal list-inside space-y-1 leading-relaxed">
+                <li>
+                  In WordPress admin, go to{" "}
+                  <span className="font-mono text-xs bg-white px-1 rounded border border-stone-200">Tools → Export</span>{" "}
+                  and choose <strong>Franchise</strong> (or All content), then click <strong>Download Export File</strong>.
+                </li>
+                <li>Pick the downloaded <code className="text-xs bg-white px-1 rounded border border-stone-200">.xml</code> file below.</li>
+                <li>Click <strong>Preview matches</strong> — nothing is saved yet. Eyeball the match list.</li>
+                <li>If the preview looks right, click <strong>Import and publish live</strong>. Each matched franchisee&apos;s biography goes live on the map popup.</li>
+              </ol>
+            </div>
+          )}
+
+          {/* File picker */}
+          {!committed && (
+            <label className="block cursor-pointer border-2 border-dashed border-stone-300 hover:border-stone-500 rounded-xl px-4 py-6 text-center transition-colors" data-testid="wp-bio-file-drop">
+              <input
+                type="file"
+                accept=".xml,application/xml,text/xml"
+                onChange={(e) => { setFile(e.target.files?.[0] || null); setReport(null); setErr(""); }}
+                className="hidden"
+                data-testid="wp-bio-file-input"
+              />
+              <Upload className="w-6 h-6 mx-auto text-stone-500" />
+              <div className="mt-2 text-sm font-bold text-stone-950">
+                {file ? file.name : "Choose your WordPress XML export"}
+              </div>
+              <div className="text-xs text-stone-500 mt-1">
+                {file ? `${(file.size / 1024).toFixed(1)} KB · click to swap` : ".xml file from WP admin → Tools → Export"}
+              </div>
+            </label>
+          )}
+
+          {busy && (
+            <div className="text-sm text-stone-600 flex items-center gap-2 py-4">
+              <RefreshCw className="w-4 h-4 animate-spin" /> {report ? "Publishing to franchisees…" : "Parsing WordPress export…"}
+            </div>
+          )}
+
+          {err && (
+            <div className="text-sm text-red-700 bg-red-50 border border-red-200 px-3 py-2 rounded-lg" data-testid="wp-bio-error">
+              <AlertCircle className="w-4 h-4 inline mr-1" /> {err}
+            </div>
+          )}
+
+          {/* Preview / result */}
+          {report && (
+            <div className="space-y-4" data-testid="wp-bio-report">
+              <div className="grid grid-cols-3 gap-2">
+                <div className="bg-stone-50 border border-stone-200 rounded-lg p-3">
+                  <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">WP Posts</div>
+                  <div className="font-display text-2xl text-stone-950 mt-1 tabular-nums">{report.posts_in_export}</div>
+                </div>
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                  <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-emerald-700">Matched</div>
+                  <div className="font-display text-2xl text-emerald-900 mt-1 tabular-nums" data-testid="wp-bio-matched-count">{report.matched_count}</div>
+                </div>
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-amber-700">Unmatched Posts</div>
+                  <div className="font-display text-2xl text-amber-900 mt-1 tabular-nums">{report.unmatched_post_count}</div>
+                </div>
+              </div>
+
+              {report.matched?.length > 0 && (
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-2">
+                    Matches ({report.matched.length})
+                  </div>
+                  <div className="border border-stone-200 rounded-lg divide-y divide-stone-100 max-h-64 overflow-y-auto text-xs">
+                    {report.matched.map((m) => (
+                      <div key={m.franchisee_id} className="px-3 py-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-stone-900 truncate">
+                            {m.franchisee_name} <span className="text-stone-400">·</span> <span className="text-stone-600 font-normal">{m.organisation}</span>
+                          </span>
+                          <span className="text-stone-400 tabular-nums shrink-0">{m.bio_length} chars{m.already_had_bio ? " · overwrites" : ""}</span>
+                        </div>
+                        <div className="text-stone-500 mt-0.5 line-clamp-2">← “{m.post_title}”</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {report.unmatched_posts?.length > 0 && (
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-amber-700 mb-2">
+                    Couldn&apos;t auto-match ({report.unmatched_posts.length})
+                  </div>
+                  <div className="border border-amber-200 bg-amber-50/40 rounded-lg divide-y divide-amber-100 max-h-40 overflow-y-auto text-xs">
+                    {report.unmatched_posts.map((u) => (
+                      <div key={u.slug || u.title} className="px-3 py-2">
+                        <div className="font-bold text-stone-900">{u.title || u.slug}</div>
+                        <div className="text-stone-500 mt-0.5 line-clamp-1">{u.bio_preview}…</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="text-[11px] text-stone-500 mt-1.5 leading-relaxed">
+                    These posts weren&apos;t linked to any live franchisee record (name/slug mismatch, or the franchisee isn&apos;t in the hub yet). Fine to ignore — you can always paste the bio manually via a franchisee&apos;s admin page later.
+                  </div>
+                </div>
+              )}
+
+              {report.franchisees_still_missing_bio?.length > 0 && !committed && (
+                <div className="text-[11px] text-stone-500 leading-relaxed">
+                  {report.franchisees_still_missing_bio.length} live franchisee(s) still won&apos;t have a biography after this import — they can add one themselves via their portal &quot;My Franchise&quot; page.
+                </div>
+              )}
+
+              {committed ? (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 flex items-center gap-2 text-sm text-emerald-800" data-testid="wp-bio-committed">
+                  <CheckCircle2 className="w-4 h-4" /> Published {report.matched_count} biograph{report.matched_count === 1 ? "y" : "ies"} live to the Mojo map popup.
+                </div>
+              ) : (
+                <div className="flex items-center justify-between pt-2 border-t border-stone-200">
+                  <button onClick={() => { setReport(null); setErr(""); }} className="text-xs text-stone-500 hover:text-stone-900">Reset</button>
+                  <button onClick={() => run(false)} disabled={busy || report.matched_count === 0} data-testid="wp-bio-commit"
+                    className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-[#aaaa11] rounded-lg flex items-center gap-1.5 disabled:opacity-50">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Import and publish live ({report.matched_count})
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Preview button — only when we have a file and no report yet */}
+          {!report && !busy && (
+            <div className="flex items-center justify-end pt-2">
+              <button onClick={() => run(true)} disabled={!file || busy} data-testid="wp-bio-dryrun"
+                className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-lg flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
+                <RefreshCw className="w-3.5 h-3.5" /> Preview matches
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 
 function MissingMandateRow({ item, onResolved }) {
   const [showLink, setShowLink] = useState(false);
@@ -587,6 +786,8 @@ export default function FranchiseesPage() {
   const [sortBy, setSortBy] = useState("franchise_number");
   const [sortDir, setSortDir] = useState(1);
   const [gcSyncOpen, setGcSyncOpen] = useState(false);
+  // Admin one-off: import biographies from WordPress export.
+  const [wpBioOpen, setWpBioOpen] = useState(false);
   const [missingMandate, setMissingMandate] = useState({ count: 0, items: [], threshold_days: 14 });
   const [missingMandateExpanded, setMissingMandateExpanded] = useState(false);
   // Card vs table view. Persisted so admins land on their last-chosen
@@ -687,6 +888,11 @@ export default function FranchiseesPage() {
             className="px-3 py-2 text-xs font-bold uppercase tracking-wider border border-stone-300 bg-white text-stone-900 hover:bg-stone-50 rounded-lg flex items-center gap-1.5">
             <CreditCard className="w-3.5 h-3.5" /> Sync GoCardless
           </button>
+          <button onClick={() => setWpBioOpen(true)} data-testid="wp-bio-open"
+            title="One-off migration: pull franchisee biographies from a WordPress XML export"
+            className="px-3 py-2 text-xs font-bold uppercase tracking-wider border border-stone-300 bg-white text-stone-900 hover:bg-stone-50 rounded-lg flex items-center gap-1.5">
+            <FileCode className="w-3.5 h-3.5" /> Import WP Bios
+          </button>
           {viewMode === "list" && <ColumnPicker cfg={columnsCfg} />}
           {/* View toggle: list / grid */}
           <div className="inline-flex border border-stone-300 rounded-lg overflow-hidden" data-testid="view-toggle">
@@ -722,6 +928,7 @@ export default function FranchiseesPage() {
       </div>
 
       <GoCardlessSyncModal open={gcSyncOpen} onClose={() => setGcSyncOpen(false)} onCommitted={reload} />
+      <WPBioImportModal open={wpBioOpen} onClose={() => setWpBioOpen(false)} onCommitted={reload} />
 
       {missingMandate.count > 0 && (
         <div className="px-8 pt-6" data-testid="missing-mandate-banner">
