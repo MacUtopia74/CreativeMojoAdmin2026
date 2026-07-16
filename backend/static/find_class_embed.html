@@ -151,6 +151,30 @@ To swap from the legacy Airtable lookup to this:
     font-weight: 600;
     margin: 14px 0 4px;
   }
+  /* Biography block — shows a 2-line teaser by default, expands to
+     the full bio in place when "Read more" is clicked. Kept tight
+     against the contact rows so the popup stays compact on mobile. */
+  .cm-find__bio {
+    color: #1a1a1a;
+    font-size: 14px;
+    line-height: 1.5;
+    margin: 10px 0 4px;
+    white-space: pre-wrap;
+  }
+  .cm-find__bio-toggle {
+    display: inline-block;
+    margin-top: 4px;
+    padding: 0;
+    background: none;
+    border: 0;
+    color: #93195a;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    text-transform: uppercase;
+  }
+  .cm-find__bio-toggle:hover { color: #7a134a; text-decoration: underline; }
   .cm-find__popup-photo {
     flex: 0 0 auto;
     width: 160px;
@@ -331,6 +355,22 @@ To swap from the legacy Airtable lookup to this:
     var facebookLine = f.facebook
       ? '<div class="cm-find__row"><a href="' + escapeHtml(f.facebook) + '" target="_blank" rel="noopener"><span style="color:#1877f2">f</span>&nbsp; Visit my page</a></div>'
       : "";
+    // Biography — teaser first, full text hidden. A single click on the
+    // "READ MORE…" link swaps the visible half over. Kept as inline
+    // data-* attributes so we don't need extra state or lookups —
+    // ``data-bio-full`` is base64-encoded to survive quotes/newlines.
+    var bioBlock = "";
+    if (f.bio_preview) {
+      if (f.bio_truncated && f.bio) {
+        var fullEncoded = "";
+        try { fullEncoded = window.btoa(unescape(encodeURIComponent(f.bio))); } catch (e) { fullEncoded = ""; }
+        bioBlock =
+          '<div class="cm-find__bio" data-bio-role="teaser">' + escapeHtml(f.bio_preview) + '</div>' +
+          '<button type="button" class="cm-find__bio-toggle" data-bio-toggle data-bio-full="' + escapeHtml(fullEncoded) + '">Read more…</button>';
+      } else {
+        bioBlock = '<div class="cm-find__bio">' + escapeHtml(f.bio_preview) + '</div>';
+      }
+    }
     var html =
       '<div class="cm-find__popup" role="dialog" aria-label="Franchisee details">' +
         '<button class="cm-find__popup-close" aria-label="Close" onclick="this.closest(\'.cm-find__popup\').remove();">×</button>' +
@@ -339,6 +379,7 @@ To swap from the legacy Airtable lookup to this:
           (f.name ? '<div class="cm-find__name">' + escapeHtml(f.name) + '</div>' : '') +
           (f.phone ? '<div class="cm-find__row"><a href="tel:' + escapeHtml(phoneTel) + '">' + escapeHtml(f.phone) + '</a></div>' : '') +
           (f.email ? '<div class="cm-find__row"><a href="mailto:' + escapeHtml(f.email) + '">' + escapeHtml(f.email) + '</a></div>' : '') +
+          bioBlock +
           facebookLine +
         '</div>' +
         '<div class="cm-find__popup-photo">' +
@@ -347,6 +388,21 @@ To swap from the legacy Airtable lookup to this:
         '</div>' +
       '</div>';
     popupHost.innerHTML = html;
+    // Wire up the Read more toggle after the innerHTML paint.
+    var toggle = popupHost.querySelector("[data-bio-toggle]");
+    if (toggle) {
+      toggle.addEventListener("click", function () {
+        var teaser = popupHost.querySelector('[data-bio-role="teaser"]');
+        var encoded = toggle.getAttribute("data-bio-full") || "";
+        var full = "";
+        try { full = decodeURIComponent(escape(window.atob(encoded))); } catch (e) { full = ""; }
+        if (teaser && full) {
+          teaser.textContent = full;
+          teaser.removeAttribute("data-bio-role");
+        }
+        toggle.remove();
+      });
+    }
   }
 
   function renderFallbackPopup(fb) {
