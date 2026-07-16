@@ -324,15 +324,45 @@ def attach(api, db, require_role):
             if franchisee.get("show_website_email") and franchisee.get("website_email"):
                 email_public = str(franchisee["website_email"]).strip() or None
             bio_public = None
+            bio_preview = None
+            bio_truncated = False
             if franchisee.get("show_website_bio") and franchisee.get("website_bio"):
                 bio_public = str(franchisee["website_bio"]).strip() or None
+            if bio_public:
+                # Preview = ~2 lines in a typical popup card. Trim to
+                # ~200 chars, then back to the last full word/sentence
+                # so we don't chop mid-word before adding an ellipsis.
+                PREVIEW_LIMIT = 200
+                first_para = bio_public.split("\n\n", 1)[0].replace("\n", " ")
+                if len(first_para) <= PREVIEW_LIMIT and first_para == bio_public.replace("\n", " "):
+                    bio_preview = first_para
+                    bio_truncated = False
+                else:
+                    snippet = first_para[:PREVIEW_LIMIT]
+                    # Prefer to end on a sentence boundary if one lives
+                    # in the last 60 chars — reads far more naturally
+                    # than an arbitrary word-boundary cut with "…".
+                    tail = snippet.rfind(". ")
+                    if tail > PREVIEW_LIMIT - 60:
+                        bio_preview = snippet[:tail + 1]
+                    else:
+                        cut = snippet.rfind(" ")
+                        bio_preview = snippet[:cut] if cut > 0 else snippet
+                        bio_preview = bio_preview.rstrip(",;:-—") + "…"
+                    bio_truncated = True
             franchisee_payload = {
                 "id": franchisee.get("id"),
                 "area": area,
                 "name": full_name,
                 "phone": phone_str,
                 "email": email_public,
+                # ``bio`` = full text (for the expanded/"read more" state).
+                # ``bio_preview`` = 2-line snippet the WP popup shows by
+                # default; when ``bio_truncated`` is true, WP should
+                # render a "Read more…" link that swaps to ``bio``.
                 "bio": bio_public,
+                "bio_preview": bio_preview,
+                "bio_truncated": bio_truncated,
                 "facebook": franchisee.get("facebook"),
                 "photo_url": photo_url,
                 "wp_page_url": franchisee.get("wp_page_url"),
