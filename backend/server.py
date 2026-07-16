@@ -2825,6 +2825,7 @@ def _extract_bio_text(html_or_text: str) -> str:
 async def admin_import_website_bios(
     file: UploadFile = File(...),
     dry_run: bool = Query(False),
+    hold_ids: str = Query("", description="Comma-separated franchisee IDs to import VALUES for but NOT activate publicly."),
     _: dict = Depends(require_role("admin")),
 ):
     """One-off migration: pulls each live franchisee's biography from a
@@ -2851,6 +2852,11 @@ async def admin_import_website_bios(
     raw = await file.read()
     if not raw:
         raise HTTPException(400, detail="Empty upload.")
+    # Franchisees the admin has flagged as "import but keep OFF the map"
+    # (per-row toggle in the modal). We still write the values so the
+    # franchisee has a head-start when they log in — we just don't
+    # flip the show_* visibility flags.
+    hold_set = {x.strip() for x in (hold_ids or "").split(",") if x.strip()}
     try:
         import xml.etree.ElementTree as ET
         root = ET.fromstring(raw)
@@ -2997,11 +3003,11 @@ async def admin_import_website_bios(
             "email": post.get("email"),
             "phone": post.get("phone"),
             "already_had_bio": bool(target.get("website_bio")),
+            "held": target["id"] in hold_set,
         })
         if not dry_run:
             update_doc = {
                 "website_bio": post["bio"],
-                "show_website_bio": True,
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }
             # Only overwrite when we actually parsed a value from the WP
@@ -3009,10 +3015,18 @@ async def admin_import_website_bios(
             # alone (Sandra may have already filled these in manually).
             if post.get("email"):
                 update_doc["website_email"] = post["email"]
-                update_doc["show_website_email"] = True
             if post.get("phone"):
                 update_doc["website_phone"] = post["phone"]
-                update_doc["show_website_phone"] = True
+            # Activate the public-map toggles UNLESS this franchisee is
+            # in Paul's "hold" list — used for e.g. Samantha Whiteman
+            # who wants values imported for her to review but nothing
+            # exposed on the map until she logs in and opts in herself.
+            if target["id"] not in hold_set:
+                update_doc["show_website_bio"] = True
+                if post.get("email"):
+                    update_doc["show_website_email"] = True
+                if post.get("phone"):
+                    update_doc["show_website_phone"] = True
             await db.franchisees.update_one(
                 {"id": target["id"]},
                 {"$set": update_doc},
@@ -3062,6 +3076,11 @@ async def admin_set_website_bio(
     bio = (body.get("bio") or "").strip()
     email = (body.get("email") or "").strip()
     phone = (body.get("phone") or "").strip()
+    # If the admin unticks "Publish live" in the modal, `activate` is
+    # false — we still write the values (so the franchisee can review
+    # them on their portal page) but leave the show_* toggles alone,
+    # keeping the fields OFF the public map popup.
+    activate = bool(body.get("activate", True))
     if not (bio or email or phone):
         raise HTTPException(400, detail="At least one of bio, email or phone is required.")
     if bio and len(bio) > 4000:
@@ -3070,13 +3089,16 @@ async def admin_set_website_bio(
     update_doc: dict = {"updated_at": datetime.now(timezone.utc).isoformat()}
     if bio:
         update_doc["website_bio"] = bio
-        update_doc["show_website_bio"] = True
+        if activate:
+            update_doc["show_website_bio"] = True
     if email:
         update_doc["website_email"] = email
-        update_doc["show_website_email"] = True
+        if activate:
+            update_doc["show_website_email"] = True
     if phone:
         update_doc["website_phone"] = phone
-        update_doc["show_website_phone"] = True
+        if activate:
+            update_doc["show_website_phone"] = True
 
     result = await db.franchisees.update_one(
         {"id": fid, "lifecycle_status": {"$ne": "ex"}, "tags": "Franchisee"},

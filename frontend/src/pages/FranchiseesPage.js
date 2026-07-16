@@ -196,15 +196,20 @@ function WPBioImportModal({ open, onClose, onCommitted, allFranchisees = [] }) {
   const [committed, setCommitted] = useState(false);
   // Per-row picker/assignment state for the "Couldn't auto-match"
   // section. Keyed by the post's slug (fallback: title). Value shape:
-  // { fid: string, publishing: boolean, done: boolean, error?: string }
+  // { fid: string, publishing: boolean, done: boolean, error?: string, activate?: bool }
   const [manual, setManual] = useState({});
+  // Set of matched franchisee IDs Paul has UNticked "Publish live" for
+  // — values still import, but the show_* toggles stay off (used for
+  // franchisees like Samantha Whiteman who want to log in and activate
+  // fields themselves).
+  const [heldMatchedIds, setHeldMatchedIds] = useState(() => new Set());
 
   // Fresh state whenever the modal is (re-)opened so users don't see
   // a stale report from a previous session.
   useEffect(() => {
     if (open) {
       setFile(null); setBusy(false); setReport(null); setErr(""); setCommitted(false);
-      setManual({});
+      setManual({}); setHeldMatchedIds(new Set());
     }
   }, [open]);
 
@@ -235,6 +240,7 @@ function WPBioImportModal({ open, onClose, onCommitted, allFranchisees = [] }) {
         bio: post.bio,
         email: post.email || undefined,
         phone: post.phone || undefined,
+        activate: manual[postKey]?.activate !== false,
       });
       setManual((m) => ({ ...m, [postKey]: { ...m[postKey], publishing: false, done: true } }));
       onCommitted?.();
@@ -252,11 +258,9 @@ function WPBioImportModal({ open, onClose, onCommitted, allFranchisees = [] }) {
     try {
       const form = new FormData();
       form.append("file", file);
-      const { data } = await api.post(
-        `/admin/franchisees/import-website-bios?dry_run=${dryRun ? "true" : "false"}`,
-        form,
-        { headers: { "Content-Type": "multipart/form-data" } },
-      );
+      const holdParam = Array.from(heldMatchedIds).join(",");
+      const url = `/admin/franchisees/import-website-bios?dry_run=${dryRun ? "true" : "false"}${holdParam ? `&hold_ids=${encodeURIComponent(holdParam)}` : ""}`;
+      const { data } = await api.post(url, form, { headers: { "Content-Type": "multipart/form-data" } });
       setReport(data);
       if (!dryRun) { setCommitted(true); onCommitted?.(); }
     } catch (e) {
@@ -352,8 +356,10 @@ function WPBioImportModal({ open, onClose, onCommitted, allFranchisees = [] }) {
                     Matches ({report.matched.length})
                   </div>
                   <div className="border border-stone-200 rounded-lg divide-y divide-stone-100 max-h-64 overflow-y-auto text-xs">
-                    {report.matched.map((m) => (
-                      <div key={m.franchisee_id} className="px-3 py-2">
+                    {report.matched.map((m) => {
+                      const held = heldMatchedIds.has(m.franchisee_id);
+                      return (
+                      <div key={m.franchisee_id} className={`px-3 py-2 ${held ? "bg-amber-50/40" : ""}`}>
                         <div className="flex items-center justify-between gap-2">
                           <span className="font-bold text-stone-900 truncate">
                             {m.franchisee_name} <span className="text-stone-400">·</span> <span className="text-stone-600 font-normal">{m.organisation}</span>
@@ -367,8 +373,28 @@ function WPBioImportModal({ open, onClose, onCommitted, allFranchisees = [] }) {
                             {m.phone && <span data-testid={`wp-bio-match-phone-${m.franchisee_id}`}>✆ {m.phone}</span>}
                           </div>
                         )}
+                        {/* Publish-live checkbox — untick to import
+                            values but keep them OFF the map until the
+                            franchisee opts in themselves. */}
+                        <label className="mt-1.5 flex items-center gap-2 text-[10px] text-stone-700 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            data-testid={`wp-bio-publish-live-${m.franchisee_id}`}
+                            checked={!held}
+                            onChange={(e) => setHeldMatchedIds((prev) => {
+                              const next = new Set(prev);
+                              if (e.target.checked) next.delete(m.franchisee_id);
+                              else next.add(m.franchisee_id);
+                              return next;
+                            })}
+                            className="w-3 h-3 accent-emerald-600"
+                          />
+                          <span className={held ? "text-amber-700 font-bold" : ""}>
+                            {held ? "Held — values imported but hidden on map" : "Publish live on the Mojo map"}
+                          </span>
+                        </label>
                       </div>
-                    ))}
+                    );})}
                   </div>
                 </div>
               )}
@@ -401,29 +427,43 @@ function WPBioImportModal({ open, onClose, onCommitted, allFranchisees = [] }) {
                               <CheckCircle2 className="w-3.5 h-3.5" /> Published live
                             </div>
                           ) : (
-                            <div className="mt-2 flex items-center gap-2 flex-wrap">
-                              <span className="text-[10px] uppercase tracking-[0.15em] font-bold text-stone-500 shrink-0">Assign to</span>
-                              <select
-                                value={state.fid || ""}
-                                onChange={(e) => setManual((m) => ({ ...m, [key]: { ...m[key], fid: e.target.value, error: undefined } }))}
-                                data-testid={`wp-bio-picker-${key}`}
-                                className="flex-1 min-w-[220px] max-w-full px-2 py-1.5 text-xs border border-stone-300 rounded-md bg-white focus:outline-none focus:border-stone-900"
-                              >
-                                <option value="">— pick a franchisee —</option>
-                                {franchiseeOptions.map((o) => (
-                                  <option key={o.id} value={o.id}>{o.label}</option>
-                                ))}
-                              </select>
-                              <button
-                                onClick={() => assignManual(key, u)}
-                                disabled={!state.fid || state.publishing}
-                                data-testid={`wp-bio-publish-${key}`}
-                                className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-[#aaaa11] rounded-md flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
-                              >
-                                {state.publishing ? <RefreshCw className="w-3 h-3 animate-spin" /> : <ArrowRight className="w-3 h-3" />}
-                                Publish
-                              </button>
-                            </div>
+                            <>
+                              <div className="mt-2 flex items-center gap-2 flex-wrap">
+                                <span className="text-[10px] uppercase tracking-[0.15em] font-bold text-stone-500 shrink-0">Assign to</span>
+                                <select
+                                  value={state.fid || ""}
+                                  onChange={(e) => setManual((m) => ({ ...m, [key]: { ...m[key], fid: e.target.value, error: undefined } }))}
+                                  data-testid={`wp-bio-picker-${key}`}
+                                  className="flex-1 min-w-[220px] max-w-full px-2 py-1.5 text-xs border border-stone-300 rounded-md bg-white focus:outline-none focus:border-stone-900"
+                                >
+                                  <option value="">— pick a franchisee —</option>
+                                  {franchiseeOptions.map((o) => (
+                                    <option key={o.id} value={o.id}>{o.label}</option>
+                                  ))}
+                                </select>
+                                <button
+                                  onClick={() => assignManual(key, u)}
+                                  disabled={!state.fid || state.publishing}
+                                  data-testid={`wp-bio-publish-${key}`}
+                                  className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-[#aaaa11] rounded-md flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                                >
+                                  {state.publishing ? <RefreshCw className="w-3 h-3 animate-spin" /> : <ArrowRight className="w-3 h-3" />}
+                                  Publish
+                                </button>
+                              </div>
+                              <label className="mt-1.5 flex items-center gap-2 text-[10px] text-stone-700 cursor-pointer select-none">
+                                <input
+                                  type="checkbox"
+                                  data-testid={`wp-bio-manual-live-${key}`}
+                                  checked={state.activate !== false}
+                                  onChange={(e) => setManual((m) => ({ ...m, [key]: { ...m[key], activate: e.target.checked } }))}
+                                  className="w-3 h-3 accent-emerald-600"
+                                />
+                                <span className={state.activate === false ? "text-amber-700 font-bold" : ""}>
+                                  {state.activate === false ? "Held — values assigned but hidden on map" : "Publish live on the Mojo map"}
+                                </span>
+                              </label>
+                            </>
                           )}
                           {state.error && (
                             <div className="mt-1.5 text-red-700 text-[11px]">{state.error}</div>
