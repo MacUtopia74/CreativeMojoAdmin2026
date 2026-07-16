@@ -231,7 +231,11 @@ function WPBioImportModal({ open, onClose, onCommitted, allFranchisees = [] }) {
     if (!chosenId) return;
     setManual((m) => ({ ...m, [postKey]: { ...m[postKey], publishing: true, error: undefined } }));
     try {
-      await api.post(`/admin/franchisees/${chosenId}/set-website-bio`, { bio: post.bio });
+      await api.post(`/admin/franchisees/${chosenId}/set-website-bio`, {
+        bio: post.bio,
+        email: post.email || undefined,
+        phone: post.phone || undefined,
+      });
       setManual((m) => ({ ...m, [postKey]: { ...m[postKey], publishing: false, done: true } }));
       onCommitted?.();
     } catch (e) {
@@ -357,6 +361,12 @@ function WPBioImportModal({ open, onClose, onCommitted, allFranchisees = [] }) {
                           <span className="text-stone-400 tabular-nums shrink-0">{m.bio_length} chars{m.already_had_bio ? " · overwrites" : ""}</span>
                         </div>
                         <div className="text-stone-500 mt-0.5 line-clamp-2">← “{m.post_title}”</div>
+                        {(m.email || m.phone) && (
+                          <div className="mt-1 flex gap-3 text-[10px] text-stone-600">
+                            {m.email && <span data-testid={`wp-bio-match-email-${m.franchisee_id}`}>✉ {m.email}</span>}
+                            {m.phone && <span data-testid={`wp-bio-match-phone-${m.franchisee_id}`}>✆ {m.phone}</span>}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -378,6 +388,12 @@ function WPBioImportModal({ open, onClose, onCommitted, allFranchisees = [] }) {
                             <div className="min-w-0 flex-1">
                               <div className="font-bold text-stone-900">{u.title || u.slug}</div>
                               <div className="text-stone-600 mt-0.5 leading-relaxed line-clamp-3">{u.bio_preview}…</div>
+                              {(u.email || u.phone) && (
+                                <div className="mt-1 flex gap-3 text-[10px] text-stone-600">
+                                  {u.email && <span>✉ {u.email}</span>}
+                                  {u.phone && <span>✆ {u.phone}</span>}
+                                </div>
+                              )}
                             </div>
                           </div>
                           {state.done ? (

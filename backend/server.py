@@ -2881,8 +2881,52 @@ async def admin_import_website_bios(
         slug = (slug_el.text or "").strip().lower() if slug_el is not None else ""
         raw_content = content_el.text or "" if content_el is not None else ""
         bio = _extract_bio_text(raw_content)
+
+        # WP custom fields (ACF) carry the franchise email + phone as
+        # separate <wp:postmeta> pairs. Field names aren't standardised
+        # across sites, so we scoop every meta_key/value into a dict
+        # and pick out the first key whose name looks like email/phone.
+        meta: dict[str, str] = {}
+        for pm in item.findall("wp:postmeta", ns):
+            k_el = pm.find("wp:meta_key", ns)
+            v_el = pm.find("wp:meta_value", ns)
+            if k_el is not None and v_el is not None and k_el.text:
+                meta[k_el.text.strip().lower()] = (v_el.text or "").strip()
+
+        def _first(keys_containing: tuple[str, ...]) -> str:
+            """Return the first non-empty meta value whose key contains
+            ANY of the supplied substrings. Ignores hidden ACF pointer
+            fields (those starting with an underscore)."""
+            for k, v in meta.items():
+                if k.startswith("_") or not v:
+                    continue
+                if any(needle in k for needle in keys_containing):
+                    return v
+            return ""
+
+        email = _first(("email",))
+        phone = _first(("phone", "telephone", "tel", "mobile", "contact_number", "contact-no"))
+
+        # Fallback: pluck an email / phone out of the post body when
+        # WP stored them inline rather than as custom fields.
+        if not email:
+            m = re.search(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", raw_content)
+            if m:
+                email = m.group(0)
+        if not phone:
+            # UK-friendly: "+44 …", "07…" or "0…" with 9-15 digits.
+            m = re.search(r"(?:\+44|0)[\d\s\-()]{9,15}", raw_content)
+            if m:
+                phone = re.sub(r"\s+", " ", m.group(0)).strip()
+
         if bio and len(bio) >= 40:  # ignore stubs / placeholder posts
-            posts.append({"title": title, "slug": slug, "bio": bio})
+            posts.append({
+                "title": title,
+                "slug": slug,
+                "bio": bio,
+                "email": email or None,
+                "phone": phone or None,
+            })
 
     # Load all live franchisees once.
     franchisees = await db.franchisees.find(
@@ -2937,6 +2981,8 @@ async def admin_import_website_bios(
                 "slug": post["slug"],
                 "bio": post["bio"],
                 "bio_preview": post["bio"][:200],
+                "email": post.get("email"),
+                "phone": post.get("phone"),
             })
             continue
 
@@ -2948,16 +2994,28 @@ async def admin_import_website_bios(
             "post_slug": post["slug"],
             "bio_length": len(post["bio"]),
             "bio_preview": post["bio"][:200],
+            "email": post.get("email"),
+            "phone": post.get("phone"),
             "already_had_bio": bool(target.get("website_bio")),
         })
         if not dry_run:
+            update_doc = {
+                "website_bio": post["bio"],
+                "show_website_bio": True,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            # Only overwrite when we actually parsed a value from the WP
+            # export — otherwise leave whatever's already on the doc
+            # alone (Sandra may have already filled these in manually).
+            if post.get("email"):
+                update_doc["website_email"] = post["email"]
+                update_doc["show_website_email"] = True
+            if post.get("phone"):
+                update_doc["website_phone"] = post["phone"]
+                update_doc["show_website_phone"] = True
             await db.franchisees.update_one(
                 {"id": target["id"]},
-                {"$set": {
-                    "website_bio": post["bio"],
-                    "show_website_bio": True,
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
-                }},
+                {"$set": update_doc},
             )
         # Prevent the same post being matched twice to different
         # franchisees on the second-pass search.
@@ -2984,32 +3042,54 @@ async def admin_set_website_bio(
     body: dict = Body(...),
     _: dict = Depends(require_role("admin")),
 ):
-    """Companion to the WXR importer — assigns a single biography to a
-    single franchisee. Used from the "Couldn't auto-match" section of
-    the Import WP Bios modal, where Paul picks a franchisee for each
-    orphan post the automatic matcher couldn't pair up.
+    """Companion to the WXR importer — assigns a biography (and
+    optionally an email + phone) to a single franchisee. Used from
+    the "Couldn't auto-match" section of the Import WP Bios modal,
+    where Paul picks a franchisee for each orphan post the automatic
+    matcher couldn't pair up.
 
-    Also flips ``show_website_bio=true`` so the bio hits the public
-    map popup immediately, mirroring the bulk-import behaviour.
+    Flips the corresponding ``show_website_*`` flag to ``True`` for
+    every field the caller supplies, so the details hit the public
+    map popup immediately — mirroring the bulk-import behaviour.
 
-    Body: ``{"bio": "<plain-text bio>"}``
+    Body:
+      ``{"bio": "<plain-text bio>", "email": "<optional>", "phone": "<optional>"}``
+
+    Any field the caller omits (or sends empty) is left untouched
+    on the franchisee doc — so re-running the assign for a bio-only
+    correction won't wipe an email that's already there.
     """
     bio = (body.get("bio") or "").strip()
-    if not bio:
-        raise HTTPException(400, detail="Biography text is required.")
-    if len(bio) > 4000:
+    email = (body.get("email") or "").strip()
+    phone = (body.get("phone") or "").strip()
+    if not (bio or email or phone):
+        raise HTTPException(400, detail="At least one of bio, email or phone is required.")
+    if bio and len(bio) > 4000:
         bio = bio[:4000]
+
+    update_doc: dict = {"updated_at": datetime.now(timezone.utc).isoformat()}
+    if bio:
+        update_doc["website_bio"] = bio
+        update_doc["show_website_bio"] = True
+    if email:
+        update_doc["website_email"] = email
+        update_doc["show_website_email"] = True
+    if phone:
+        update_doc["website_phone"] = phone
+        update_doc["show_website_phone"] = True
+
     result = await db.franchisees.update_one(
         {"id": fid, "lifecycle_status": {"$ne": "ex"}, "tags": "Franchisee"},
-        {"$set": {
-            "website_bio": bio,
-            "show_website_bio": True,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }},
+        {"$set": update_doc},
     )
     if result.matched_count == 0:
         raise HTTPException(404, detail="Live franchisee not found.")
-    return {"ok": True, "franchisee_id": fid, "bio_length": len(bio)}
+    return {
+        "ok": True, "franchisee_id": fid,
+        "bio_length": len(bio) if bio else 0,
+        "wrote_email": bool(email),
+        "wrote_phone": bool(phone),
+    }
 
 
 @api.get("/admin/subscription-requests")
