@@ -1,5 +1,44 @@
 # Creative Mojo — Admin & Franchisee Hub PRD
 
+- ✅ **Recent Lookups on the map + Care Home Contacts split panel + geocode backfill (17 Jul 2026)**
+  Two new visualisations both reusing the Territory Builder's
+  `TerritoryMap` component (extended with an optional `pins` prop):
+    • **Find-a-Class Overview → "Recent Lookups · Map"** — every
+      logged public postcode lookup now plotted on the franchise map
+      with hit/miss colour coding. Windows: 30d/90d/12m/all. Older
+      rows without geocode are gracefully omitted. Endpoint:
+      `GET /api/find-class/lookups/map?days=…`. Lookups now also
+      persist lat/lng at insert time (was only postcode string before).
+    • **Sales & Contacts → Care Home Contacts tab** — split panel:
+      list left, map right. Filter bar: Last 30d / Last 12m / Custom
+      date range / All time, plus a franchisee-territory dropdown
+      (all territories, "Uncovered only", or scope to one franchisee).
+      List and map filters stay in lock-step. Pin click opens the
+      contact drawer. Endpoint: `GET /api/contacts/map?…` which also
+      resolves which franchisee's territory each pin falls inside.
+    • **Geocode backfill startup task** — hydrates every enquiry
+      postcode that isn't already in `postcodes_cache` via
+      postcodes.io bulk API. First boot: 1,501 postcodes cached;
+      Care Home plotted rows went 23 → 196 (~91% coverage).
+    • **Contact drawer "Plan their territory" card** — when a plan is
+      already linked to the contact, the CTA flips to green
+      "See linked plan" (with plan name + sector count + shared pill)
+      and jumps straight to `?plan_id=<id>` instead of restarting
+      the flow. Fixes the Gemma-Louise King confusion where the
+      button still read "OPEN BUILDER" after linking.
+  Files: `backend/server.py` (contacts/map endpoint + geocode backfill),
+  `backend/find_class_routes.py` (lookups/map endpoint + lat/lng on
+  insert), `frontend/src/components/territory/TerritoryMap.jsx` (pins
+  prop + click handler), `frontend/src/pages/FindClassAdminPage.jsx`
+  (LookupsMap sub-view), `frontend/src/pages/ContactsPage.js`
+  (CareHomeMapPanel + linked-plan CTA).
+  **Feature 3 (parked)**: surface care-home enquiries inside a
+  franchisee's MyTerritory+ drop-down as "Customers who have
+  contacted" — either matched to their CQC listing or added as a
+  potential customer from the enquiry form.
+  ⚠️ Production fix requires Save to GitHub → Redeploy.
+
+
 - ✅ **Franchisee-controlled Mojo page profile + fix public-map data leak (15 Jul 2026)**
   Samantha Whiteman flagged that her private admin email/mobile were
   leaking to the public `creativemojo.co.uk` map popup. Root cause:

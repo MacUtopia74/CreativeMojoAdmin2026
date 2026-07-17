@@ -8,6 +8,7 @@ import DuplicatesModal from "@/components/contacts/DuplicatesModal";
 import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, ChevronsLeft, ChevronsRight, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus, Plus, Sparkles, Upload, FileText, CheckCircle2, Send, Award, Target, Link2, GitMerge, Home, Package, Flame, Clock, Pencil, RefreshCw } from "lucide-react";
 import ReplyWithTemplateModal from "@/components/ReplyWithTemplateModal";
 import EmailTimeline from "@/components/EmailTimeline";
+import TerritoryMap from "@/components/territory/TerritoryMap";
 import LeadTemperatureBadge from "@/components/LeadTemperatureBadge";
 
 const STAGES = [
@@ -780,6 +781,25 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
     setEditingDetails(false);
     setDetailsErr("");
   }, [contact?.id]);
+  // Fetch any territory plan already linked to this contact so the
+  // "Plan their territory" card can flip its CTA from "Open builder"
+  // to a shortcut opening the linked plan directly. Ran per-contact
+  // so switching between rows always shows the correct state.
+  const [linkedPlan, setLinkedPlan] = useState(null);
+  useEffect(() => {
+    if (!contact?.id) { setLinkedPlan(null); return; }
+    let alive = true;
+    (async () => {
+      try {
+        const { data } = await api.get("/territory-plans", { params: { contact_id: contact.id } });
+        const plan = (data?.plans || [])[0] || null;
+        if (alive) setLinkedPlan(plan);
+      } catch {
+        if (alive) setLinkedPlan(null);
+      }
+    })();
+    return () => { alive = false; };
+  }, [contact?.id]);
   if (!contact) return null;
   const beginEditDetails = () => {
     setDetailsDraft({
@@ -1100,21 +1120,46 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
           )}
 
           {isInPipeline && contact.pipeline_status === "qualified" && !alreadyConverted && !isLicenceEnq && (
-            <a href={`/territory-builder?contact_id=${contact.id}`}
+            <a href={linkedPlan ? `/territory-builder?plan_id=${linkedPlan.id}` : `/territory-builder?contact_id=${contact.id}`}
               data-testid="drawer-plan-territory"
-              className="block p-4 border border-stone-300 rounded-xl hover:border-stone-500 hover:shadow-md transition-all bg-gradient-to-br from-[#EEEE86]/30 to-white">
+              className={`block p-4 border rounded-xl transition-all ${
+                linkedPlan
+                  ? "border-emerald-300 bg-gradient-to-br from-emerald-50 to-white hover:border-emerald-500 hover:shadow-md"
+                  : "border-stone-300 bg-gradient-to-br from-[#EEEE86]/30 to-white hover:border-stone-500 hover:shadow-md"
+              }`}>
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="text-sm font-semibold text-stone-950 flex items-center gap-1.5">
-                    <Target className="w-4 h-4 text-stone-700" /> Plan their territory
+                    <Target className={`w-4 h-4 ${linkedPlan ? "text-emerald-700" : "text-stone-700"}`} />
+                    {linkedPlan ? "Territory plan linked" : "Plan their territory"}
                   </div>
                   <div className="text-xs text-stone-600 mt-1">
-                    Build a sample 150-home territory around their postcode using live CQC data. Saved against this contact and easy to edit.
-                    <span className="block mt-1 text-stone-500">Already drafted one for them elsewhere? Open the builder and click <strong>Link contact</strong> on the matching saved plan.</span>
+                    {linkedPlan ? (
+                      <>
+                        Linked plan: <strong>{linkedPlan.name || "Untitled"}</strong>
+                        {typeof linkedPlan.total_homes === "number" && (
+                          <span className="text-stone-500"> · {linkedPlan.total_homes} homes</span>
+                        )}
+                        {typeof linkedPlan.sectors?.length === "number" && (
+                          <span className="text-stone-500"> · {linkedPlan.sectors.length} sectors</span>
+                        )}
+                        {linkedPlan.is_shared && (
+                          <span className="ml-1.5 inline-block px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-emerald-600 text-white rounded">Shared</span>
+                        )}
+                        <span className="block mt-1 text-stone-500">Open the plan to edit sectors, tweak the coverage, or copy the share link.</span>
+                      </>
+                    ) : (
+                      <>
+                        Build a sample 150-home territory around their postcode using live CQC data. Saved against this contact and easy to edit.
+                        <span className="block mt-1 text-stone-500">Already drafted one for them elsewhere? Open the builder and click <strong>Link contact</strong> on the matching saved plan.</span>
+                      </>
+                    )}
                   </div>
                 </div>
-                <span className="shrink-0 px-3 py-2 text-xs font-bold uppercase tracking-wider bg-stone-950 text-white rounded-lg flex items-center gap-1.5">
-                  Open builder
+                <span className={`shrink-0 px-3 py-2 text-xs font-bold uppercase tracking-wider rounded-lg flex items-center gap-1.5 ${
+                  linkedPlan ? "bg-emerald-700 text-white" : "bg-stone-950 text-white"
+                }`}>
+                  {linkedPlan ? "See linked plan" : "Open builder"}
                 </span>
               </div>
             </a>
@@ -1632,6 +1677,18 @@ export default function ContactsPage() {
   // quick-Reply button (not the drawer — the drawer has its own state).
   const [kanbanReplyContact, setKanbanReplyContact] = useState(null);
   const [ageFilter, setAgeFilter] = useState("all");
+  // Care Home Contacts tab — map view + filters.
+  // Presets: 30d / 12m / custom (with from+to inputs) / all.
+  // franchiseeId: "" = all, "uncovered" = pins outside every territory,
+  // or a specific franchisee ID to scope to their territory.
+  const [careHomeFilter, setCareHomeFilter] = useState({
+    preset: "30d",
+    from: "",
+    to: "",
+    franchiseeId: "",
+  });
+  const [careHomeMap, setCareHomeMap] = useState({ pins: [], loading: false, error: "" });
+  const [careHomeOverlay, setCareHomeOverlay] = useState({ franchisees: [], geojson: null, outlines: null });
   const [sourceFilter, setSourceFilter] = useState("all"); // 'all' | 'franchise' | 'licence'
   const [collapsedStages, setCollapsedStages] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem("pipelineCollapsedStages") || "[]")); }
@@ -1666,6 +1723,66 @@ export default function ContactsPage() {
     };
     return filtered.sort((a, b) => ts(b) - ts(a));
   }, [data.items, ageFilter, sourceFilter]);
+
+  // Care Home filter: resolve preset → concrete date range (ISO YYYY-MM-DD).
+  const careHomeRange = useMemo(() => {
+    const today = new Date();
+    const iso = (d) => d.toISOString().slice(0, 10);
+    if (careHomeFilter.preset === "all") return { from: "", to: "" };
+    if (careHomeFilter.preset === "custom") return { from: careHomeFilter.from || "", to: careHomeFilter.to || "" };
+    const back = careHomeFilter.preset === "12m" ? 365 : 30;
+    const from = new Date(today);
+    from.setDate(from.getDate() - back);
+    return { from: iso(from), to: iso(today) };
+  }, [careHomeFilter]);
+
+  // Fetch map pins whenever the Care Home tab filter changes. Also
+  // loads the franchisee territory overlay so pins draw against the
+  // full UK coverage map (same look as Territory Builder).
+  useEffect(() => {
+    if (tab !== "care_home") return;
+    let alive = true;
+    setCareHomeMap((m) => ({ ...m, loading: true, error: "" }));
+    (async () => {
+      try {
+        const params = { source: "care_home_enquiry" };
+        if (careHomeRange.from) params.date_from = careHomeRange.from;
+        if (careHomeRange.to) params.date_to = careHomeRange.to;
+        if (careHomeFilter.franchiseeId) params.franchisee_id = careHomeFilter.franchiseeId;
+        const [mapResp, overlayResp] = await Promise.all([
+          api.get("/contacts/map", { params }),
+          careHomeOverlay.geojson
+            ? Promise.resolve({ data: careHomeOverlay })
+            : api.get("/territory/all-franchisees"),
+        ]);
+        if (!alive) return;
+        setCareHomeMap({ pins: mapResp.data.pins || [], loading: false, error: "" });
+        if (!careHomeOverlay.geojson) {
+          setCareHomeOverlay({
+            franchisees: overlayResp.data.franchisees || [],
+            geojson: overlayResp.data.geojson || null,
+            outlines: overlayResp.data.outlines || null,
+          });
+        }
+      } catch {
+        if (alive) setCareHomeMap((m) => ({ ...m, loading: false, error: "Couldn't load the map." }));
+      }
+    })();
+    return () => { alive = false; };
+  }, [tab, careHomeRange.from, careHomeRange.to, careHomeFilter.franchiseeId]);
+
+  // Client-side reconciliation of the LEFT list with the map filters
+  // so the list only shows what's plotted. Rows without postcodes are
+  // hidden when a date/franchisee filter is active — they'd be silent
+  // outliers otherwise. When the filter is "all + no franchisee", we
+  // fall back to the full visibleItems (no map filtering applied).
+  const careHomePinIds = useMemo(() => new Set(careHomeMap.pins.map((p) => p.id)), [careHomeMap.pins]);
+  const listItems = useMemo(() => {
+    if (tab !== "care_home") return visibleItems;
+    const filterActive = careHomeFilter.preset !== "all" || !!careHomeFilter.franchiseeId;
+    if (!filterActive) return visibleItems;
+    return visibleItems.filter((c) => careHomePinIds.has(c.id));
+  }, [tab, visibleItems, careHomePinIds, careHomeFilter]);
 
   const toggleSelect = (id, evt) => {
     setSelectedIds((prev) => {
@@ -2469,19 +2586,20 @@ export default function ContactsPage() {
             })}
           </div>
         ) : (
-          <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid="contacts-table">
+          <div className={tab === "care_home" ? "grid grid-cols-1 xl:grid-cols-2 gap-4" : ""} data-testid="care-home-split-wrap">
+            <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid="contacts-table">
             <table className="w-full">
               <thead className="bg-[#F2F2F0] border-b border-stone-200">
                 <tr>
                   <th className="px-3 py-3 w-10">
                     <button onClick={(e) => {
                       e.stopPropagation();
-                      const visibleIds = visibleItems.slice(0, 500).map((c) => c.id);
+                      const visibleIds = listItems.slice(0, 500).map((c) => c.id);
                       const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
                       setSelectedIds(allSelected ? new Set() : new Set(visibleIds));
                       setLastSelectedId(null);
                     }} data-testid="select-all" className="text-stone-500 hover:text-stone-900">
-                      {visibleItems.length > 0 && visibleItems.slice(0, 500).every((c) => selectedIds.has(c.id)) ?
+                      {listItems.length > 0 && listItems.slice(0, 500).every((c) => selectedIds.has(c.id)) ?
                         <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
                     </button>
                   </th>
@@ -2495,9 +2613,9 @@ export default function ContactsPage() {
                 </tr>
               </thead>
               <tbody>
-                {visibleItems.length === 0 ? (
+                {listItems.length === 0 ? (
                   <tr><td colSpan={isPipeline ? 8 : 7} className="px-3 py-10 text-center text-sm text-stone-500">No records.</td></tr>
-                ) : visibleItems.slice(0, displayLimit).map((c) => {
+                ) : listItems.slice(0, displayLimit).map((c) => {
                   const checked = selectedIds.has(c.id);
                   const age = daysSince(c.date || c.date_added);
                   // "Unseen" inbound — bold the row until an admin opens
@@ -2560,15 +2678,15 @@ export default function ContactsPage() {
                 })}
               </tbody>
             </table>
-            {visibleItems.length > displayLimit && (
+            {listItems.length > displayLimit && (
               <div className="px-3 py-3 text-xs text-stone-500 border-t border-stone-100 flex items-center justify-between gap-3 flex-wrap">
                 <span data-testid="list-pagination-status">
-                  Showing first {displayLimit.toLocaleString()} of {visibleItems.length.toLocaleString()}.
+                  Showing first {displayLimit.toLocaleString()} of {listItems.length.toLocaleString()}.
                 </span>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setDisplayLimit((n) => Math.min(visibleItems.length, n + 500))}
+                    onClick={() => setDisplayLimit((n) => Math.min(listItems.length, n + 500))}
                     data-testid="list-show-more"
                     className="px-3 py-1.5 border border-stone-300 bg-white text-stone-900 text-[11px] font-bold uppercase tracking-wider hover:bg-stone-50 rounded-lg transition-colors flex items-center gap-1.5"
                   >
@@ -2576,19 +2694,35 @@ export default function ContactsPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setDisplayLimit(visibleItems.length)}
+                    onClick={() => setDisplayLimit(listItems.length)}
                     data-testid="list-show-all"
                     className="px-3 py-1.5 border border-stone-300 bg-white text-stone-900 text-[11px] font-bold uppercase tracking-wider hover:bg-stone-50 rounded-lg transition-colors"
                   >
-                    Show all {visibleItems.length.toLocaleString()}
+                    Show all {listItems.length.toLocaleString()}
                   </button>
                 </div>
               </div>
             )}
-            {visibleItems.length > 500 && visibleItems.length <= displayLimit && (
+            {listItems.length > 500 && listItems.length <= displayLimit && (
               <div className="px-3 py-2 text-xs text-stone-500 border-t border-stone-100" data-testid="list-pagination-status">
-                Showing all {visibleItems.length.toLocaleString()} records.
+                Showing all {listItems.length.toLocaleString()} records.
               </div>
+            )}
+            </div>
+            {tab === "care_home" && (
+              <CareHomeMapPanel
+                filter={careHomeFilter}
+                onFilterChange={setCareHomeFilter}
+                pins={careHomeMap.pins}
+                loading={careHomeMap.loading}
+                error={careHomeMap.error}
+                overlay={careHomeOverlay}
+                franchisees={overlayFranchiseesFor(careHomeOverlay)}
+                onSelectContact={(pinId) => {
+                  const c = data.items.find((x) => x.id === pinId);
+                  if (c) openContact(c);
+                }}
+              />
             )}
           </div>
         )}
@@ -2702,3 +2836,118 @@ export default function ContactsPage() {
     </div>
   );
 }
+
+// Extract the sorted (alphabetical) franchisee dropdown list from the
+// territory overlay payload, so the map filter dropdown labels line up
+// with what's actually drawn beneath the pins.
+function overlayFranchiseesFor(overlay) {
+  const list = (overlay?.franchisees || []).map((f) => ({
+    id: f.id,
+    label: [
+      [f.first_name, f.last_name].filter(Boolean).join(" "),
+      f.organisation ? `(${f.organisation})` : "",
+    ].filter(Boolean).join(" ").trim() || "(unnamed)",
+  }));
+  list.sort((a, b) => a.label.localeCompare(b.label));
+  return list;
+}
+
+// Right-hand map panel for the Care Home Contacts tab. Filter bar on
+// top (date preset + custom range + franchisee scope), map body below.
+// Uses the same TerritoryMap component as Territory Builder so
+// franchisee territories draw beneath the enquiry pins.
+function CareHomeMapPanel({ filter, onFilterChange, pins, loading, error, overlay, franchisees, onSelectContact }) {
+  const set = (patch) => onFilterChange((prev) => ({ ...prev, ...patch }));
+  const uncovered = pins.filter((p) => !p.franchisee_id).length;
+  const covered = pins.length - uncovered;
+  return (
+    <div className="bg-white border border-stone-200 rounded-2xl p-3 sm:p-4 xl:sticky xl:top-4 xl:self-start" data-testid="care-home-map-panel">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">Care Home Enquiries · Map</div>
+          <p className="text-xs text-stone-500 mt-1">Pins reflect the filters below — the list on the left mirrors them.</p>
+        </div>
+      </div>
+
+      {/* Filter bar */}
+      <div className="border border-stone-200 rounded-xl p-3 mb-3 space-y-2 bg-stone-50/40">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {[
+            { p: "30d", label: "Last 30d" },
+            { p: "12m", label: "Last 12m" },
+            { p: "custom", label: "Custom…" },
+            { p: "all", label: "All time" },
+          ].map((o) => (
+            <button
+              key={o.p}
+              onClick={() => set({ preset: o.p })}
+              data-testid={`ch-filter-${o.p}`}
+              className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md border ${
+                filter.preset === o.p
+                  ? "bg-stone-950 text-white border-stone-950"
+                  : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"
+              }`}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+        {filter.preset === "custom" && (
+          <div className="flex items-center gap-2 flex-wrap text-xs" data-testid="ch-custom-range">
+            <label className="flex items-center gap-1 text-stone-600">
+              From
+              <input type="date" value={filter.from} onChange={(e) => set({ from: e.target.value })} data-testid="ch-from"
+                className="px-2 py-1 border border-stone-300 rounded text-xs" />
+            </label>
+            <label className="flex items-center gap-1 text-stone-600">
+              To
+              <input type="date" value={filter.to} onChange={(e) => set({ to: e.target.value })} data-testid="ch-to"
+                className="px-2 py-1 border border-stone-300 rounded text-xs" />
+            </label>
+          </div>
+        )}
+        <div>
+          <label className="text-[10px] uppercase tracking-[0.15em] font-bold text-stone-500">Franchisee territory</label>
+          <select
+            value={filter.franchiseeId || ""}
+            onChange={(e) => set({ franchiseeId: e.target.value })}
+            data-testid="ch-franchisee-picker"
+            className="mt-1 w-full px-2 py-1.5 border border-stone-300 rounded text-xs bg-white"
+          >
+            <option value="">All territories</option>
+            <option value="uncovered">Uncovered (outside every territory)</option>
+            <option disabled>──────────</option>
+            {franchisees.map((f) => (
+              <option key={f.id} value={f.id}>{f.label}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-4 mb-2 text-[11px] text-stone-600">
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-teal-600" /> Inside a territory ({covered})</span>
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: "#93195a" }} /> Uncovered ({uncovered})</span>
+        {loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-stone-400 ml-auto" />}
+      </div>
+
+      {error && <div className="text-sm text-red-700 mb-2">{error}</div>}
+
+      <TerritoryMap
+        sectors={[]}
+        selected={[]}
+        centre={{ lat: 54.5, lng: -3.0 }}
+        centreLabel=""
+        height={620}
+        interactive={false}
+        franchiseeOverlay={overlay}
+        pins={pins.map((p) => ({
+          id: p.id, lat: p.lat, lng: p.lng,
+          color: p.franchisee_id ? "#0d9488" : "#93195a",
+          label: p.establishment_name || p.postcode,
+        }))}
+        onPinClick={onSelectContact}
+      />
+    </div>
+  );
+}
+

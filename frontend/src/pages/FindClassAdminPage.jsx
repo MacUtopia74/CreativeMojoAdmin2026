@@ -10,6 +10,7 @@
 //      manage the public Find-a-Class on creativemojo.com.
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
+import TerritoryMap from "@/components/territory/TerritoryMap";
 import {
   Search, Loader2, Code, AlertCircle, CheckCircle2, MapPin, Phone, Mail,
   Save, Copy, Info, ExternalLink, TrendingDown, TrendingUp,
@@ -129,37 +130,112 @@ function Overview() {
         </div>
       </div>
 
-      <div className="bg-white border border-stone-200 rounded-2xl p-5" data-testid="findclass-recent">
-        <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500 mb-3">Recent lookups</div>
-        {!data.recent.length && <div className="text-sm text-stone-500 italic">No lookups yet.</div>}
-        <table className="w-full text-sm">
-          <thead className="text-[10px] uppercase tracking-wider text-stone-500">
-            <tr>
-              <th className="text-left py-1.5">Postcode</th>
-              <th className="text-left py-1.5">Result</th>
-              <th className="text-left py-1.5">Franchisee</th>
-              <th className="text-right py-1.5">When</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.recent.map((r, i) => (
-              <tr key={i} className="border-t border-stone-100">
-                <td className="py-1.5 font-mono">{r.postcode}</td>
-                <td className="py-1.5">
-                  {r.match
-                    ? <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded">Match</span>
-                    : <span className="text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 px-2 py-0.5 rounded">No match</span>}
-                </td>
-                <td className="py-1.5 text-stone-700 truncate max-w-[420px]">{r.franchisee_name || "—"}</td>
-                <td className="py-1.5 text-right text-stone-500 tabular-nums">{new Date(r.ts).toLocaleString()}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <LookupsMap />
     </div>
   );
 }
+
+// Map view of every logged postcode lookup within a rolling window.
+// Uses the same TerritoryMap component as the Territory Builder so
+// franchisee territories draw underneath the pins for at-a-glance
+// coverage vs demand analysis.
+function LookupsMap() {
+  const [windowDays, setWindowDays] = useState(90);
+  const [data, setData] = useState(null);
+  const [overlay, setOverlay] = useState({ franchisees: [], geojson: null, outlines: null });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true); setError("");
+    (async () => {
+      try {
+        const [lookups, terr] = await Promise.all([
+          api.get("/find-class/lookups/map", { params: { days: windowDays } }),
+          api.get("/territory/all-franchisees"),
+        ]);
+        if (!alive) return;
+        setData(lookups.data);
+        setOverlay({
+          franchisees: terr.data.franchisees || [],
+          geojson: terr.data.geojson || null,
+          outlines: terr.data.outlines || null,
+        });
+      } catch (e) {
+        if (alive) setError("Couldn't load the map.");
+      } finally { if (alive) setLoading(false); }
+    })();
+    return () => { alive = false; };
+  }, [windowDays]);
+
+  // Pins: magenta for miss (no franchisee coverage), stone-950 for hit.
+  const pins = (data?.lookups || []).map((r, i) => ({
+    id: `${r.postcode}-${r.ts}-${i}`,
+    lat: r.lat, lng: r.lng,
+    color: r.match ? "#0c0a09" : "#93195a",
+    label: r.postcode,
+  }));
+
+  const hits = pins.filter((p) => p.color === "#0c0a09").length;
+  const misses = pins.length - hits;
+
+  return (
+    <div className="bg-white border border-stone-200 rounded-2xl p-4 sm:p-5" data-testid="findclass-lookups-map">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">Recent lookups · map</div>
+          <p className="text-xs text-stone-500 mt-1">Every postcode entered on the public map, plotted against active franchisee territories.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {[
+            { d: 30, label: "30d" },
+            { d: 90, label: "90d" },
+            { d: 365, label: "12m" },
+            { d: 3650, label: "All" },
+          ].map((o) => (
+            <button
+              key={o.d}
+              onClick={() => setWindowDays(o.d)}
+              data-testid={`lookups-window-${o.d}`}
+              className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg border transition-colors ${
+                windowDays === o.d
+                  ? "bg-stone-950 text-white border-stone-950"
+                  : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"
+              }`}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-4 mb-3 text-[11px] text-stone-600">
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-stone-950" /> Matched a franchisee ({hits})</span>
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: "#93195a" }} /> No coverage ({misses})</span>
+        {data && data.total > data.plotted && (
+          <span className="text-stone-400">{data.total - data.plotted} older lookup(s) without geocode omitted</span>
+        )}
+      </div>
+
+      {loading && <Loader2 className="w-5 h-5 animate-spin text-stone-400" />}
+      {error && <div className="text-sm text-red-700">{error}</div>}
+      {!loading && !error && (
+        <TerritoryMap
+          sectors={[]}
+          selected={[]}
+          centre={{ lat: 54.5, lng: -3.0 }}
+          centreLabel=""
+          height={620}
+          interactive={false}
+          franchiseeOverlay={overlay}
+          pins={pins}
+        />
+      )}
+    </div>
+  );
+}
+
 
 function Stat({ label, value, sub, tone, icon: Icon, testid }) {
   const toneCls = tone === "warn"

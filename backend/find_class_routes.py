@@ -15,7 +15,7 @@ import os
 import re
 import time
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import httpx
@@ -376,6 +376,12 @@ def attach(api, db, require_role):
                 "match": match,
                 "franchisee_id": (franchisee or {}).get("id"),
                 "franchisee_name": (franchisee_payload or {}).get("area"),
+                # lat/lng of the searched postcode so the admin "Recent
+                # Lookups" map can plot every lookup as a pin without a
+                # follow-up geocoding round-trip. Written here at the
+                # same point we've already got the resolved geocode.
+                "lat": (pin or {}).get("lat"),
+                "lng": (pin or {}).get("lng"),
                 "ts": datetime.now(timezone.utc),
                 # ip kept hashed-ish — first two octets only, for region-only
                 # debugging without storing personal data.
@@ -462,6 +468,48 @@ def attach(api, db, require_role):
             "top_missed_sectors": top_misses,
             "top_hit_areas": top_hits,
             "recent": recent,
+        }
+
+    @router.get("/find-class/lookups/map")
+    async def lookups_map(days: int = 90, _user: dict = Depends(require_role("admin"))):
+        """Return every logged postcode lookup within the window with
+        lat/lng so the admin Overview can plot them on the franchise
+        map. Reads from `find_class_lookups`; hydrates lat/lng from
+        `postcodes_cache` for older rows that predate the map feature.
+        """
+        cutoff = datetime.now(timezone.utc) - timedelta(days=max(1, days))
+        cur = db.find_class_lookups.find(
+            {"ts": {"$gte": cutoff}},
+            {"_id": 0, "postcode": 1, "sector": 1, "match": 1,
+             "franchisee_name": 1, "franchisee_id": 1, "lat": 1, "lng": 1, "ts": 1},
+        ).sort("ts", -1).limit(5000)
+        rows = await cur.to_list(5000)
+
+        # Backfill lat/lng from postcodes_cache for rows written before
+        # we started stamping the coords at insert time.
+        missing_pcs = list({r["postcode"] for r in rows if r.get("postcode") and r.get("lat") is None})
+        cache_by_pc: dict[str, dict] = {}
+        if missing_pcs:
+            async for c in db.postcodes_cache.find(
+                {"_id": {"$in": missing_pcs}},
+                {"_id": 1, "latitude": 1, "longitude": 1},
+            ):
+                cache_by_pc[c["_id"]] = c
+
+        for r in rows:
+            if r.get("lat") is None and r.get("postcode") in cache_by_pc:
+                c = cache_by_pc[r["postcode"]]
+                r["lat"] = c.get("latitude")
+                r["lng"] = c.get("longitude")
+            if isinstance(r.get("ts"), datetime):
+                r["ts"] = r["ts"].isoformat()
+
+        plotted = [r for r in rows if r.get("lat") is not None and r.get("lng") is not None]
+        return {
+            "window_days": days,
+            "total": len(rows),
+            "plotted": len(plotted),
+            "lookups": plotted,
         }
 
     @router.get("/find-class/embed.html")

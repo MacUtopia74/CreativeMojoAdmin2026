@@ -4761,6 +4761,162 @@ async def new_pipeline_alert_count(_: dict = Depends(require_role("admin"))):
     return {"count": count}
 
 
+@api.get("/contacts/map")
+async def contacts_map(
+    source: str = "care_home_enquiry",
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    franchisee_id: Optional[str] = None,  # "uncovered" = show only pins outside any territory
+    _: dict = Depends(require_role("admin")),
+):
+    """Return every non-merged contact of ``source`` within the date
+    window, hydrated with lat/lng from ``postcodes_cache`` and the
+    franchisee (if any) whose territory contains the postcode's
+    sector. Powers the map on the Care Home Contacts tab.
+
+    Filters:
+      - ``date_from`` / ``date_to``: ISO ``YYYY-MM-DD`` (inclusive).
+      - ``franchisee_id``: match a single franchisee's territory
+        (postcode sector present in their ``territory_sectors``).
+      - ``franchisee_id="uncovered"``: only pins that don't fall
+        inside ANY live franchisee's territory.
+
+    The endpoint mirrors what the existing Care Home list shows so
+    tab counts + list rows stay consistent with the pin count.
+    """
+    from find_class_routes import parse_uk_postcode
+    q: dict = {"source": source, "merged_into": {"$in": [None, ""]}}
+
+    def _to_dt(iso: Optional[str]) -> Optional[str]:
+        if not iso:
+            return None
+        try:
+            return datetime.fromisoformat(iso).date().isoformat()
+        except Exception:
+            return None
+    frm = _to_dt(date_from)
+    to = _to_dt(date_to)
+    if frm or to:
+        rng: dict = {}
+        if frm:
+            rng["$gte"] = frm
+        if to:
+            # Inclusive upper bound → bump by one day and use $lt
+            try:
+                d_to = datetime.fromisoformat(to).date() + timedelta(days=1)
+                rng["$lt"] = d_to.isoformat()
+            except Exception:  # noqa: BLE001
+                rng["$lte"] = to
+        # The list endpoint sorts by whichever of `date` / `date_added` is
+        # present. Match on both so newly-arrived (date_added) and legacy
+        # imported (date) rows both get filtered correctly.
+        q["$or"] = [{"date": rng}, {"date_added": rng}]
+
+    cur = db.web_form_contacts.find(
+        q,
+        {"_id": 0, "id": 1, "postcode": 1, "city": 1, "county": 1,
+         "establishment_name": 1, "first_name": 1, "last_name": 1,
+         "email": 1, "telephone": 1, "date": 1, "date_added": 1,
+         "in_pipeline": 1, "pipeline_status": 1},
+    ).sort([("date_added", -1), ("date", -1)])
+    rows = await cur.to_list(5000)
+
+    # Batch-hydrate lat/lng + sector from postcodes_cache. Any postcode
+    # missing from the cache is silently dropped from map output — the
+    # tab list still shows it, we just can't plot it.
+    postcodes = sorted({(r.get("postcode") or "").strip().upper().replace("  ", " ") for r in rows if r.get("postcode")})
+    cache: dict[str, dict] = {}
+    if postcodes:
+        # Try both the exact form the user entered and a normalised form.
+        variants: set[str] = set()
+        for pc in postcodes:
+            variants.add(pc)
+            full, _sector = parse_uk_postcode(pc)
+            if full:
+                variants.add(full)
+        async for c in db.postcodes_cache.find(
+            {"_id": {"$in": list(variants)}},
+            {"_id": 1, "latitude": 1, "longitude": 1, "sector": 1},
+        ):
+            cache[c["_id"]] = c
+
+    # Resolve franchisee-of-sector once per unique sector to avoid
+    # per-row franchisee round-trips (216 rows × 1 query would be
+    # slow; ~90 unique sectors × 1 query is fine).
+    sectors: set[str] = set()
+    per_row_sector: dict[str, Optional[str]] = {}
+    for r in rows:
+        rid = r.get("id")
+        if not rid:
+            continue
+        pc = (r.get("postcode") or "").strip().upper().replace("  ", " ")
+        full, sector = parse_uk_postcode(pc)
+        entry = cache.get(full) or cache.get(pc)
+        if entry and entry.get("sector"):
+            sector = entry["sector"]
+        per_row_sector[rid] = sector
+        if sector:
+            sectors.add(sector)
+
+    sector_to_franchisee: dict[str, dict] = {}
+    if sectors:
+        async for f in db.franchisees.find(
+            {
+                "territory_sectors": {"$in": list(sectors)},
+                "lifecycle_status": {"$ne": "ex"},
+                "tags": "Franchisee",
+            },
+            {"_id": 0, "id": 1, "first_name": 1, "last_name": 1,
+             "organisation": 1, "territory_sectors": 1},
+        ):
+            for s in (f.get("territory_sectors") or []):
+                if s in sectors and s not in sector_to_franchisee:
+                    sector_to_franchisee[s] = f
+
+    # Assemble pin rows + apply the franchisee_id sub-filter.
+    plotted: list[dict] = []
+    for r in rows:
+        rid = r.get("id")
+        if not rid:
+            continue
+        pc = (r.get("postcode") or "").strip().upper().replace("  ", " ")
+        full, _sector = parse_uk_postcode(pc)
+        entry = cache.get(full) or cache.get(pc)
+        if not entry or entry.get("latitude") is None:
+            continue
+        sector = per_row_sector.get(rid)
+        owner = sector_to_franchisee.get(sector) if sector else None
+        if franchisee_id == "uncovered" and owner:
+            continue
+        if franchisee_id and franchisee_id != "uncovered" and (not owner or owner.get("id") != franchisee_id):
+            continue
+        plotted.append({
+            "id": rid,
+            "postcode": pc,
+            "sector": sector,
+            "lat": entry["latitude"],
+            "lng": entry["longitude"],
+            "name": " ".join([r.get("first_name") or "", r.get("last_name") or ""]).strip() or None,
+            "establishment_name": r.get("establishment_name"),
+            "city": r.get("city"),
+            "county": r.get("county"),
+            "email": r.get("email"),
+            "telephone": r.get("telephone"),
+            "date_added": r.get("date_added") or r.get("date"),
+            "franchisee_id": owner.get("id") if owner else None,
+            "franchisee_name": (
+                " ".join([owner.get("first_name") or "", owner.get("last_name") or ""]).strip()
+                or owner.get("organisation")
+            ) if owner else None,
+        })
+
+    return {
+        "total_matching_filter": len(rows),
+        "plotted": len(plotted),
+        "pins": plotted,
+    }
+
+
 @api.get("/contacts/counts")
 async def contact_counts(_: dict = Depends(require_role("admin"))):
     """Total record counts per Contacts tab. Used for the tab-header badges
@@ -6698,6 +6854,107 @@ async def _backfill_contact_seen_at():
             )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Contact seen_at backfill failed (non-fatal): %s", exc)
+
+
+@app.on_event("startup")
+async def _backfill_contact_geocodes():
+    """One-off backfill: geocode every care-home / franchise / licence
+    enquiry postcode that isn't yet in ``postcodes_cache``. Without
+    this, the map on the Care Home Contacts tab would only plot
+    postcodes that also happen to have been searched from the public
+    Find-a-Class form. postcodes.io free bulk endpoint takes up to 100
+    postcodes per call — 216 care-home rows = ~3 calls, done in
+    seconds. Idempotent: subsequent boots skip everything already
+    cached, so it's a near-instant no-op after the first run."""
+    try:
+        # Gather every postcode we might plot (across enquiry types).
+        cur = db.web_form_contacts.find(
+            {"postcode": {"$exists": True, "$nin": [None, ""]}},
+            {"_id": 0, "postcode": 1},
+        )
+        raw_pcs: set[str] = set()
+        async for r in cur:
+            pc = (r.get("postcode") or "").strip().upper().replace("  ", " ")
+            if pc:
+                raw_pcs.add(pc)
+        if not raw_pcs:
+            return
+        cached = set()
+        async for c in db.postcodes_cache.find(
+            {"_id": {"$in": list(raw_pcs)}}, {"_id": 1},
+        ):
+            cached.add(c["_id"])
+        pending = list(raw_pcs - cached)
+        if not pending:
+            return
+        logger.info("Geocoding backfill: %s pending postcodes", len(pending))
+        # postcodes.io bulk (100 per call)
+        try:
+            import httpx as _httpx  # local import — startup runs before some deps
+        except ImportError:
+            return
+        hydrated = 0
+        for i in range(0, len(pending), 100):
+            batch = pending[i:i + 100]
+            try:
+                async with _httpx.AsyncClient(timeout=15.0) as client:
+                    r = await client.post(
+                        "https://api.postcodes.io/postcodes",
+                        json={"postcodes": batch},
+                    )
+                if r.status_code != 200:
+                    continue
+                for item in (r.json().get("result") or []):
+                    q = item.get("query")
+                    res = item.get("result")
+                    if not q or not res:
+                        continue
+                    lat = res.get("latitude")
+                    lng = res.get("longitude")
+                    if lat is None or lng is None:
+                        continue
+                    outward = (res.get("outcode") or "").strip().upper()
+                    inward = (res.get("incode") or "").strip().upper()
+                    sector = None
+                    if outward and inward:
+                        sector = f"{outward} {inward[:1]}"
+                    canonical = f"{outward} {inward}".strip() or q.upper()
+                    await db.postcodes_cache.update_one(
+                        {"_id": canonical},
+                        {"$set": {
+                            "_id": canonical,
+                            "postcode": canonical,
+                            "sector": sector,
+                            "latitude": lat,
+                            "longitude": lng,
+                            "cached_at": datetime.now(timezone.utc),
+                        }},
+                        upsert=True,
+                    )
+                    # Also alias under the user-entered form so lookups
+                    # via that variant still hit the cache.
+                    if q.upper() != canonical:
+                        await db.postcodes_cache.update_one(
+                            {"_id": q.upper()},
+                            {"$set": {
+                                "_id": q.upper(),
+                                "postcode": canonical,
+                                "sector": sector,
+                                "latitude": lat,
+                                "longitude": lng,
+                                "cached_at": datetime.now(timezone.utc),
+                            }},
+                            upsert=True,
+                        )
+                    hydrated += 1
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Geocode batch failed (non-fatal): %s", exc)
+        if hydrated:
+            logger.info("Geocoding backfill complete: %s postcodes hydrated", hydrated)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Geocode backfill failed (non-fatal): %s", exc)
+
+
 
 # Phase 5 — Google Calendar
 from calendar_routes import attach as build_calendar_router  # noqa: E402

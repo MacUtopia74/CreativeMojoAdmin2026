@@ -92,6 +92,13 @@ export default function TerritoryMap({
                             //   boundaries (translucent stroke) as a
                             //   contextual reference layer for the
                             //   Territory Builder / share view.
+  pins = null,              // optional array of `{lat, lng, color?,
+                            //   label?, id?}` markers drawn on top of
+                            //   the sector paint. Used by the Recent
+                            //   Lookups + Care Home Contacts map views.
+                            //   Null = no pin layer registered.
+  onPinClick = null,        // (pinId) => void — invoked when a marker
+                            //   is clicked. Optional.
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -524,6 +531,70 @@ export default function TerritoryMap({
       } catch { /* ignore — layer might not be ready yet on very first paint */ }
     }
   }, [showCounties, ready, styleVersion]);
+
+  // ----------------- pin overlay (Recent Lookups / Contacts) -----------------
+  // A GeoJSON point source painted with a data-driven circle layer.
+  // Colour comes from each feature's ``properties.color`` (default
+  // stone-950) so the caller can differentiate categories (e.g.
+  // hit vs miss on the Find-a-Class overview).
+  const pinClickHandlerRef = useRef(null);
+  useEffect(() => {
+    pinClickHandlerRef.current = onPinClick;
+  }, [onPinClick]);
+  useEffect(() => {
+    if (!ready || !mapRef.current) return;
+    const map = mapRef.current;
+    const geojson = {
+      type: "FeatureCollection",
+      features: (pins || [])
+        .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
+        .map((p, i) => ({
+          type: "Feature",
+          id: p.id || i,
+          properties: { color: p.color || "#1c1917", label: p.label || "", pin_id: p.id || String(i) },
+          geometry: { type: "Point", coordinates: [p.lng, p.lat] },
+        })),
+    };
+    const sourceId = "cm-pins";
+    try {
+      const existing = map.getSource(sourceId);
+      if (existing) {
+        existing.setData(geojson);
+      } else {
+        map.addSource(sourceId, { type: "geojson", data: geojson });
+        map.addLayer({
+          id: "cm-pins-halo",
+          type: "circle",
+          source: sourceId,
+          paint: {
+            "circle-radius": 7,
+            "circle-color": ["get", "color"],
+            "circle-opacity": 0.28,
+            "circle-stroke-width": 0,
+          },
+        });
+        map.addLayer({
+          id: "cm-pins-dot",
+          type: "circle",
+          source: sourceId,
+          paint: {
+            "circle-radius": 3.5,
+            "circle-color": ["get", "color"],
+            "circle-stroke-width": 1,
+            "circle-stroke-color": "#ffffff",
+          },
+        });
+        map.on("click", "cm-pins-dot", (e) => {
+          const feat = e.features?.[0];
+          if (feat && pinClickHandlerRef.current) {
+            pinClickHandlerRef.current(feat.properties?.pin_id);
+          }
+        });
+        map.on("mouseenter", "cm-pins-dot", () => { map.getCanvas().style.cursor = "pointer"; });
+        map.on("mouseleave", "cm-pins-dot", () => { map.getCanvas().style.cursor = ""; });
+      }
+    } catch { /* map still initialising — retry on next effect */ }
+  }, [pins, ready, styleVersion]);
 
   // ----------------- update features when props change -----------------
   useEffect(() => {
