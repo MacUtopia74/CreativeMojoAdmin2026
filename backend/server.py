@@ -4784,6 +4784,18 @@ async def contacts_map(
     The endpoint mirrors what the existing Care Home list shows so
     tab counts + list rows stay consistent with the pin count.
     """
+    try:
+        return await _contacts_map_impl(source, date_from, date_to, franchisee_id)
+    except Exception as exc:  # noqa: BLE001
+        # Never 500 this endpoint — the tab list gates its own filtering
+        # on the response shape, so a hard failure would blank an
+        # entire admin screen. Log and return empty pins so the map
+        # panel gracefully shows "0 plotted" instead.
+        logger.warning("contacts/map failed: %s", exc, exc_info=True)
+        return {"total_matching_filter": 0, "plotted": 0, "pins": [], "error": str(exc)}
+
+
+async def _contacts_map_impl(source, date_from, date_to, franchisee_id):
     from find_class_routes import parse_uk_postcode
     q: dict = {"source": source, "merged_into": {"$in": [None, ""]}}
 

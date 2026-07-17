@@ -1781,8 +1781,16 @@ export default function ContactsPage() {
     if (tab !== "care_home") return visibleItems;
     const filterActive = careHomeFilter.preset !== "all" || !!careHomeFilter.franchiseeId;
     if (!filterActive) return visibleItems;
+    // If the map couldn't load (backend error, etc.) fall back to the
+    // full unfiltered list — the alternative is a blank "No records"
+    // page even though records exist, which is worse UX than an
+    // uncoupled map+list. The map itself surfaces the error inline.
+    if (careHomeMap.error) return visibleItems;
+    // If pins haven't loaded yet (initial fetch in flight), keep the
+    // full list rather than flashing to zero rows.
+    if (careHomeMap.loading && careHomePinIds.size === 0) return visibleItems;
     return visibleItems.filter((c) => careHomePinIds.has(c.id));
-  }, [tab, visibleItems, careHomePinIds, careHomeFilter]);
+  }, [tab, visibleItems, careHomePinIds, careHomeFilter, careHomeMap.error, careHomeMap.loading]);
 
   const toggleSelect = (id, evt) => {
     setSelectedIds((prev) => {
