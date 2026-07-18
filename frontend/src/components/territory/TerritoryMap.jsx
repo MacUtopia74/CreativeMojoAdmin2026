@@ -99,6 +99,13 @@ export default function TerritoryMap({
                             //   Null = no pin layer registered.
   onPinClick = null,        // (pinId) => void — invoked when a marker
                             //   is clicked. Optional.
+  radiusCircle = null,      // optional `{lat, lng, miles}` — draws a
+                            //   translucent circle overlay used by the
+                            //   Care Home Contacts "radius filter".
+  onMapClick = null,        // (lngLat) => void — bubbles map-body
+                            //   clicks up so callers can implement
+                            //   e.g. click-to-place-a-radius. Fires
+                            //   even in read-only mode.
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -567,9 +574,9 @@ export default function TerritoryMap({
           type: "circle",
           source: sourceId,
           paint: {
-            "circle-radius": 7,
+            "circle-radius": 14,
             "circle-color": ["get", "color"],
-            "circle-opacity": 0.28,
+            "circle-opacity": 0.22,
             "circle-stroke-width": 0,
           },
         });
@@ -578,9 +585,9 @@ export default function TerritoryMap({
           type: "circle",
           source: sourceId,
           paint: {
-            "circle-radius": 3.5,
+            "circle-radius": 7,
             "circle-color": ["get", "color"],
-            "circle-stroke-width": 1,
+            "circle-stroke-width": 2,
             "circle-stroke-color": "#ffffff",
           },
         });
@@ -595,6 +602,77 @@ export default function TerritoryMap({
       }
     } catch { /* map still initialising — retry on next effect */ }
   }, [pins, ready, styleVersion]);
+
+  // ----------------- radius circle overlay -----------------
+  // A translucent stone-950 disk drawn as a GeoJSON polygon (mapbox
+  // has no native "circle by radius" layer, so we tessellate 64 points
+  // around the centre). Used for the Care Home Contacts radius filter.
+  useEffect(() => {
+    if (!ready || !mapRef.current) return;
+    const map = mapRef.current;
+    const buildCircle = (lat, lng, miles) => {
+      const km = miles * 1.609344;
+      const points = [];
+      const earthKm = 6371;
+      for (let i = 0; i <= 64; i++) {
+        const brng = (i / 64) * 2 * Math.PI;
+        const lat1 = (lat * Math.PI) / 180;
+        const lng1 = (lng * Math.PI) / 180;
+        const dr = km / earthKm;
+        const lat2 = Math.asin(Math.sin(lat1) * Math.cos(dr) + Math.cos(lat1) * Math.sin(dr) * Math.cos(brng));
+        const lng2 = lng1 + Math.atan2(
+          Math.sin(brng) * Math.sin(dr) * Math.cos(lat1),
+          Math.cos(dr) - Math.sin(lat1) * Math.sin(lat2),
+        );
+        points.push([(lng2 * 180) / Math.PI, (lat2 * 180) / Math.PI]);
+      }
+      return { type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [points] } };
+    };
+    const empty = { type: "FeatureCollection", features: [] };
+    const data = radiusCircle && Number.isFinite(radiusCircle.lat) && Number.isFinite(radiusCircle.lng) && radiusCircle.miles > 0
+      ? { type: "FeatureCollection", features: [buildCircle(radiusCircle.lat, radiusCircle.lng, radiusCircle.miles)] }
+      : empty;
+    try {
+      const existing = map.getSource("cm-radius");
+      if (existing) {
+        existing.setData(data);
+      } else {
+        map.addSource("cm-radius", { type: "geojson", data });
+        map.addLayer({
+          id: "cm-radius-fill",
+          type: "fill",
+          source: "cm-radius",
+          paint: { "fill-color": "#0c0a09", "fill-opacity": 0.08 },
+        });
+        map.addLayer({
+          id: "cm-radius-line",
+          type: "line",
+          source: "cm-radius",
+          paint: {
+            "line-color": "#0c0a09",
+            "line-width": 2,
+            "line-dasharray": [3, 2],
+            "line-opacity": 0.85,
+          },
+        });
+      }
+    } catch { /* map still initialising */ }
+  }, [radiusCircle, ready, styleVersion]);
+
+  // ----------------- map body click → onMapClick -----------------
+  const mapClickRef = useRef(null);
+  useEffect(() => { mapClickRef.current = onMapClick; }, [onMapClick]);
+  useEffect(() => {
+    if (!ready || !mapRef.current) return;
+    const map = mapRef.current;
+    const handler = (e) => {
+      if (mapClickRef.current) {
+        mapClickRef.current({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+      }
+    };
+    map.on("click", handler);
+    return () => { try { map.off("click", handler); } catch { /* map already torn down */ } };
+  }, [ready]);
 
   // ----------------- update features when props change -----------------
   useEffect(() => {

@@ -9,6 +9,7 @@ import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calend
 import ReplyWithTemplateModal from "@/components/ReplyWithTemplateModal";
 import EmailTimeline from "@/components/EmailTimeline";
 import TerritoryMap from "@/components/territory/TerritoryMap";
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import LeadTemperatureBadge from "@/components/LeadTemperatureBadge";
 
 const STAGES = [
@@ -1689,6 +1690,11 @@ export default function ContactsPage() {
   });
   const [careHomeMap, setCareHomeMap] = useState({ pins: [], loading: false, error: "" });
   const [careHomeOverlay, setCareHomeOverlay] = useState({ franchisees: [], geojson: null, outlines: null });
+  // Radius filter — user clicks a point on the map (or types a
+  // postcode/lat/lng) to drop a circle; only pins inside land in the
+  // list. Kept null when no radius filter is active.
+  const [careHomeRadius, setCareHomeRadius] = useState(null); // { lat, lng, miles }
+  const [radiusMode, setRadiusMode] = useState(false); // when true, next map click places/moves the circle
   const [sourceFilter, setSourceFilter] = useState("all"); // 'all' | 'franchise' | 'licence'
   const [collapsedStages, setCollapsedStages] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem("pipelineCollapsedStages") || "[]")); }
@@ -1776,21 +1782,30 @@ export default function ContactsPage() {
   // hidden when a date/franchisee filter is active — they'd be silent
   // outliers otherwise. When the filter is "all + no franchisee", we
   // fall back to the full visibleItems (no map filtering applied).
-  const careHomePinIds = useMemo(() => new Set(careHomeMap.pins.map((p) => p.id)), [careHomeMap.pins]);
+  const careHomePinsInRadius = useMemo(() => {
+    if (!careHomeRadius) return careHomeMap.pins;
+    const { lat: cLat, lng: cLng, miles } = careHomeRadius;
+    const R = 3958.7613;  // earth radius in miles
+    const toRad = (d) => (d * Math.PI) / 180;
+    return careHomeMap.pins.filter((p) => {
+      if (!Number.isFinite(p.lat) || !Number.isFinite(p.lng)) return false;
+      const dLat = toRad(p.lat - cLat);
+      const dLng = toRad(p.lng - cLng);
+      const a = Math.sin(dLat / 2) ** 2
+        + Math.cos(toRad(cLat)) * Math.cos(toRad(p.lat)) * Math.sin(dLng / 2) ** 2;
+      const d = 2 * R * Math.asin(Math.sqrt(a));
+      return d <= miles;
+    });
+  }, [careHomeMap.pins, careHomeRadius]);
+  const careHomePinIds = useMemo(() => new Set(careHomePinsInRadius.map((p) => p.id)), [careHomePinsInRadius]);
   const listItems = useMemo(() => {
     if (tab !== "care_home") return visibleItems;
-    const filterActive = careHomeFilter.preset !== "all" || !!careHomeFilter.franchiseeId;
+    const filterActive = careHomeFilter.preset !== "all" || !!careHomeFilter.franchiseeId || !!careHomeRadius;
     if (!filterActive) return visibleItems;
-    // If the map couldn't load (backend error, etc.) fall back to the
-    // full unfiltered list — the alternative is a blank "No records"
-    // page even though records exist, which is worse UX than an
-    // uncoupled map+list. The map itself surfaces the error inline.
     if (careHomeMap.error) return visibleItems;
-    // If pins haven't loaded yet (initial fetch in flight), keep the
-    // full list rather than flashing to zero rows.
-    if (careHomeMap.loading && careHomePinIds.size === 0) return visibleItems;
+    if (careHomeMap.loading && careHomePinIds.size === 0 && !careHomeRadius) return visibleItems;
     return visibleItems.filter((c) => careHomePinIds.has(c.id));
-  }, [tab, visibleItems, careHomePinIds, careHomeFilter, careHomeMap.error, careHomeMap.loading]);
+  }, [tab, visibleItems, careHomePinIds, careHomeFilter, careHomeMap.error, careHomeMap.loading, careHomeRadius]);
 
   const toggleSelect = (id, evt) => {
     setSelectedIds((prev) => {
@@ -2593,9 +2608,11 @@ export default function ContactsPage() {
               );
             })}
           </div>
-        ) : (
-          <div className={tab === "care_home" ? "grid grid-cols-1 xl:grid-cols-2 gap-4" : ""} data-testid="care-home-split-wrap">
-            <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid="contacts-table">
+        ) : (() => {
+          // Common table block reused by both layouts — full-width for
+          // most tabs, wrapped inside a ResizablePanel for care_home.
+          const tableView = (
+            <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden h-full" data-testid="contacts-table">
             <table className="w-full">
               <thead className="bg-[#F2F2F0] border-b border-stone-200">
                 <tr>
@@ -2717,23 +2734,42 @@ export default function ContactsPage() {
               </div>
             )}
             </div>
-            {tab === "care_home" && (
-              <CareHomeMapPanel
-                filter={careHomeFilter}
-                onFilterChange={setCareHomeFilter}
-                pins={careHomeMap.pins}
-                loading={careHomeMap.loading}
-                error={careHomeMap.error}
-                overlay={careHomeOverlay}
-                franchisees={overlayFranchiseesFor(careHomeOverlay)}
-                onSelectContact={(pinId) => {
-                  const c = data.items.find((x) => x.id === pinId);
-                  if (c) openContact(c);
-                }}
-              />
-            )}
-          </div>
-        )}
+          );
+          if (tab !== "care_home") return tableView;
+          return (
+            <ResizablePanelGroup
+              direction="horizontal"
+              autoSaveId="care-home-split"
+              className="min-h-[720px]"
+              data-testid="care-home-split-wrap"
+            >
+              <ResizablePanel defaultSize={55} minSize={30}>
+                {tableView}
+              </ResizablePanel>
+              <ResizableHandle withHandle className="mx-2" />
+              <ResizablePanel defaultSize={45} minSize={25}>
+                <CareHomeMapPanel
+                  filter={careHomeFilter}
+                  onFilterChange={setCareHomeFilter}
+                  pins={careHomePinsInRadius}
+                  allPins={careHomeMap.pins}
+                  loading={careHomeMap.loading}
+                  error={careHomeMap.error}
+                  overlay={careHomeOverlay}
+                  franchisees={overlayFranchiseesFor(careHomeOverlay)}
+                  radius={careHomeRadius}
+                  onRadiusChange={setCareHomeRadius}
+                  radiusMode={radiusMode}
+                  onRadiusModeChange={setRadiusMode}
+                  onSelectContact={(pinId) => {
+                    const c = data.items.find((x) => x.id === pinId);
+                    if (c) openContact(c);
+                  }}
+                />
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          );
+        })()}
       </div>
 
       <ContactDrawer contact={selected} onClose={() => setSelected(null)}
@@ -2864,12 +2900,17 @@ function overlayFranchiseesFor(overlay) {
 // top (date preset + custom range + franchisee scope), map body below.
 // Uses the same TerritoryMap component as Territory Builder so
 // franchisee territories draw beneath the enquiry pins.
-function CareHomeMapPanel({ filter, onFilterChange, pins, loading, error, overlay, franchisees, onSelectContact }) {
+function CareHomeMapPanel({ filter, onFilterChange, pins, allPins, loading, error, overlay, franchisees, radius, onRadiusChange, radiusMode, onRadiusModeChange, onSelectContact }) {
   const set = (patch) => onFilterChange((prev) => ({ ...prev, ...patch }));
   const uncovered = pins.filter((p) => !p.franchisee_id).length;
   const covered = pins.length - uncovered;
+  const handleMapClick = (lngLat) => {
+    if (!radiusMode) return;
+    onRadiusChange({ lat: lngLat.lat, lng: lngLat.lng, miles: radius?.miles || 5 });
+    onRadiusModeChange(false);
+  };
   return (
-    <div className="bg-white border border-stone-200 rounded-2xl p-3 sm:p-4 xl:sticky xl:top-4 xl:self-start" data-testid="care-home-map-panel">
+    <div className="bg-white border border-stone-200 rounded-2xl p-3 sm:p-4 h-full flex flex-col" data-testid="care-home-map-panel">
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <div>
           <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-stone-500">Care Home Enquiries · Map</div>
@@ -2930,31 +2971,75 @@ function CareHomeMapPanel({ filter, onFilterChange, pins, loading, error, overla
             ))}
           </select>
         </div>
+        {/* Radius filter — click the map to drop a circle then use the
+            slider to widen/narrow. Only pins inside the circle land
+            in the list. */}
+        <div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => onRadiusModeChange(!radiusMode)}
+              data-testid="ch-radius-mode"
+              className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md border flex items-center gap-1.5 ${
+                radiusMode
+                  ? "bg-amber-500 text-stone-950 border-amber-600 animate-pulse"
+                  : radius ? "bg-stone-950 text-white border-stone-950" : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"
+              }`}
+            >
+              {radius ? `Radius · ${radius.miles} mi` : "Draw radius"}
+            </button>
+            {radiusMode && (
+              <span className="text-[10px] text-amber-800 italic">Click a point on the map…</span>
+            )}
+            {radius && (
+              <>
+                <input
+                  type="range"
+                  min="1" max="50" step="1"
+                  value={radius.miles}
+                  onChange={(e) => onRadiusChange({ ...radius, miles: parseInt(e.target.value, 10) || 5 })}
+                  data-testid="ch-radius-slider"
+                  className="flex-1 min-w-[100px] accent-stone-950"
+                />
+                <button
+                  onClick={() => { onRadiusChange(null); onRadiusModeChange(false); }}
+                  data-testid="ch-radius-clear"
+                  className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-red-700 hover:text-red-900"
+                >Clear</button>
+              </>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-4 mb-2 text-[11px] text-stone-600">
         <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-teal-600" /> Inside a territory ({covered})</span>
         <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: "#93195a" }} /> Uncovered ({uncovered})</span>
+        {radius && allPins && (
+          <span className="text-stone-500">{pins.length} of {allPins.length} within radius</span>
+        )}
         {loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-stone-400 ml-auto" />}
       </div>
 
       {error && <div className="text-sm text-red-700 mb-2">{error}</div>}
 
-      <TerritoryMap
-        sectors={[]}
-        selected={[]}
-        centre={{ lat: 54.5, lng: -3.0 }}
-        centreLabel=""
-        height={620}
-        interactive={false}
-        franchiseeOverlay={overlay}
-        pins={pins.map((p) => ({
-          id: p.id, lat: p.lat, lng: p.lng,
-          color: p.franchisee_id ? "#0d9488" : "#93195a",
-          label: p.establishment_name || p.postcode,
-        }))}
-        onPinClick={onSelectContact}
-      />
+      <div className="flex-1 min-h-[500px]" data-testid="ch-map-container">
+        <TerritoryMap
+          sectors={[]}
+          selected={[]}
+          centreLabel=""
+          height={620}
+          interactive={false}
+          franchiseeOverlay={overlay}
+          pins={(allPins || pins).map((p) => ({
+            id: p.id, lat: p.lat, lng: p.lng,
+            color: p.franchisee_id ? "#0d9488" : "#93195a",
+            label: p.establishment_name || p.postcode,
+          }))}
+          radiusCircle={radius}
+          onMapClick={handleMapClick}
+          onPinClick={onSelectContact}
+        />
+      </div>
     </div>
   );
 }

@@ -224,7 +224,6 @@ function LookupsMap() {
         <TerritoryMap
           sectors={[]}
           selected={[]}
-          centre={{ lat: 54.5, lng: -3.0 }}
           centreLabel=""
           height={620}
           interactive={false}
