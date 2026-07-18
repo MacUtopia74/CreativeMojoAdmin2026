@@ -1695,6 +1695,10 @@ export default function ContactsPage() {
   // list. Kept null when no radius filter is active.
   const [careHomeRadius, setCareHomeRadius] = useState(null); // { lat, lng, miles }
   const [radiusMode, setRadiusMode] = useState(false); // when true, next map click places/moves the circle
+  // Hover-linked highlight: as the admin mouses over a Care Home row
+  // the corresponding pin enlarges + brightens on the map so they can
+  // spot the geography at a glance. Cleared on mouse-leave.
+  const [hoveredContactId, setHoveredContactId] = useState(null);
   const [sourceFilter, setSourceFilter] = useState("all"); // 'all' | 'franchise' | 'licence'
   const [collapsedStages, setCollapsedStages] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem("pipelineCollapsedStages") || "[]")); }
@@ -2632,14 +2636,16 @@ export default function ContactsPage() {
                   <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-32">Date</th>
                   <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Contact</th>
                   <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-32">Location</th>
-                  <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-28">Source</th>
+                  {tab !== "care_home" && (
+                    <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-28">Source</th>
+                  )}
                   {isPipeline && <th className="text-left px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-32">Stage</th>}
                   <th className="text-right px-3 py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 w-32">Move</th>
                 </tr>
               </thead>
               <tbody>
                 {listItems.length === 0 ? (
-                  <tr><td colSpan={isPipeline ? 8 : 7} className="px-3 py-10 text-center text-sm text-stone-500">No records.</td></tr>
+                  <tr><td colSpan={(isPipeline ? 8 : 7) - (tab === "care_home" ? 1 : 0)} className="px-3 py-10 text-center text-sm text-stone-500">No records.</td></tr>
                 ) : listItems.slice(0, displayLimit).map((c) => {
                   const checked = selectedIds.has(c.id);
                   const age = daysSince(c.date || c.date_added);
@@ -2649,7 +2655,11 @@ export default function ContactsPage() {
                   // there to avoid double-signalling.
                   const isNew = !isPipeline && !c.seen_at;
                   return (
-                  <tr key={c.id} onClick={() => openContact(c)} className={`border-b border-stone-100 last:border-0 hover:bg-stone-50 cursor-pointer ${checked ? "bg-[#dddd16]/5" : ""} ${isNew ? "bg-red-50/40" : ""}`} data-testid={`contact-row-${c.id}`}>
+                  <tr key={c.id}
+                    onClick={() => openContact(c)}
+                    onMouseEnter={tab === "care_home" ? () => setHoveredContactId(c.id) : undefined}
+                    onMouseLeave={tab === "care_home" ? () => setHoveredContactId(null) : undefined}
+                    className={`border-b border-stone-100 last:border-0 hover:bg-stone-50 cursor-pointer ${checked ? "bg-[#dddd16]/5" : ""} ${isNew ? "bg-red-50/40" : ""}`} data-testid={`contact-row-${c.id}`}>
                     <td className="px-3 py-2" onClick={(e) => { e.stopPropagation(); toggleSelect(c.id, e); }}>
                       <button data-testid={`select-${c.id}`} className="text-stone-500 hover:text-stone-900">
                         {checked ? <CheckSquare className="w-4 h-4 text-stone-950" /> : <Square className="w-4 h-4" />}
@@ -2688,7 +2698,9 @@ export default function ContactsPage() {
                       <div className={isNew ? "text-stone-700" : "text-stone-400"}>{c.telephone || c.mobile_phone || ""}</div>
                     </td>
                     <td className={`px-3 py-2 text-xs ${isNew ? "text-stone-900 font-bold" : "text-stone-700"}`}>{[c.city, c.postcode].filter(Boolean).join(" · ") || "—"}</td>
-                    <td className="px-3 py-2 text-xs text-stone-700"><SourcePill source={c.source} /></td>
+                    {tab !== "care_home" && (
+                      <td className="px-3 py-2 text-xs text-stone-700"><SourcePill source={c.source} /></td>
+                    )}
                     {isPipeline && <td className="px-3 py-2"><StageBadge status={c.pipeline_status} /></td>}
                     <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
                       <MoveMenu
@@ -2761,6 +2773,7 @@ export default function ContactsPage() {
                   onRadiusChange={setCareHomeRadius}
                   radiusMode={radiusMode}
                   onRadiusModeChange={setRadiusMode}
+                  hoveredContactId={hoveredContactId}
                   onSelectContact={(pinId) => {
                     const c = data.items.find((x) => x.id === pinId);
                     if (c) openContact(c);
@@ -2900,7 +2913,7 @@ function overlayFranchiseesFor(overlay) {
 // top (date preset + custom range + franchisee scope), map body below.
 // Uses the same TerritoryMap component as Territory Builder so
 // franchisee territories draw beneath the enquiry pins.
-function CareHomeMapPanel({ filter, onFilterChange, pins, allPins, loading, error, overlay, franchisees, radius, onRadiusChange, radiusMode, onRadiusModeChange, onSelectContact }) {
+function CareHomeMapPanel({ filter, onFilterChange, pins, allPins, loading, error, overlay, franchisees, radius, onRadiusChange, radiusMode, onRadiusModeChange, hoveredContactId, onSelectContact }) {
   const set = (patch) => onFilterChange((prev) => ({ ...prev, ...patch }));
   const uncovered = pins.filter((p) => !p.franchisee_id).length;
   const covered = pins.length - uncovered;
@@ -3032,7 +3045,10 @@ function CareHomeMapPanel({ filter, onFilterChange, pins, allPins, loading, erro
           franchiseeOverlay={overlay}
           pins={(allPins || pins).map((p) => ({
             id: p.id, lat: p.lat, lng: p.lng,
-            color: p.franchisee_id ? "#0d9488" : "#93195a",
+            color: p.id === hoveredContactId
+              ? "#dddd16"
+              : p.franchisee_id ? "#0d9488" : "#93195a",
+            hovered: p.id === hoveredContactId,
             label: p.establishment_name || p.postcode,
           }))}
           radiusCircle={radius}

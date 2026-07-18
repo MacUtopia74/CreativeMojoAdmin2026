@@ -558,7 +558,15 @@ export default function TerritoryMap({
         .map((p, i) => ({
           type: "Feature",
           id: p.id || i,
-          properties: { color: p.color || "#1c1917", label: p.label || "", pin_id: p.id || String(i) },
+          properties: {
+            color: p.color || "#1c1917",
+            label: p.label || "",
+            pin_id: p.id || String(i),
+            // ``hovered`` toggles the enlarged / bright ring so the
+            // caller (Care Home Contacts list) can highlight a pin
+            // when the corresponding row is hovered.
+            hovered: p.hovered ? 1 : 0,
+          },
           geometry: { type: "Point", coordinates: [p.lng, p.lat] },
         })),
     };
@@ -574,9 +582,9 @@ export default function TerritoryMap({
           type: "circle",
           source: sourceId,
           paint: {
-            "circle-radius": 14,
+            "circle-radius": ["case", ["==", ["get", "hovered"], 1], 22, 14],
             "circle-color": ["get", "color"],
-            "circle-opacity": 0.22,
+            "circle-opacity": ["case", ["==", ["get", "hovered"], 1], 0.5, 0.22],
             "circle-stroke-width": 0,
           },
         });
@@ -585,9 +593,9 @@ export default function TerritoryMap({
           type: "circle",
           source: sourceId,
           paint: {
-            "circle-radius": 7,
+            "circle-radius": ["case", ["==", ["get", "hovered"], 1], 11, 7],
             "circle-color": ["get", "color"],
-            "circle-stroke-width": 2,
+            "circle-stroke-width": ["case", ["==", ["get", "hovered"], 1], 3, 2],
             "circle-stroke-color": "#ffffff",
           },
         });
