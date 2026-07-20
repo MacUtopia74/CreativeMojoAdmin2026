@@ -23,6 +23,11 @@ export default function ReplyWithTemplateModal({ open, contact, onClose, onSent 
   const [cc, setCc] = useState("");
   const [bcc, setBcc] = useState("");
   const [subject, setSubject] = useState("");
+  // Editable intro paragraph inserted between the "Hi {{first_name}},"
+  // salutation and the template body. Not persisted — it's a one-off
+  // tweak per send so admins can answer the specific question a lead
+  // raised without carving out a bespoke template.
+  const [intro, setIntro] = useState("");
   const [sending, setSending] = useState(false);
 
   // Load templates lazily — first time the modal opens. Refetches on
@@ -45,7 +50,7 @@ export default function ReplyWithTemplateModal({ open, contact, onClose, onSent 
     if (!open) return;
     setTo(contact?.email || contact?.email_raw || "");
     setSelectedId(null);
-    setCc(""); setBcc(""); setSubject("");
+    setCc(""); setBcc(""); setSubject(""); setIntro("");
   }, [open, contact?.id, contact?.email, contact?.email_raw]);
 
   // Auto-pick a sensible default template based on the contact's source
@@ -85,16 +90,48 @@ export default function ReplyWithTemplateModal({ open, contact, onClose, onSent 
       .split(/[,;\s]+/)
       .map((s) => s.trim())
       .filter(Boolean);
+  // Escapes user-typed intro text for safe HTML injection. Keeps
+  // paragraph breaks: two-or-more newlines start a new <p>, single
+  // newlines become <br>.
+  const introToHtml = (raw) => {
+    const s = String(raw || "").trim();
+    if (!s) return "";
+    const esc = (t) => t
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+    const paras = s.split(/\n{2,}/).map((p) => `<p>${esc(p).replace(/\n/g, "<br>")}</p>`);
+    return paras.join("");
+  };
+
+  // Insert the intro HTML immediately after the salutation paragraph
+  // (the first <p> containing "{{first_name}}"). Falls back to the
+  // top of the body if no salutation is found — better to appear at
+  // the top than get silently lost inside a bulk template.
+  const injectIntro = (bodyHtml, introHtml) => {
+    if (!introHtml) return bodyHtml;
+    const saluteRegex = /(<p[^>]*>[\s\S]*?\{\{\s*first_name\s*\}\}[\s\S]*?<\/p>)/i;
+    if (saluteRegex.test(bodyHtml)) {
+      return bodyHtml.replace(saluteRegex, `$1${introHtml}`);
+    }
+    return introHtml + bodyHtml;
+  };
+
   // Use the rendered_html (editable body + locked signature) for both
   // the preview and the send. The signature lives outside body_html so
   // Tiptap can't mangle it.
   const rendered = useMemo(() => {
     if (!selected) return "";
     let h = selected.rendered_html || selected.body_html || "";
+    // Inject BEFORE the first_name substitution so the intro sits
+    // exactly under the salutation.
+    h = injectIntro(h, introToHtml(intro));
     h = h.replace(/\{\{\s*first_name\s*\}\}/g, firstName);
     h = h.replace(/\{\{\s*file:([^}]+)\s*\}\}/g, "#preview");
     return h;
-  }, [selected, firstName]);
+  }, [selected, firstName, intro]);
 
   // What we POST is the *unrendered* body — the backend re-runs the
   // first_name + file token substitution server-side so we keep the
@@ -124,7 +161,12 @@ export default function ReplyWithTemplateModal({ open, contact, onClose, onSent 
         cc: parseList(cc),
         bcc: parseList(bcc),
         subject: subject.trim(),
-        body_html: selected.rendered_html || selected.body_html || "",
+        // Inject the per-send intro under the salutation before the
+        // backend does its own first_name / file token substitution.
+        body_html: injectIntro(
+          selected.rendered_html || selected.body_html || "",
+          introToHtml(intro),
+        ),
       });
       toast.success(`Email sent to ${toList[0]}${toList.length > 1 ? ` (+${toList.length - 1})` : ""}`);
       // Backend auto-advances "new" contacts to "contacted" on template
@@ -216,6 +258,25 @@ export default function ReplyWithTemplateModal({ open, contact, onClose, onSent 
               <input value={subject} onChange={(e) => setSubject(e.target.value)} data-testid="reply-subject"
                 className="px-3 py-1.5 bg-white border border-stone-300 text-sm rounded focus:outline-none focus:border-stone-900" />
             </div>
+          </div>
+
+          {/* Optional personal intro — appears under the salutation
+              in this send only (not saved to the template). Great
+              for answering a specific question a lead asked before
+              the standard template body kicks in. */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 flex items-center gap-1.5">
+              Personal note <span className="text-stone-400 normal-case tracking-normal">(optional — appears under &quot;Hi {firstName},&quot;)</span>
+            </label>
+            <textarea
+              value={intro}
+              onChange={(e) => setIntro(e.target.value)}
+              rows={3}
+              data-testid="reply-intro"
+              placeholder={`Thanks for your email — to answer your question about class sizes…`}
+              className="px-3 py-2 bg-white border border-stone-300 text-sm rounded focus:outline-none focus:border-stone-900 leading-relaxed"
+            />
+            <div className="text-[10px] text-stone-400">One blank line between paragraphs. Not saved to the template — this personalisation goes out with this reply only.</div>
           </div>
 
           {/* Linked files note — only show attachments whose
