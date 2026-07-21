@@ -58,6 +58,12 @@ export default function ReplyWithTemplateModal({ open, contact, onClose, onSent 
   // (substring match on `category`) so admins can use whatever naming
   // they like — "franchise" / "franchise-uk" / "Franchise UK" all
   // resolve to the same template for a `franchise_enquiry` contact.
+  //
+  // We also honour a stable "preferred default" for franchise enquiries:
+  // when a template titled "Franchise Enquiry Reply …" exists, it wins
+  // over any other franchise-category candidate. This mirrors Paul's
+  // ask (Jul 2026) to make the current standard reply the default
+  // without hard-coding an ID that would break on the next rename.
   useEffect(() => {
     if (!open || selectedId || !templates.length || !contact?.source) return;
     const source = String(contact.source).toLowerCase();
@@ -66,7 +72,13 @@ export default function ReplyWithTemplateModal({ open, contact, onClose, onSent 
       : source.includes("licence") || source.includes("license") ? "licence"
       : null;
     if (!wantedKeyword) return;
-    const match = templates.find((t) => (t.category || "").toLowerCase().includes(wantedKeyword));
+    const inCategory = templates.filter((t) => (t.category || "").toLowerCase().includes(wantedKeyword));
+    // Franchise: prefer the "Franchise Enquiry Reply" name pattern.
+    if (wantedKeyword === "franchise") {
+      const preferred = inCategory.find((t) => /^franchise enquiry reply\b/i.test(t.name || ""));
+      if (preferred) { setSelectedId(preferred.id); return; }
+    }
+    const match = inCategory[0];
     if (match) setSelectedId(match.id);
   }, [open, templates, contact?.source, selectedId]);
 
