@@ -5,6 +5,13 @@
 // heading, then delegates the actual map + list rendering to the
 // shared ``FranchiseeTerritoryWidget``.
 //
+// On the Territory+ variant we ALSO wrap the widget in
+// ``CareHomeEnquiriesOverlay`` (portal mode). That surfaces a
+// "Show customers who have contacted" toggle above the map, a date
+// filter bar (30d / 12m / Custom / All time), and a compact list
+// beneath. Pins get overlaid on the existing TerritoryMap via the
+// widget's ``extraPins`` prop — no second map instance.
+//
 // Routes:
 //   /portal/territory          → auto-detect (uses bolt-on / demo flag)
 //   /portal/territory/basic    → demo-only: force vanilla view so the
@@ -12,6 +19,7 @@
 import { useOutletContext } from "react-router-dom";
 import { MapPin } from "lucide-react";
 import FranchiseeTerritoryWidget from "@/components/territory/FranchiseeTerritoryWidget";
+import CareHomeEnquiriesOverlay from "@/components/territory/CareHomeEnquiriesOverlay";
 import PortalPageHeading from "@/components/portal/PortalPageHeading";
 
 export default function PortalTerritoryPage({ forceBasic = false }) {
@@ -30,10 +38,26 @@ export default function PortalTerritoryPage({ forceBasic = false }) {
     : (typeof rawTags === "string" ? rawTags.split(/[,;]/) : []);
   const isDemo = tags.some((t) => String(t).trim().toLowerCase() === "demo");
   const marketingEnabled = !!modules.marketing || isDemo;
+  const territoryPlusEnabled = !!modules.territory_plus || isDemo;
   const title = forceBasic ? "My Territory" : "My Territory+";
   const subtitle = forceBasic
     ? "Your exclusive postcodes and the customers and prospects within them."
     : "Plot your own clients, mark existing customers, and filter by care group.";
+
+  const renderWidget = (mapHeight, extraPins = null, hoverId = null) => (
+    <FranchiseeTerritoryWidget
+      mapHeight={mapHeight}
+      forceBasic={forceBasic}
+      marketingEnabled={marketingEnabled}
+      extraPins={extraPins}
+      hoveredExtraPinId={hoverId}
+    />
+  );
+
+  // Only show the "customers who have contacted" overlay on Territory+
+  // (vanilla users can't map website enquiries yet — it's a bolt-on).
+  const showCareHomeOverlay = !forceBasic && territoryPlusEnabled;
+
   return (
     <div className="space-y-5" data-testid="portal-territory-page">
       <PortalPageHeading
@@ -42,12 +66,26 @@ export default function PortalTerritoryPage({ forceBasic = false }) {
         title={title}
         subtitle={subtitle}
       />
-      <div className="block md:hidden">
-        <FranchiseeTerritoryWidget mapHeight={420} forceBasic={forceBasic} marketingEnabled={marketingEnabled} />
-      </div>
-      <div className="hidden md:block">
-        <FranchiseeTerritoryWidget mapHeight={720} forceBasic={forceBasic} marketingEnabled={marketingEnabled} />
-      </div>
+      {showCareHomeOverlay ? (
+        <CareHomeEnquiriesOverlay
+          mode="portal"
+          labelOff="Customers who have contacted"
+          labelOn="Hide customers who have contacted"
+          emptyLabel="No website enquiries in your territory for the selected date range."
+        >
+          {({ extraPins, hoverId }) => (
+            <>
+              <div className="block md:hidden">{renderWidget(420, extraPins, hoverId)}</div>
+              <div className="hidden md:block">{renderWidget(720, extraPins, hoverId)}</div>
+            </>
+          )}
+        </CareHomeEnquiriesOverlay>
+      ) : (
+        <>
+          <div className="block md:hidden">{renderWidget(420)}</div>
+          <div className="hidden md:block">{renderWidget(720)}</div>
+        </>
+      )}
     </div>
   );
 }

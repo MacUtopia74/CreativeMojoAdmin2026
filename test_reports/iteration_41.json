@@ -1,0 +1,44 @@
+{
+  "summary": "Verified iter41 refactor of the Care Home Enquiries overlay into the shared CareHomeEnquiriesOverlay component. Backend curl-tested the new portal endpoint (/api/portal/territory-plus/care-home-enquiries) — returns 3 pins All-time, 0 for 12m/30d (matches spec). Playwright-tested the franchisee portal Territory+ view AND the admin regression on FranchiseeDetailPage. Every acceptance criterion from the review request passes: title = 'My Territory+', toggle label switches, 4 presets render, 12m empty-state shows the 'Try All time' link, All-time preset shows 3 rows with correct postcodes (DT3 4AJ x2, BA21 3ST), row hover applies teal tint, territory map + homes list intact, basic /portal/territory/basic route does NOT render the overlay. Admin regression on Monica's page also passes with identical behaviour (labels differ: 'Show/Hide Care Home Enquiries'). No blocking bugs found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Portal → Territory+ → Care-home overlay list", "issues": ["Two of the three rows are the same enquiry (lisa-marie morgan-edwards, DT3 4AJ, 2021-02-08) with different pin IDs. Backend returns 3 distinct docs so this is a *data* duplication in the seeded enquiries collection (216 total contact_form rows), not a UI bug. Not a blocker but might confuse admins who see the same person listed twice — consider a dedupe step in _contacts_map_impl on (email+postcode+date_added) if this recurs."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "None blocking — feature is functional and matches the acceptance spec.",
+    "OPTIONAL: server-side dedupe of care-home enquiry pins on (email, postcode, date_added) so the list doesn't show the same enquiry twice for franchisees who received duplicate contact-form submissions."
+  ],
+  "critical_code_review_comments": [
+    "Nice refactor — CareHomeEnquiriesOverlay is a clean render-prop component (~225 LOC) reused by both admin and portal via a single `mode` prop. FranchiseeDetailPage no longer has the inline copy (previous review comment addressed).",
+    "The new portal endpoint (/api/portal/territory-plus/care-home-enquiries) delegates to server._contacts_map_impl with the franchisee_id pinned from the auth token — good scoping; a franchisee cannot read enquiries outside their own sectors.",
+    "portal_care_home_enquiries wraps _contacts_map_impl in a broad `except Exception` returning 200 with a `{error: ...}` body. Consider re-raising as a 502/500 so the frontend's error branch actually triggers — right now a backend failure silently renders '0 enquiries plotted'.",
+    "PortalTerritoryPage gating via `!!modules.territory_plus || isDemo` is correct; verified basic /portal/territory/basic force-omits the overlay while territory_plus=true franchisee sees it on /portal/territory."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (endpoint curl-tested for default, 12m, 30d, all-time; also verified access gate)", "frontend": "100% of listed acceptance tests pass (portal + admin regression)"},
+  "test_credentials": "franchisee.tester@creativemojo.co.uk / FranchiseeTest2026! and admin@creativemojo.co.uk / CreativeMojo2026! — both work.",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "CareHomeEnquiriesOverlay is now shared at /app/frontend/src/components/territory/CareHomeEnquiriesOverlay.jsx and reused by (a) FranchiseeDetailPage.js and (b) PortalTerritoryPage.jsx (mode='portal'). Same testids used everywhere: care-home-overlay-toggle, care-home-overlay-count, care-home-overlay-preset-30d/12m/custom/all, care-home-overlay-from/-to, care-home-overlay-list, care-home-overlay-row-<id>, care-home-overlay-try-all-time. Portal endpoint: GET /api/portal/territory-plus/care-home-enquiries?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD (auth-scoped to franchisee_id). Login flow: portal login redirects franchisee to /portal, admin to /. Use domcontentloaded (not networkidle) — TerritoryMap keeps the network busy polling.",
+  "test_evidence": {
+    "portal_title": "My Territory+ (correct)",
+    "portal_toggle_labels": "Customers who have contacted → Hide customers who have contacted",
+    "portal_default_12m_count": "0 enquiries plotted (Monica's data is 2021-2022)",
+    "portal_all_time_count": "3 enquiries plotted",
+    "portal_row_postcodes": "DT3 4AJ (x2), BA21 3ST",
+    "portal_try_all_time_link": "visible in 12m empty state, click switches preset to 'all' correctly",
+    "portal_hover_teal_tint": "row.className contains 'teal' on mouseenter — confirmed",
+    "portal_basic_route": "no care-home-overlay-toggle rendered on /portal/territory/basic (correct)",
+    "admin_regression": "toggle + 4 presets + custom-date inputs + all-time 3 rows + hover teal + toggle-off unmounts — all identical to iter40",
+    "backend_endpoint_curl": "default→3 pins, 12m→0 pins, 30d→0 pins, all-time→3 pins, /portal/territory-plus/access allowed=true"
+  }
+}

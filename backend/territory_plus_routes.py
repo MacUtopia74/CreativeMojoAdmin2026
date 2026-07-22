@@ -450,4 +450,30 @@ def attach(api: APIRouter, db, require_role):
         })
         return {"ok": True, "deleted": r.deleted_count}
 
+    # ------------------------------------------------------------------
+    # Care-home enquiries scoped to the current franchisee's territory.
+    # Mirrors the admin overlay on the Franchisee Detail page but auth'd
+    # via the franchisee's own portal token, so a franchisee can only
+    # ever see enquiries that fall inside *their* postcode sectors.
+    # Delegates to server._contacts_map_impl to keep filter logic in
+    # one place (sector match, date window, hydration with lat/lng).
+    # ------------------------------------------------------------------
+    @api.get("/portal/territory-plus/care-home-enquiries")
+    async def portal_care_home_enquiries(
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+        user: dict = Depends(require_role("franchisee")),
+    ):
+        allowed, fr = await _has_access(db, user)
+        _gate(user, allowed)
+        # Import lazily to avoid a circular import at module load.
+        from server import _contacts_map_impl  # noqa: PLC0415
+        try:
+            return await _contacts_map_impl(
+                "care_home_enquiry", date_from, date_to, fr["id"],
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("portal care-home enquiries failed: %s", exc, exc_info=True)
+            return {"total_matching_filter": 0, "plotted": 0, "pins": [], "error": str(exc)}
+
     return api
