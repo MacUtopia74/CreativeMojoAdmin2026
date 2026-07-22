@@ -934,6 +934,82 @@ def attach(api, db, require_role):
         total = await db.announcement_reads.count_documents(read_query)
         return {"items": items, "returned": len(items), "total": total}
 
+    # ---- Per-announcement open report. Returns two lists:
+    #   • opened     — franchisees who have read this update, newest first
+    #   • not_opened — franchisees on the recipient list who haven't
+    # Powers the "Report" modal on the HQ Updates admin table.
+    @api.get("/admin/announcements/{ann_id}/report")
+    async def announcement_report(
+        ann_id: str,
+        _: dict = Depends(require_role("admin")),
+    ):
+        ann = await db.announcements.find_one({"id": ann_id}, {"_id": 0})
+        if not ann:
+            raise HTTPException(404, "Announcement not found")
+        sent_to: list[str] = list(ann.get("sent_to") or [])
+        fr_by_id: dict[str, dict] = {}
+        if sent_to:
+            async for f in db.franchisees.find(
+                {"id": {"$in": sent_to}},
+                {"_id": 0, "id": 1, "first_name": 1, "last_name": 1,
+                 "organisation": 1, "email": 1, "lifecycle_status": 1},
+            ):
+                fr_by_id[f["id"]] = f
+        read_by_id: dict[str, str] = {}
+        async for r in db.announcement_reads.find(
+            {"announcement_id": ann_id},
+            {"_id": 0, "user_key": 1, "read_at": 1},
+        ).sort("read_at", -1):
+            key = r.get("user_key")
+            # First occurrence wins because we sorted DESC — that's the
+            # most-recent read for anyone who's opened it more than once.
+            if key and key not in read_by_id:
+                read_by_id[key] = r.get("read_at")
+
+        def _entry(fid: str) -> dict:
+            fr = fr_by_id.get(fid) or {}
+            if fid == "__admin_self__":
+                # Preview-only self-send marker used by the composer's
+                # "test send to admin" flow. Never a real franchisee.
+                return {
+                    "franchisee_id": fid,
+                    "name": "Admin preview send",
+                    "email": None,
+                    "organisation": None,
+                    "lifecycle_status": None,
+                }
+            name = (f"{fr.get('first_name') or ''} {fr.get('last_name') or ''}".strip()
+                    or fr.get("organisation") or fid)
+            return {
+                "franchisee_id": fid,
+                "name": name,
+                "email": fr.get("email"),
+                "organisation": fr.get("organisation"),
+                "lifecycle_status": fr.get("lifecycle_status"),
+            }
+
+        opened: list[dict] = []
+        not_opened: list[dict] = []
+        for fid in sent_to:
+            entry = _entry(fid)
+            if fid in read_by_id:
+                entry["read_at"] = read_by_id[fid]
+                opened.append(entry)
+            else:
+                not_opened.append(entry)
+        opened.sort(key=lambda e: e.get("read_at") or "", reverse=True)
+        not_opened.sort(key=lambda e: (e.get("name") or "").lower())
+        return {
+            "announcement_id": ann_id,
+            "title": ann.get("title"),
+            "sent_at": ann.get("sent_at"),
+            "total_recipients": len(sent_to),
+            "opened_count": len(opened),
+            "not_opened_count": len(not_opened),
+            "opened": opened,
+            "not_opened": not_opened,
+        }
+
     # --------------------- recent files helper for the composer ----
     # MUST be declared before /admin/announcements/{ann_id} so FastAPI's
     # path matcher routes the literal "recent-files" segment here rather

@@ -15,6 +15,7 @@ import {
   Megaphone, Send, Loader2, AlertCircle, Plus, Trash2, X, CheckCircle2,
   Search, FileText, Folder, RefreshCw, Calendar, Image as ImageIcon, Eye, Upload,
   PinOff, Briefcase, Users as UsersIcon, Sparkles, Link as LinkIcon, Youtube, Pencil,
+  BarChart3, Mail, Building2,
 } from "lucide-react";
 import api from "@/lib/api";
 import FileThumbnail from "@/components/files/FileThumbnail";
@@ -72,6 +73,8 @@ function AnnouncementsList({ onCompose, onView, refresh }) {
   const [tab, setTab] = useState("sent");
   const [drafts, setDrafts] = useState({ items: [], total: 0 });
   const [draftsLoading, setDraftsLoading] = useState(false);
+  // "Report" modal: shows who opened this HQ Update vs who hasn't.
+  const [reportFor, setReportFor] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -277,6 +280,12 @@ function AnnouncementsList({ onCompose, onView, refresh }) {
                   <td className="px-3 py-3"><span className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded ${colour}`}>{s}</span></td>
                   <td className="px-3 py-3 text-right">
                     <div className="inline-flex items-center gap-2">
+                      <button onClick={(e) => { e.stopPropagation(); setReportFor(it); }}
+                        title="Open report — who has read this update"
+                        data-testid={`announcement-report-${it.id}`}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-stone-300 bg-white text-stone-700 hover:bg-stone-950 hover:text-white hover:border-stone-950">
+                        <BarChart3 className="w-3 h-3" /> Report
+                      </button>
                       {it.is_pinned && (
                         <button onClick={(e) => {
                           e.stopPropagation();
@@ -302,6 +311,188 @@ function AnnouncementsList({ onCompose, onView, refresh }) {
           </tbody>
         </table>
       </div>
+      )}
+
+      {reportFor && (
+        <AnnouncementReportModal
+          announcement={reportFor}
+          onClose={() => setReportFor(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// =====================================================================
+// REPORT modal — two-column read report for an HQ Update.
+// =====================================================================
+function AnnouncementReportModal({ announcement, onClose }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [q, setQ] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      setLoading(true); setError("");
+      try {
+        const { data } = await api.get(`/admin/announcements/${announcement.id}/report`);
+        if (!alive) return;
+        setData(data);
+      } catch (e) {
+        if (alive) setError(e?.response?.data?.detail || "Could not load report.");
+      } finally { if (alive) setLoading(false); }
+    })();
+    return () => { alive = false; };
+  }, [announcement.id]);
+
+  const filterBy = (list) => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return list;
+    return list.filter((e) => (
+      (e.name || "").toLowerCase().includes(needle) ||
+      (e.email || "").toLowerCase().includes(needle) ||
+      (e.organisation || "").toLowerCase().includes(needle)
+    ));
+  };
+  const opened = filterBy(data?.opened || []);
+  const notOpened = filterBy(data?.not_opened || []);
+  const pct = data && data.total_recipients > 0
+    ? Math.round((data.opened_count / data.total_recipients) * 100)
+    : 0;
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-black/50 flex items-start justify-center p-4 overflow-y-auto" data-testid="announcement-report-modal">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl my-8 border border-stone-200">
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-stone-200 flex items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.25em] font-bold text-stone-500">
+              <BarChart3 className="w-3.5 h-3.5" /> Read report
+            </div>
+            <h2 className="font-display text-xl text-stone-950 mt-1">{data?.title || announcement.title}</h2>
+            {data?.sent_at && (
+              <div className="text-xs text-stone-500 mt-0.5">Sent {fmtDate(data.sent_at)}</div>
+            )}
+          </div>
+          <button onClick={onClose} data-testid="announcement-report-close" className="text-stone-400 hover:text-stone-950 p-1 -m-1">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Stats + search */}
+        <div className="px-6 pt-4 pb-3 border-b border-stone-100 flex flex-col md:flex-row md:items-center gap-3 justify-between">
+          <div className="flex items-center gap-4 text-sm">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Recipients</div>
+              <div className="text-lg font-display text-stone-950 tabular-nums" data-testid="report-total">{data?.total_recipients ?? "—"}</div>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Opened</div>
+              <div className="text-lg font-display text-emerald-700 tabular-nums" data-testid="report-opened">{data?.opened_count ?? "—"}</div>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Not opened</div>
+              <div className="text-lg font-display text-rose-700 tabular-nums" data-testid="report-not-opened">{data?.not_opened_count ?? "—"}</div>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Open rate</div>
+              <div className="text-lg font-display text-stone-950 tabular-nums" data-testid="report-open-rate">{data ? `${pct}%` : "—"}</div>
+            </div>
+          </div>
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400" />
+            <input
+              type="search"
+              placeholder="Filter by name, email, org…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              data-testid="report-search"
+              className="pl-7 pr-3 py-1.5 text-xs border border-stone-300 rounded-md focus:border-stone-950 focus:outline-none w-full md:w-64"
+            />
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="p-6">
+          {loading ? (
+            <div className="py-16 text-center text-stone-500 text-sm">
+              <Loader2 className="w-4 h-4 animate-spin inline mr-1.5" /> Loading report…
+            </div>
+          ) : error ? (
+            <div className="py-8 text-center text-rose-700 text-sm flex items-center justify-center gap-2">
+              <AlertCircle className="w-4 h-4" /> {error}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <ReportColumn
+                tone="opened"
+                title="Opened"
+                count={opened.length}
+                total={data?.opened_count || 0}
+                rows={opened}
+                empty="Nobody's opened this update yet."
+              />
+              <ReportColumn
+                tone="not-opened"
+                title="Not opened"
+                count={notOpened.length}
+                total={data?.not_opened_count || 0}
+                rows={notOpened}
+                empty="Everyone has opened this update. 🎉"
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReportColumn({ tone, title, count, total, rows, empty }) {
+  const isOpened = tone === "opened";
+  const headTone = isOpened
+    ? "bg-emerald-50 border-emerald-200 text-emerald-900"
+    : "bg-rose-50 border-rose-200 text-rose-900";
+  return (
+    <div className="border border-stone-200 rounded-xl overflow-hidden bg-white" data-testid={`report-col-${tone}`}>
+      <div className={`px-3 py-2 border-b flex items-center justify-between ${headTone}`}>
+        <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.2em] font-bold">
+          {isOpened ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+          {title}
+        </div>
+        <div className="text-[10px] uppercase tracking-[0.2em] font-bold tabular-nums">
+          {count}{count !== total && ` / ${total}`}
+        </div>
+      </div>
+      {rows.length === 0 ? (
+        <div className="py-8 text-center text-stone-400 text-xs">{empty}</div>
+      ) : (
+        <ul className="divide-y divide-stone-100 max-h-[420px] overflow-y-auto">
+          {rows.map((e) => (
+            <li key={e.franchisee_id} className="px-3 py-2 flex items-start justify-between gap-3" data-testid={`report-row-${e.franchisee_id}`}>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-stone-950 truncate">{e.name}</div>
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5 text-[11px] text-stone-500">
+                  {e.organisation && (
+                    <span className="inline-flex items-center gap-0.5"><Building2 className="w-3 h-3" />{e.organisation}</span>
+                  )}
+                  {e.email && (
+                    <a href={`mailto:${e.email}`} className="inline-flex items-center gap-0.5 hover:text-stone-950 truncate max-w-[220px]">
+                      <Mail className="w-3 h-3" />{e.email}
+                    </a>
+                  )}
+                </div>
+              </div>
+              {isOpened && e.read_at && (
+                <div className="shrink-0 text-[10px] uppercase tracking-[0.15em] font-bold text-stone-500 tabular-nums whitespace-nowrap">
+                  {fmtDate(e.read_at)}
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );
