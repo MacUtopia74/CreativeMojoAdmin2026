@@ -487,11 +487,19 @@ export default function TerritoryMap({
         if (!f) return;
         const p = f.properties || {};
         const fnum = p.franchise_number ? `#${String(p.franchise_number).replace(/</g, "&lt;")} ` : "";
+        // Phase 1 atlas cache: features are dissolved per-franchisee so
+        // we no longer have a specific ``sector`` code per feature. Fall
+        // back to a "N sectors" summary when the individual code is
+        // absent, keeping backwards compatibility with any legacy
+        // callers that still pass per-sector features.
+        const sectorLine = p.sector
+          ? `Sector ${String(p.sector).replace(/</g, "&lt;")}`
+          : (p.sector_count ? `${p.sector_count} sector${String(p.sector_count) === "1" ? "" : "s"}` : "");
         const html = `
           <div style="font-family:Inter,system-ui;font-size:12px;line-height:1.4;min-width:180px">
             <strong>${fnum}${(p.name || "").replace(/</g, "&lt;")}</strong>
             ${p.owner_name ? `<div style="color:#0c0a09;margin-top:2px">${String(p.owner_name).replace(/</g, "&lt;")}</div>` : ""}
-            <div style="color:#78716c;margin-top:3px">Sector ${(p.sector || "").replace(/</g, "&lt;")}</div>
+            ${sectorLine ? `<div style="color:#78716c;margin-top:3px">${sectorLine}</div>` : ""}
           </div>`;
         new mapboxgl.Popup({ offset: 12, closeButton: true })
           .setLngLat(e.lngLat)

@@ -2031,6 +2031,18 @@ async def update_franchisee(franchisee_id: str, body: dict, user: dict = Depends
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
     updates["updated_by"] = user.get("email")
     await db.franchisees.update_one({"id": franchisee_id}, {"$set": updates})
+    # Territory atlas cache invalidation — only if a field that shows up
+    # in the atlas fingerprint / display actually changed. Cheap check
+    # against the fresh payload above so unrelated PATCHes (bio, phone,
+    # etc.) don't trigger a needless rebuild.
+    _ATLAS_FIELDS = {"organisation", "postcode", "franchise_number", "full_name",
+                     "first_name", "last_name", "tags", "lifecycle_status"}
+    if _ATLAS_FIELDS & set(updates.keys()):
+        from territory_atlas_cache import invalidate as _atlas_invalidate
+        try:
+            await _atlas_invalidate(db, reason=f"patch-franchisee:{franchisee_id}")
+        except Exception as _exc:  # noqa: BLE001
+            logger.warning("atlas invalidate failed after PATCH %s: %s", franchisee_id, _exc)
     fresh = await db.franchisees.find_one({"id": franchisee_id}, {"_id": 0})
     return {"ok": True, "franchisee": fresh}
 
@@ -3341,6 +3353,13 @@ async def update_franchisee_lifecycle(
         "changed_at": now,
     })
     fresh = await db.franchisees.find_one({"id": franchisee_id}, {"_id": 0})
+    # Territory atlas — a lifecycle flip toggles whether this franchisee
+    # appears on the map at all, so it must invalidate the cache.
+    try:
+        from territory_atlas_cache import invalidate as _atlas_invalidate
+        await _atlas_invalidate(db, reason=f"lifecycle:{franchisee_id}:{target}")
+    except Exception as _exc:  # noqa: BLE001
+        logger.warning("atlas invalidate failed after lifecycle change: %s", _exc)
     return {"ok": True, "franchisee": fresh}
 
 

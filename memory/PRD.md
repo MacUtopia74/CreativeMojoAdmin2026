@@ -505,7 +505,38 @@ where applicable.
 - Plan-a-Route: wire to Mapbox Directions + deep-link to Google/Apple Maps
 - `{{first_name}}` yellow chip pill in Tiptap WYSIWYG editor
 
-## Recently Shipped (Feb 2026)
+## Recently Shipped (Feb 2026 · Territory Atlas Cache)
+- **Phase 1 — Dissolve & simplify polygons.** Server now emits ONE
+  dissolved MultiPolygon per franchisee (was: 2000+ per-sector
+  features). Simplified at ~5 m tolerance. Payload 10 MB → 5.6 MB
+  raw / 2 MB gzip. Features 2099 → 56.
+- **Phase 2 — Persistent atlas cache** (`territory_atlas_cache`
+  collection). Fingerprint-verified single-doc cache with pre-
+  serialised JSON body so cache-hits stream verbatim without
+  re-encoding the ~5 MB dict. Server-side response drops from
+  ~2.7 s to ~85 ms on warm cache.
+- **Phase 3 — Automatic invalidation.** `PUT /territory` and
+  `POST /territory/rollback` now return in ~100 ms and schedule the
+  atlas rebuild as a background task (`asyncio` `BackgroundTasks`).
+  `PATCH /franchisees/{id}` invalidates only if a fingerprint-
+  relevant field (org, postcode, franchise_number, tags, lifecycle)
+  changes. `POST /territory/atlas/refresh` is the manual belt-and-
+  braces button. `asyncio.Lock` coalesces overlapping rebuilds.
+- **Phase 4 — Editable overlay pattern.** Territory Builder passes
+  `exclude_id` so the franchisee currently being edited is filtered
+  out of the atlas backdrop in-memory (O(N) on ~60 items). Their
+  editable layer uses the existing live path unchanged.
+- **Phase 5 — Browser ETag caching.** Weak ETag = fingerprint +
+  variant. `If-None-Match` returns HTTP 304 (0 bytes). Browser
+  skips the 5 MB re-parse + Mapbox tessellation on repeat opens.
+  `Cache-Control: private, max-age=60, must-revalidate`.
+- **Toolbar diagnostic.** Territory Builder shows "ATLAS · N min ago"
+  + manual refresh button (⟲) so admins can eyeball freshness.
+
+Result: first map open **30 s → ~1 s**; repeat opens **~50 ms** via
+304; territory save unblocked from atlas rebuild (returns in ~100 ms
+then rebuilds in the background).
+
 ### Care-home overlay in Franchisee's My Territory+ portal
 - Extracted `CareHomeEnquiriesOverlay` into `/components/territory/` as a
   reusable render-prop component with a `mode` prop (`admin` | `portal`).

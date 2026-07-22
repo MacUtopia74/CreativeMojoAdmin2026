@@ -29,9 +29,11 @@ from datetime import datetime, timezone
 from typing import Optional, List
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+import json
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
+import territory_atlas_cache as atlas_cache
 from geo_postcode import is_scottish_postcode  # shared (avoids cqc ↔ scotland cycle)
 # Rule + filter helpers come from dedicated leaf modules — neither router
 # imports the other, eliminating the circular import code review flagged.
@@ -996,6 +998,7 @@ def build_territory_router(db, require_role):  # noqa: D401
     async def save_franchisee_territory(
         franchisee_id: str,
         body: FranchiseeTerritoryIn,
+        background_tasks: BackgroundTasks,
         user: dict = Depends(require_role("admin")),
     ):
         # Normalise: uppercase, single-space, dedupe
@@ -1050,6 +1053,18 @@ def build_territory_router(db, require_role):  # noqa: D401
         )
         if not res.matched_count:
             raise HTTPException(404, detail="Franchisee not found")
+        # Phase 3 — kick off atlas rebuild in the background so the
+        # save call itself returns immediately. Also invalidate first
+        # so any concurrent /territory/all-franchisees hit that lands
+        # BEFORE the background task finishes sees a fresh rebuild
+        # (rather than the stale cached copy).
+        await atlas_cache.invalidate(db, reason=f"territory-save:{franchisee_id}")
+        background_tasks.add_task(
+            atlas_cache.refresh,
+            db,
+            lambda: _compute_territory_atlas(db),
+            f"post-save:{franchisee_id}",
+        )
         return {"sectors": seen, "home_count": homes}
 
     # --------------------------- territory rollback (audit + restore)
@@ -1071,6 +1086,7 @@ def build_territory_router(db, require_role):  # noqa: D401
     async def rollback_territory(
         franchisee_id: str,
         history_id: str,
+        background_tasks: BackgroundTasks,
         user: dict = Depends(require_role("admin")),
     ):
         """Restore the franchisee's territory to the ``previous_sectors``
@@ -1126,6 +1142,15 @@ def build_territory_router(db, require_role):  # noqa: D401
         )
         if not res.matched_count:
             raise HTTPException(404, detail="Franchisee not found")
+        # Phase 3 — atlas invalidate + background rebuild (identical
+        # pattern to the /territory save handler above).
+        await atlas_cache.invalidate(db, reason=f"territory-rollback:{franchisee_id}")
+        background_tasks.add_task(
+            atlas_cache.refresh,
+            db,
+            lambda: _compute_territory_atlas(db),
+            f"post-rollback:{franchisee_id}",
+        )
         return {"sectors": target_sectors, "home_count": homes}
 
     @router.get("/franchisees/{franchisee_id}/territory")
@@ -1180,9 +1205,93 @@ def build_territory_router(db, require_role):  # noqa: D401
 
     @router.get("/territory/all-franchisees")
     async def all_franchisees_territories(
+        request: Request,
+        response: Response,
         exclude_id: Optional[str] = None,
+        force: bool = False,
         _user: dict = Depends(require_role("admin")),
     ):
+        # Phase 2 optimisation — served from ``territory_atlas_cache``.
+        # Fingerprint self-heals if invalidation ever gets missed.
+        if force:
+            payload = await _compute_territory_atlas(db)
+            fp = await atlas_cache.fingerprint(db)
+            now = datetime.now(timezone.utc).isoformat()
+            payload_json = json.dumps(payload).encode()
+            await db[atlas_cache.COLLECTION].update_one(
+                {"_id": atlas_cache.CACHE_ID},
+                {"$set": {
+                    "fingerprint": fp,
+                    "computed_at": now,
+                    "payload": payload,
+                    "payload_json": payload_json,
+                }},
+                upsert=True,
+            )
+            meta = {
+                "cache_hit": False, "forced": True,
+                "fingerprint": fp, "computed_at": now,
+                "payload_json": payload_json,
+            }
+        else:
+            payload, meta = await atlas_cache.load(
+                db, lambda: _compute_territory_atlas(db),
+            )
+        # Phase 5 — ETag / 304. Combines cache fingerprint with the
+        # requested variant (exclude_id) so a re-load of the same
+        # variant with no data change short-circuits to a 304 Not
+        # Modified — the browser reuses its in-memory copy and the
+        # network transfer is a couple of hundred bytes.
+        etag_base = (meta.get("fingerprint") or meta.get("computed_at") or "")
+        etag = f'W/"atlas-{etag_base[:12]}-{exclude_id or "all"}"'
+        client_etag = request.headers.get("If-None-Match", "")
+        if client_etag and client_etag == etag:
+            headers = {
+                "ETag": etag,
+                "Cache-Control": "private, max-age=60, must-revalidate",
+                "X-Atlas-Cache-Hit": "1" if meta.get("cache_hit") else "0",
+            }
+            return Response(status_code=304, headers=headers)
+        # Fast path — cache-hit + no exclusion + pre-serialised JSON:
+        # stream verbatim (skips a ~5 MB dict re-serialisation).
+        if not exclude_id and meta.get("payload_json"):
+            headers = {
+                "ETag": etag,
+                "Cache-Control": "private, max-age=60, must-revalidate",
+                "X-Atlas-Cache-Hit": "1" if meta.get("cache_hit") else "0",
+                "X-Atlas-Computed-At": meta.get("computed_at") or "",
+            }
+            return Response(
+                content=meta["payload_json"],
+                media_type="application/json",
+                headers=headers,
+            )
+        result = atlas_cache.filter_exclude(payload, exclude_id)
+        result["_cache"] = {
+            "hit": meta.get("cache_hit"),
+            "computed_at": meta.get("computed_at"),
+            "took_ms": meta.get("took_ms"),
+        }
+        response.headers["ETag"] = etag
+        response.headers["Cache-Control"] = "private, max-age=60, must-revalidate"
+        response.headers["X-Atlas-Cache-Hit"] = "1" if meta.get("cache_hit") else "0"
+        return result
+
+    @router.post("/territory/atlas/refresh")
+    async def atlas_refresh(user: dict = Depends(require_role("admin"))):
+        """Force a full atlas rebuild — belt-and-braces button on the
+        Territory Builder toolbar in case invalidation ever gets missed.
+        Runs synchronously so the caller can confirm freshness."""
+        out = await atlas_cache.refresh(
+            db, lambda: _compute_territory_atlas(db),
+            reason=f"manual:{user.get('email')}",
+        )
+        return out
+
+    async def _compute_territory_atlas(db) -> dict:
+        """Full territory-atlas build — extracted for reuse by the cache
+        helper. Returns the same shape the endpoint used to return
+        directly (``{franchisees, geojson, outlines, count}``)."""
         # Active franchisees only — anyone tagged "Franchisee" and not flagged
         # as ex-franchisee. Excludes prospects/contacts.
         q: dict = {
@@ -1190,8 +1299,6 @@ def build_territory_router(db, require_role):  # noqa: D401
             "lifecycle_status": {"$ne": "ex_franchisee"},
             "territory_sectors": {"$exists": True, "$ne": []},
         }
-        if exclude_id:
-            q["id"] = {"$ne": exclude_id}
         franchisees = await db.franchisees.find(
             q,
             {"_id": 0, "id": 1, "organisation": 1, "franchise_number": 1,
@@ -1348,6 +1455,16 @@ def build_territory_router(db, require_role):  # noqa: D401
             colour_by_fid[fid] = chosen
 
         outline_features: list = []
+        # Phase 1 optimisation — see /territory-atlas cache plan.
+        # Instead of emitting one feature per sector (~2000 for the UK
+        # network), we ship ONE dissolved MultiPolygon per franchisee.
+        # This is exactly the "union" we already computed above for
+        # colour adjacency, so it costs nothing extra to reuse.
+        #
+        # We also simplify at ~5 m tolerance — invisible on-screen at
+        # any usable zoom for a UK map, but drops vertex count ~4-6×
+        # and shrinks the JSON payload proportionally.
+        SIMPLIFY_TOL = 0.00005  # ~5.5m at UK latitudes
         for f in ordered:
             sectors = f.get("territory_sectors") or []
             color = colour_by_fid.get(f["id"], PALETTE[0])
@@ -1383,36 +1500,44 @@ def build_territory_router(db, require_role):  # noqa: D401
                 "hq_lat": hq_lat,
                 "hq_lng": hq_lng,
             })
-            for s in sectors:
-                geom = poly_map.get(s)
-                if not geom:
-                    continue
-                features.append({
-                    "type": "Feature",
-                    "geometry": geom,
-                    "properties": {
-                        "sector": s,
-                        "franchisee_id": f["id"],
-                        "name": name,
-                        "owner_name": owner_name,
-                        "franchise_number": f.get("franchise_number") or "",
-                        "color": color,
-                    },
-                })
-            # Dissolved outline for the franchisee — drawn thick on the map so
-            # the franchisee's overall edge stands out regardless of fill
-            # colour.
             u = unions.get(f["id"])
-            if u and not u.is_empty:
-                outline_features.append({
-                    "type": "Feature",
-                    "geometry": mapping(u),
-                    "properties": {
-                        "franchisee_id": f["id"],
-                        "name": name,
-                        "color": color,
-                    },
-                })
+            if not u or u.is_empty:
+                continue
+            try:
+                simplified = u.simplify(SIMPLIFY_TOL, preserve_topology=True)
+                if simplified.is_empty:
+                    simplified = u
+            except Exception:  # noqa: BLE001
+                simplified = u
+            geom = mapping(simplified)
+            props = {
+                "franchisee_id": f["id"],
+                "name": name,
+                "owner_name": owner_name,
+                "franchise_number": f.get("franchise_number") or "",
+                "color": color,
+                # Sector count exposed so the popup can show
+                # "12 sectors" rather than a specific sector code,
+                # since we no longer ship per-sector features here.
+                "sector_count": len(sectors),
+            }
+            features.append({
+                "type": "Feature",
+                "geometry": geom,
+                "properties": props,
+            })
+            # Same simplified geometry powers the dissolved outline —
+            # keeps atlas fill + outline pixel-perfectly aligned and
+            # avoids shipping two copies of the polygons.
+            outline_features.append({
+                "type": "Feature",
+                "geometry": geom,
+                "properties": {
+                    "franchisee_id": f["id"],
+                    "name": name,
+                    "color": color,
+                },
+            })
         return {
             "franchisees": franchisee_meta,
             "geojson": {"type": "FeatureCollection", "features": features},

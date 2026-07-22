@@ -239,19 +239,66 @@ export default function TerritoryBuilderPage() {
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await api.get("/territory/all-franchisees", {
+        const res = await api.get("/territory/all-franchisees", {
           params: franchiseeId ? { exclude_id: franchiseeId } : {},
         });
+        const data = res.data;
         setOverlay({
           franchisees: data.franchisees || [],
           geojson: data.geojson || null,
           outlines: data.outlines || null,
         });
+        // Phase 3 diagnostic — cache computed_at comes via the
+        // pre-serialised fast path header OR the slow-path _cache
+        // block, depending on whether we're excluding a franchisee.
+        const computedAt = data._cache?.computed_at
+          || res.headers?.["x-atlas-computed-at"]
+          || res.headers?.get?.("x-atlas-computed-at");
+        if (computedAt) setAtlasComputedAt(computedAt);
       } catch (e) {
         console.warn("[TerritoryBuilder] Overlay (other franchisees) failed to load — non-critical", e);
       }
     })();
   }, [franchiseeId]);
+
+  const [atlasComputedAt, setAtlasComputedAt] = useState(null);
+  const [atlasRefreshing, setAtlasRefreshing] = useState(false);
+  const refreshAtlas = useCallback(async () => {
+    setAtlasRefreshing(true);
+    try {
+      const { data } = await api.post("/territory/atlas/refresh");
+      const { data: fresh } = await api.get("/territory/all-franchisees", {
+        params: franchiseeId ? { exclude_id: franchiseeId } : {},
+      });
+      setOverlay({
+        franchisees: fresh.franchisees || [],
+        geojson: fresh.geojson || null,
+        outlines: fresh.outlines || null,
+      });
+      setAtlasComputedAt(data?.meta?.computed_at || new Date().toISOString());
+    } catch (e) {
+      console.warn("[TerritoryBuilder] atlas refresh failed", e);
+    } finally {
+      setAtlasRefreshing(false);
+    }
+  }, [franchiseeId]);
+
+  // "Refreshed N min ago" ticks once a minute so the label stays live
+  // without eating render cycles.
+  const [nowTick, setNowTick] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowTick(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+  const atlasAgeLabel = useMemo(() => {
+    if (!atlasComputedAt) return null;
+    const ageMs = nowTick - new Date(atlasComputedAt).getTime();
+    if (ageMs < 60_000) return "just now";
+    const mins = Math.floor(ageMs / 60_000);
+    if (mins < 60) return `${mins} min ago`;
+    const hrs = Math.floor(mins / 60);
+    return `${hrs} hr ago`;
+  }, [atlasComputedAt, nowTick]);
 
   // Refresh sectors-near when centre or radius changes. When in
   // franchisee-lock mode, also fetch the geometry of every owned sector
@@ -718,6 +765,26 @@ export default function TerritoryBuilderPage() {
                     {legendOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                   </button>
                 )}
+                {/* Atlas cache diagnostic — Phase 3. Shows freshness
+                    and lets an admin manually rebuild the cache if
+                    invalidation ever gets missed. */}
+                <div className={`${showOverlay && overlay.franchisees.length > 0 ? "" : "ml-auto"} flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-stone-500`}>
+                  {atlasAgeLabel && (
+                    <span data-testid="atlas-age" title={`Atlas cached at ${atlasComputedAt}`}>
+                      Atlas · {atlasAgeLabel}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={refreshAtlas}
+                    disabled={atlasRefreshing}
+                    data-testid="atlas-refresh"
+                    title="Rebuild the shared territory atlas cache now"
+                    className={`p-1 rounded-md hover:bg-stone-100 disabled:opacity-40 disabled:cursor-not-allowed`}
+                  >
+                    <RotateCcw className={`w-3.5 h-3.5 ${atlasRefreshing ? "animate-spin" : ""}`} />
+                  </button>
+                </div>
               </div>
               {showOverlay && legendOpen && overlay.franchisees.length > 0 && (
                 <div className="absolute top-full left-0 right-0 mt-1 z-30 bg-white border border-stone-200 rounded-2xl shadow-xl p-3 grid grid-cols-2 gap-1.5 max-h-[420px] overflow-y-auto" data-testid="franchisee-legend">
