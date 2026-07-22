@@ -458,7 +458,21 @@ function CareHomeEnquiriesOverlay({ franchiseeId, children }) {
             </div>
           ) : pins.length === 0 ? (
             <div className="text-xs text-stone-500 text-center py-6">
-              {loading ? "Loading enquiries…" : "No care home enquiries in this franchisee's territory for the selected date range."}
+              {loading ? "Loading enquiries…" : (
+                <>
+                  No care home enquiries in this franchisee&apos;s territory for the selected date range.
+                  {preset !== "all" && (
+                    <div className="mt-1.5">
+                      <button
+                        onClick={() => setPreset("all")}
+                        data-testid="care-home-overlay-try-all-time"
+                        className="underline text-stone-700 hover:text-stone-950 font-semibold">
+                        Try &ldquo;All time&rdquo; →
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           ) : (
             <table className="w-full">

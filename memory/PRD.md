@@ -503,6 +503,26 @@ where applicable.
   4-col KPIs, snap-scroll kanban, header wrap
 - Marketing+ #3: Insert image from File Vault into eshot composer
 - Plan-a-Route: wire to Mapbox Directions + deep-link to Google/Apple Maps
+- Highlight care-home enquiries in Franchisee's My Territory+ portal
+  (mirror the admin overlay). Add "Customers who have contacted" dropdown filter.
+- `{{first_name}}` yellow chip pill in Tiptap WYSIWYG editor
+
+## Recently Shipped (Feb 2026 · Care Home overlay on Admin Franchisee page)
+- Added a "Show Care Home Enquiries in this area" toggle on the individual
+  Admin Franchisee Detail Territory Map panel. Overlays enquiry pins on
+  the *existing* TerritoryMap (Option B — no second map instance, saves
+  Mapbox credits) via a new `extraPins` prop on FranchiseeTerritoryWidget.
+- Date filter bar with 4 presets (Last 30d / Last 12m / Custom… / All time),
+  plus custom From/To date inputs. Data pulled from
+  `/api/contacts/map?source=care_home_enquiry&franchisee_id=<fid>&date_from&date_to`.
+- Compact enquiry table below the map (Date / Care Home / Contact / Postcode).
+  Row hover teal-tints both the row background and (via `hoveredExtraPinId`)
+  the corresponding map pin.
+- Empty-state hint offers a one-click "Try All time" fallback so historical
+  enquiries aren't hidden behind the default 12-month window.
+- Verified via testing_agent_v3_fork (iteration_40): 100% pass on all 7
+  acceptance criteria.
+
 
 ## P2 — Future
 - Phase 3 Website Migration (WooCommerce content + order history rebuild)
