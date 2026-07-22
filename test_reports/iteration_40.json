@@ -1,0 +1,36 @@
+{
+  "summary": "Frontend testing of Care Home Enquiries overlay on Franchisee Detail page (Monica Diodato febd57cf...). Login → navigation → panel-map → toggle ON/OFF, all 4 date presets, custom date inputs, row rendering, and hover highlight all verified. Territory map still renders (existing widget not broken). 3 expected pins for Monica appear ONLY under 'All time' preset; the default '12m' preset returns 0 pins because her enquiries are historical (2021 & 2022). Behavior is technically correct.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Franchisee Detail → Territory Map panel", "issues": ["Default preset '12m' shows '0 enquiries plotted' for Monica because her 3 care-home enquiries are dated 2021-02-08 and 2022-10-05 (outside a 365-day window). All 3 pins DO load correctly when the user clicks 'All time'. Consider: (a) auto-fallback to 'All time' when the 12m result is empty, or (b) show an empty-state hint like 'No enquiries in this range — try All time' inside the list card so admins understand why it's empty. This is a UX polish, not a bug."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "OPTIONAL UX: consider auto-selecting 'All time' when 12m returns 0 pins, or add a helper hint linking to 'All time' from the empty-state message so admins don't miss historical enquiries.",
+    "No blocking issues — feature is functional and matches the spec."
+  ],
+  "critical_code_review_comments": [
+    "CareHomeEnquiriesOverlay component (~175 LOC) lives inside FranchiseeDetailPage.js which is already ~1200+ lines. Recommend extracting to /app/frontend/src/components/franchisee/CareHomeEnquiriesOverlay.jsx for maintainability and to keep FranchiseeDetailPage under the 700-line file-size guideline.",
+    "The useEffect dependency array on the fetch effect includes range.from and range.to which correctly re-fires on preset changes — good.",
+    "The `hovered` state on map pins is not surfaced by TerritoryMap yet (only `hoveredExtraPinId` is passed through). Confirm FranchiseeTerritoryWidget → TerritoryMap actually consumes hoveredExtraPinId to style the pin — this was not visually verified because pin hover state is subtle."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped)", "frontend": "100% of listed acceptance tests pass"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Care Home overlay lives inside CareHomeEnquiriesOverlay in /app/frontend/src/pages/FranchiseeDetailPage.js. Data-testids used: care-home-overlay-toggle, care-home-overlay-count, care-home-overlay-preset-30d/12m/custom/all, care-home-overlay-from/-to, care-home-overlay-list, care-home-overlay-row-<id>. Backend GET /api/contacts/map?source=care_home_enquiry&franchisee_id=febd57cf-600d-4b44-bebc-6a9177984832 returns 3 pins with date_added values 2021-02-08 and 2022-10-05, so only 'All time' preset shows them for that franchisee. Login flow: after signing in, admin lands on '/' (not '/dashboard') — do NOT use wait_for_url('**/dashboard**'). Also do NOT use wait_until='networkidle' on franchisee detail page (map polling keeps network busy) — use 'domcontentloaded'.",
+  "test_evidence": {
+    "toggle_on_count_all_time": "3 enquiries plotted (matches spec)",
+    "toggle_on_count_12m": "0 enquiries plotted (correct: Monica's enquiries are 2021-2022)",
+    "toggle_on_count_30d": "0 enquiries plotted (correct)",
+    "presets_visible": "30d, 12m, custom, all — all 4 present",
+    "custom_inputs_visible": "care-home-overlay-from + care-home-overlay-to render when Custom clicked",
+    "toggle_off": "list unmounts, territory-map remains, extraPins = null",
+    "territory_map_intact": "territory-map data-testid present before + after toggle"
+  }
+}

@@ -20,7 +20,18 @@ import {
   Route, Maximize2, Minimize2,
 } from "lucide-react";
 
-export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 560, forceBasic = false, marketingEnabled = false }) {
+export default function FranchiseeTerritoryWidget({
+  franchiseeId,
+  mapHeight = 560,
+  forceBasic = false,
+  marketingEnabled = false,
+  // Admin-only: care-home-enquiry pins overlaid on the territory map
+  // (see /pages/FranchiseeDetailPage.js). Rendered by TerritoryMap
+  // via its ``pins`` layer, sitting on top of the CQC home markers.
+  extraPins = null,
+  hoveredExtraPinId = null,
+  onExtraPinClick = null,
+}) {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -438,6 +449,12 @@ export default function FranchiseeTerritoryWidget({ franchiseeId, mapHeight = 56
       } : null}
       providerFilter={plusOn ? providerFilter : null}
       dimNonClients={plusOn && myClientsOnly}
+      pins={extraPins && extraPins.length ? extraPins.map((p) => ({
+        ...p,
+        color: p.color || "#0d9488",
+        hovered: hoveredExtraPinId === p.id,
+      })) : null}
+      onPinClick={onExtraPinClick}
     />
   ) : (
     <div className="text-sm text-stone-500 bg-stone-50 border border-dashed border-stone-300 rounded-xl px-4 py-6 text-center">
