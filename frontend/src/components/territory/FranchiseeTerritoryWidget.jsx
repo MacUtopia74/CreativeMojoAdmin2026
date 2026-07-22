@@ -31,6 +31,11 @@ export default function FranchiseeTerritoryWidget({
   extraPins = null,
   hoveredExtraPinId = null,
   onExtraPinClick = null,
+  // When true, hides the numbered CQC-home markers on the map AND the
+  // "Homes in your territory" list beneath it. Used by the Care Home
+  // Enquiries overlay so the teal enquiry pins aren't obscured by the
+  // ~100+ green home pins in a densely-populated territory.
+  hideHomeMarkers = false,
 }) {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -419,7 +424,7 @@ export default function FranchiseeTerritoryWidget({
       centreLabel={summary.franchisee?.organisation || summary.franchisee?.postcode || ""}
       height={plusOn ? 760 : mapHeight}
       interactive={false}
-      homes={homes}
+      homes={hideHomeMarkers ? [] : homes}
       activeHomeIndex={openHome}
       onMarkerClick={(i) => {
         setOpenHome(i);
@@ -577,7 +582,10 @@ export default function FranchiseeTerritoryWidget({
           )}
         </div>
 
-        {/* BOTTOM ROW — CQC Homes + Care Groups */}
+        {/* BOTTOM ROW — CQC Homes + Care Groups. Hidden entirely while
+            the Care Home Enquiries overlay is on so the teal enquiry
+            list below the map has room to breathe. */}
+        {!hideHomeMarkers && (
         <div className={`grid grid-cols-1 gap-4 ${providers.length > 0 ? "lg:grid-cols-5" : ""} items-stretch`}>
           <div className={`flex ${providers.length > 0 ? "lg:col-span-3" : ""}`}>
             <TerritoryHomesList
@@ -626,6 +634,7 @@ export default function FranchiseeTerritoryWidget({
             </div>
           )}
         </div>
+        )}
 
         {editingClient && (
           <TerritoryClientModal
@@ -668,7 +677,7 @@ export default function FranchiseeTerritoryWidget({
         {mapEl}
       </div>
 
-      {hasTerritory && (
+      {hasTerritory && !hideHomeMarkers && (
         <TerritoryHomesList
           homes={homes}
           openIndex={openHome}

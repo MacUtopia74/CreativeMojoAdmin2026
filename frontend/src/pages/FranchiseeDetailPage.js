@@ -933,12 +933,13 @@ export default function FranchiseeDetailPage() {
             }
           >
             <CareHomeEnquiriesOverlay franchiseeId={f.id}>
-              {({ extraPins, hoverId, setHoverId }) => (
+              {({ extraPins, hoverId, setHoverId, enabled }) => (
                 <FranchiseeTerritoryWidget
                   franchiseeId={f.id}
                   extraPins={extraPins}
                   hoveredExtraPinId={hoverId}
                   onExtraPinClick={(id) => setHoverId(id)}
+                  hideHomeMarkers={enabled}
                 />
               )}
             </CareHomeEnquiriesOverlay>

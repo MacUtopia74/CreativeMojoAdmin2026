@@ -44,13 +44,14 @@ export default function PortalTerritoryPage({ forceBasic = false }) {
     ? "Your exclusive postcodes and the customers and prospects within them."
     : "Plot your own clients, mark existing customers, and filter by care group.";
 
-  const renderWidget = (mapHeight, extraPins = null, hoverId = null) => (
+  const renderWidget = (mapHeight, extraPins = null, hoverId = null, hideHomes = false) => (
     <FranchiseeTerritoryWidget
       mapHeight={mapHeight}
       forceBasic={forceBasic}
       marketingEnabled={marketingEnabled}
       extraPins={extraPins}
       hoveredExtraPinId={hoverId}
+      hideHomeMarkers={hideHomes}
     />
   );
 
@@ -73,10 +74,10 @@ export default function PortalTerritoryPage({ forceBasic = false }) {
           labelOn="Hide customers who have contacted"
           emptyLabel="No website enquiries in your territory for the selected date range."
         >
-          {({ extraPins, hoverId }) => (
+          {({ extraPins, hoverId, enabled }) => (
             <>
-              <div className="block md:hidden">{renderWidget(420, extraPins, hoverId)}</div>
-              <div className="hidden md:block">{renderWidget(720, extraPins, hoverId)}</div>
+              <div className="block md:hidden">{renderWidget(420, extraPins, hoverId, enabled)}</div>
+              <div className="hidden md:block">{renderWidget(720, extraPins, hoverId, enabled)}</div>
             </>
           )}
         </CareHomeEnquiriesOverlay>
