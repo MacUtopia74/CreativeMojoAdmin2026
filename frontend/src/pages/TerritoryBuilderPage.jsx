@@ -337,6 +337,43 @@ export default function TerritoryBuilderPage() {
   }, [centre, radiusMi, franchiseeId, franchisee]);
   useEffect(() => { refreshSectors(); }, [refreshSectors]);
 
+  // If ``selected`` contains sector codes that aren't yet in the map's
+  // ``sectors`` feature list (typical when a saved plan is loaded and
+  // its sectors sit outside the current search radius), top up the
+  // geometry so the yellow "selected" overlay paints correctly. Runs
+  // as a follow-up to refreshSectors rather than pulling ``selected``
+  // into refreshSectors' deps — we don't want every sector toggle to
+  // re-hit ``sectors-near``.
+  useEffect(() => {
+    if (!selected || !selected.length) return;
+    const have = new Set(sectors.filter((s) => s.geometry).map((s) => s.sector));
+    const missing = selected.filter((code) => code && !have.has(code));
+    if (!missing.length) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await api.get("/territory/sector-polygons", {
+          params: { sectors: missing.join(",") },
+        });
+        if (cancelled) return;
+        const extras = (data.sectors || []).map((s) => ({ ...s, distance_km: 9999 }));
+        if (!extras.length) return;
+        setSectors((cur) => {
+          const m = new Map(cur.map((s) => [s.sector, s]));
+          let added = 0;
+          for (const s of extras) if (!m.has(s.sector)) { m.set(s.sector, s); added += 1; }
+          // Bail out early if nothing new — otherwise the ``sectors``
+          // reference changes on every render and this effect re-fires
+          // in a tight loop.
+          return added ? Array.from(m.values()) : cur;
+        });
+      } catch (e) {
+        console.warn("[TerritoryBuilder] top-up sector polygons failed", e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selected, sectors]);
+
   const lookupPostcode = async () => {
     if (!postcode.trim()) return;
     setLoading(true); setErr("");
