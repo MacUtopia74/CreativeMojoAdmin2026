@@ -355,9 +355,11 @@ function UploadModal({ onClose, onCreated, onRefresh }) {
   };
 
   const poll = (jobId) => {
+    let failures = 0;
     const tick = async () => {
       try {
         const { data } = await api.get(`/admin/contract-templates/upload-jobs/${jobId}`);
+        failures = 0;
         setJob(data);
         if (data.status === "complete" && data.template_id) {
           onRefresh?.();
@@ -367,7 +369,18 @@ function UploadModal({ onClose, onCreated, onRefresh }) {
         if (data.status === "failed") return;
         pollRef.current = setTimeout(tick, 1500);
       } catch (e) {
-        setErr(e?.response?.data?.detail || "Lost connection to conversion job.");
+        // Resilience: transient Cloudflare/edge 502s during long LLM
+        // steps must not abort polling — the backend job is still
+        // running. Retry with backoff up to 5 times before surfacing.
+        failures += 1;
+        if (failures >= 5) {
+          setErr(
+            e?.response?.data?.detail ||
+            "Temporarily lost connection to the conversion job — it is still running in the background. Refresh the templates list in a minute.",
+          );
+          return;
+        }
+        pollRef.current = setTimeout(tick, 3000);
       }
     };
     tick();

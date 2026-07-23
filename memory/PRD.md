@@ -1,4 +1,41 @@
 # Creative Mojo — Admin & Franchisee Hub PRD
+- ✅ **CMS Phase 1A — Async Upload Pipeline (23 Jul 2026)**
+  Replaced the synchronous PDF upload endpoint with an async job
+  pattern so long LLM-driven conversions no longer collide with the
+  Cloudflare 60s edge timeout.
+    • New backend endpoints in `contract_templates_routes.py`:
+        - `POST /api/admin/contract-templates/upload-pdf-async`
+          (returns `{job_id}` in <200 ms and spawns
+          `asyncio.create_task(_run_conversion_job(...))`)
+        - `GET /api/admin/contract-templates/upload-jobs/{job_id}`
+          for polling
+    • New collection `contract_upload_jobs` with schema:
+      `{id, status, stage, progress, message, pdf_filename,
+      byte_size, template_name, contract_type, template_id, error,
+      created_by, created_at, updated_at}`.
+    • 6-stage progression exposed to the UI:
+      `uploading(5) → extracting(25) → converting(70) →
+      verifying(85) → creating(95) → complete(100)` with a `failed`
+      terminal state on any error (LLM key missing, extraction
+      failure, LLM chunk failure, unexpected exception).
+    • New frontend `UploadModal` component in
+      `AdminContractTemplatesPage.jsx` — proper modal (no more
+      `window.prompt`) with name / contract-type / file inputs,
+      client-side validation, a live progress bar + stage list
+      (`data-testid='upload-progress-bar'`,
+      `data-testid='upload-stage-{code}'` for each stage), auto-nav
+      to the editor on complete, retry button on failure, and
+      resilient polling (5-attempt backoff before surfacing an
+      error) so a single transient 502 during a long LLM chunk no
+      longer freezes the visible progress.
+    • Sync `POST /upload-pdf` endpoint retained for backward
+      compatibility (all 31 existing pytest cases still pass).
+    • New test suite `test_contract_templates_upload_async.py`
+      (9 cases) covers job doc shape, staged progression, error
+      paths, template creation on complete, and non-PDF rejection.
+      Combined pytest: **40/40 green**.
+
+
 - ✅ **CMS Phase 1A — Contract Templates (23 Jul 2026, E2E validated)**
   Full backend + frontend pipeline for authoring legal contract
   templates in-house.
