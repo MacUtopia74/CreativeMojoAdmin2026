@@ -1,0 +1,56 @@
+{
+  "summary": "Phase 1A async upload flow validation (POST /upload-pdf-async + GET /upload-jobs/{id}). Backend + Frontend both PASS end-to-end. Full pytest suite 40/40 green (31 baseline preserved + 9 new async tests). Frontend UploadModal renders instead of window.prompt, progress bar animates 5→100%, all 6 stages tick through (uploading→extracting→converting→verifying→creating→complete), auto-navigates to editor on completion, editor loads with content + version history + conversion diff panel. Validation paths (empty name, wrong extension, empty file, invalid contract_type, nonexistent job) all return the expected errors. Sync /upload-pdf endpoint still works (backward compat). Job continues after modal close.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "GET /api/admin/contract-templates/upload-jobs/{id}",
+        "issue": "During a long LLM call (~100s per chunk for the 181KB CMS spec PDF), a single polling GET returned an intermittent 502 (Cloudflare edge). Frontend continues polling on the next tick but the poll() function's catch handler sets an error message and does NOT reschedule — meaning one transient 502 can kill the polling loop until the user reloads. Recommend: on GET failure inside poll(), still reschedule the next tick with backoff so a single edge blip doesn't abort progress. Backend job continues in the background regardless and the template is created correctly, so this is UX-only."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Upload PDF (async) — polling resilience",
+        "issue": "In poll() (AdminContractTemplatesPage.jsx around L369), a single failed GET calls setErr() and returns without rescheduling. If the Cloudflare edge returns a transient 502 during a long LLM step, the client-visible progress freezes even though the backend job is still running. Consider retrying the tick (e.g., 3 attempts with 3s backoff) before surfacing the error.",
+        "affected_selectors": ["[data-testid='upload-progress-bar']"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_contract_templates_upload_async.py",
+    "/app/backend/tests/test_contract_templates_phase1a.py",
+    "/app/backend/tests/test_contract_preview_toc.py",
+    "/app/test_reports/pytest/iter44_full.xml",
+    "/app/test_reports/pytest/iter44_baseline.xml",
+    "/app/test_reports/pytest/iter44_async.xml"
+  ],
+  "action_items": [
+    "OPTIONAL (P2) — Make the frontend poll() function resilient to transient GET failures: retry 2–3 times with backoff before setting an error. Prevents a single Cloudflare 502 blip on very long LLM chunks (>60s) from freezing the visible progress bar.",
+    "OPTIONAL (P3) — Consider adding an idle-scavenger that marks any running job with no `updated_at` bump for >5 minutes as failed, so orphaned jobs don't stay 'running' forever in the DB."
+  ],
+  "critical_code_review_comments": [
+    "Async endpoint /upload-pdf-async is well-structured — validates PDF/contract_type synchronously, inserts a job doc with the exact schema the frontend consumes, then fires asyncio.create_task(_run_conversion_job). Return payload matches the spec (job_id, stage='uploading', status='running', progress=5, message='Uploading PDF').",
+    "_run_conversion_job has proper stage transitions and a belt-and-braces try/except at the top level that catches ANY unexpected exception and writes status='failed', stage='failed', error=... to the job doc. LLM-key-missing, extraction failures, and cleanup failures each have their own error paths. Good defensive coding.",
+    "STAGE_PROGRESS boundaries (5/25/70/85/95/100) match the spec verbatim. Job doc includes all 14 required fields (id, status, stage, progress, message, pdf_filename, byte_size, template_name, contract_type, template_id, error, created_by, created_at, updated_at).",
+    "UploadModal (AdminContractTemplatesPage.jsx L327-521) uses proper data-testid coverage: upload-modal, upload-close, upload-name, upload-type, upload-file, upload-start, upload-progress, upload-progress-bar, upload-stage-list, upload-stage-{code} per stage, upload-retry. Progress bar uses inline style width based on job.progress. Stage icons switch Check/Loader2/circle based on done/active/pending state.",
+    "Polling in poll() ticks every 1500ms via setTimeout chain (not setInterval) — good. But (see minor issue) single GET failure aborts polling. Consider retry-with-backoff for edge resilience.",
+    "Backward compat: sync /upload-pdf endpoint left unchanged and TestUploadPdf::test_upload_pdf and new TestBackCompatSync::test_sync_upload_still_works both pass. Additive design confirmed."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_contract_templates_upload_async.py (new — 9 tests)"
+  ],
+  "success_rate": {
+    "backend": "40/40 pytest = 100% (31 baseline + 9 new async)",
+    "frontend": "100% — modal opens, validation works (empty name/wrong ext/empty file), progress bar animates 5→100, all 6 stages tick through, auto-nav to editor works, editor loads with content + version history + diff panel, close-during-job dismisses modal but job completes in background and appears in refreshed list. Zero console errors, zero compile overlays."
+  },
+  "test_credentials": "admin@creativemojo.co.uk / CreativeMojo2026! — used successfully.",
+  "seed_data_creation": "Created 4 templates all prefixed e2e-async- (e2e-async-fast, e2e-async-cmsspec, e2e-async-tinyui, e2e-async-close-continues) and 1 sync-back-compat template (e2e-async-sync-compat) and e2e-async-e2e-flow. All were archived at end of run — safe to fully delete along with older e2e-test-* / e2e-retest-* templates from prior iterations.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Async upload pipeline is fully working end-to-end. Sync endpoint preserved for backward compat. New test file: backend/tests/test_contract_templates_upload_async.py (9 tests, all green). One minor UX resilience improvement flagged (polling GET failure aborts the loop) — not a blocker. Main agent can move on to Phase 1B / manual acceptance testing.",
+  "rca of the issue": "N/A — no bugs to fix. The one minor issue (poll() aborts on transient GET failure) is a resilience concern only; it manifested once during my Playwright run on the 181KB CMS PDF where LiteLLM chunk 1 took ~100s (matches prior iteration_43 observation of 155s server-side). The backend job continued and completed correctly (verified by direct DB query showing status='complete' with template_id set). For tiny PDFs (<20 pages, LLM <10s), the full UI flow completes in ~5s with zero issues."
+}

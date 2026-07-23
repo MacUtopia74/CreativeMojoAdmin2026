@@ -50,6 +50,21 @@ STATUSES = {"draft", "current", "archived"}
 
 TEMPLATES_COLLECTION = "contract_templates"
 VERSIONS_COLLECTION = "contract_template_versions"
+JOBS_COLLECTION = "contract_upload_jobs"
+
+# Ordered stages surfaced to the UI. Progress percentages are the value
+# reached once the stage has FINISHED (the frontend shows the previous
+# stage as active while progress is between the two boundaries).
+UPLOAD_STAGES = [
+    ("uploading",  "Uploading PDF",              5),
+    ("extracting", "Extracting text",            25),
+    ("converting", "Converting document",        70),
+    ("verifying",  "Running verbatim comparison",85),
+    ("creating",   "Creating editable template", 95),
+    ("complete",   "Complete",                   100),
+]
+STAGE_LABELS = {code: label for code, label, _ in UPLOAD_STAGES}
+STAGE_PROGRESS = {code: pct for code, _, pct in UPLOAD_STAGES}
 
 # R2 key layout — kept flat so a single ListPrefix returns everything
 # that belongs to one template.
@@ -304,6 +319,182 @@ def attach(api, db, require_role):
             user.get("email"),
         )
         return _public_view(await db[TEMPLATES_COLLECTION].find_one({"id": tid}))
+
+    # -----------------------------------------------------------------
+    # Async upload — kicks off a background conversion job so long
+    # LLM calls don't hit the Cloudflare edge 60s timeout. Returns
+    # immediately with a job_id; the frontend polls for progress.
+    # -----------------------------------------------------------------
+    async def _update_job(job_id: str, **fields) -> None:
+        fields["updated_at"] = _now_iso()
+        await db[JOBS_COLLECTION].update_one(
+            {"id": job_id}, {"$set": fields},
+        )
+
+    async def _set_stage(job_id: str, stage: str, message: Optional[str] = None) -> None:
+        await _update_job(
+            job_id,
+            stage=stage,
+            status="running" if stage != "complete" else "complete",
+            progress=STAGE_PROGRESS[stage],
+            message=message or STAGE_LABELS[stage],
+        )
+
+    async def _run_conversion_job(
+        job_id: str, pdf_bytes: bytes, pdf_filename: str,
+        template_name: str, ctype: str, user_email: str,
+    ) -> None:
+        """Background worker — mirrors the sync upload_pdf logic but
+        streams progress into contract_upload_jobs and never raises to
+        the caller. Any exception is caught and written to job.error."""
+        try:
+            # Stage 1 — extract
+            await _set_stage(job_id, "extracting")
+            try:
+                extraction = pdf_pipeline.extract_blocks(pdf_bytes)
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("Async: PDF extraction failed")
+                await _update_job(
+                    job_id, status="failed", stage="failed",
+                    error=f"PDF extraction failed: {exc}",
+                )
+                return
+
+            # Stage 2 — LLM cleanup
+            await _set_stage(job_id, "converting")
+            emergent_key = os.environ.get("EMERGENT_LLM_KEY")
+            if not emergent_key:
+                await _update_job(
+                    job_id, status="failed", stage="failed",
+                    error="EMERGENT_LLM_KEY missing — cannot run PDF conversion cleanup.",
+                )
+                return
+            try:
+                html = await pdf_pipeline.convert_to_html(extraction.lines, emergent_key)
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("Async: LLM cleanup failed")
+                await _update_job(
+                    job_id, status="failed", stage="failed",
+                    error=f"Conversion cleanup failed: {exc}",
+                )
+                return
+
+            # Stage 3 — verbatim diff
+            await _set_stage(job_id, "verifying")
+            report = pdf_pipeline.verify_verbatim(extraction.plain_text, html)
+            report["page_count"] = extraction.page_count
+            report["image_count"] = len(extraction.images)
+            report["generated_at"] = _now_iso()
+
+            # Stage 4 — persist template + upload source PDF to R2
+            await _set_stage(job_id, "creating")
+            tid = _new_id()
+            pdf_key = _r2_key(tid, SOURCE_PDF_NAME)
+            _r2_put(pdf_bytes, pdf_key, content_type="application/pdf")
+            doc = {
+                "id": tid,
+                "name": template_name.strip() or pdf_filename,
+                "contract_type": ctype,
+                "status": "draft",
+                "is_default": False,
+                "current_version": 0,
+                "conversion_approved": False,
+                "source_pdf": {
+                    "r2_key": pdf_key,
+                    "filename": pdf_filename,
+                    "byte_size": len(pdf_bytes),
+                    "uploaded_at": _now_iso(),
+                },
+                "current_content_html": html,
+                "conversion_report": report,
+                "created_at": _now_iso(),
+                "updated_at": _now_iso(),
+                "created_by": user_email,
+                "updated_by": user_email,
+            }
+            await db[TEMPLATES_COLLECTION].insert_one(doc)
+            await _create_version(
+                db, tid, html,
+                f"Converted from PDF ({pdf_filename})",
+                user_email,
+            )
+
+            # Stage 5 — mark complete
+            await _update_job(
+                job_id,
+                stage="complete", status="complete",
+                progress=100, message=STAGE_LABELS["complete"],
+                template_id=tid,
+            )
+        except Exception as exc:  # noqa: BLE001
+            # Belt-and-braces catch so a bug in this coroutine never
+            # leaves a job stuck in "running".
+            logger.exception("Async conversion job crashed")
+            await _update_job(
+                job_id, status="failed", stage="failed",
+                error=f"Unexpected error: {exc}",
+            )
+
+    @api.post("/admin/contract-templates/upload-pdf-async")
+    async def upload_pdf_async(
+        pdf: UploadFile = File(...),
+        name: str = Form(...),
+        contract_type: str = Form("other"),
+        user: dict = Depends(require_role("admin")),
+    ):
+        ctype = _validate_type(contract_type)
+        if not pdf.filename or not pdf.filename.lower().endswith(".pdf"):
+            raise HTTPException(400, detail="Please upload a PDF file.")
+        pdf_bytes = await pdf.read()
+        if not pdf_bytes:
+            raise HTTPException(400, detail="Uploaded file is empty.")
+
+        job_id = _new_id()
+        job_doc = {
+            "id": job_id,
+            "status": "running",
+            "stage": "uploading",
+            "progress": STAGE_PROGRESS["uploading"],
+            "message": STAGE_LABELS["uploading"],
+            "pdf_filename": pdf.filename,
+            "byte_size": len(pdf_bytes),
+            "template_name": name,
+            "contract_type": ctype,
+            "template_id": None,
+            "error": None,
+            "created_by": user.get("email"),
+            "created_at": _now_iso(),
+            "updated_at": _now_iso(),
+        }
+        await db[JOBS_COLLECTION].insert_one(job_doc)
+
+        # Kick off the worker without awaiting so the HTTP response
+        # returns immediately. asyncio.create_task keeps the task
+        # attached to the running event loop that will outlive this
+        # request context.
+        import asyncio
+        asyncio.create_task(_run_conversion_job(
+            job_id, pdf_bytes, pdf.filename,
+            name, ctype, user.get("email") or "unknown",
+        ))
+        return {
+            "job_id": job_id,
+            "stage": "uploading",
+            "status": "running",
+            "progress": STAGE_PROGRESS["uploading"],
+            "message": STAGE_LABELS["uploading"],
+        }
+
+    @api.get("/admin/contract-templates/upload-jobs/{job_id}")
+    async def get_upload_job(
+        job_id: str,
+        _: dict = Depends(require_role("admin")),
+    ):
+        job = await db[JOBS_COLLECTION].find_one({"id": job_id})
+        if not job:
+            raise HTTPException(404, detail="Upload job not found")
+        job.pop("_id", None)
+        return job
 
     # -----------------------------------------------------------------
     # List & detail
