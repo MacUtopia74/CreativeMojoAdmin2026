@@ -1,0 +1,118 @@
+/* LegalDocEditor styling — paper-like A4 canvas + shared styles for
+   the yellow placeholder pill, imported-numbering grey chip, page-break
+   divider, and Table of Contents block. Kept isolated from the app's
+   global CSS so it only bites inside the editor container. */
+
+.cm-doc-page {
+  width: 210mm;
+  min-height: 297mm;
+  padding: 22mm 20mm;
+  font-family: "Georgia", "Times New Roman", serif;
+  font-size: 11pt;
+  line-height: 1.55;
+  color: #1c1917;
+}
+
+.cm-doc-editor {
+  min-height: 260mm;
+}
+
+.cm-doc-editor h1 { font-size: 20pt; margin: 12mm 0 4mm; font-weight: 700; }
+.cm-doc-editor h2 { font-size: 15pt; margin: 8mm 0 3mm;  font-weight: 700; }
+.cm-doc-editor h3 { font-size: 13pt; margin: 6mm 0 2mm;  font-weight: 700; }
+.cm-doc-editor h4 { font-size: 11pt; margin: 4mm 0 2mm;  font-weight: 700; }
+.cm-doc-editor h5, .cm-doc-editor h6 { font-size: 11pt; margin: 3mm 0 2mm; font-weight: 700; }
+.cm-doc-editor p  { margin: 0 0 3mm 0; }
+.cm-doc-editor ol, .cm-doc-editor ul { margin: 2mm 0 4mm 6mm; padding-left: 4mm; }
+.cm-doc-editor li { margin-bottom: 2mm; }
+
+/* Placeholder pill */
+.cm-doc-editor .cm-placeholder,
+.cm-doc-editor span[data-placeholder] {
+  background: #fef9c3;
+  border: 1px solid #eab308;
+  border-radius: 3px;
+  padding: 0 4px;
+  font-family: "Menlo", "Courier New", monospace;
+  font-size: 9pt;
+  color: #713f12;
+  white-space: nowrap;
+  cursor: default;
+  user-select: text;
+}
+
+/* Imported-numbering grey chip — visible until conversion approved */
+.cm-doc-editor .cm-original-num {
+  background: #f5f5f4;
+  color: #57534e;
+  padding: 0 3px;
+  border-radius: 2px;
+  margin-right: 4px;
+  font-weight: 600;
+  border: 1px dashed #a8a29e;
+}
+
+/* Backend-generated number chip (visible in preview only) */
+.cm-doc-editor .cm-generated-num {
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+/* Page-break marker in the editor — dashed line + PAGE BREAK pill */
+.cm-doc-editor .cm-page-break {
+  height: 0;
+  border-top: 1px dashed #d97706;
+  margin: 8mm 0;
+  position: relative;
+  contain: layout;
+}
+.cm-doc-editor .cm-page-break::before {
+  content: "PAGE BREAK";
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #d97706;
+  color: white;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+/* Table of Contents block */
+.cm-doc-editor .cm-toc {
+  border: 1px dashed #a8a29e;
+  padding: 4mm 5mm;
+  margin: 4mm 0;
+  background: #fafaf9;
+}
+.cm-doc-editor .cm-toc-title {
+  font-size: 12pt;
+  font-weight: 700;
+  border-bottom: 1px solid #a8a29e;
+  padding-bottom: 2mm;
+  margin-bottom: 3mm;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+.cm-doc-editor .cm-toc-entry {
+  display: flex;
+  align-items: baseline;
+  gap: 3mm;
+  margin: 1mm 0;
+  font-size: 10pt;
+}
+.cm-doc-editor .cm-toc-entry .cm-toc-lead {
+  flex: 1 1 auto;
+  border-bottom: 1px dotted #a8a29e;
+  min-height: 0.8em;
+  align-self: end;
+  margin-bottom: 2px;
+}
+.cm-doc-editor .cm-toc-entry.level-2 { padding-left: 5mm; }
+.cm-doc-editor .cm-toc-entry.level-3 { padding-left: 10mm; }
+
+.cm-doc-editor.ProseMirror-focused { outline: none; }
+.cm-doc-editor:focus { outline: none; }

@@ -1,0 +1,76 @@
+{
+  "summary": "Phase 1A CMS end-to-end validation. Backend: 26/27 endpoint tests pass; 1 CRITICAL bug in upload-pdf (LLM cleanup) - emergentintegrations SDK does not expose the streaming API being used. Existing pytest suite test_contract_preview_toc.py 4/4 pass. Frontend: LegalDocEditor compile fix verified; all UI flows work (login, list, filters, editor, toolbar, TOC, page break, placeholder chips, autosave, save version, PDF preview, publish, version history with restore, auth guard, unauth redirect).",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/admin/contract-templates/upload-pdf",
+        "issue": "Returns 502 (Cloudflare) because backend crashes with ImportError. contract_pdf_pipeline.py line 210-212 does `from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, StreamDone` but the installed SDK only exposes `LlmChat` and `UserMessage`. Also calls `chat.stream_message(user)` which does not exist; only `send_message(user_message) -> str` is available. This breaks the entire PDF upload → LLM cleanup pipeline. Backend log excerpt: `ImportError: cannot import name 'TextDelta' from 'emergentintegrations.llm.chat'`. Fix: rewrite convert_to_html() to use `text = await chat.send_message(user)` and drop the streaming loop (or use file_contents for one-shot).",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "POST /api/admin/contract-templates/{id}/preview-pdf",
+        "issue": "WeasyPrint logs `Failed to load image at 'file:///static/creative_mojo_logo.png': No such file or directory: '/static/creative_mojo_logo.png'` on every preview. PDF still generates but the running header shows a broken/empty logo. contract_branding.LOGO_STATIC_PATH resolves to an absolute path that WeasyPrint cannot read. Recommend either an absolute filesystem path or an https URL with base_url."
+      },
+      {
+        "endpoint": "POST /api/admin/contract-templates/{id}/publish (second call)",
+        "issue": "Second publish returns 200 (creates another 'Published (status → current)' version) rather than being a no-op / 409. This is not idempotent — each redundant publish click bloats version history. Spec allowed 200 or 409 so this passes tests, but recommend returning early without version-bumping when status already 'current'."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "AdminContractTemplatesPage — Upload PDF flow",
+        "issue": "Spec says clicking 'UPLOAD PDF' should open a MODAL asking for name + contract type + file. Actual implementation uses native `window.prompt()` twice for name and contract_type (line 142-150). Poor UX and no validation of contract_type against the enum. User-facing 'contract_type' prompt expects raw token strings ('new_franchise', etc.) which is not user-friendly.",
+        "selector": "[data-testid='upload-pdf-btn']",
+        "priority": "MEDIUM"
+      },
+      {
+        "component": "LegalDocEditor",
+        "issue": "Tiptap console warning: `Duplicate extension names found: ['link', 'underline']`. Editor still functions but extension registration is duplicated (StarterKit already includes underline/link and they are re-imported/added separately).",
+        "selector": ".ProseMirror",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Upload PDF end-to-end",
+        "issue": "Because backend upload-pdf endpoint is broken (see critical), the Frontend upload flow cannot be validated. The frontend correctly POSTs multipart, but the response is 502 -> shown as an error toast. Once the backend LLM import bug is fixed, upload UI needs to be re-validated (navigation to editor, diff panel, grey imported-numbering chips).",
+        "affected_selectors": ["[data-testid='upload-pdf-btn']"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_contract_templates_phase1a.py",
+    "/app/backend/tests/test_contract_preview_toc.py",
+    "/app/test_reports/pytest/iter42_phase1a.xml",
+    "/app/test_reports/pytest/iter42_toc.xml"
+  ],
+  "action_items": [
+    "P0 — Fix contract_pdf_pipeline.convert_to_html(): drop `TextDelta, StreamDone` and `chat.stream_message(...)`; use `text = await chat.send_message(UserMessage(text=_serialise_chunk(chunk)))` instead. This is the only blocker preventing HQ from uploading legacy PDF contracts.",
+    "P1 — Fix WeasyPrint logo path in contract_branding: use an absolute filesystem path or a public URL, so the running-header logo renders in the PDF preview.",
+    "P2 — Replace the two `window.prompt()` calls in AdminContractTemplatesPage.jsx (lines 142-151) with a proper modal for Upload PDF (name + contract_type dropdown + file input).",
+    "P2 — Make publish idempotent when status already 'current' (skip the version bump).",
+    "P3 — Remove duplicated tiptap extensions (link, underline) — StarterKit already includes them."
+  ],
+  "critical_code_review_comments": [
+    "contract_pdf_pipeline.py — Streaming API used (`stream_message`, `TextDelta`, `StreamDone`) does not exist in the installed emergentintegrations SDK. This must have been added without live-testing the upload path; the existing pytest suite only covers WeasyPrint + numbering, so no test exercises this import.",
+    "contract_templates_routes.py — publish endpoint is not idempotent: repeated calls silently bump version history each time. The docstring/spec claims idempotent 409 or 200; behaviour is 200 + version each time. Consider early-return if status=='current'.",
+    "contract_branding — LOGO_STATIC_PATH format results in `file:///static/...` which WeasyPrint cannot resolve. Log spam on every preview.",
+    "AdminContractTemplatesPage.jsx — File upload UX regresses to `window.prompt()`; not accessible, not validating contract_type against the enum, could allow bad tokens through. Also would fail Playwright automation without dialog handlers.",
+    "LegalDocEditor.jsx — duplicate Tiptap extensions (link, underline) registered twice; console warning."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_contract_templates_phase1a.py (new)"
+  ],
+  "success_rate": {"backend": "26/27 = 96%", "frontend": "95% (all UI flows work; upload-pdf blocked by backend bug)"},
+  "test_credentials": "admin@creativemojo.co.uk / CreativeMojo2026! — used successfully.",
+  "seed_data_creation": "Created 4 test templates all prefixed 'e2e-test-' (e2e-test-preview-target [archived, other], e2e-test-renamed [archived, franchise_renewal, v6 approved, was-published-now-archived], e2e-test-renamed (copy) [archived, franchise_renewal, v1], and one from the UI flow 'e2e-test blank editor' [draft, other, v1]). All are safe to delete.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "After main agent fixes contract_pdf_pipeline.convert_to_html() to use send_message() instead of stream_message(), re-run: (1) backend/tests/test_contract_templates_phase1a.py::TestUploadPdf::test_upload_pdf — should return 200 with conversion_report present, and (2) the frontend Upload PDF flow using the CMS spec PDF URL from the review request; verify navigation to /admin/contracts/templates/{id}, diff panel renders when total_missing/total_added > 0, and grey `cm-original-num` chips appear in the editor before Approve is clicked, then disappear after. Also re-verify the PDF preview after fixing the logo path shows the logo in the running header. Frontend routes /admin/contracts/templates and /admin/contracts/templates/:id both compile and load cleanly.",
+  "rca of the issue": "P0 root cause: E1 (main agent) or an earlier iteration replaced a non-streaming Claude call with a hand-rolled streaming loop in contract_pdf_pipeline.convert_to_html() using symbols (TextDelta, StreamDone, chat.stream_message) that DO NOT EXIST in the emergentintegrations SDK version installed (`/root/.venv/lib/python3.11/site-packages/emergentintegrations/llm/chat.py`). The SDK only defines: LlmChat, UserMessage, FileContent, ImageContent, FileContentWithMimeType, ChatError. LlmChat only exposes `send_message(user_message: UserMessage) -> str` and `send_message_multimodal_response(...)`. The upload path was never exercised end-to-end because the existing pytest coverage only tested WeasyPrint (contract_preview_toc.py) which imports contract_pdf_pipeline lazily and never triggers convert_to_html. Reproduction: POST a valid PDF to /api/admin/contract-templates/upload-pdf → backend logs show `ImportError: cannot import name 'TextDelta' from 'emergentintegrations.llm.chat'` → HTTP 502 (Cloudflare) after backend returns 500. Mitigation: rewrite the loop as `raw = await chat.send_message(UserMessage(text=_serialise_chunk(chunk)))` and drop the fragments/stream loop; keep the exception-fallback for chunks that fail."
+}

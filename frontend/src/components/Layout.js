@@ -35,6 +35,7 @@ import {
   Sparkles,
   ClipboardList,
   ExternalLink,
+  FileText,
   Menu,
   X,
 } from "lucide-react";
@@ -122,6 +123,7 @@ const SIDEBAR = [
         children: [
           { kind: "item", to: "/admin/users", label: "Users", icon: KeyRound, testid: "nav-admin-users", permKey: "admin-users" },
           { kind: "item", to: "/admin/shape-orders", label: "Franchise Store", icon: ShoppingBag, testid: "nav-admin-shape-orders", permKey: "admin-shape-orders" },
+          { kind: "item", to: "/admin/contracts/templates", label: "Contract Templates", icon: FileText, testid: "nav-admin-contract-templates", permKey: "admin-contract-templates" },
           { kind: "item", to: "/admin/email-templates", label: "Email Templates", icon: Mail, testid: "nav-admin-email-templates", permKey: "admin-email-templates" },
           { kind: "item", to: "/admin/landing-pages", label: "Landing Pages", icon: ExternalLink, testid: "nav-admin-landing-pages", permKey: "admin-landing-pages" },
           { kind: "item", to: "/admin/inbound-unmatched", label: "Unmatched Replies", icon: Inbox, testid: "nav-admin-inbound-unmatched", permKey: "admin-inbound-unmatched" },
@@ -179,6 +181,7 @@ const SIDEBAR_V2 = [
           { kind: "item", to: "/admin/project-codes", label: "Project Linking",             icon: Link2,       testid: "nav-project-codes",       permKey: "project-codes" },
           { kind: "item", to: "/admin/help-centre",   label: "Help Centre",                 icon: LifeBuoy,    testid: "nav-help-centre",         permKey: "help-centre" },
           { kind: "item", to: "/admin/shape-orders",  label: "Franchise Store",             icon: ShoppingBag, testid: "nav-admin-shape-orders",  permKey: "admin-shape-orders" },
+          { kind: "item", to: "/admin/contracts/templates", label: "Contract Templates",   icon: FileText,    testid: "nav-admin-contract-templates", permKey: "admin-contract-templates" },
           { kind: "item", to: "/admin/youtube",       label: "YouTube Playlists",           icon: Youtube,     testid: "nav-admin-youtube",       permKey: "admin-youtube" },
           { kind: "item", to: "/invoices",            label: "Sandra's Invoice Admin",      icon: Receipt,     testid: "nav-invoices",            permKey: "invoices" },
         ],
@@ -230,6 +233,7 @@ export const ADMIN_NAV_KEYS = [
   { key: "banking",          label: "Banking",              paths: ["/banking"] },
   { key: "admin-users",      label: "Users",                paths: ["/admin/users", "/admin/password-resets"] },
   { key: "admin-shape-orders", label: "Franchise Store", paths: ["/admin/shape-orders"] },
+  { key: "admin-contract-templates", label: "Contract Templates", paths: ["/admin/contracts/templates"] },
   { key: "admin-email-templates", label: "Email Templates",  paths: ["/admin/email-templates"] },
   { key: "admin-landing-pages", label: "Landing Pages",      paths: ["/admin/landing-pages"] },
   { key: "admin-inbound-unmatched", label: "Unmatched Replies", paths: ["/admin/inbound-unmatched"] },

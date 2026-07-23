@@ -74,7 +74,7 @@ ADMIN_NAV_KEYS = {
     "find-class", "cqc-definitions", "scotland-definitions", "ni-definitions", "help-centre", "subscription-requests",
     "invoices", "banking",
     "admin-users", "admin-email-templates", "admin-youtube",
-    "admin-announcements", "admin-logs", "admin-xero", "admin-shape-orders", "form-intake",
+    "admin-announcements", "admin-logs", "admin-xero", "admin-shape-orders", "admin-contract-templates", "form-intake",
 }
 
 
@@ -6715,6 +6715,10 @@ subscriptions_routes.attach(api, db, require_role)
 # Phase 6 — Announcements / "Updates" e-shot system
 import announcements_routes  # noqa: E402
 announcements_routes.attach(api, db, require_role)
+
+# Phase 7 — Contract Management System (templates only in Phase 1A)
+import contract_templates_routes  # noqa: E402
+contract_templates_routes.attach(api, db, require_role)
 
 import youtube_routes  # noqa: E402
 youtube_routes.attach(api, db, require_role)
