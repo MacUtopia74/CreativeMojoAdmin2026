@@ -302,8 +302,59 @@ def attach(api, db, require_role):
         """Bulk-refresh image AND price for every curated catalogue
         product directly from Woo. Click this after editing prices on
         the Woo store to push the new numbers into the franchisee
-        Franchise Store. Idempotent; safe to run anytime."""
+        Franchise Store. Idempotent; safe to run anytime.
+
+        Also opportunistically de-duplicates the catalogue — a race
+        condition in an earlier version of the "Add product" endpoint
+        left some rows in production with two copies of the same
+        ``woo_id``. We keep the doc with the earliest ``created_at``
+        (preserves sort order + any admin toggles like ``out_of_stock``
+        on the older row) and delete the rest. A unique index (created
+        below in this handler) prevents this happening again.
+        """
         from woocommerce_integration import _woo_get  # noqa: E402
+        # ---- Dedupe pass ---------------------------------------------
+        seen: dict[int, dict] = {}
+        deleted_dupes = 0
+        # Sort by created_at ascending so ``seen`` retains the *first*
+        # (oldest) row per woo_id.
+        async for p in db.shape_order_products.find(
+            {}, {"_id": 1, "woo_id": 1, "created_at": 1, "sort_order": 1,
+                 "out_of_stock": 1, "active": 1},
+        ).sort("created_at", 1):
+            wid = p.get("woo_id")
+            if wid is None:
+                continue
+            if wid in seen:
+                # If the duplicate carries state the oldest row is
+                # missing (e.g. an admin toggled it out-of-stock on
+                # the newer row after the dup was introduced), copy
+                # that state onto the survivor before deleting.
+                merge: dict = {}
+                keeper = seen[wid]
+                if p.get("out_of_stock") and not keeper.get("out_of_stock"):
+                    merge["out_of_stock"] = True
+                if p.get("active") is False and keeper.get("active") is not False:
+                    merge["active"] = False
+                if merge:
+                    await db.shape_order_products.update_one(
+                        {"_id": keeper["_id"]}, {"$set": merge},
+                    )
+                    seen[wid].update(merge)
+                await db.shape_order_products.delete_one({"_id": p["_id"]})
+                deleted_dupes += 1
+            else:
+                seen[wid] = p
+        # Ensure a unique index so nothing ever inserts a duplicate
+        # again. ``create_index`` is a no-op if the index already
+        # exists with the same shape.
+        try:
+            await db.shape_order_products.create_index(
+                "woo_id", unique=True, name="woo_id_unique",
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("shape_order_products woo_id unique index: %s", exc)
+        # ---- Image + price refresh -----------------------------------
         updated = 0
         prices_changed = 0
         errors: list[str] = []
@@ -335,7 +386,13 @@ def attach(api, db, require_role):
                     updated += 1
             except Exception as exc:  # noqa: BLE001
                 errors.append(f"{p.get('name')}: {exc}")
-        return {"ok": True, "updated": updated, "prices_changed": prices_changed, "errors": errors}
+        return {
+            "ok": True,
+            "updated": updated,
+            "prices_changed": prices_changed,
+            "deleted_duplicates": deleted_dupes,
+            "errors": errors,
+        }
 
     @api.delete("/admin/shape-orders/products/{woo_id}")
     async def admin_delete_product(woo_id: int, _: dict = Depends(require_role("admin"))):

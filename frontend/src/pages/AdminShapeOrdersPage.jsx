@@ -38,8 +38,9 @@ export default function AdminShapeOrdersPage() {
       const { data } = await api.post("/admin/shape-orders/products/refresh-all-images");
       await load();
       const priceLine = data.prices_changed ? ` · Prices changed: ${data.prices_changed}` : "";
+      const dupeLine = data.deleted_duplicates ? ` · Removed ${data.deleted_duplicates} duplicate${data.deleted_duplicates === 1 ? "" : "s"}` : "";
       const errLine = data.errors?.length ? ` · ${data.errors.length} failed` : "";
-      window.alert(`Refreshed ${data.updated} card${data.updated === 1 ? "" : "s"} from Woo.${priceLine}${errLine}`);
+      window.alert(`Refreshed ${data.updated} card${data.updated === 1 ? "" : "s"} from Woo.${priceLine}${dupeLine}${errLine}`);
     } catch (e) {
       setError(e?.response?.data?.detail || "Refresh from Woo failed.");
     } finally { setRefreshing(false); }
