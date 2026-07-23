@@ -207,9 +207,7 @@ async def convert_to_html(
     HTML back. Chunked to keep prompts under model limits."""
     # Lazy import so pytest can import this module without pulling in
     # the LLM SDK.
-    from emergentintegrations.llm.chat import (
-        LlmChat, UserMessage, TextDelta, StreamDone,
-    )
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
 
     fragments: List[str] = []
     chunks = _chunk_lines(lines, max_pages=8)
@@ -221,13 +219,8 @@ async def convert_to_html(
             system_message=CONVERSION_SYSTEM_PROMPT,
         ).with_model("anthropic", "claude-sonnet-4-5-20250929")
         user = UserMessage(text=_serialise_chunk(chunk))
-        buf: List[str] = []
         try:
-            async for ev in chat.stream_message(user):
-                if isinstance(ev, TextDelta):
-                    buf.append(ev.content)
-                elif isinstance(ev, StreamDone):
-                    break
+            raw = await chat.send_message(user)
         except Exception as exc:  # noqa: BLE001
             logger.exception("LLM chunk %d failed: %s", i, exc)
             # Fall back to a plain-paragraph rendering so the HQ user
@@ -238,7 +231,7 @@ async def convert_to_html(
             )
             fragments.append(fallback)
             continue
-        raw = "".join(buf).strip()
+        raw = (raw or "").strip()
         # Strip ``` code fences the model sometimes wraps output in.
         raw = re.sub(r"^```(?:html)?\s*|\s*```$", "", raw, flags=re.IGNORECASE)
         fragments.append(raw)

@@ -1,0 +1,54 @@
+{
+  "summary": "Phase 1A CMS retest after main-agent fixes: (1) P0 upload-pdf LLM ImportError, (2) P1 WeasyPrint logo path, (3) duplicate extension warning. ALL THREE FIXES CONFIRMED GREEN. Backend pytest suite 31/31 pass. Real CMS spec PDF successfully converted end-to-end (score 0.9888, 6 missing / 3 added phrases). Preview PDF renders with logo. Approve strips cm-original-num chips; frontend editor loads cleanly with ZERO console warnings/errors. Auth guard 401 on all admin endpoints verified. Ready for manual acceptance testing.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/admin/contract-templates/upload-pdf",
+        "issue": "Cloudflare edge times out at ~60s but backend continues processing to completion. Real CMS PDF (2 chunks, 181 KB) took ~155s server-side and template was created successfully in DB, but browser saw a 502. This is an ingress/edge timeout, not a backend bug. Consider (a) making conversion async with a job id + polling endpoint, or (b) chunking with early-response streaming, or (c) enlarging edge timeout. Impact: HQ user must refresh list to see the newly uploaded template if their PDF is large."
+      },
+      {
+        "endpoint": "POST /api/admin/contract-templates/{id}/approve-conversion",
+        "issue": "Response body is `{ok: true, version_number: N}` — does not include `conversion_approved` or `current_content_html`. Frontend needs to GET the template afterwards to refresh state. Not a bug per se, but inconsistent with other endpoints that return the full doc."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Upload PDF via UI on large real PDFs",
+        "issue": "Because the backend response is blocked by the Cloudflare 60s edge timeout on the CMS spec PDF, the browser upload flow returns a 502-toast even though the template is created in the DB. Users have to refresh the list to find it. Recommend an async job pattern for the LLM cleanup (P1 for post-Phase-1A).",
+        "affected_selectors": ["[data-testid='upload-pdf-btn']"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_contract_templates_phase1a.py",
+    "/app/backend/tests/test_contract_preview_toc.py",
+    "/app/test_reports/pytest/iter43_phase1a.xml"
+  ],
+  "action_items": [
+    "OPTIONAL (post-Phase-1A) — Convert /upload-pdf to an async job pattern so users don't see a Cloudflare 502 on large PDFs (>~60s conversion). Backend already creates the template successfully; only the immediate HTTP response is dropped by the edge.",
+    "OPTIONAL — Have /approve-conversion return the full template doc (or at least conversion_approved + current_content_html + current_version) so the frontend doesn't need a follow-up GET."
+  ],
+  "critical_code_review_comments": [
+    "P0 fix verified: /app/backend/contract_pdf_pipeline.py convert_to_html() now uses `raw = await chat.send_message(user)` (line 223) instead of the previous non-existent streaming API. Pipeline logs 'Contract PDF cleanup — 2 chunks' and both chunks complete successfully with the CMS spec PDF.",
+    "P1 fix verified: /app/backend/contract_branding.py LOGO_STATIC_PATH now resolves to file:///app/backend/static/creative_mojo_logo.png (25 KB file present). Zero `Failed to load image` errors in backend log since the fix; preview PDF contains /Image and /XObject markers.",
+    "Duplicate-extension warning fix verified: LegalDocEditor.jsx passes `underline: false, link: false` to StarterKit.configure. Loading the editor page yields ZERO console warnings/errors — including no `Duplicate extension names found: ['link', 'underline']` warning that was present in iteration 42.",
+    "Upload PDF modal (previously window.prompt in iteration 42) is now a proper modal (New blank + Upload PDF both). UX significantly better. Not part of this retest scope but worth noting the improvement.",
+    "conversion_report field naming mismatch: review spec expected missing_count/added_count, actual returns total_missing/total_added. Frontend consumes them correctly, but the naming is worth aligning in a future doc/spec pass."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "31/31 pytest = 100%; live upload-pdf ok end-to-end (backend), edge 502 on client side only",
+    "frontend": "100% — editor loads clean, zero warnings, all critical UI elements present (bold/italic/underline, H1-H3, lists, alignment, undo/redo, link, page break, contents, placeholder dropdown, save version, publish, PDF preview, source PDF, version history with restore, diff panel with missing/added lists)"
+  },
+  "test_credentials": "admin@creativemojo.co.uk / CreativeMojo2026! — used successfully.",
+  "seed_data_creation": "Created 1 template `e2e-retest-upload` (id 346f5846-b1ac-473d-8578-29cc3a563aef) which was auto-archived at end of test. Safe to delete along with prior e2e-test-* templates.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "All P0/P1 fixes from iteration 42 are confirmed. Backend pytest suite 31/31 green. Real CMS spec PDF converts end-to-end. Approve strips cm-original-num chips. Preview PDF renders with logo (no more file:///static/... error). Editor loads with zero console warnings. Only remaining edge-case: real large PDFs (>60s conversion) hit Cloudflare edge timeout on the client side while the backend still finishes writing the template — recommend an async job pattern in a later phase.",
+  "rca of the issue": "N/A — both P0 (send_message non-streaming rewrite) and P1 (absolute file:// logo path + file copied to /app/backend/static/) fixes work exactly as designed. Duplicate-extension warning gone after StarterKit.configure({underline:false,link:false}) in LegalDocEditor.jsx."
+}

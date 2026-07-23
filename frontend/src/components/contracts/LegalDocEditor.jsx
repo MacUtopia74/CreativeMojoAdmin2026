@@ -98,6 +98,11 @@ export default function LegalDocEditor({
       StarterKit.configure({
         heading: { levels: [1, 2, 3, 4, 5, 6] },
         codeBlock: false,
+        // We register Underline and Link separately below with
+        // custom options; disable the StarterKit copies to avoid
+        // duplicate-extension warnings.
+        underline: false,
+        link: false,
       }),
       Underline,
       Link.configure({ openOnClick: false, autolink: false }),

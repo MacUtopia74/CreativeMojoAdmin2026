@@ -5,10 +5,15 @@ a later phase. Kept as a module (not a Mongo doc) so it round-trips
 through git and cannot drift silently in production.
 """
 
-# The logo is served from the existing static assets folder so the
-# same URL works from the WeasyPrint render inside the container AND
-# from the digital preview in the browser.
-LOGO_STATIC_PATH = "/static/creative_mojo_logo.png"
+# The logo lives on-disk under backend/static so the container-local
+# WeasyPrint render can load it via a file:// URL. Passing an absolute
+# filesystem path is more robust than relying on a base_url + HTTP
+# fetch during PDF generation.
+import os as _os
+LOGO_STATIC_PATH = "file://" + _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)),
+    "static", "creative_mojo_logo.png",
+)
 
 
 HEADER_HTML = """
