@@ -1,4 +1,50 @@
 # Creative Mojo — Admin & Franchisee Hub PRD
+- ✅ **CMS Phase 1A — Contract Templates (23 Jul 2026, E2E validated)**
+  Full backend + frontend pipeline for authoring legal contract
+  templates in-house.
+    • **Backend** (`/app/backend/contract_templates_routes.py`,
+      `contract_pdf_pipeline.py`, `contract_numbering.py`,
+      `contract_placeholders.py`, `contract_branding.py`): 19 admin
+      endpoints under `/api/admin/contract-templates/**` covering
+      list/CRUD, PDF upload (PyMuPDF extraction → Claude Sonnet 4.5
+      HTML cleanup via Emergent LLM Key → verbatim SequenceMatcher
+      diff), autosave (PATCH /draft), immutable versioning + rollback,
+      approve-conversion (strips imported grey numbering and applies
+      authoritative backend 1./1.1/1.1.1 numbering), publish/archive/
+      set-default/duplicate/rename, source-PDF download, and
+      WeasyPrint PDF preview with Cover + Contents (real
+      target-counter page numbers) + running header/footer.
+    • **Frontend**: `/admin/contracts/templates` list page and
+      `/admin/contracts/templates/:id` Tiptap-based `LegalDocEditor`
+      (custom nodes: PlaceholderChip yellow pill, PageBreak,
+      TableOfContents). Toolbar: bold/italic/underline, H1-H6,
+      lists, text-align, undo/redo, link, page-break, contents,
+      placeholder dropdown (14 system placeholders). Diff panel,
+      Version History drawer with restore, Save Version, Approve
+      Conversion, PDF Preview, Source PDF.
+    • **Tests**: `test_contract_preview_toc.py` (4) +
+      `test_contract_templates_phase1a.py` (27) — 31/31 green.
+    • **Fixes applied during E2E validation** (iteration 42→43):
+      P0 fix in `contract_pdf_pipeline.convert_to_html()` (switched
+      from non-existent streaming API to `chat.send_message()`),
+      P1 fix to WeasyPrint logo path (absolute `file://` URL +
+      logo file copied to `/app/backend/static/`), TipTap
+      LegalDocEditor extension-text-style import fix + duplicate
+      extension cleanup (StarterKit v3 already ships Underline/Link).
+    • **Known limitation for Phase 1B**: very large legacy PDFs
+      that take >60s to convert hit the Cloudflare edge timeout on
+      the client side (backend still writes the template, but the
+      browser sees a 502 and the user must refresh the list). To
+      be resolved with an async job + polling pattern.
+    • **Not yet delivered (Phase 1B / 2)**: contract issuance
+      workflow, franchisee portal signing UI, notifications,
+      signed-contract storage. Also deferred: `window.prompt` →
+      proper Upload PDF modal, publish idempotency micro-fix, admin
+      view of "Contents page numbering after real page-breaks" edge
+      cases in complex 40+ page contracts.
+
+
+
 
 - ✅ **Recent Lookups on the map + Care Home Contacts split panel + geocode backfill (17 Jul 2026)**
   Two new visualisations both reusing the Territory Builder's
