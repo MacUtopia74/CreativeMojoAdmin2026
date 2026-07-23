@@ -84,6 +84,21 @@ export default function AdminShapeOrdersPage() {
     }
   };
 
+  // Out-of-stock is a temporary "sold-out" flag separate from the
+  // permanent "Active/Hidden" gate. Franchisees still see the product
+  // on the store, but with a red overlay and no Add-to-order button —
+  // so they know it's coming back rather than being pulled forever.
+  const toggleOutOfStock = async (p) => {
+    const next = !p.out_of_stock;
+    setItems((arr) => arr.map((x) => x.woo_id === p.woo_id ? { ...x, out_of_stock: next } : x));
+    try {
+      await api.patch(`/admin/shape-orders/products/${p.woo_id}`, { out_of_stock: next });
+    } catch (e) {
+      setError(e?.response?.data?.detail || "Update failed.");
+      load();
+    }
+  };
+
   const setKind = async (p, kind) => {
     if ((p.product_kind || "shape_set") === kind) return;
     setItems((arr) => arr.map((x) => x.woo_id === p.woo_id ? { ...x, product_kind: kind } : x));
@@ -191,6 +206,20 @@ export default function AdminShapeOrdersPage() {
                     <input type="checkbox" checked={!!p.active} onChange={() => toggleActive(p)} className="w-4 h-4 rounded border-stone-300 text-stone-900 focus:ring-stone-900" />
                     {p.active ? <span className="text-emerald-700 font-bold">Active</span> : <span className="text-stone-500">Hidden</span>}
                   </label>
+                  <button
+                    onClick={() => toggleOutOfStock(p)}
+                    data-testid={`shape-catalogue-oos-${p.woo_id}`}
+                    title={p.out_of_stock
+                      ? "Mark back in stock — franchisees can order again"
+                      : "Mark out of stock — displays an overlay and disables ordering"}
+                    className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg border transition ${
+                      p.out_of_stock
+                        ? "bg-red-600 text-white border-red-700 hover:bg-red-700"
+                        : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"
+                    }`}
+                  >
+                    {p.out_of_stock ? "Out of stock" : "In stock"}
+                  </button>
                   <button onClick={() => remove(p)} data-testid={`shape-catalogue-remove-${p.woo_id}`} className="text-stone-400 hover:text-red-600 p-2">
                     <Trash2 className="w-4 h-4" />
                   </button>

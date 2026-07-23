@@ -240,6 +240,8 @@ def attach(api, db, require_role):
         update: dict = {}
         if "active" in body:
             update["active"] = bool(body["active"])
+        if "out_of_stock" in body:
+            update["out_of_stock"] = bool(body["out_of_stock"])
         if "sort_order" in body:
             try:
                 update["sort_order"] = int(body["sort_order"])

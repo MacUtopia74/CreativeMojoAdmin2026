@@ -20,6 +20,25 @@ const BOX_NOTE = "Each shipping box fits TWO DIFFERENT shape sets. Duplicates ar
 
 const fmt = (n) => `£${(Number(n) || 0).toFixed(2)}`;
 
+// Diagonal "Out of stock" band that sits on top of the product image
+// when the admin has marked it as temporarily unavailable. The card
+// still renders (so franchisees see the item is coming back) but the
+// add-to-order button is replaced with a static red pill.
+function OutOfStockOverlay() {
+  return (
+    <div
+      aria-hidden="true"
+      className="absolute inset-0 pointer-events-none flex items-center justify-center"
+      data-testid="oos-overlay"
+    >
+      <div className="absolute inset-0 bg-white/40 backdrop-blur-[1px]" />
+      <div className="relative z-10 rotate-[-8deg] bg-red-600 text-white text-[11px] font-bold uppercase tracking-[0.25em] px-4 py-1.5 rounded shadow-lg border-2 border-white">
+        Out of Stock
+      </div>
+    </div>
+  );
+}
+
 export default function PortalShapeOrdersPage() {
   const [access, setAccess] = useState(null);
   const [products, setProducts] = useState([]);
@@ -203,33 +222,48 @@ export default function PortalShapeOrdersPage() {
               <ul className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 p-4">
                 {shapeSets.map((p) => {
                   const checked = shapeSel.has(p.woo_id);
+                  const oos = !!p.out_of_stock;
                   return (
                     <li
                       key={p.woo_id}
                       data-testid={`shape-card-${p.woo_id}`}
-                      className={`border rounded-xl overflow-hidden bg-white hover:shadow-md transition cursor-pointer ${checked ? "border-stone-950 ring-2 ring-stone-950" : "border-stone-200"}`}
-                      onClick={() => toggleShape(p.woo_id)}
+                      className={`relative border rounded-xl overflow-hidden bg-white transition ${
+                        oos
+                          ? "border-stone-200 opacity-70 cursor-not-allowed"
+                          : `hover:shadow-md cursor-pointer ${checked ? "border-stone-950 ring-2 ring-stone-950" : "border-stone-200"}`
+                      }`}
+                      onClick={() => { if (!oos) toggleShape(p.woo_id); }}
                     >
-                      <div className="aspect-[4/3] bg-stone-100 flex items-center justify-center overflow-hidden">
+                      <div className="aspect-[4/3] bg-stone-100 flex items-center justify-center overflow-hidden relative">
                         {p.image_url ? (
-                          <img src={p.image_url} alt={p.name} className="w-full h-full object-contain" />
+                          <img src={p.image_url} alt={p.name} className={`w-full h-full object-contain ${oos ? "grayscale" : ""}`} />
                         ) : (
                           <ImageOff className="w-8 h-8 text-stone-300" />
                         )}
+                        {oos && <OutOfStockOverlay />}
                       </div>
                       <div className="px-3 py-2 border-t border-stone-100">
                         <div className="text-xs text-stone-500 font-mono uppercase tracking-wider">{p.sku || `#${p.woo_id}`}</div>
                         <div className="text-sm font-semibold text-stone-900 mt-0.5 leading-tight">{p.name}</div>
-                        <button
-                          type="button"
-                          data-testid={`shape-toggle-${p.woo_id}`}
-                          onClick={(e) => { e.stopPropagation(); toggleShape(p.woo_id); }}
-                          className={`mt-2 w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-lg ${
-                            checked ? "bg-stone-950 text-[#dddd16]" : "bg-stone-100 hover:bg-stone-200 text-stone-800"
-                          }`}
-                        >
-                          {checked ? <><Minus className="w-3 h-3" /> Remove</> : <><Plus className="w-3 h-3" /> Add to order</>}
-                        </button>
+                        {oos ? (
+                          <div
+                            data-testid={`shape-oos-${p.woo_id}`}
+                            className="mt-2 w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-lg bg-red-50 text-red-700 border border-red-200 select-none"
+                          >
+                            Out of stock
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            data-testid={`shape-toggle-${p.woo_id}`}
+                            onClick={(e) => { e.stopPropagation(); toggleShape(p.woo_id); }}
+                            className={`mt-2 w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-lg ${
+                              checked ? "bg-stone-950 text-[#dddd16]" : "bg-stone-100 hover:bg-stone-200 text-stone-800"
+                            }`}
+                          >
+                            {checked ? <><Minus className="w-3 h-3" /> Remove</> : <><Plus className="w-3 h-3" /> Add to order</>}
+                          </button>
+                        )}
                       </div>
                     </li>
                   );
@@ -253,24 +287,37 @@ export default function PortalShapeOrdersPage() {
                   const opts = extraOpts[p.woo_id] || {};
                   const pers = p.personalisation || {};
                   const missing = missingOptions[p.woo_id] || [];
+                  const oos = !!p.out_of_stock;
                   return (
                     <li
                       key={p.woo_id}
                       data-testid={`signage-card-${p.woo_id}`}
-                      className={`border rounded-xl overflow-hidden bg-white hover:shadow-md transition ${qty > 0 ? "border-stone-950 ring-2 ring-stone-950" : "border-stone-200"}`}
+                      className={`relative border rounded-xl overflow-hidden bg-white transition ${
+                        oos
+                          ? "border-stone-200 opacity-70"
+                          : `hover:shadow-md ${qty > 0 ? "border-stone-950 ring-2 ring-stone-950" : "border-stone-200"}`
+                      }`}
                     >
-                      <div className="aspect-[4/3] bg-stone-100 flex items-center justify-center overflow-hidden">
+                      <div className="aspect-[4/3] bg-stone-100 flex items-center justify-center overflow-hidden relative">
                         {p.image_url ? (
-                          <img src={p.image_url} alt={p.name} className="w-full h-full object-contain" />
+                          <img src={p.image_url} alt={p.name} className={`w-full h-full object-contain ${oos ? "grayscale" : ""}`} />
                         ) : (
                           <ImageOff className="w-8 h-8 text-stone-300" />
                         )}
+                        {oos && <OutOfStockOverlay />}
                       </div>
                       <div className="px-3 py-2 border-t border-stone-100">
                         <div className="text-xs text-stone-500 font-mono uppercase tracking-wider">{p.sku || `#${p.woo_id}`}</div>
                         <div className="text-sm font-semibold text-stone-900 mt-0.5 leading-tight">{p.name}</div>
                         <div className="text-xs text-stone-700 mt-1 font-bold">{fmt(p.price)}</div>
-                        {qty === 0 ? (
+                        {oos ? (
+                          <div
+                            data-testid={`signage-oos-${p.woo_id}`}
+                            className="mt-2 w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-lg bg-red-50 text-red-700 border border-red-200 select-none"
+                          >
+                            Out of stock
+                          </div>
+                        ) : qty === 0 ? (
                           <button
                             type="button"
                             data-testid={`signage-add-${p.woo_id}`}
