@@ -1,4 +1,30 @@
 # Creative Mojo — Admin & Franchisee Hub PRD
+- ✅ **CMS Phase 1B Stop Point 3 — Evidence Pack sign-off corrections (Feb 2026)**
+  Cleared HQ's four final Paloma-template blockers before Phase 1B sign-off.
+    • **Manifest/UI substitution consistency.** `contract_font_resolver.resolve_font()`
+      now uses the ack-required semantic (`bool(is_embedded) and not bool(is_reusable)`),
+      matching the Marker Review UI's family-group rollup. Unembedded sources → Base14
+      fallback needs no acknowledgement. Evidence-pack manifest now embeds the same
+      `substitution_groups` block plus `all_substitutions_acknowledged` so the ZIP
+      tells the same story as the UI.
+    • **Right-align stays inside the authored slot.** Preview generator's `no_wrap`
+      widening now only applies for left/justify alignment. Center and right keep the
+      caller's `render_bbox` — right-align on inline markers now hugs the trailing
+      text instead of being pushed to the page margin.
+    • **Paloma occurrence overrides:** FRANCHISEE_LEGAL_NAME p3 pinned at 11pt
+      (`font_size_override=11.0`, `min_font_size=11.0`); MONTHLY_FEE p4 and
+      FRANCHISEE_ORGANISATION p5 set to `alignment=right` so values read inline with
+      "per month ex VAT…" and "under which the Branded Business…" respectively.
+  **Verification (iteration_51):** 19/19 backend tests pass. Evidence pack ZIP
+  contains all six artefacts; manifest `substitution_acknowledgements={}` +
+  `all_substitutions_acknowledged=True` + every group `substitution_required=False`;
+  every occurrence `final_size=11.0`, `overflow=False`, `substitution_required=False`;
+  `residual_token_count=0`, `redaction_verified=True`; source SHA256
+  `e3f7ac77…deb04c88` byte-identical before/after pack build; regeneration
+  idempotent.  Regression tests: `tests/test_stop_point_3_manifest.py` (unit) and
+  `tests/test_stop_point_3_evidence.py` (E2E, added by testing agent).
+
+
 - ✅ **CMS Phase 1B refinement — Automatic render_bbox whitespace expansion (Feb 2026)**
   Addresses HQ feedback that ordinary single-line markers should not
   require manual bbox resizing after upload. The pipeline now
