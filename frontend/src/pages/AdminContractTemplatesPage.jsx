@@ -97,7 +97,7 @@ export default function AdminContractTemplatesPage() {
             onClick={() => setShowUpload(true)}
             className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold uppercase tracking-widest rounded-lg bg-stone-950 text-white hover:bg-stone-800"
           >
-            <Upload className="w-4 h-4" /> Upload PDF
+            <Upload className="w-4 h-4" /> Upload
           </button>
           <button
             type="button"
@@ -328,23 +328,35 @@ function UploadModal({ onClose, onCreated, onRefresh }) {
   const [name, setName] = useState("");
   const [type, setType] = useState("other");
   const [file, setFile] = useState(null);
+  const [referencePdf, setReferencePdf] = useState(null);
   const [err, setErr] = useState("");
-  const [job, setJob] = useState(null);         // {job_id, stage, status, progress, message, template_id, error}
+  const [job, setJob] = useState(null);
   const pollRef = useRef(null);
 
   useEffect(() => () => { if (pollRef.current) clearTimeout(pollRef.current); }, []);
 
+  const fileKind = file
+    ? (file.name.toLowerCase().endsWith(".docx") ? "docx"
+       : file.name.toLowerCase().endsWith(".pdf") ? "pdf" : "invalid")
+    : null;
+
   const start = async () => {
     setErr("");
-    if (!file) { setErr("Please choose a PDF file."); return; }
-    if (!file.name.toLowerCase().endsWith(".pdf")) { setErr("Only PDF files are supported."); return; }
+    if (!file) { setErr("Please choose a .docx (preferred) or .pdf file."); return; }
+    if (fileKind === "invalid") { setErr("Only .docx or .pdf files are supported."); return; }
     if (!name.trim()) { setErr("Please give the template a name."); return; }
+    if (referencePdf && !referencePdf.name.toLowerCase().endsWith(".pdf")) {
+      setErr("Reference file must be a .pdf."); return;
+    }
     const fd = new FormData();
-    fd.append("pdf", file);
+    fd.append("file", file);
     fd.append("name", name.trim());
     fd.append("contract_type", type);
+    if (referencePdf && fileKind === "docx") {
+      fd.append("reference_pdf", referencePdf);
+    }
     try {
-      const { data } = await api.post("/admin/contract-templates/upload-pdf-async", fd, {
+      const { data } = await api.post("/admin/contract-templates/upload-async", fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       setJob(data);
@@ -397,10 +409,10 @@ function UploadModal({ onClose, onCreated, onRefresh }) {
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6">
         <div className="flex items-start justify-between mb-4">
           <div>
-            <h2 className="font-display text-2xl text-stone-950">Upload contract PDF</h2>
+            <h2 className="font-display text-2xl text-stone-950">Upload contract</h2>
             <p className="text-xs text-stone-500 mt-1">
-              We&rsquo;ll extract the text, run a Claude cleanup pass, verify verbatim, and
-              hand you an editable template. Large PDFs may take a minute or two.
+              <span className="font-semibold text-stone-700">Word (.docx) is preferred</span> — it preserves headings,
+              tables, images and alignment far more accurately than PDF. Use PDF only when no Word source exists.
             </p>
           </div>
           <button onClick={onClose} data-testid="upload-close"
@@ -425,21 +437,47 @@ function UploadModal({ onClose, onCreated, onRefresh }) {
               </select>
             </div>
             <div>
-              <label className="text-xs font-bold uppercase tracking-widest text-stone-600">PDF file</label>
-              <input type="file" accept="application/pdf,.pdf"
+              <label className="text-xs font-bold uppercase tracking-widest text-stone-600">
+                Source file (.docx preferred, .pdf fallback)
+              </label>
+              <input type="file" accept=".docx,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf"
                      data-testid="upload-file"
                      onChange={(e) => {
                        const f = e.target.files?.[0];
                        setFile(f || null);
-                       if (f && !name) setName(f.name.replace(/\.pdf$/i, ""));
+                       if (f && !name) setName(f.name.replace(/\.(docx|pdf)$/i, ""));
                      }}
                      className="mt-1 w-full text-sm" />
               {file && (
-                <div className="text-[11px] text-stone-500 mt-1">
-                  {file.name} · {(file.size / 1024).toFixed(1)} KB
+                <div className="text-[11px] text-stone-500 mt-1 flex items-center gap-2">
+                  <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest ${
+                    fileKind === "docx" ? "bg-emerald-100 text-emerald-800"
+                    : fileKind === "pdf" ? "bg-amber-100 text-amber-800"
+                    : "bg-red-100 text-red-800"
+                  }`}>{fileKind || "?"}</span>
+                  <span>{file.name} · {(file.size / 1024).toFixed(1)} KB</span>
                 </div>
               )}
             </div>
+            {fileKind === "docx" && (
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest text-stone-600">
+                  Reference PDF (optional)
+                </label>
+                <input type="file" accept="application/pdf,.pdf"
+                       data-testid="upload-reference-pdf"
+                       onChange={(e) => setReferencePdf(e.target.files?.[0] || null)}
+                       className="mt-1 w-full text-sm" />
+                <p className="text-[11px] text-stone-500 mt-1">
+                  We&rsquo;ll attach it to the template so you can compare the final visual appearance against the signed PDF.
+                </p>
+                {referencePdf && (
+                  <div className="text-[11px] text-stone-500 mt-1">
+                    {referencePdf.name} · {(referencePdf.size / 1024).toFixed(1)} KB
+                  </div>
+                )}
+              </div>
+            )}
             {err && (
               <div className="text-sm text-red-700 flex items-center gap-1.5">
                 <AlertTriangle className="w-4 h-4" /> {err}

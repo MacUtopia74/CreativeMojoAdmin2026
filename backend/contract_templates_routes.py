@@ -31,6 +31,7 @@ import contract_placeholders as placeholders_module
 import contract_branding as branding_module
 import contract_numbering as numbering_module
 import contract_pdf_pipeline as pdf_pipeline
+import contract_docx_pipeline as docx_pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +57,7 @@ JOBS_COLLECTION = "contract_upload_jobs"
 # reached once the stage has FINISHED (the frontend shows the previous
 # stage as active while progress is between the two boundaries).
 UPLOAD_STAGES = [
-    ("uploading",  "Uploading PDF",              5),
+    ("uploading",  "Uploading document",         5),
     ("extracting", "Extracting text",            25),
     ("converting", "Converting document",        70),
     ("verifying",  "Running verbatim comparison",85),
@@ -70,6 +71,9 @@ STAGE_PROGRESS = {code: pct for code, _, pct in UPLOAD_STAGES}
 # that belongs to one template.
 R2_PREFIX = "contract-templates"
 SOURCE_PDF_NAME = "source.pdf"
+SOURCE_DOCX_NAME = "source.docx"
+REFERENCE_PDF_NAME = "reference.pdf"  # optional PDF companion to a DOCX import
+IMAGES_PREFIX = "images"
 
 
 def _now_iso() -> str:
@@ -180,6 +184,22 @@ def _r2_get_bytes(key: str) -> Optional[bytes]:
     except Exception as exc:  # noqa: BLE001
         logger.warning("R2 get_object %s failed: %s", key, exc)
         return None
+
+
+def _public_asset_url(key: str) -> str:
+    """Return a public HTTPS URL for an R2 object key.
+
+    Falls back to a Hub-served proxy URL when a direct R2 public URL
+    isn't configured. This is where embedded images end up living, so
+    the URL must survive from the moment of upload until the template
+    is archived.
+    """
+    from file_storage import public_url_for
+    try:
+        return public_url_for(key)
+    except Exception:
+        # Dev fallback — routed through the Hub itself so tests still work
+        return f"/api/admin/contract-templates/asset/{key.replace('/', '__')}"
 
 
 # ---------------------------------------------------------------------------
@@ -341,85 +361,188 @@ def attach(api, db, require_role):
         )
 
     async def _run_conversion_job(
-        job_id: str, pdf_bytes: bytes, pdf_filename: str,
+        job_id: str, source_bytes: bytes, source_filename: str,
         template_name: str, ctype: str, user_email: str,
+        source_kind: str,  # "pdf" | "docx"
+        reference_pdf_bytes: Optional[bytes] = None,
+        reference_pdf_filename: Optional[str] = None,
     ) -> None:
-        """Background worker — mirrors the sync upload_pdf logic but
-        streams progress into contract_upload_jobs and never raises to
-        the caller. Any exception is caught and written to job.error."""
+        """Background worker — dispatches to the PDF or DOCX pipeline
+        based on ``source_kind``. Streams progress into the
+        contract_upload_jobs collection and never raises to the caller.
+        Any exception is caught and written to job.error.
+        """
         try:
-            # Stage 1 — extract
-            await _set_stage(job_id, "extracting")
-            try:
-                extraction = pdf_pipeline.extract_blocks(pdf_bytes)
-            except Exception as exc:  # noqa: BLE001
-                logger.exception("Async: PDF extraction failed")
-                await _update_job(
-                    job_id, status="failed", stage="failed",
-                    error=f"PDF extraction failed: {exc}",
-                )
-                return
+            tid = _new_id()  # allocate template id up-front so image URLs are stable
 
-            # Stage 2 — LLM cleanup
-            await _set_stage(job_id, "converting")
-            emergent_key = os.environ.get("EMERGENT_LLM_KEY")
-            if not emergent_key:
-                await _update_job(
-                    job_id, status="failed", stage="failed",
-                    error="EMERGENT_LLM_KEY missing — cannot run PDF conversion cleanup.",
-                )
-                return
-            try:
-                html = await pdf_pipeline.convert_to_html(extraction.lines, emergent_key)
-            except Exception as exc:  # noqa: BLE001
-                logger.exception("Async: LLM cleanup failed")
-                await _update_job(
-                    job_id, status="failed", stage="failed",
-                    error=f"Conversion cleanup failed: {exc}",
-                )
-                return
+            if source_kind == "docx":
+                # ---- DOCX path (fast, deterministic) ----
+                await _set_stage(job_id, "extracting")
 
-            # Stage 3 — verbatim diff
-            await _set_stage(job_id, "verifying")
-            report = pdf_pipeline.verify_verbatim(extraction.plain_text, html)
-            report["page_count"] = extraction.page_count
-            report["image_count"] = len(extraction.images)
-            report["generated_at"] = _now_iso()
+                # Image handler: push each embedded image to R2 and
+                # return a public URL. When R2 isn't configured (dev
+                # or preview), fall back to an inline data-URI so the
+                # editor + preview PDF still render correctly.
+                from file_storage import r2_configured as _r2_ok
+                r2_ready = _r2_ok()
 
-            # Stage 4 — persist template + upload source PDF to R2
-            await _set_stage(job_id, "creating")
-            tid = _new_id()
-            pdf_key = _r2_key(tid, SOURCE_PDF_NAME)
-            _r2_put(pdf_bytes, pdf_key, content_type="application/pdf")
-            doc = {
-                "id": tid,
-                "name": template_name.strip() or pdf_filename,
-                "contract_type": ctype,
-                "status": "draft",
-                "is_default": False,
-                "current_version": 0,
-                "conversion_approved": False,
-                "source_pdf": {
-                    "r2_key": pdf_key,
-                    "filename": pdf_filename,
-                    "byte_size": len(pdf_bytes),
+                def _upload_image(data: bytes, content_type: str, ext: str) -> str:
+                    if not r2_ready:
+                        import base64
+                        return f"data:{content_type};base64,{base64.b64encode(data).decode('ascii')}"
+                    key = _r2_key(tid, f"{IMAGES_PREFIX}/{uuid.uuid4().hex[:12]}.{ext}")
+                    try:
+                        _r2_put(data, key, content_type=content_type)
+                        return _public_asset_url(key)
+                    except Exception:
+                        logger.exception("R2 upload for embedded image failed — inlining as data URI")
+                        import base64
+                        return f"data:{content_type};base64,{base64.b64encode(data).decode('ascii')}"
+
+                await _set_stage(job_id, "converting")
+                try:
+                    docx_result = docx_pipeline.convert_docx(
+                        source_bytes, upload_image=_upload_image,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception("Async: DOCX conversion failed")
+                    await _update_job(
+                        job_id, status="failed", stage="failed",
+                        error=f"DOCX conversion failed: {exc}",
+                    )
+                    return
+                html = docx_result.html
+                plain_text = docx_result.plain_text
+
+                await _set_stage(job_id, "verifying")
+                report = pdf_pipeline.verify_verbatim(plain_text, html)
+                report["image_count"] = docx_result.image_count
+                report["table_count"] = docx_result.table_count
+                report["heading_count"] = docx_result.heading_count
+                report["page_break_count"] = docx_result.page_break_count
+                report["mammoth_warnings"] = docx_result.warnings
+                report["generated_at"] = _now_iso()
+                report["import_type"] = "docx"
+
+                await _set_stage(job_id, "creating")
+                docx_key = _r2_key(tid, SOURCE_DOCX_NAME)
+                _r2_put(source_bytes, docx_key,
+                        content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                source_docx_meta = {
+                    "r2_key": docx_key,
+                    "filename": source_filename,
+                    "byte_size": len(source_bytes),
                     "uploaded_at": _now_iso(),
-                },
-                "current_content_html": html,
-                "conversion_report": report,
-                "created_at": _now_iso(),
-                "updated_at": _now_iso(),
-                "created_by": user_email,
-                "updated_by": user_email,
-            }
-            await db[TEMPLATES_COLLECTION].insert_one(doc)
-            await _create_version(
-                db, tid, html,
-                f"Converted from PDF ({pdf_filename})",
-                user_email,
-            )
+                }
+                source_pdf_meta = None
+                if reference_pdf_bytes:
+                    ref_key = _r2_key(tid, REFERENCE_PDF_NAME)
+                    _r2_put(reference_pdf_bytes, ref_key, content_type="application/pdf")
+                    source_pdf_meta = {
+                        "r2_key": ref_key,
+                        "filename": reference_pdf_filename or "reference.pdf",
+                        "byte_size": len(reference_pdf_bytes),
+                        "uploaded_at": _now_iso(),
+                        "role": "reference",
+                    }
 
-            # Stage 5 — mark complete
+                doc = {
+                    "id": tid,
+                    "name": template_name.strip() or source_filename,
+                    "contract_type": ctype,
+                    "status": "draft",
+                    "is_default": False,
+                    "current_version": 0,
+                    "conversion_approved": False,
+                    "import_type": "docx",
+                    "source_docx": source_docx_meta,
+                    "source_pdf": source_pdf_meta,  # None unless a reference PDF was attached
+                    "current_content_html": html,
+                    "conversion_report": report,
+                    "created_at": _now_iso(),
+                    "updated_at": _now_iso(),
+                    "created_by": user_email,
+                    "updated_by": user_email,
+                }
+                await db[TEMPLATES_COLLECTION].insert_one(doc)
+                await _create_version(
+                    db, tid, html,
+                    f"Converted from DOCX ({source_filename})",
+                    user_email,
+                )
+            else:
+                # ---- PDF path (LLM-driven, slower) ----
+                await _set_stage(job_id, "extracting")
+                try:
+                    extraction = pdf_pipeline.extract_blocks(source_bytes)
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception("Async: PDF extraction failed")
+                    await _update_job(
+                        job_id, status="failed", stage="failed",
+                        error=f"PDF extraction failed: {exc}",
+                    )
+                    return
+
+                await _set_stage(job_id, "converting")
+                emergent_key = os.environ.get("EMERGENT_LLM_KEY")
+                if not emergent_key:
+                    await _update_job(
+                        job_id, status="failed", stage="failed",
+                        error="EMERGENT_LLM_KEY missing — cannot run PDF conversion cleanup.",
+                    )
+                    return
+                try:
+                    html = await pdf_pipeline.convert_to_html(extraction.lines, emergent_key)
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception("Async: LLM cleanup failed")
+                    await _update_job(
+                        job_id, status="failed", stage="failed",
+                        error=f"Conversion cleanup failed: {exc}",
+                    )
+                    return
+
+                await _set_stage(job_id, "verifying")
+                report = pdf_pipeline.verify_verbatim(extraction.plain_text, html)
+                report["page_count"] = extraction.page_count
+                report["image_count"] = len(extraction.images)
+                report["generated_at"] = _now_iso()
+                report["import_type"] = "pdf"
+
+                await _set_stage(job_id, "creating")
+                pdf_key = _r2_key(tid, SOURCE_PDF_NAME)
+                _r2_put(source_bytes, pdf_key, content_type="application/pdf")
+                doc = {
+                    "id": tid,
+                    "name": template_name.strip() or source_filename,
+                    "contract_type": ctype,
+                    "status": "draft",
+                    "is_default": False,
+                    "current_version": 0,
+                    "conversion_approved": False,
+                    "import_type": "pdf",
+                    "source_pdf": {
+                        "r2_key": pdf_key,
+                        "filename": source_filename,
+                        "byte_size": len(source_bytes),
+                        "uploaded_at": _now_iso(),
+                        "role": "source",
+                    },
+                    "source_docx": None,
+                    "current_content_html": html,
+                    "conversion_report": report,
+                    "created_at": _now_iso(),
+                    "updated_at": _now_iso(),
+                    "created_by": user_email,
+                    "updated_by": user_email,
+                }
+                await db[TEMPLATES_COLLECTION].insert_one(doc)
+                await _create_version(
+                    db, tid, html,
+                    f"Converted from PDF ({source_filename})",
+                    user_email,
+                )
+
+            # Stage 5 — mark complete (both paths converge here)
             await _update_job(
                 job_id,
                 stage="complete", status="complete",
@@ -442,6 +565,9 @@ def attach(api, db, require_role):
         contract_type: str = Form("other"),
         user: dict = Depends(require_role("admin")),
     ):
+        """Legacy async endpoint — PDF only. Kept for backward
+        compatibility. New code should use /upload-async which accepts
+        either DOCX or PDF and an optional reference PDF."""
         ctype = _validate_type(contract_type)
         if not pdf.filename or not pdf.filename.lower().endswith(".pdf"):
             raise HTTPException(400, detail="Please upload a PDF file.")
@@ -456,7 +582,9 @@ def attach(api, db, require_role):
             "stage": "uploading",
             "progress": STAGE_PROGRESS["uploading"],
             "message": STAGE_LABELS["uploading"],
-            "pdf_filename": pdf.filename,
+            "pdf_filename": pdf.filename,      # legacy field name
+            "source_filename": pdf.filename,
+            "source_kind": "pdf",
             "byte_size": len(pdf_bytes),
             "template_name": name,
             "contract_type": ctype,
@@ -468,14 +596,11 @@ def attach(api, db, require_role):
         }
         await db[JOBS_COLLECTION].insert_one(job_doc)
 
-        # Kick off the worker without awaiting so the HTTP response
-        # returns immediately. asyncio.create_task keeps the task
-        # attached to the running event loop that will outlive this
-        # request context.
         import asyncio
         asyncio.create_task(_run_conversion_job(
             job_id, pdf_bytes, pdf.filename,
             name, ctype, user.get("email") or "unknown",
+            source_kind="pdf",
         ))
         return {
             "job_id": job_id,
@@ -483,6 +608,85 @@ def attach(api, db, require_role):
             "status": "running",
             "progress": STAGE_PROGRESS["uploading"],
             "message": STAGE_LABELS["uploading"],
+        }
+
+    # -----------------------------------------------------------------
+    # DOCX-or-PDF async upload — preferred path from now on.
+    # DOCX is faster + higher-fidelity; PDF stays as a fallback where
+    # no Word source exists.
+    # -----------------------------------------------------------------
+    @api.post("/admin/contract-templates/upload-async")
+    async def upload_async(
+        file: UploadFile = File(...),
+        name: str = Form(...),
+        contract_type: str = Form("other"),
+        reference_pdf: Optional[UploadFile] = File(None),
+        user: dict = Depends(require_role("admin")),
+    ):
+        ctype = _validate_type(contract_type)
+        fname = (file.filename or "").lower()
+        if fname.endswith(".docx"):
+            source_kind = "docx"
+        elif fname.endswith(".pdf"):
+            source_kind = "pdf"
+        else:
+            raise HTTPException(
+                400,
+                detail="Please upload a .docx (preferred) or .pdf file.",
+            )
+        source_bytes = await file.read()
+        if not source_bytes:
+            raise HTTPException(400, detail="Uploaded file is empty.")
+
+        # Optional reference PDF (only meaningful for DOCX uploads).
+        ref_bytes = None
+        ref_name = None
+        if reference_pdf and reference_pdf.filename:
+            if not reference_pdf.filename.lower().endswith(".pdf"):
+                raise HTTPException(400, detail="Reference file must be a .pdf.")
+            ref_bytes = await reference_pdf.read()
+            ref_name = reference_pdf.filename
+            if source_kind != "docx":
+                # Ignore the reference for a PDF upload — pointless.
+                ref_bytes, ref_name = None, None
+
+        job_id = _new_id()
+        job_doc = {
+            "id": job_id,
+            "status": "running",
+            "stage": "uploading",
+            "progress": STAGE_PROGRESS["uploading"],
+            "message": STAGE_LABELS["uploading"],
+            "pdf_filename": file.filename if source_kind == "pdf" else None,
+            "source_filename": file.filename,
+            "source_kind": source_kind,
+            "byte_size": len(source_bytes),
+            "reference_pdf_filename": ref_name,
+            "template_name": name,
+            "contract_type": ctype,
+            "template_id": None,
+            "error": None,
+            "created_by": user.get("email"),
+            "created_at": _now_iso(),
+            "updated_at": _now_iso(),
+        }
+        await db[JOBS_COLLECTION].insert_one(job_doc)
+
+        import asyncio
+        asyncio.create_task(_run_conversion_job(
+            job_id, source_bytes, file.filename,
+            name, ctype, user.get("email") or "unknown",
+            source_kind=source_kind,
+            reference_pdf_bytes=ref_bytes,
+            reference_pdf_filename=ref_name,
+        ))
+        return {
+            "job_id": job_id,
+            "stage": "uploading",
+            "status": "running",
+            "progress": STAGE_PROGRESS["uploading"],
+            "message": STAGE_LABELS["uploading"],
+            "source_kind": source_kind,
         }
 
     @api.get("/admin/contract-templates/upload-jobs/{job_id}")
@@ -794,6 +998,31 @@ def attach(api, db, require_role):
         filename = src.get("filename") or "source.pdf"
         return Response(
             content=raw, media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    # -----------------------------------------------------------------
+    # Source DOCX download (Word source, preferred for DOCX imports)
+    # -----------------------------------------------------------------
+    @api.get("/admin/contract-templates/{template_id}/source-docx")
+    async def download_source_docx(
+        template_id: str,
+        _: dict = Depends(require_role("admin")),
+    ):
+        doc = await db[TEMPLATES_COLLECTION].find_one({"id": template_id})
+        if not doc:
+            raise HTTPException(404, detail="Template not found")
+        src = doc.get("source_docx") or {}
+        key = src.get("r2_key")
+        if not key:
+            raise HTTPException(404, detail="No source DOCX on file for this template.")
+        raw = _r2_get_bytes(key)
+        if raw is None:
+            raise HTTPException(502, detail="Source DOCX unavailable — R2 fetch failed.")
+        filename = src.get("filename") or "source.docx"
+        return Response(
+            content=raw,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 

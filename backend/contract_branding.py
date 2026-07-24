@@ -150,4 +150,43 @@ body.cm-doc .cm-toc-entry .cm-toc-page::after {
 }
 body.cm-doc .cm-toc-entry.level-2 { padding-left: 6mm; font-size: 10.5pt; }
 body.cm-doc .cm-toc-entry.level-3 { padding-left: 12mm; font-size: 10pt; }
+
+/* DOCX import — mirrored classes so imported Word cover pages, TOC
+   fragments and alignment classes render identically in the PDF. */
+body.cm-doc .cover-title    { text-align: center; font-size: 22pt; font-weight: 700; margin: 6mm 0 3mm; }
+body.cm-doc .cover-subtitle { text-align: center; font-size: 14pt; margin: 3mm 0; }
+body.cm-doc .cover-parties  { text-align: center; font-size: 12pt; margin: 2mm 0; }
+body.cm-doc .cover-line     { text-align: center; margin: 1mm 0; }
+body.cm-doc .recital        { font-style: italic; margin: 2mm 0 2mm 8mm; }
+body.cm-doc .toc-1 { padding-left: 0;  font-weight: 700; margin: 1.5mm 0; }
+body.cm-doc .toc-2 { padding-left: 6mm; margin: 1mm 0; }
+body.cm-doc .toc-3 { padding-left: 12mm; margin: 1mm 0; }
+body.cm-doc .text-center  { text-align: center; }
+body.cm-doc .text-right   { text-align: right; }
+body.cm-doc .text-justify { text-align: justify; }
+body.cm-doc .doc-title    { text-align: center; font-size: 20pt; font-weight: 700; }
+body.cm-doc .doc-subtitle { text-align: center; font-size: 12pt; }
+
+/* DOCX tables — same look inside the PDF as in the editor */
+body.cm-doc table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 4mm 0;
+  page-break-inside: auto;
+}
+body.cm-doc td, body.cm-doc th {
+  border: 0.5pt solid #a8a29e;
+  padding: 2mm 3mm;
+  vertical-align: top;
+}
+body.cm-doc th { background: #f5f5f4; font-weight: 700; text-align: left; }
+
+/* Embedded images preserve the width + alignment attrs set in-editor */
+body.cm-doc img {
+  max-width: 100%;
+  height: auto;
+}
+body.cm-doc img[data-align="left"]  { float: left;  margin-right: 4mm; }
+body.cm-doc img[data-align="right"] { float: right; margin-left: 4mm; }
+body.cm-doc img[data-align="center"] { display: block; margin: 3mm auto; }
 """.strip()

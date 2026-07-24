@@ -16,12 +16,37 @@ import Link from "@tiptap/extension-link";
 import Underline from "@tiptap/extension-underline";
 import TextAlign from "@tiptap/extension-text-align";
 import { TextStyle } from "@tiptap/extension-text-style";
+import { Image } from "@tiptap/extension-image";
+// Extend the default Image so we can persist width + align (used by
+// the contextual image toolbar for resize + alignment).
+const ResizableImage = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      width: {
+        default: null,
+        renderHTML: (attrs) => (attrs.width ? { style: `width: ${attrs.width}` } : {}),
+        parseHTML: (el) => el.style.width || null,
+      },
+      align: {
+        default: null,
+        renderHTML: (attrs) => (attrs.align ? { "data-align": attrs.align, style: `${attrs.align === 'left' ? 'float:left;margin-right:12px' : attrs.align === 'right' ? 'float:right;margin-left:12px' : 'display:block;margin-left:auto;margin-right:auto'}` } : {}),
+        parseHTML: (el) => el.getAttribute("data-align"),
+      },
+    };
+  },
+});
+import { Table } from "@tiptap/extension-table";
+import { TableRow } from "@tiptap/extension-table-row";
+import { TableCell } from "@tiptap/extension-table-cell";
+import { TableHeader } from "@tiptap/extension-table-header";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Bold, Italic, Underline as UnderlineIcon, List, ListOrdered,
   Heading1, Heading2, Heading3, AlignLeft, AlignCenter, AlignRight,
   AlignJustify, Undo, Redo, Link as LinkIcon, FileText as TocIcon,
-  Scissors, ChevronDown,
+  Scissors, ChevronDown, TableIcon, Rows, Columns, Trash2, Image as ImageIcon,
+  Minimize2, Maximize2,
 } from "lucide-react";
 import { PlaceholderChip, PageBreak, TableOfContents } from "./nodes";
 import "./LegalDocEditor.css";
@@ -108,6 +133,17 @@ export default function LegalDocEditor({
       Link.configure({ openOnClick: false, autolink: false }),
       TextAlign.configure({ types: ["heading", "paragraph"] }),
       TextStyle,
+      ResizableImage.configure({
+        allowBase64: true,
+        HTMLAttributes: { class: "cm-doc-image" },
+      }),
+      Table.configure({
+        resizable: true,
+        HTMLAttributes: { class: "cm-doc-table" },
+      }),
+      TableRow,
+      TableHeader,
+      TableCell,
       PlaceholderChip,
       PageBreak,
       TableOfContents,
@@ -213,10 +249,89 @@ export default function LegalDocEditor({
           <span className="text-xs font-bold uppercase tracking-wider">Contents</span>
         </ToolbarBtn>
 
+        <ToolbarBtn onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
+                    title="Insert table" testid="legal-editor-insert-table">
+          <TableIcon className="w-4 h-4" />
+          <span className="text-xs font-bold uppercase tracking-wider">Table</span>
+        </ToolbarBtn>
+
+        <ToolbarBtn onClick={() => {
+          const url = window.prompt("Image URL (paste an image link, or leave blank to upload from Files)");
+          if (!url) return;
+          editor.chain().focus().setImage({ src: url }).run();
+        }} title="Insert image" testid="legal-editor-image">
+          <ImageIcon className="w-4 h-4" />
+          <span className="text-xs font-bold uppercase tracking-wider">Image</span>
+        </ToolbarBtn>
+
         <div className="ml-auto">
           <PlaceholderMenu editor={editor} placeholders={placeholders} />
         </div>
       </div>
+
+      {/* Context-sensitive tool ribbon — only shown when a table or
+          image is selected. Keeps the main toolbar uncluttered. */}
+      {editor.isActive("table") && (
+        <div className="border-b border-stone-200 bg-amber-50 px-3 py-1.5 flex flex-wrap items-center gap-1.5 text-xs"
+             data-testid="table-toolbar">
+          <span className="font-bold uppercase tracking-widest text-amber-900 mr-1">Table:</span>
+          <ToolbarBtn onClick={() => editor.chain().focus().addColumnBefore().run()} title="Add column before"
+                      testid="table-add-col-before"><Columns className="w-3.5 h-3.5" />+ before</ToolbarBtn>
+          <ToolbarBtn onClick={() => editor.chain().focus().addColumnAfter().run()} title="Add column after"
+                      testid="table-add-col-after"><Columns className="w-3.5 h-3.5" />+ after</ToolbarBtn>
+          <ToolbarBtn onClick={() => editor.chain().focus().deleteColumn().run()} title="Delete column"
+                      testid="table-del-col"><Columns className="w-3.5 h-3.5" />−</ToolbarBtn>
+          <span className="w-px h-4 bg-amber-200 mx-1" />
+          <ToolbarBtn onClick={() => editor.chain().focus().addRowBefore().run()} title="Add row above"
+                      testid="table-add-row-before"><Rows className="w-3.5 h-3.5" />+ above</ToolbarBtn>
+          <ToolbarBtn onClick={() => editor.chain().focus().addRowAfter().run()} title="Add row below"
+                      testid="table-add-row-after"><Rows className="w-3.5 h-3.5" />+ below</ToolbarBtn>
+          <ToolbarBtn onClick={() => editor.chain().focus().deleteRow().run()} title="Delete row"
+                      testid="table-del-row"><Rows className="w-3.5 h-3.5" />−</ToolbarBtn>
+          <span className="w-px h-4 bg-amber-200 mx-1" />
+          <ToolbarBtn onClick={() => editor.chain().focus().toggleHeaderRow().run()} title="Toggle header row"
+                      testid="table-toggle-header">Header row</ToolbarBtn>
+          <ToolbarBtn onClick={() => editor.chain().focus().mergeOrSplit().run()} title="Merge / split cells"
+                      testid="table-merge">Merge / split</ToolbarBtn>
+          <ToolbarBtn onClick={() => editor.chain().focus().deleteTable().run()} title="Delete table"
+                      testid="table-delete"><Trash2 className="w-3.5 h-3.5" />Delete table</ToolbarBtn>
+        </div>
+      )}
+      {editor.isActive("image") && (
+        <div className="border-b border-stone-200 bg-sky-50 px-3 py-1.5 flex flex-wrap items-center gap-1.5 text-xs"
+             data-testid="image-toolbar">
+          <span className="font-bold uppercase tracking-widest text-sky-900 mr-1">Image:</span>
+          {[25, 50, 75, 100].map((pct) => (
+            <ToolbarBtn key={pct}
+                        onClick={() => {
+                          const attrs = { ...editor.getAttributes("image"), width: `${pct}%` };
+                          editor.chain().focus().updateAttributes("image", attrs).run();
+                        }}
+                        title={`Set width ${pct}%`}
+                        testid={`image-size-${pct}`}>
+              {pct === 100 ? <Maximize2 className="w-3.5 h-3.5" /> : <Minimize2 className="w-3.5 h-3.5" />}
+              {pct}%
+            </ToolbarBtn>
+          ))}
+          <span className="w-px h-4 bg-sky-200 mx-1" />
+          {[
+            { align: "left",   Icon: AlignLeft,   testid: "image-align-left"   },
+            { align: "center", Icon: AlignCenter, testid: "image-align-center" },
+            { align: "right",  Icon: AlignRight,  testid: "image-align-right"  },
+          ].map(({ align, Icon, testid }) => (
+            <ToolbarBtn key={align}
+                        onClick={() => {
+                          const attrs = { ...editor.getAttributes("image"), align };
+                          editor.chain().focus().updateAttributes("image", attrs).run();
+                        }}
+                        title={`Align ${align}`} testid={testid}>
+              <Icon className="w-3.5 h-3.5" />
+            </ToolbarBtn>
+          ))}
+          <ToolbarBtn onClick={() => editor.chain().focus().deleteSelection().run()} title="Remove image"
+                      testid="image-delete"><Trash2 className="w-3.5 h-3.5" /></ToolbarBtn>
+        </div>
+      )}
 
       {/* A4 canvas */}
       <div className="flex-1 overflow-auto flex justify-center bg-stone-100 py-8 px-6">

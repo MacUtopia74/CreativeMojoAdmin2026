@@ -1,0 +1,57 @@
+{
+  "summary": "Phase 1A DOCX import — end-to-end validation of the Paloma renewal DOCX. Backend pytest suite 47/47 GREEN (as promised by main agent). Added 7 new e2e API tests in test_iter45_docx_e2e.py — all pass (upload-async accepts .docx, source_kind='docx', source_docx metadata, reference_pdf storage, source-docx download endpoint 200/401/404, verbatim score >=0.99). Frontend upload flow works end-to-end: modal accepts .docx + reveals optional reference PDF picker, progress bar animates through 6 stages, auto-navigates to editor in ~7s. Editor renders the Creative Mojo logo, cover-page centered titles, 5 tables (102 cells), 4 images, verbatim 100%. Table toolbar appears on cell click. Insert Table + Insert Image toolbar buttons work. PDF preview generates a 307KB PDF. Approve Conversion returns {ok:true, version_number:2} and flips conversion_approved=true. Source-DOCX + Reference-PDF downloads return the correct bytes. ONE HIGH-priority functional bug found: the Image contextual toolbar does NOT appear when clicking a DOCX-imported image (it works correctly for images inserted via the toolbar). Root cause below.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/admin/contract-templates/{id}/approve-conversion",
+        "issue": "Response body is `{ok:true, version_number:N}` — still doesn't include the refreshed conversion_approved flag or current_content_html. Same observation from iteration_43. Frontend must issue a follow-up GET to refresh state. Not a bug per se, but consistency wart."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "LegalDocEditor image contextual toolbar",
+        "issue": "Clicking any DOCX-imported <img> in the ProseMirror canvas does NOT create a NodeSelection on the image, so the sky-blue 'Image:' toolbar (data-testid='image-toolbar') never appears. This makes the required Phase 1A behaviour — 'images resizable and alignable' — non-functional for actual imported content. Newly-inserted images (via the toolbar Image button) work fine — image-toolbar appears immediately and img.ProseMirror-selectednode class is added. Investigation: the DOCX pipeline emits <img class=\"cm-doc-image\" src=\"data:image/...\"> as a DIRECT child of the ProseMirror block flow (not wrapped in a <p>). Sample HTML fragment: `</table><p></p><img class=\"cm-doc-image\" src=\"data:image/jpeg;base64,...\">`. The default @tiptap/extension-image is `inline: false, group: 'block', draggable: true, selectable: true`, so a bare block <img> SHOULD parse and be selectable. The images DO render (visible in DOM as direct children of the ProseMirror root DIV), but a mouse click on them does not create a NodeSelection — no `.ProseMirror-selectednode` class is applied. My hypothesis is one of: (a) the ResizableImage.parseHTML override consumes width/data-align but leaves the raw <img class=\"cm-doc-image\"> outside the schema so ProseMirror renders it as raw HTML via a foreign-content path; or (b) the block-level bare <img> is being wrapped by ProseMirror in a phantom paragraph that intercepts pointer events. Recommendation: sanitize the DOCX pipeline output to always wrap standalone <img> in <p>…</p> (or <figure>) before persisting, OR update ResizableImage to define parseHTML with `tag: 'img.cm-doc-image'` and priority > default so the image is guaranteed to be recognised as a schema image node.",
+        "selector": "[data-testid='image-toolbar']",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter45_docx_e2e.py",
+    "/app/test_reports/pytest/iter45_phase1a.xml",
+    "/app/test_reports/pytest/iter45_e2e.xml"
+  ],
+  "action_items": [
+    "[HIGH] Fix Image contextual toolbar for DOCX-imported images. Recommended fix: in /app/backend/contract_docx_pipeline.py post-processing, ensure every standalone <img> is wrapped in a <p class=\"text-center\">…</p> (matches DOCX centre-alignment for logos + shapes), OR add an explicit `parseHTML` handler to ResizableImage that catches `img[class~=\"cm-doc-image\"]` at higher priority. Retest by clicking each imported image and confirming [data-testid='image-toolbar'] appears with resize + align buttons responsive.",
+    "[LOW] Optional: have /approve-conversion return the refreshed template doc (or at least conversion_approved + current_version) so the frontend doesn't need a follow-up GET.",
+    "[LOW] Housekeeping: many stale e2e-docx-* / e2e-async-* / e2e-test-* templates are accumulating in the Contract Templates list (see screenshot iter45_upload_modal.png — ~10 visible on page one). All archived, safe to bulk-delete."
+  ],
+  "critical_code_review_comments": [
+    "Backend contract_docx_pipeline.convert_docx() cleanly implements the OOXML preprocessor for w:jc alignment + w:br type='page' → <div class='page-break'>. Style map + custom style_map handler correct. Post-processing wraps leading clause numbers ('1.', '1.1', '3.2.4') inside heading tags with <span class='cm-original-num'> — verified by test_wraps_leading_clause_numbers_in_headings.",
+    "contract_templates_routes upload-async endpoint correctly dispatches on source_kind via extension detection. Payload {job_id, stage='uploading', status='running', progress=5, source_kind} is exactly as spec. _run_conversion_job dispatches to contract_docx_pipeline.convert_docx (no LLM) for docx path and contract_pdf_pipeline for pdf — good separation.",
+    "source_docx download endpoint (/api/admin/contract-templates/{id}/source-docx) returns application/vnd.openxmlformats-officedocument.wordprocessingml.document with correct byte length (322206 for Paloma). Returns 401 for anon, 404 when no source_docx present. Verified all three code paths.",
+    "Legacy /source-pdf endpoint still works and correctly returns the reference PDF for a source_kind='docx' template (1077029 bytes matched the source file exactly). Backwards compat with source_kind='pdf' preserved (test_sync_upload_still_works and test_upload_pdf still green).",
+    "conversion_report includes all required fields (score=1.0, image_count=3, table_count>=1, heading_count>=1, page_break_count>=0, mammoth_warnings=[], generated_at, import_type='docx').",
+    "AdminContractTemplatesPage.jsx UploadModal: file input `accept` correctly set to `.docx,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf`. Reference-PDF picker is conditionally rendered only when a .docx has been selected. DOCX/PDF file-kind badge is rendered in the modal (visible in the screenshot as green 'DOCX' pill next to the filename).",
+    "LegalDocEditor.jsx: ResizableImage.extend adds width + align attrs with sensible renderHTML/parseHTML round-tripping (align='right' → float:right + margin-left:12px). Table toolbar and Image toolbar are gated on `editor.isActive('table'|'image')` — the table path works perfectly, the image path fails for DOCX-imported <img> (see HIGH bug above).",
+    "Tiptap v3 named-exports usage confirmed correct — no 'default was not found' compile errors, no red overlay on /admin/contracts/templates or the editor page. Zero console errors during upload + editor flow (only the standard React DevTools info line)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter45_docx_e2e.py (new — 7 tests, all green, uses real Paloma DOCX+PDF)"
+  ],
+  "success_rate": {
+    "backend": "54/54 pytest (47 phase1a suite + 7 new iter45_docx_e2e) = 100%",
+    "frontend": "~92% — everything works EXCEPT the Image contextual toolbar for DOCX-imported images (HIGH). Upload modal, progress bar, editor mount, DOCX-IMPORT badge, filename, both download buttons, verbatim panel (100%), version history, Table toolbar (add row/col, header row toggle, insert new table), Insert Image (newly-inserted works), Approve Conversion, PDF Preview all confirmed working."
+  },
+  "test_credentials": "admin@creativemojo.co.uk / CreativeMojo2026! — used successfully.",
+  "seed_data_creation": "Created and archived 3 test templates during iter45: e2e-docx-paloma-plain, e2e-docx-paloma-with-ref, e2e-docx-frontend-paloma. Cleanup done via /archive at end of each test. Safe to bulk-delete along with older e2e-* templates.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "All backend paths for Phase 1A DOCX import are verified green (54/54 pytest, plus source-docx / source-pdf / approve-conversion / upload-async live smoke). The single unresolved issue is the Image contextual toolbar failing to appear when a DOCX-imported <img> is clicked — this is a real functional regression for the user's requirement 'images resizable and alignable'. Once the main agent applies the wrap-<img>-in-<p> fix in contract_docx_pipeline.py (or the parseHTML priority fix in ResizableImage), re-run this test: (1) Playwright — login as admin, upload /tmp/paloma.docx with /tmp/paloma-ref.pdf as reference, wait for editor, click the Creative Mojo logo at top of page 1, assert [data-testid='image-toolbar'] is visible, click image-size-50, verify the image width shrinks to ~50%, click image-align-right, verify the image floats right in the canvas. Also verify the browser NodeSelection sets the .ProseMirror-selectednode class on the clicked image. Sample failing HTML fragment showing the block-level bare <img>: `</tbody></table><p></p><img class=\"cm-doc-image\" src=\"data:image/jpeg;base64,...\">`.",
+  "rca of the issue": "DOCX-imported images are emitted by contract_docx_pipeline.convert_docx as raw <img class=\"cm-doc-image\" src=\"data:...\"> at the block level (as siblings of <p> and <table>, NOT nested inside a <p>). When Tiptap parses this HTML on editor init, the images DO render in the ProseMirror DOM tree, but a mouse click on them does not translate to a NodeSelection on an image node — so `editor.isActive('image')` never becomes true and the [data-testid='image-toolbar'] conditional block is never rendered. Proof: inserting a fresh image via the toolbar (`editor.chain().focus().setImage({src: url}).run()`) DOES cause `editor.isActive('image')` to return true after a single click (verified in the last Playwright run — the sky-blue Image toolbar appeared as expected with all resize + align buttons). The fix should live in the DOCX pipeline post-processor: ensure every standalone <img> is wrapped in a <p class=\"text-center\"> before persistence. This also aligns with the DOCX cover-page requirement of centre-aligned artwork."
+}

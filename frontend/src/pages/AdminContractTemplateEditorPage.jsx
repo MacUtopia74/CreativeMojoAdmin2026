@@ -153,9 +153,12 @@ export default function AdminContractTemplateEditorPage() {
   };
 
   const downloadSource = () => {
-    // Use the API base URL and add auth header via anchor? Simplest is
-    // to open a new tab where the axios client will re-authenticate.
     const url = `${(process.env.REACT_APP_BACKEND_URL || "")}/api/admin/contract-templates/${id}/source-pdf`;
+    window.open(url, "_blank");
+  };
+
+  const downloadDocx = () => {
+    const url = `${(process.env.REACT_APP_BACKEND_URL || "")}/api/admin/contract-templates/${id}/source-docx`;
     window.open(url, "_blank");
   };
 
@@ -181,8 +184,22 @@ export default function AdminContractTemplateEditorPage() {
           </button>
           <div className="min-w-0">
             <h1 className="font-semibold text-lg text-stone-950 truncate">{tpl.name}</h1>
-            <div className="text-xs text-stone-500 flex items-center gap-2">
+            <div className="text-xs text-stone-500 flex items-center gap-2 flex-wrap">
               <span>v{tpl.current_version} · {tpl.status}</span>
+              {tpl.import_type && (
+                <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest ${
+                  tpl.import_type === "docx"
+                    ? "bg-emerald-100 text-emerald-800"
+                    : "bg-amber-100 text-amber-800"
+                }`} data-testid="import-type-badge">
+                  {tpl.import_type === "docx" ? "DOCX import" : "PDF import"}
+                </span>
+              )}
+              {(tpl.source_docx?.filename || tpl.source_pdf?.filename) && (
+                <span className="truncate max-w-[240px]" title={tpl.source_docx?.filename || tpl.source_pdf?.filename}>
+                  · {tpl.source_docx?.filename || tpl.source_pdf?.filename}
+                </span>
+              )}
               {saving && <span className="inline-flex items-center gap-1 text-stone-500"><Loader2 className="w-3 h-3 animate-spin" /> Autosaving</span>}
               {!saving && savedAt && <span>· Autosaved {formatDate(savedAt)}</span>}
             </div>
@@ -213,11 +230,18 @@ export default function AdminContractTemplateEditorPage() {
                   className="px-3 py-2 rounded text-xs font-bold uppercase tracking-widest bg-white border border-stone-300 hover:bg-stone-50 inline-flex items-center gap-1.5">
             <FileDown className="w-4 h-4" /> PDF preview
           </button>
+          {tpl.source_docx?.r2_key && (
+            <button onClick={downloadDocx}
+                    data-testid="btn-download-docx"
+                    className="px-3 py-2 rounded text-xs font-bold uppercase tracking-widest bg-white border border-stone-300 hover:bg-stone-50 inline-flex items-center gap-1.5">
+              <Download className="w-4 h-4" /> Source DOCX
+            </button>
+          )}
           {tpl.source_pdf?.r2_key && (
             <button onClick={downloadSource}
                     data-testid="btn-download-source"
                     className="px-3 py-2 rounded text-xs font-bold uppercase tracking-widest bg-white border border-stone-300 hover:bg-stone-50 inline-flex items-center gap-1.5">
-              <Download className="w-4 h-4" /> Source PDF
+              <Download className="w-4 h-4" /> {tpl.source_pdf?.role === "reference" ? "Reference PDF" : "Source PDF"}
             </button>
           )}
         </div>
