@@ -1,0 +1,90 @@
+{
+  "summary": "Phase 1A Stop-Point-2 backend + frontend E2E gate PASSES. 19/19 unit tests + 28/28 new HTTP integration tests + frontend visual verification all green. SHA-256 chain, marker JSON, thumbnail PNG, integrity endpoint, 6-stage upload progression, deterministic no-LLM detection, seed shape (28 markers = 17 automatic + 9 manual + 2 system_generated + 0 calculated), CRUD + hide/unhide + soft delete, publish/archive lifecycle, legacy retirement, auth 401/403 — every review item verified.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_contract_markers_pipeline.py",
+    "/app/backend/tests/test_phase1a_e2e.py",
+    "/app/test_reports/pytest/phase1a_e2e.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "contract_templates_routes.py is ~680 lines and packs list/detail/upload/status/rename/publish/archive/duplicate/set-default/source-pdf/integrity/thumbnail/marker-summary into a single attach() function. Still readable but nearing the 700-line split threshold; consider extracting the R2 helper and the thumbnail renderer into small modules in Phase 1B.",
+    "The upload endpoint uses asyncio.create_task without a task registry. On graceful shutdown mid-upload the job would be left in 'running' state. Not blocking for Phase 1A (single-node dev), but recommend a Mongo-side sweep for jobs older than N minutes still 'running' in Phase 1B.",
+    "PATCH /admin/contract-templates recomputes marker_summary only when template_required_codes changes. If HQ mutates contract_type via the same PATCH, the summary's not_eligible_for_type is stale until next GET /marker-summary (which does recompute). Consider always recomputing on any PATCH that touches contract_type or template_required_codes.",
+    "Marker Library GET currently returns hidden=false OR missing hidden field. Fine for now but adds an implicit invariant — recommend backfilling all seed docs with explicit hidden=false at seed time (already the case for new seeds).",
+    "Positive: contract_markers_pipeline.py and contract_templates_routes.py contain zero references to EMERGENT_LLM_KEY, litellm, anthropic, openai — LLM-free guarantee holds."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase1a_e2e.py (new — 28 integration tests)"
+  ],
+  "success_rate": {"backend": "100% (47/47: 19 unit + 28 e2e)", "frontend": "100% verified"},
+  "test_credentials": "admin@creativemojo.co.uk / CreativeMojo2026! (from /app/memory/test_credentials.md — Emergent auth login endpoint /api/auth/login returns bearer token)",
+  "seed_data_creation": "Uploaded 2 templates prefixed e2e-phase1a-: e2e-phase1a-detection (2-page scenario PDF covering (a) inline, (b) standalone, (c) repeat, (d) unrecognised, (e) cross-line) and e2e-phase1a-clean (single clean marker for publish/archive flow). Also created + soft-deleted transient TEST_E2E_PHASE1A_<ts> library entries per test run. Feel free to purge under name prefix 'e2e-phase1a-' or 'TEST_E2E_PHASE1A_'.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "test_phase1a_e2e.py can be re-run any time with `REACT_APP_BACKEND_URL=... python -m pytest backend/tests/test_phase1a_e2e.py -v`. It self-provisions fixtures (login + seed upload) and cleans up its transient library markers. It intentionally does NOT delete uploaded templates — user requested manual cleanup of e2e-phase1a-* rows.",
+  "evidence_snapshot": {
+    "seed_bucket_counts": {"automatic": 17, "manual": 9, "system_generated": 2, "calculated": 0, "total_seeded": 28},
+    "forbidden_codes_absent": ["YEAR", "TERM_END_DATE_FROM_START", "TOTAL_INITIAL_INVESTMENT"],
+    "html_block_datatype_present_anywhere": false,
+    "detection_scenarios": {
+      "a_inline_in_sentence": "PASS — [[AGREEMENT_DATE]] detected, cross_line=0, bbox recorded",
+      "b_standalone_line": "PASS — [[FRANCHISEE_LEGAL_NAME]] detected with clean bbox",
+      "c_repeat_across_pages": "PASS — [[CONTRACT_REFERENCE]] present on page 1 and page 2 (counts_by_code=2), NOT in duplicate_offenders (repeat_allowed=true)",
+      "d_unrecognised": "PASS — [[WEATHER_OUTSIDE]] in summary.unrecognised, ready_for_approval=false",
+      "e_cross_line_split": "PASS — cross_line_errors_count=2 with kinds {'unterminated_open_bracket', 'orphan_close_bracket'}"
+    },
+    "sha256_chain": {
+      "input_hash": "e79bfd29e77a18b8fac39f8f88047bd9b4785677097dbdde7700d8538079d17d",
+      "stored_pdf_sha256_on_template": "e79bfd29e77a18b8fac39f8f88047bd9b4785677097dbdde7700d8538079d17d",
+      "integrity_check_api_ok": true,
+      "downloaded_source_rehash_matches": true
+    },
+    "detection_meta_llm_used": false,
+    "engine_version": "phase1a-v1",
+    "thumbnail": {
+      "content_type": "image/png",
+      "min_size_bytes": ">1024",
+      "magic_bytes_ok": true,
+      "overlay_visible": true,
+      "requires_admin": true
+    },
+    "upload_stages_defined": ["uploading(5)", "extracting-text(25)", "detecting-markers(55)", "validating(80)", "creating(95)", "complete(100)"],
+    "legacy_routes_returning_404_or_405": [
+      "/api/admin/contract-templates/upload-async",
+      "/api/admin/contract-templates/upload-pdf-async",
+      "/api/admin/contract-templates/upload-pdf",
+      "/api/admin/contract-templates/approve-conversion",
+      "/api/admin/contract-templates/preview-pdf",
+      "/api/admin/contracts"
+    ],
+    "auth_gates": {
+      "admin_markers_library_without_token": "401/403",
+      "admin_contract_templates_upload_without_token": "401/403",
+      "thumbnail_without_token": "401/403"
+    },
+    "marker_json_sample_from_detail_page": {
+      "code": "AGREEMENT_DATE",
+      "page": 1,
+      "bbox": [71.5, 87.7, 330.5, 103.8],
+      "font_family": "Helvetica",
+      "font_size": 11,
+      "is_embedded": false
+    },
+    "publish_gate": {
+      "publish_when_not_ready_returns": 400,
+      "publish_clean_template_status_becomes": "current",
+      "archive_returns_status": "archived"
+    },
+    "frontend": {
+      "no_webpack_error_overlay": true,
+      "sidebar_has_contract_templates_and_marker_library": true,
+      "detail_page_shows_sha_and_integrity_and_thumbnails_and_occurrence_table": true,
+      "marker_library_shows_28_seed_markers_with_source_badges": true,
+      "new_marker_modal_opens_with_upper_snake_case_hint": true,
+      "integrity_button_click_returns_ok_true": true
+    }
+  },
+  "rca of the issue": "N/A — no bugs found. All 20 review-request items pass. Stop-Point-2 gate is GREEN, user can proceed to manual acceptance."
+}

@@ -1,12 +1,12 @@
-// Admin — Contract Templates list.
-// Phase 1A only: template CRUD + PDF upload + status/default toggles.
-// Contract issuance / signing lands in later phases.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+// Admin — Contract Templates list (Phase 1A, fixed-PDF marker approach).
+// Scope: upload PDF → deterministic marker detection → library reconciliation.
+// No editor, no personalised generation, no issuance.
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import {
-  FileText, Plus, Upload, Loader2, AlertTriangle, CheckCircle2, Archive,
-  Copy, Pencil, Star, StarOff, X, Check,
+  FileText, Upload, Loader2, AlertTriangle, CheckCircle2, Archive,
+  Copy, Pencil, Star, StarOff, X, Check, ExternalLink,
 } from "lucide-react";
 
 const CONTRACT_TYPES = [
@@ -31,22 +31,14 @@ function formatDate(iso) {
   catch { return iso; }
 }
 
-function StatusPill({ status }) {
-  return (
-    <span className={`inline-block px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest rounded border ${STATUS_STYLES[status] || STATUS_STYLES.draft}`}>
-      {status || "draft"}
-    </span>
-  );
-}
-
-function DefaultPill({ isDefault }) {
-  if (!isDefault) return null;
-  return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest rounded bg-amber-100 text-amber-800 border border-amber-300">
-      <Star className="w-3 h-3" /> Default
-    </span>
-  );
-}
+const STAGES = [
+  { code: "uploading",         label: "Uploading PDF" },
+  { code: "extracting-text",   label: "Extracting text" },
+  { code: "detecting-markers", label: "Detecting markers" },
+  { code: "validating",        label: "Validating against library" },
+  { code: "creating",          label: "Creating template record" },
+  { code: "complete",          label: "Complete" },
+];
 
 export default function AdminContractTemplatesPage() {
   const navigate = useNavigate();
@@ -55,7 +47,6 @@ export default function AdminContractTemplatesPage() {
   const [err, setErr] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
-  const [showBlank, setShowBlank] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
 
   const load = useCallback(async () => {
@@ -75,65 +66,49 @@ export default function AdminContractTemplatesPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const filtered = useMemo(() => items, [items]);
-
   return (
-    <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-6" data-testid="admin-contracts-page">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <div className="p-6 max-w-7xl mx-auto space-y-5" data-testid="admin-contract-templates">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="font-display text-3xl text-stone-950 flex items-center gap-2">
-            <FileText className="w-7 h-7 text-stone-700" /> Contract Templates
-          </h1>
-          <p className="text-sm text-stone-600 mt-1 max-w-2xl">
-            Master library of Creative Mojo legal templates. Upload an existing PDF to convert it into an
-            editable HTML template, or start blank. Issued contracts are drafted from these templates in
-            a later phase.
+          <h1 className="font-display text-3xl text-stone-950">Contract templates</h1>
+          <p className="text-sm text-stone-500 mt-1 max-w-2xl">
+            Upload the approved fixed PDF exported from Word. The Hub detects every <code className="text-xs bg-stone-100 rounded px-1">[[MARKER]]</code>,
+            records its position, and reconciles the set against the Marker Library. Nothing else about the PDF is altered.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2">
           <button
             type="button"
             data-testid="upload-pdf-btn"
             onClick={() => setShowUpload(true)}
             className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold uppercase tracking-widest rounded-lg bg-stone-950 text-white hover:bg-stone-800"
           >
-            <Upload className="w-4 h-4" /> Upload
-          </button>
-          <button
-            type="button"
-            data-testid="new-blank-btn"
-            onClick={() => setShowBlank(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold uppercase tracking-widest rounded-lg bg-white text-stone-800 border border-stone-300 hover:bg-stone-50"
-          >
-            <Plus className="w-4 h-4" /> New blank
+            <Upload className="w-4 h-4" /> Upload PDF
           </button>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-2 items-center border-b border-stone-200 pb-3">
-        <label className="text-xs font-bold uppercase tracking-widest text-stone-600 mr-2">Filter:</label>
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="text-xs font-bold uppercase tracking-widest text-stone-500 mr-1">Status:</div>
         {["", "draft", "current", "archived"].map((s) => (
           <button
             key={s || "all"}
-            type="button"
-            data-testid={`filter-status-${s || "all"}`}
+            data-testid={`status-filter-${s || "all"}`}
             onClick={() => setStatusFilter(s)}
-            className={`px-2 py-1 rounded border text-[11px] font-bold uppercase tracking-widest ${
-              statusFilter === s
-                ? "bg-stone-950 text-white border-stone-950"
-                : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"
+            className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${
+              statusFilter === s ? "bg-stone-950 text-white border-stone-950" : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"
             }`}
           >
-            {s ? s : "All"}
+            {s === "" ? "All" : s}
           </button>
         ))}
-        <span className="w-px h-6 bg-stone-200 mx-1" />
+        <div className="text-xs font-bold uppercase tracking-widest text-stone-500 ml-4 mr-1">Type:</div>
         <select
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value)}
-          data-testid="filter-type"
-          className="px-2 py-1 border border-stone-300 rounded text-xs"
+          data-testid="type-filter"
+          className="px-2 py-1 text-xs rounded border border-stone-300"
         >
           <option value="">All types</option>
           {CONTRACT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
@@ -146,39 +121,38 @@ export default function AdminContractTemplatesPage() {
         </div>
       )}
 
-      {/* Table */}
-      <div className="border border-stone-200 rounded-xl bg-white overflow-hidden">
-        {loading ? (
-          <div className="p-8 text-center text-stone-500 text-sm">
-            <Loader2 className="inline w-4 h-4 animate-spin mr-1" /> Loading templates…
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="p-8 text-center text-stone-500 text-sm">
-            No templates yet. Upload a PDF or click &ldquo;New blank&rdquo; to get started.
-          </div>
-        ) : (
-          <table className="w-full">
-            <thead className="bg-stone-50 border-b border-stone-200">
+      {loading && items.length === 0 && (
+        <div className="flex items-center gap-2 text-stone-500 text-sm py-8"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>
+      )}
+
+      {!loading && items.length === 0 && (
+        <div className="border border-dashed border-stone-300 rounded-lg p-10 text-center">
+          <FileText className="w-8 h-8 mx-auto text-stone-400" />
+          <p className="mt-2 text-sm text-stone-500">No contract templates yet. Upload the approved fixed PDF exported from Word to get started.</p>
+        </div>
+      )}
+
+      {items.length > 0 && (
+        <div className="border border-stone-200 rounded-lg overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-stone-50 text-xs uppercase tracking-widest text-stone-500">
               <tr>
-                <th className="text-left px-4 py-2 text-[10px] uppercase tracking-widest font-bold text-stone-600">Name</th>
-                <th className="text-left px-4 py-2 text-[10px] uppercase tracking-widest font-bold text-stone-600">Type</th>
-                <th className="text-left px-4 py-2 text-[10px] uppercase tracking-widest font-bold text-stone-600">Status</th>
-                <th className="text-left px-4 py-2 text-[10px] uppercase tracking-widest font-bold text-stone-600">Version</th>
-                <th className="text-left px-4 py-2 text-[10px] uppercase tracking-widest font-bold text-stone-600">Conversion</th>
-                <th className="text-left px-4 py-2 text-[10px] uppercase tracking-widest font-bold text-stone-600">Updated</th>
-                <th className="text-right px-4 py-2 text-[10px] uppercase tracking-widest font-bold text-stone-600">Actions</th>
+                <th className="text-left px-4 py-2">Template</th>
+                <th className="text-left px-4 py-2">Type</th>
+                <th className="text-left px-4 py-2">Status</th>
+                <th className="text-left px-4 py-2">Marker summary</th>
+                <th className="text-left px-4 py-2">Version</th>
+                <th className="text-left px-4 py-2">Updated</th>
+                <th className="text-right px-4 py-2">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((t) => (
-                <TemplateRow key={t.id} t={t} onChange={load} />
-              ))}
+              {items.map((t) => <TemplateRow key={t.id} t={t} onChanged={load} navigate={navigate} />)}
             </tbody>
           </table>
-        )}
-      </div>
+        </div>
+      )}
 
-      {showBlank && <BlankModal onClose={() => setShowBlank(false)} onCreated={(id) => navigate(`/admin/contracts/templates/${id}`)} />}
       {showUpload && (
         <UploadModal
           onClose={() => setShowUpload(false)}
@@ -190,173 +164,127 @@ export default function AdminContractTemplatesPage() {
   );
 }
 
-function TemplateRow({ t, onChange }) {
+
+// ---------------------------------------------------------------------------
+// Template row
+// ---------------------------------------------------------------------------
+function TemplateRow({ t, onChanged, navigate }) {
   const [busy, setBusy] = useState(false);
-  const setDefault = async () => {
+  const [renaming, setRenaming] = useState(false);
+  const [name, setName] = useState(t.name);
+
+  const summary = t.marker_summary || {};
+  const ready = summary.ready_for_approval;
+  const bg = ready ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-amber-50 text-amber-800 border-amber-200";
+  const detected = summary.total_occurrences ?? 0;
+  const unrecognised = (summary.unrecognised || []).length;
+  const dup = (summary.duplicate_offenders || []).length;
+  const cle = summary.cross_line_errors_count ?? 0;
+
+  const wrap = async (fn) => {
     setBusy(true);
-    try {
-      await api.post(`/admin/contract-templates/${t.id}/set-default`, { is_default: !t.is_default });
-      onChange();
-    } catch (e) {
-      window.alert(e?.response?.data?.detail || "Failed to change default.");
-    } finally { setBusy(false); }
-  };
-  const archive = async () => {
-    if (!window.confirm("Archive this template? It will disappear from active lists.")) return;
-    setBusy(true);
-    try { await api.post(`/admin/contract-templates/${t.id}/archive`); onChange(); }
-    catch (e) { window.alert(e?.response?.data?.detail || "Failed."); }
-    finally { setBusy(false); }
-  };
-  const duplicate = async () => {
-    setBusy(true);
-    try { const { data } = await api.post(`/admin/contract-templates/${t.id}/duplicate`); onChange(); window.location.href = `/admin/contracts/templates/${data.id}`; }
-    catch (e) { window.alert(e?.response?.data?.detail || "Failed."); }
-    finally { setBusy(false); }
+    try { await fn(); await onChanged?.(); } finally { setBusy(false); }
   };
 
   return (
-    <tr className="border-b border-stone-100 hover:bg-stone-50" data-testid={`template-row-${t.id}`}>
-      <td className="px-4 py-3">
-        <Link to={`/admin/contracts/templates/${t.id}`} className="text-sm font-semibold text-stone-900 hover:underline">
-          {t.name || "(untitled)"}
-        </Link>
-        <div className="flex items-center gap-1.5 mt-1">
-          <DefaultPill isDefault={t.is_default} />
-        </div>
-      </td>
-      <td className="px-4 py-3 text-sm text-stone-700">{CONTRACT_TYPE_LABEL[t.contract_type] || t.contract_type}</td>
-      <td className="px-4 py-3"><StatusPill status={t.status} /></td>
-      <td className="px-4 py-3 text-sm tabular-nums">v{t.current_version || 0}</td>
-      <td className="px-4 py-3 text-sm">
-        {t.conversion_approved ? (
-          <span className="inline-flex items-center gap-1 text-emerald-700"><CheckCircle2 className="w-3.5 h-3.5" /> Approved</span>
+    <tr className="border-t border-stone-200 hover:bg-stone-50">
+      <td className="px-4 py-2">
+        {renaming ? (
+          <div className="flex items-center gap-1.5">
+            <input value={name} onChange={(e) => setName(e.target.value)}
+                   data-testid={`rename-input-${t.id}`}
+                   className="px-2 py-1 text-sm border border-stone-300 rounded w-64" />
+            <button
+              data-testid={`rename-save-${t.id}`}
+              onClick={() => wrap(async () => { await api.patch(`/admin/contract-templates/${t.id}`, { name }); setRenaming(false); })}
+              className="p-1.5 rounded bg-stone-950 text-white"><Check className="w-3.5 h-3.5" /></button>
+            <button onClick={() => { setName(t.name); setRenaming(false); }} className="p-1.5 rounded border border-stone-300"><X className="w-3.5 h-3.5" /></button>
+          </div>
         ) : (
-          <span className="text-stone-500">Review pending</span>
+          <div className="flex items-center gap-2">
+            <button
+              data-testid={`open-template-${t.id}`}
+              onClick={() => navigate(`/admin/contracts/templates/${t.id}`)}
+              className="text-stone-950 hover:underline font-medium"
+            >
+              {t.name}
+            </button>
+            {t.is_default && <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-amber-800 bg-amber-100 border border-amber-200 rounded px-1.5 py-0.5"><Star className="w-3 h-3 fill-current" /> default</span>}
+          </div>
         )}
       </td>
-      <td className="px-4 py-3 text-xs text-stone-500 tabular-nums">{formatDate(t.updated_at)}</td>
-      <td className="px-4 py-3 text-right">
+      <td className="px-4 py-2 text-stone-600">{CONTRACT_TYPE_LABEL[t.contract_type] || t.contract_type}</td>
+      <td className="px-4 py-2">
+        <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest border ${STATUS_STYLES[t.status] || STATUS_STYLES.draft}`}>{t.status}</span>
+      </td>
+      <td className="px-4 py-2">
+        <span data-testid={`marker-summary-${t.id}`} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold border ${bg}`}>
+          {ready ? <CheckCircle2 className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
+          {detected} detected · {(summary.recognised || []).length} recognised
+          {unrecognised > 0 && <> · <span className="text-red-700">{unrecognised} unknown</span></>}
+          {dup > 0 && <> · <span className="text-red-700">{dup} duplicate</span></>}
+          {cle > 0 && <> · <span className="text-red-700">{cle} cross-line</span></>}
+        </span>
+      </td>
+      <td className="px-4 py-2 text-stone-600">v{t.current_version || 1}</td>
+      <td className="px-4 py-2 text-stone-500 text-xs">{formatDate(t.updated_at)}</td>
+      <td className="px-4 py-2 text-right">
         <div className="inline-flex items-center gap-1">
-          <button disabled={busy || t.status === "archived"} onClick={setDefault}
-                  data-testid={`toggle-default-${t.id}`}
-                  className="p-1.5 hover:bg-stone-100 rounded disabled:opacity-40" title={t.is_default ? "Remove default" : "Set as default"}>
-            {t.is_default ? <StarOff className="w-4 h-4 text-amber-600" /> : <Star className="w-4 h-4 text-stone-500" />}
-          </button>
-          <Link to={`/admin/contracts/templates/${t.id}`} className="p-1.5 hover:bg-stone-100 rounded" title="Open">
-            <Pencil className="w-4 h-4 text-stone-500" />
-          </Link>
-          <button disabled={busy} onClick={duplicate}
-                  data-testid={`duplicate-${t.id}`}
-                  className="p-1.5 hover:bg-stone-100 rounded disabled:opacity-40" title="Duplicate">
-            <Copy className="w-4 h-4 text-stone-500" />
-          </button>
-          <button disabled={busy || t.status === "archived"} onClick={archive}
-                  data-testid={`archive-${t.id}`}
-                  className="p-1.5 hover:bg-stone-100 rounded disabled:opacity-40" title="Archive">
-            <Archive className="w-4 h-4 text-stone-500" />
-          </button>
+          <button title="Rename" data-testid={`rename-btn-${t.id}`}
+                  onClick={() => setRenaming(true)} className="p-1.5 rounded border border-stone-300 hover:bg-white"><Pencil className="w-3.5 h-3.5 text-stone-600" /></button>
+          {!t.is_default && (
+            <button title="Set as default" data-testid={`default-btn-${t.id}`}
+                    disabled={busy}
+                    onClick={() => wrap(() => api.post(`/admin/contract-templates/${t.id}/set-default`))}
+                    className="p-1.5 rounded border border-stone-300 hover:bg-white"><StarOff className="w-3.5 h-3.5 text-stone-600" /></button>
+          )}
+          <button title="Duplicate" data-testid={`duplicate-btn-${t.id}`}
+                  disabled={busy}
+                  onClick={() => wrap(async () => { const { data } = await api.post(`/admin/contract-templates/${t.id}/duplicate`); navigate(`/admin/contracts/templates/${data.id}`); })}
+                  className="p-1.5 rounded border border-stone-300 hover:bg-white"><Copy className="w-3.5 h-3.5 text-stone-600" /></button>
+          {t.status !== "current" && ready && (
+            <button title="Publish (make current)" data-testid={`publish-btn-${t.id}`}
+                    disabled={busy}
+                    onClick={() => wrap(() => api.post(`/admin/contract-templates/${t.id}/publish`))}
+                    className="px-2 py-1 rounded bg-emerald-600 text-white text-[11px] font-bold uppercase tracking-widest">Publish</button>
+          )}
+          {t.status !== "archived" && (
+            <button title="Archive" data-testid={`archive-btn-${t.id}`}
+                    disabled={busy}
+                    onClick={() => wrap(() => api.post(`/admin/contract-templates/${t.id}/archive`))}
+                    className="p-1.5 rounded border border-stone-300 hover:bg-white"><Archive className="w-3.5 h-3.5 text-stone-600" /></button>
+          )}
         </div>
       </td>
     </tr>
   );
 }
 
-function BlankModal({ onClose, onCreated }) {
-  const [name, setName] = useState("");
-  const [type, setType] = useState("other");
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
-  const submit = async () => {
-    if (!name.trim()) { setErr("Name required."); return; }
-    setBusy(true); setErr("");
-    try {
-      const { data } = await api.post("/admin/contract-templates", { name: name.trim(), contract_type: type });
-      onCreated(data.id);
-    } catch (e) {
-      setErr(e?.response?.data?.detail || "Failed to create template.");
-    } finally { setBusy(false); }
-  };
-  return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" data-testid="blank-modal">
-      <div className="bg-white rounded-2xl border border-stone-200 shadow-xl p-6 w-full max-w-md">
-        <h2 className="font-display text-2xl">New blank template</h2>
-        <div className="mt-4 space-y-3">
-          <div>
-            <label className="text-xs font-bold uppercase tracking-widest text-stone-600">Name</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} data-testid="blank-name"
-                   className="mt-1 w-full px-3 py-2 border border-stone-300 rounded" />
-          </div>
-          <div>
-            <label className="text-xs font-bold uppercase tracking-widest text-stone-600">Contract type</label>
-            <select value={type} onChange={(e) => setType(e.target.value)} data-testid="blank-type"
-                    className="mt-1 w-full px-3 py-2 border border-stone-300 rounded">
-              {CONTRACT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-            </select>
-          </div>
-          {err && <div className="text-sm text-red-700">{err}</div>}
-        </div>
-        <div className="flex justify-end gap-2 mt-6">
-          <button onClick={onClose} className="px-3 py-2 border border-stone-300 rounded text-sm">Cancel</button>
-          <button onClick={submit} disabled={busy}
-                  data-testid="blank-create"
-                  className="px-3 py-2 rounded text-sm font-bold uppercase tracking-widest bg-stone-950 text-white disabled:opacity-40">
-            {busy ? "Creating…" : "Create"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
-// Upload modal — async job with staged progress polling.
-// Stages returned by the backend:
-//   uploading → extracting → converting → verifying → creating → complete
-// (or 'failed' at any point).
+// Upload modal — PDF only, staged progress polling.
 // ---------------------------------------------------------------------------
-const STAGES = [
-  { code: "uploading",  label: "Uploading PDF" },
-  { code: "extracting", label: "Extracting text" },
-  { code: "converting", label: "Converting document" },
-  { code: "verifying",  label: "Running verbatim comparison" },
-  { code: "creating",   label: "Creating editable template" },
-  { code: "complete",   label: "Complete" },
-];
-
 function UploadModal({ onClose, onCreated, onRefresh }) {
   const [name, setName] = useState("");
-  const [type, setType] = useState("other");
+  const [type, setType] = useState("franchise_renewal");
   const [file, setFile] = useState(null);
-  const [referencePdf, setReferencePdf] = useState(null);
   const [err, setErr] = useState("");
   const [job, setJob] = useState(null);
   const pollRef = useRef(null);
 
   useEffect(() => () => { if (pollRef.current) clearTimeout(pollRef.current); }, []);
 
-  const fileKind = file
-    ? (file.name.toLowerCase().endsWith(".docx") ? "docx"
-       : file.name.toLowerCase().endsWith(".pdf") ? "pdf" : "invalid")
-    : null;
-
   const start = async () => {
     setErr("");
-    if (!file) { setErr("Please choose a .docx (preferred) or .pdf file."); return; }
-    if (fileKind === "invalid") { setErr("Only .docx or .pdf files are supported."); return; }
+    if (!file) { setErr("Please choose a PDF file."); return; }
+    if (!file.name.toLowerCase().endsWith(".pdf")) { setErr("Only PDF files are supported."); return; }
     if (!name.trim()) { setErr("Please give the template a name."); return; }
-    if (referencePdf && !referencePdf.name.toLowerCase().endsWith(".pdf")) {
-      setErr("Reference file must be a .pdf."); return;
-    }
     const fd = new FormData();
-    fd.append("file", file);
+    fd.append("pdf", file);
     fd.append("name", name.trim());
     fd.append("contract_type", type);
-    if (referencePdf && fileKind === "docx") {
-      fd.append("reference_pdf", referencePdf);
-    }
     try {
-      const { data } = await api.post("/admin/contract-templates/upload-async", fd, {
+      const { data } = await api.post("/admin/contract-templates/upload-marker-pdf", fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       setJob(data);
@@ -380,16 +308,10 @@ function UploadModal({ onClose, onCreated, onRefresh }) {
         }
         if (data.status === "failed") return;
         pollRef.current = setTimeout(tick, 1500);
-      } catch (e) {
-        // Resilience: transient Cloudflare/edge 502s during long LLM
-        // steps must not abort polling — the backend job is still
-        // running. Retry with backoff up to 5 times before surfacing.
+      } catch {
         failures += 1;
         if (failures >= 5) {
-          setErr(
-            e?.response?.data?.detail ||
-            "Temporarily lost connection to the conversion job — it is still running in the background. Refresh the templates list in a minute.",
-          );
+          setErr("Temporarily lost connection to the conversion job — refresh the list in a minute.");
           return;
         }
         pollRef.current = setTimeout(tick, 3000);
@@ -409,14 +331,12 @@ function UploadModal({ onClose, onCreated, onRefresh }) {
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6">
         <div className="flex items-start justify-between mb-4">
           <div>
-            <h2 className="font-display text-2xl text-stone-950">Upload contract</h2>
+            <h2 className="font-display text-2xl text-stone-950">Upload contract PDF</h2>
             <p className="text-xs text-stone-500 mt-1">
-              <span className="font-semibold text-stone-700">Word (.docx) is preferred</span> — it preserves headings,
-              tables, images and alignment far more accurately than PDF. Use PDF only when no Word source exists.
+              Upload the approved PDF exported from Word. The Hub will detect every <code className="bg-stone-100 rounded px-1">[[MARKER]]</code> and record its position — nothing else about the PDF is altered.
             </p>
           </div>
-          <button onClick={onClose} data-testid="upload-close"
-                  className="p-1.5 hover:bg-stone-100 rounded">
+          <button onClick={onClose} data-testid="upload-close" className="p-1.5 hover:bg-stone-100 rounded">
             <X className="w-4 h-4 text-stone-600" />
           </button>
         </div>
@@ -437,91 +357,49 @@ function UploadModal({ onClose, onCreated, onRefresh }) {
               </select>
             </div>
             <div>
-              <label className="text-xs font-bold uppercase tracking-widest text-stone-600">
-                Source file (.docx preferred, .pdf fallback)
-              </label>
-              <input type="file" accept=".docx,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf"
+              <label className="text-xs font-bold uppercase tracking-widest text-stone-600">PDF file</label>
+              <input type="file" accept="application/pdf,.pdf"
                      data-testid="upload-file"
                      onChange={(e) => {
                        const f = e.target.files?.[0];
                        setFile(f || null);
-                       if (f && !name) setName(f.name.replace(/\.(docx|pdf)$/i, ""));
+                       if (f && !name) setName(f.name.replace(/\.pdf$/i, ""));
                      }}
                      className="mt-1 w-full text-sm" />
               {file && (
-                <div className="text-[11px] text-stone-500 mt-1 flex items-center gap-2">
-                  <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest ${
-                    fileKind === "docx" ? "bg-emerald-100 text-emerald-800"
-                    : fileKind === "pdf" ? "bg-amber-100 text-amber-800"
-                    : "bg-red-100 text-red-800"
-                  }`}>{fileKind || "?"}</span>
-                  <span>{file.name} · {(file.size / 1024).toFixed(1)} KB</span>
-                </div>
+                <div className="text-[11px] text-stone-500 mt-1">{file.name} · {(file.size / 1024).toFixed(1)} KB</div>
               )}
             </div>
-            {fileKind === "docx" && (
-              <div>
-                <label className="text-xs font-bold uppercase tracking-widest text-stone-600">
-                  Reference PDF (optional)
-                </label>
-                <input type="file" accept="application/pdf,.pdf"
-                       data-testid="upload-reference-pdf"
-                       onChange={(e) => setReferencePdf(e.target.files?.[0] || null)}
-                       className="mt-1 w-full text-sm" />
-                <p className="text-[11px] text-stone-500 mt-1">
-                  We&rsquo;ll attach it to the template so you can compare the final visual appearance against the signed PDF.
-                </p>
-                {referencePdf && (
-                  <div className="text-[11px] text-stone-500 mt-1">
-                    {referencePdf.name} · {(referencePdf.size / 1024).toFixed(1)} KB
-                  </div>
-                )}
-              </div>
-            )}
             {err && (
               <div className="text-sm text-red-700 flex items-center gap-1.5">
                 <AlertTriangle className="w-4 h-4" /> {err}
               </div>
             )}
             <div className="flex justify-end gap-2 pt-2">
-              <button onClick={onClose}
-                      className="px-3 py-2 border border-stone-300 rounded text-sm">Cancel</button>
-              <button onClick={start}
-                      data-testid="upload-start"
-                      className="px-3 py-2 rounded text-sm font-bold uppercase tracking-widest bg-stone-950 text-white">
-                Start upload
-              </button>
+              <button onClick={onClose} className="px-3 py-2 border border-stone-300 rounded text-sm">Cancel</button>
+              <button onClick={start} data-testid="upload-start"
+                      className="px-3 py-2 rounded text-sm font-bold uppercase tracking-widest bg-stone-950 text-white">Start upload</button>
             </div>
           </div>
         )}
 
         {job && (
           <div className="space-y-4" data-testid="upload-progress">
-            {/* Progress bar */}
             <div className="h-2 bg-stone-100 rounded overflow-hidden">
               <div
-                className={`h-full transition-all duration-500 ${
-                  failed ? "bg-red-500" : complete ? "bg-emerald-500" : "bg-stone-950"
-                }`}
+                className={`h-full transition-all duration-500 ${failed ? "bg-red-500" : complete ? "bg-emerald-500" : "bg-stone-950"}`}
                 style={{ width: `${Math.max(4, job.progress || 0)}%` }}
-                data-testid="upload-progress-bar"
-              />
+                data-testid="upload-progress-bar" />
             </div>
-
-            {/* Stage list */}
             <ol className="space-y-1.5" data-testid="upload-stage-list">
               {STAGES.map((s, i) => {
-                const done = !failed && (complete || (currentStageIdx > i));
+                const done = !failed && (complete || currentStageIdx > i);
                 const active = !failed && !complete && currentStageIdx === i;
-                const pending = !failed && !complete && currentStageIdx < i;
                 return (
                   <li key={s.code}
                       data-testid={`upload-stage-${s.code}`}
                       className={`flex items-center gap-2 text-sm ${
-                        done ? "text-emerald-700"
-                        : active ? "text-stone-950 font-semibold"
-                        : failed ? "text-stone-400"
-                        : "text-stone-400"
+                        done ? "text-emerald-700" : active ? "text-stone-950 font-semibold" : "text-stone-400"
                       }`}>
                     {done ? <Check className="w-4 h-4 text-emerald-600" />
                       : active ? <Loader2 className="w-4 h-4 animate-spin" />
@@ -537,18 +415,14 @@ function UploadModal({ onClose, onCreated, onRefresh }) {
                 </li>
               )}
             </ol>
-
             {failed && job.error && (
-              <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded p-2">
-                {job.error}
-              </div>
+              <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded p-2">{job.error}</div>
             )}
             {complete && (
               <div className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded p-2 flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4" /> Template ready. Opening editor…
+                <CheckCircle2 className="w-4 h-4" /> Template ready. Opening summary…
               </div>
             )}
-
             <div className="flex justify-end gap-2 pt-2">
               {failed && (
                 <button onClick={() => { setJob(null); setErr(""); }}

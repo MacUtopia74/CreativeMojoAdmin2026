@@ -64,7 +64,8 @@ import PortalBookingsPage from "@/pages/portal/PortalBookingsPage";
 import PortalShapeOrdersPage from "@/pages/portal/PortalShapeOrdersPage";
 import AdminShapeOrdersPage from "@/pages/AdminShapeOrdersPage";
 import AdminContractTemplatesPage from "@/pages/AdminContractTemplatesPage";
-import AdminContractTemplateEditorPage from "@/pages/AdminContractTemplateEditorPage";
+import AdminContractTemplateDetailPage from "@/pages/AdminContractTemplateDetailPage";
+import AdminMarkerLibraryPage from "@/pages/AdminMarkerLibraryPage";
 import PortalChangePasswordPage from "@/pages/portal/PortalChangePasswordPage";
 import PortalSubscriptionsPage from "@/pages/portal/PortalSubscriptionsPage";
 import AdminYouTubePage from "@/pages/AdminYouTubePage";
@@ -193,7 +194,8 @@ export default function App() {
               <Route path="/admin/users" element={<AdminUsersPage />} />
               <Route path="/admin/shape-orders" element={<AdminShapeOrdersPage />} />
               <Route path="/admin/contracts/templates" element={<AdminContractTemplatesPage />} />
-              <Route path="/admin/contracts/templates/:id" element={<AdminContractTemplateEditorPage />} />
+              <Route path="/admin/contracts/templates/:id" element={<AdminContractTemplateDetailPage />} />
+              <Route path="/admin/markers-library" element={<AdminMarkerLibraryPage />} />
               <Route path="/admin/password-resets" element={<AdminUsersPage />} />
               <Route path="/admin/xero" element={<XeroSettingsPage />} />
             </Route>

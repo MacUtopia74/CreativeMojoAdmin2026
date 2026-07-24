@@ -6720,6 +6720,18 @@ announcements_routes.attach(api, db, require_role)
 import contract_templates_routes  # noqa: E402
 contract_templates_routes.attach(api, db, require_role)
 
+import contract_markers_library  # noqa: E402
+contract_markers_library.attach_routes(api, db, require_role)
+
+# Idempotent seeder — runs at startup, only inserts missing markers.
+@app.on_event("startup")
+async def _seed_marker_library_on_startup():
+    try:
+        result = await contract_markers_library.seed_library(db)
+        logger.info("Marker library seed on startup: %s", result)
+    except Exception:  # noqa: BLE001
+        logger.exception("Marker library seed failed on startup")
+
 import youtube_routes  # noqa: E402
 youtube_routes.attach(api, db, require_role)
 import territory_plus_routes  # noqa: E402
