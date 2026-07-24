@@ -1,4 +1,47 @@
 # Creative Mojo — Admin & Franchisee Hub PRD
+- ✅ **CMS Phase 1B post-Stop-Point-3 corrections — Overflow surfacing, Match-source, single-line address (Feb 2026)**
+  HQ found two issues in the first Stop Point 3 review: (1) the engine was silently shrinking overlay text down to 7pt when it didn't fit; (2) `FRANCHISEE_ADDRESS_BLOCK` was authored multiline while the contract only allows a single line. Fixed both.
+    • **Address block**: now a single-line comma-joined value —
+      `compose_single_line_address(street, city, county, postcode, country)`
+      in `contract_preview_generator`. Blank / whitespace-only
+      components are omitted cleanly (no double commas, no trailing
+      separator). Marker library `FRANCHISEE_ADDRESS_BLOCK` updated to
+      `data_type=string`, `format={casing: as_is, join: ", "}`, and
+      carries `default_presentation={wrapping: no_wrap, alignment:
+      left, min_font_size: 11}`. One-shot idempotent migration in
+      `seed_library()` upgrades pre-existing system-seeded entries;
+      HQ-edited library entries are never touched.
+    • **Library-level presentation defaults**: Marker Library entries
+      can now carry a `default_presentation` block that is applied to
+      new detections. `_apply_library_presentation_defaults()` only
+      fills fields still None per occurrence — HQ overrides are
+      respected. Wired into upload-marker-pdf and
+      backfill-bbox-split.
+    • **Overflow tracking**: every `sample-preview.pdf` and
+      `sample-preview.png` render persists a per-occurrence
+      `last_render_report: {overflow, final_size, overlay_family,
+      overlay_display, substitution_required, computed_at}`. Surfaced
+      in `marker-summary` for the UI. Per-marker PNG response headers
+      also expose `X-Overflow` and `X-Final-Size`.
+    • **UI**: red dot in the occurrence list for any occurrence with
+      `overflow=true`; a prominent red warning banner in the property
+      panel citing the current `min_font_size` and prescribing "enlarge
+      the box, reposition, enable wrapping, or lower min size — but
+      NEVER let it silently shrink"; new **Match Source** button
+      one-clicks `font_size_override = source font_size` AND
+      `min_font_size = source font_size` so the engine refuses to
+      shrink below the contract-specified size. Green "Fits at Npt"
+      chip when render succeeds.
+  **Testing evidence**: 13 new tests in `test_address_and_overflow.py`
+  covering the address composer edges, library-defaults application
+  (with HQ-override respect), overflow persistence via
+  sample-preview.pdf, forced overflow via tight render_bbox, PNG
+  endpoint header exposure, and widen-clears-overflow. **91 backend
+  tests total green** across the CMS Phase 1B suite (was 78 pre-fix).
+  Paloma reset via backfill — address occurrence now correctly picks
+  up `min_font_size=11`, `wrapping=no_wrap`, `alignment=left` from the
+  library.
+
 - ✅ **CMS Phase 1B Turn C.5 + Turn D — Duplicate Settings + Stop Point 3 Evidence Pack (Feb 2026)**
   Closes out Phase 1B ahead of Stop Point 3 sign-off.
 

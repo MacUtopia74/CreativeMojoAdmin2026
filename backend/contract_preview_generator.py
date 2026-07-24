@@ -39,6 +39,32 @@ _SYNTHETIC_DEFAULTS: Dict[str, str] = {
 }
 
 
+def compose_single_line_address(
+    street: Optional[str] = None,
+    city: Optional[str] = None,
+    county: Optional[str] = None,
+    postcode: Optional[str] = None,
+    country: Optional[str] = None,
+) -> str:
+    """Return a comma-separated single-line address in HQ authoring
+    order (street, city, county, postcode, country). Blank / None /
+    whitespace-only components are omitted cleanly — the result never
+    contains double commas, empty separators, or a trailing comma.
+
+    This is the single source of truth for ``[[FRANCHISEE_ADDRESS_BLOCK]]``
+    value rendering — used both by the synthetic preview default and,
+    at issuance time, by the personalisation pipeline.
+    """
+    parts = [
+        (street or "").strip(),
+        (city or "").strip(),
+        (county or "").strip(),
+        (postcode or "").strip(),
+        (country or "").strip(),
+    ]
+    return ", ".join(p for p in parts if p)
+
+
 def synthetic_default_for(code: str, data_type: str) -> str:
     """Preview-only synthetic default. Never used in production."""
     if code == "FRANCHISEE_LEGAL_NAME":
@@ -64,7 +90,18 @@ def synthetic_default_for(code: str, data_type: str) -> str:
     if code == "FRANCHISEE_POSTCODE":
         return "SM1 1PL"
     if code == "FRANCHISEE_ADDRESS_BLOCK":
-        return "1 Sample Street\nSampletown\nSampleshire\nSM1 1PL"
+        # Single-line comma-joined address per HQ authoring rule.
+        # Blank / missing components are omitted cleanly — no double
+        # commas, no trailing separators. Real personalisation at
+        # issuance time will call ``compose_single_line_address()``
+        # with the franchisee's actual field values.
+        return compose_single_line_address(
+            street="2, Wordsworth Cottages",
+            city="Robertsbridge",
+            county="East Sussex",
+            postcode="TN32 5JG",
+            country="United Kingdom",
+        )
     if code == "FRANCHISE_NUMBER":
         return "0099"
     if code == "CONTRACT_REFERENCE":
@@ -309,6 +346,9 @@ def generate_sample_preview(
             for m in by_page.get(page_num, []):
                 value = _resolve_value(m, values)
                 row = _write_value(page, m, value)
+                # Tag each report row with the source occurrence_id so
+                # callers can persist per-occurrence render status.
+                row["occurrence_id"] = m.get("occurrence_id")
                 report["occurrences"].append(row)
 
         # 2) Watermark every page

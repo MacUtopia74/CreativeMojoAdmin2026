@@ -192,6 +192,62 @@ def attach(api, db, require_role):
         }
         return {k: v for k, v in m.items() if k in keep}
 
+    def _apply_library_presentation_defaults(markers: List[Dict[str, Any]], lib_docs: List[Dict[str, Any]]) -> None:
+        """When the Marker Library defines a ``default_presentation``
+        block for a code (e.g. FRANCHISEE_ADDRESS_BLOCK →
+        ``wrapping='no_wrap', alignment='left', min_font_size=11``),
+        apply it to newly-detected occurrences of that code whose
+        per-occurrence field is still None. HQ can still override in
+        the property panel. Mutates ``markers`` in place."""
+        defaults_by_code: Dict[str, Dict[str, Any]] = {}
+        for lib in lib_docs or []:
+            dp = lib.get("default_presentation") or {}
+            if dp:
+                defaults_by_code[lib.get("code")] = dp
+        if not defaults_by_code:
+            return
+        for m in markers:
+            dp = defaults_by_code.get(m.get("code"))
+            if not dp:
+                continue
+            for k, v in dp.items():
+                if m.get(k) is None:
+                    m[k] = v
+
+    async def _persist_render_reports(template_id: str, occurrences_reports: List[Dict[str, Any]]) -> None:
+        """After a preview render, write each row's overflow / final_size /
+        overlay-family status back onto the corresponding marker so the
+        Marker Review UI can badge overflows. Only touches occurrences
+        referenced by ``occurrence_id`` — everything else stays intact."""
+        if not occurrences_reports:
+            return
+        by_oid = {r.get("occurrence_id"): r for r in occurrences_reports if r.get("occurrence_id")}
+        if not by_oid:
+            return
+        doc = await db[TEMPLATES_COLLECTION].find_one({"id": template_id})
+        if not doc:
+            return
+        markers = doc.get("markers", []) or []
+        touched = False
+        for m in markers:
+            r = by_oid.get(m.get("occurrence_id"))
+            if not r:
+                continue
+            m["last_render_report"] = {
+                "overflow": bool(r.get("overflow")),
+                "final_size": r.get("final_size"),
+                "overlay_family": r.get("overlay_family"),
+                "overlay_display": r.get("overlay_display"),
+                "substitution_required": r.get("substitution_required"),
+                "computed_at": _now_iso(),
+            }
+            touched = True
+        if touched:
+            await db[TEMPLATES_COLLECTION].update_one(
+                {"id": template_id},
+                {"$set": {"markers": markers}},
+            )
+
     # ==========================================================
     # LIST / DETAIL
     # ==========================================================
@@ -404,6 +460,8 @@ def attach(api, db, require_role):
 
             # Also store a verification record so we can prove the R2
             # object matches the SHA-256 recorded at upload.
+            initial_markers = markers_pipeline.occurrences_for_storage(detection.markers)
+            _apply_library_presentation_defaults(initial_markers, lib_docs)
             template_doc = {
                 "id": tid,
                 "name": template_name.strip() or pdf_filename,
@@ -420,7 +478,7 @@ def attach(api, db, require_role):
                     "uploaded_at": _now_iso(),
                     "sha256": detection.pdf_sha256,
                 },
-                "markers": markers_pipeline.occurrences_for_storage(detection.markers),
+                "markers": initial_markers,
                 "cross_line_errors": detection.cross_line_errors,
                 "marker_summary": summary,
                 "template_required_codes": [],
@@ -846,6 +904,10 @@ def attach(api, db, require_role):
         except Exception as exc:  # noqa: BLE001
             logger.exception("Sample preview generation failed")
             raise HTTPException(500, detail=f"Preview generation failed: {exc}") from exc
+
+        # Persist per-occurrence render status so the Marker Review UI
+        # can badge occurrences that overflowed at their min_font_size.
+        await _persist_render_reports(template_id, report.get("occurrences") or [])
 
         # Separate integrity check — never blocks the response.
         integrity: Dict[str, Any] = {"status": "ok"}
@@ -1340,7 +1402,8 @@ def attach(api, db, require_role):
                 marker.get("code") or "",
                 enriched["data_type"],
             )
-            previewgen._write_value(page, enriched, value)  # pylint: disable=protected-access
+            row = previewgen._write_value(page, enriched, value)  # pylint: disable=protected-access
+            row["occurrence_id"] = occurrence_id
 
             # Cropped clip around the render_bbox
             rb = marker.get("render_bbox") or marker.get("bbox") or [0, 0, page.rect.width, page.rect.height]
@@ -1356,6 +1419,11 @@ def attach(api, db, require_role):
         finally:
             pdf.close()
 
+        # Persist the render status back so overflow/final-size badges
+        # update in the UI immediately after a per-marker preview
+        # refresh.
+        await _persist_render_reports(template_id, [row])
+
         return Response(
             content=png_bytes, media_type="image/png",
             headers={
@@ -1363,6 +1431,8 @@ def attach(api, db, require_role):
                 "X-Marker-Code": marker.get("code") or "",
                 "X-Marker-Page": str(page_num),
                 "X-Marker-Occurrence-Id": occurrence_id,
+                "X-Overflow": "1" if row.get("overflow") else "0",
+                "X-Final-Size": str(row.get("final_size") or ""),
             },
         )
 
@@ -1600,6 +1670,7 @@ def attach(api, db, require_role):
 
             new_markers = markers_pipeline.occurrences_for_storage(detection.markers)
             lib_docs = [d async for d in db[markers_library.LIBRARY_COLLECTION].find({})]
+            _apply_library_presentation_defaults(new_markers, lib_docs)
             summary = markers_pipeline.build_marker_summary(
                 detection.markers,
                 detection.cross_line_errors,

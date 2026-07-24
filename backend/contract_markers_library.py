@@ -180,11 +180,25 @@ SEED_MARKERS: List[Dict[str, Any]] = [
     {
         "code": "FRANCHISEE_ADDRESS_BLOCK",
         "label": "Franchisee address block",
-        "description": "Multi-line address assembled from street, city, county, postcode. Blank lines skipped.",
+        "description": (
+            "Single-line comma-separated address in HQ authoring order: "
+            "street, city, county, postcode, country. Blank/missing "
+            "components are omitted cleanly — no double commas or "
+            "trailing separator. Example: "
+            "'2, Wordsworth Cottages, Robertsbridge, East Sussex, TN32 5JG, United Kingdom'."
+        ),
         "value_source": "automatic",
         "data_field": "franchisees.address_block",  # virtual field — assembled by resolver
-        "data_type": "multiline_text",
-        "format": {"casing": "as_is", "max_lines": 5, "join": "\n"},
+        "data_type": "string",
+        "format": {"casing": "as_is", "join": ", "},
+        # Turn C.5+ presentation defaults. Any occurrence detected for
+        # this code will inherit these when its per-occurrence field is
+        # None. HQ can still override per-occurrence in the property panel.
+        "default_presentation": {
+            "wrapping": "no_wrap",
+            "alignment": "left",
+            "min_font_size": 11,
+        },
         "repeat_allowed": True,
         "eligible_contract_types": CONTRACT_TYPES,
     },
@@ -397,13 +411,40 @@ def _public_view(doc: Dict[str, Any]) -> Dict[str, Any]:
 async def seed_library(db) -> Dict[str, int]:
     """Idempotent seeder. Inserts missing markers, never overwrites edits
     made in the Admin UI. Returns counts of inserted / skipped.
+
+    Also runs one-shot corrective migrations for system-seeded rows
+    whose original shape was wrong (e.g. FRANCHISEE_ADDRESS_BLOCK was
+    seeded as multiline_text but HQ authoring requires single-line
+    comma-separated). Only rows still tagged ``system_seeded=True`` and
+    still ``updated_by='system:seed'`` are touched — anything HQ has
+    edited by hand is left alone.
     """
     inserted = 0
     skipped = 0
+    migrated = 0
     for entry in SEED_MARKERS:
         existing = await db[LIBRARY_COLLECTION].find_one({"code": entry["code"]})
         if existing:
             skipped += 1
+            # ---- Corrective migration for FRANCHISEE_ADDRESS_BLOCK ----
+            if (
+                entry["code"] == "FRANCHISEE_ADDRESS_BLOCK"
+                and existing.get("system_seeded") is True
+                and (existing.get("updated_by") in (None, "system:seed"))
+                and existing.get("data_type") == "multiline_text"
+            ):
+                await db[LIBRARY_COLLECTION].update_one(
+                    {"code": entry["code"]},
+                    {"$set": {
+                        "description": entry["description"],
+                        "data_type": entry["data_type"],
+                        "format": entry["format"],
+                        "default_presentation": entry.get("default_presentation"),
+                        "updated_at": _now_iso(),
+                        "updated_by": "system:seed",
+                    }},
+                )
+                migrated += 1
             continue
         doc = {
             "id": str(uuid.uuid4()),
@@ -428,7 +469,7 @@ async def seed_library(db) -> Dict[str, int]:
         await db[LIBRARY_COLLECTION].create_index("code", unique=True)
     except Exception:  # index already exists
         pass
-    return {"inserted": inserted, "skipped": skipped}
+    return {"inserted": inserted, "skipped": skipped, "migrated": migrated}
 
 
 def validate_payload(payload: Dict[str, Any], partial: bool = False) -> Optional[str]:

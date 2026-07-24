@@ -15,7 +15,7 @@ import api, { formatError } from "@/lib/api";
 import {
   X, Loader2, Plus, Trash2, RefreshCw, Download, ChevronLeft,
   ChevronRight, ZoomIn, ZoomOut, Check, AlertTriangle, ImageIcon,
-  Copy, FileArchive, Clock,
+  Copy, FileArchive, Clock, Zap,
 } from "lucide-react";
 
 // Worker served from /public — see contract_preview_generator docs.
@@ -514,6 +514,16 @@ function MarkerPropertyPanel({ marker, templateId, onChange, onDelete, onDuplica
   const [alignment, setAlignment] = useState(marker.alignment || "left");
   const [override, setOverride] = useState(marker.font_size_override ?? "");
   const [minSize, setMinSize] = useState(marker.min_font_size ?? "");
+  const lastReport = marker.last_render_report;
+  const overflowed = lastReport?.overflow === true;
+
+  const matchSource = () => {
+    const src = marker.font_size;
+    if (!src) return;
+    setOverride(src);
+    setMinSize(src);
+    onChange({ font_size_override: src, min_font_size: src });
+  };
 
   useEffect(() => {
     setAlignment(marker.alignment || "left");
@@ -569,6 +579,39 @@ function MarkerPropertyPanel({ marker, templateId, onChange, onDelete, onDuplica
               className="w-full inline-flex items-center justify-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-widest rounded border border-stone-300 hover:bg-stone-50 disabled:opacity-50">
         <RefreshCw className={`w-3 h-3 ${previewLoading ? "animate-spin" : ""}`} /> Refresh preview
       </button>
+
+      {/* Overflow warning banner */}
+      {overflowed && (
+        <div className="border border-red-300 bg-red-50 rounded p-2 text-[11px] text-red-900 space-y-1"
+             data-testid="mr-overflow-warning">
+          <div className="flex items-center gap-1 font-bold">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            Overflow at {lastReport.final_size}pt
+          </div>
+          <div className="text-[10px] text-red-800">
+            The value does not fit inside <code>render_bbox</code> at the minimum
+            font size ({marker.min_font_size ?? 7}pt). Enlarge the box (drag
+            the yellow handles), reposition it, enable wrapping, or lower
+            the minimum size — but do NOT let it silently shrink below the
+            contract&apos;s specified size.
+          </div>
+        </div>
+      )}
+      {lastReport && !overflowed && (
+        <div className="text-[10px] text-emerald-700 flex items-center gap-1" data-testid="mr-fit-ok">
+          <Check className="w-3 h-3" /> Fits at {lastReport.final_size}pt · overlay {lastReport.overlay_family}
+        </div>
+      )}
+
+      {/* Match source quick action */}
+      {marker.font_size && (
+        <button onClick={matchSource} disabled={busy}
+                data-testid="mr-match-source"
+                title={`Set size override and min size to ${marker.font_size}pt — engine will refuse to shrink below the contract's specified size.`}
+                className="w-full inline-flex items-center justify-center gap-1 px-2 py-1.5 text-[10px] font-bold uppercase tracking-widest rounded border border-stone-950 bg-stone-950 text-white hover:bg-stone-800 disabled:opacity-50">
+          <Zap className="w-3 h-3" /> Match source ({marker.font_size}pt)
+        </button>
+      )}
 
       <div>
         <div className="text-[10px] font-bold uppercase tracking-widest text-stone-500 mb-1">Alignment</div>
@@ -793,24 +836,36 @@ function OccurrenceList({ markers, selectedOid, onSelect }) {
         All occurrences ({markers.length})
       </div>
       <ul className="space-y-1" data-testid="mr-occurrence-list">
-        {markers.map((m) => (
-          <li key={m.occurrence_id}>
-            <button
-              onClick={() => onSelect(m)}
-              data-testid={`mr-occurrence-item-${m.occurrence_id}`}
-              className={`w-full text-left px-2 py-1 rounded text-[11px] flex items-center justify-between gap-2 ${
-                selectedOid === m.occurrence_id
-                  ? "bg-amber-100 border border-amber-300"
-                  : "hover:bg-stone-50 border border-transparent"
-              }`}
-            >
-              <code className="font-mono truncate">[[{m.code}]]</code>
-              <span className="text-[10px] text-stone-500 whitespace-nowrap">
-                p{m.page}{m.manually_added && " +"}
-              </span>
-            </button>
-          </li>
-        ))}
+        {markers.map((m) => {
+          const overflow = m.last_render_report?.overflow === true;
+          return (
+            <li key={m.occurrence_id}>
+              <button
+                onClick={() => onSelect(m)}
+                data-testid={`mr-occurrence-item-${m.occurrence_id}`}
+                className={`w-full text-left px-2 py-1 rounded text-[11px] flex items-center justify-between gap-2 ${
+                  selectedOid === m.occurrence_id
+                    ? "bg-amber-100 border border-amber-300"
+                    : "hover:bg-stone-50 border border-transparent"
+                }`}
+              >
+                <span className="flex items-center gap-1.5 min-w-0">
+                  {overflow && (
+                    <span
+                      data-testid={`mr-overflow-dot-${m.occurrence_id}`}
+                      className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0"
+                      title={`Overflow at ${m.last_render_report?.final_size}pt`}
+                    />
+                  )}
+                  <code className="font-mono truncate">[[{m.code}]]</code>
+                </span>
+                <span className="text-[10px] text-stone-500 whitespace-nowrap">
+                  p{m.page}{m.manually_added && " +"}
+                </span>
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
