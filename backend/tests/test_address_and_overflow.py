@@ -290,6 +290,84 @@ if BASE_URL:
             assert lr["overflow"] is False, "widening render_bbox should clear the overflow"
             assert lr["final_size"] == 11.0
 
+    # ---------------------------------------------------------------
+    # 3. Bulk Match Source (Phase 1B refinement)
+    # ---------------------------------------------------------------
+    class TestBulkMatchSource:
+        def test_preview_lists_eligible_and_overflow_projections(self, admin_client, address_template):
+            r = admin_client.get(
+                f"{BASE_URL}/api/admin/contract-templates/{address_template}/match-source-preview",
+            )
+            assert r.status_code == 200
+            d = r.json()
+            assert d["eligible_count"] >= 1
+            for e in d["eligible"]:
+                assert e["source_font_size"]
+                assert "current_min_font_size" in e
+            assert isinstance(d["will_overflow_after"], list)
+            assert "token_bbox" in d["never_altered"]
+            assert "render_bbox" in d["never_altered"]
+
+        def test_hq_override_is_skipped(self, admin_client, address_template):
+            markers = admin_client.get(
+                f"{BASE_URL}/api/admin/contract-templates/{address_template}/marker-summary",
+            ).json()["markers"]
+            addr = next(m for m in markers if m["code"] == "FRANCHISEE_ADDRESS_BLOCK")
+            admin_client.patch(
+                f"{BASE_URL}/api/admin/contract-templates/{address_template}/markers/{addr['occurrence_id']}",
+                json={"font_size_override": 9.5},
+            )
+            r = admin_client.get(
+                f"{BASE_URL}/api/admin/contract-templates/{address_template}/match-source-preview",
+            )
+            eligible_oids = {e["occurrence_id"] for e in r.json()["eligible"]}
+            assert addr["occurrence_id"] not in eligible_oids
+            assert r.json()["skipped_count"] >= 1
+            r = admin_client.post(
+                f"{BASE_URL}/api/admin/contract-templates/{address_template}/match-source-apply",
+            )
+            assert r.status_code == 200
+            markers = admin_client.get(
+                f"{BASE_URL}/api/admin/contract-templates/{address_template}/marker-summary",
+            ).json()["markers"]
+            addr = next(m for m in markers if m["code"] == "FRANCHISEE_ADDRESS_BLOCK")
+            assert addr["font_size_override"] == 9.5
+
+        def test_apply_leaves_bboxes_and_layout_alone(self, admin_client, address_template):
+            snap_before = {}
+            markers = admin_client.get(
+                f"{BASE_URL}/api/admin/contract-templates/{address_template}/marker-summary",
+            ).json()["markers"]
+            for m in markers:
+                snap_before[m["occurrence_id"]] = {
+                    k: m.get(k) for k in
+                    ("token_bbox", "render_bbox", "page", "code", "alignment",
+                     "wrapping", "casing", "overlay_font_family_override")
+                }
+            r = admin_client.post(
+                f"{BASE_URL}/api/admin/contract-templates/{address_template}/match-source-apply",
+            )
+            assert r.status_code == 200
+            markers = admin_client.get(
+                f"{BASE_URL}/api/admin/contract-templates/{address_template}/marker-summary",
+            ).json()["markers"]
+            for m in markers:
+                snap_after = {
+                    k: m.get(k) for k in
+                    ("token_bbox", "render_bbox", "page", "code", "alignment",
+                     "wrapping", "casing", "overlay_font_family_override")
+                }
+                assert snap_after == snap_before[m["occurrence_id"]], (
+                    f"bulk match-source altered a protected field on {m['code']}"
+                )
+
+        def test_audit_row_written(self, admin_client, address_template):
+            r = admin_client.get(
+                f"{BASE_URL}/api/admin/contract-templates/{address_template}/audit-log",
+            )
+            actions = [row["action"] for row in r.json()["items"]]
+            assert "markers.match_source_bulk" in actions
+
 else:  # pragma: no cover
     @pytest.fixture(scope="session")
     def admin_client():

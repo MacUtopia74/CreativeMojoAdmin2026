@@ -1,4 +1,33 @@
 # Creative Mojo — Admin & Franchisee Hub PRD
+- ✅ **CMS Phase 1B refinement — Bulk Match Source (Feb 2026)**
+  Toolbar action inside the Marker Review workspace that sets
+  `font_size_override` AND `min_font_size` to the detected source
+  `font_size` on every occurrence that does NOT already carry an HQ
+  font-size override.
+    • Endpoint `GET /admin/contract-templates/{id}/match-source-preview`
+      returns eligible occurrences (excluding those with an existing
+      HQ override) plus the projected list of occurrences that will
+      start overflowing under the stricter min_font_size — computed by
+      an in-memory dry preview render (no persistence).
+    • Endpoint `POST /admin/contract-templates/{id}/match-source-apply`
+      commits the change and writes a `markers.match_source_bulk`
+      audit-log entry with affected_occurrence_ids + policy statement.
+    • Never touches token_bbox, render_bbox, page, occurrence_id,
+      code, alignment, wrapping, casing, overlay_font_family_override,
+      or data binding.
+    • UI: **Match all** button on the toolbar (with lightning bolt
+      icon). Confirmation dialog shows: eligible count, per-occurrence
+      list with source font size, projected overflow list with a red
+      safety banner explaining that overflow is the intended signal,
+      and the emerald "Never altered" disclaimer including
+      "HQ-set font-size overrides are preserved."
+  **Testing evidence**: 4 new HTTP tests in
+  `test_address_and_overflow.py::TestBulkMatchSource` — preview
+  surfaces eligible + overflow projections, HQ override is respected
+  and skipped, protected fields untouched after apply, and audit row
+  is written. **95 backend tests green** across the Phase 1B suite.
+  Paloma reset via backfill; template is a clean slate for HQ tuning.
+
 - ✅ **CMS Phase 1B post-Stop-Point-3 corrections — Overflow surfacing, Match-source, single-line address (Feb 2026)**
   HQ found two issues in the first Stop Point 3 review: (1) the engine was silently shrinking overlay text down to 7pt when it didn't fit; (2) `FRANCHISEE_ADDRESS_BLOCK` was authored multiline while the contract only allows a single line. Fixed both.
     • **Address block**: now a single-line comma-joined value —

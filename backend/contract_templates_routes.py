@@ -1295,6 +1295,158 @@ def attach(api, db, require_role):
         }
 
     # ==========================================================
+    # PHASE 1B REFINEMENT — Bulk Match Source
+    # ==========================================================
+    # Sets ``font_size_override`` AND ``min_font_size`` to the detected
+    # source ``font_size`` on every occurrence that does NOT already
+    # carry an HQ font_size_override. Never touches token_bbox,
+    # render_bbox, page, occurrence_id, code, alignment, wrapping,
+    # casing, overlay_font_family_override or any data binding.
+    def _eligible_for_match_source(m: Dict[str, Any]) -> bool:
+        if m.get("font_size_override") is not None:
+            return False           # HQ has explicitly pinned it
+        if not m.get("font_size"):
+            return False           # No source font size to match
+        return True
+
+    async def _simulate_preview_overflows(
+        template_id: str, patched_markers: List[Dict[str, Any]], tpl: Dict[str, Any],
+    ) -> Dict[str, bool]:
+        """Render the sample preview against ``patched_markers`` in
+        memory (no persistence) and return {occurrence_id: overflow}.
+        Used by the match-source-preview endpoint so HQ sees, before
+        committing, which occurrences will start overflowing under the
+        stricter min_font_size."""
+        import contract_preview_generator as previewgen
+        src = tpl.get("source_pdf") or {}
+        key = src.get("r2_key")
+        if not key:
+            return {}
+        raw = _r2_get_bytes(key)
+        if raw is None:
+            return {}
+        lib_docs = [d async for d in db[markers_library.LIBRARY_COLLECTION].find({})]
+        lib_by_code = {d["code"]: d for d in lib_docs}
+        enriched = []
+        for m in patched_markers:
+            e = dict(m)
+            entry = lib_by_code.get(m.get("code"))
+            if entry:
+                e["data_type"] = entry.get("data_type", "string")
+            enriched.append(e)
+        try:
+            _, report = previewgen.generate_sample_preview(
+                raw, enriched, values=None, template_name=tpl.get("name") or "template",
+            )
+        except Exception:  # noqa: BLE001
+            return {}
+        return {
+            r.get("occurrence_id"): bool(r.get("overflow"))
+            for r in (report.get("occurrences") or [])
+            if r.get("occurrence_id")
+        }
+
+    @api.get("/admin/contract-templates/{template_id}/match-source-preview")
+    async def match_source_preview(
+        template_id: str,
+        _: dict = Depends(require_role("admin")),
+    ):
+        """Dry-run preview — returns which occurrences are eligible for
+        the bulk change, plus which will start overflowing at the new
+        min_font_size. Nothing is written."""
+        tpl = await db[TEMPLATES_COLLECTION].find_one({"id": template_id})
+        if not tpl:
+            raise HTTPException(404, detail="Template not found")
+        markers = await _ensure_occurrence_ids(template_id, tpl.get("markers", []) or [])
+        eligible = [m for m in markers if _eligible_for_match_source(m)]
+        # Build a patched copy for the simulation — only for eligible ones.
+        patched = [dict(m) for m in markers]
+        for pm in patched:
+            if _eligible_for_match_source(pm):
+                pm["font_size_override"] = float(pm["font_size"])
+                pm["min_font_size"] = float(pm["font_size"])
+        overflows_by_oid = await _simulate_preview_overflows(template_id, patched, tpl)
+        new_overflows = [
+            {
+                "occurrence_id": m.get("occurrence_id"),
+                "code": m.get("code"),
+                "page": m.get("page"),
+                "would_overflow_at": float(m["font_size"]),
+            }
+            for m in eligible
+            if overflows_by_oid.get(m.get("occurrence_id")) is True
+        ]
+        return {
+            "template_id": template_id,
+            "eligible_count": len(eligible),
+            "skipped_count": len(markers) - len(eligible),
+            "eligible": [
+                {
+                    "occurrence_id": m.get("occurrence_id"),
+                    "code": m.get("code"),
+                    "page": m.get("page"),
+                    "source_font_size": m.get("font_size"),
+                    "current_min_font_size": m.get("min_font_size"),
+                }
+                for m in eligible
+            ],
+            "will_overflow_after": new_overflows,
+            "will_overflow_count": len(new_overflows),
+            "never_altered": [
+                "token_bbox", "render_bbox", "page", "occurrence_id", "code",
+                "alignment", "wrapping", "casing", "overlay_font_family_override",
+                "data_binding",
+            ],
+        }
+
+    @api.post("/admin/contract-templates/{template_id}/match-source-apply")
+    async def match_source_apply(
+        template_id: str,
+        user: dict = Depends(require_role("admin")),
+    ):
+        tpl = await db[TEMPLATES_COLLECTION].find_one({"id": template_id})
+        if not tpl:
+            raise HTTPException(404, detail="Template not found")
+        markers = await _ensure_occurrence_ids(template_id, tpl.get("markers", []) or [])
+        touched: List[str] = []
+        for m in markers:
+            if not _eligible_for_match_source(m):
+                continue
+            src_size = float(m["font_size"])
+            m["font_size_override"] = src_size
+            m["min_font_size"] = src_size
+            touched.append(m.get("occurrence_id"))
+        if not touched:
+            return {"ok": True, "affected_count": 0, "message": "No occurrences eligible."}
+        await db[TEMPLATES_COLLECTION].update_one(
+            {"id": template_id},
+            {"$set": {
+                "markers": markers,
+                "updated_at": _now_iso(),
+                "updated_by": user.get("email"),
+            }},
+        )
+        await _audit(
+            template_id, "markers.match_source_bulk", user,
+            before=None, after=None,
+            extra={
+                "affected_count": len(touched),
+                "affected_occurrence_ids": sorted(touched),
+                "policy": "set font_size_override and min_font_size to detected source font_size on occurrences without an existing HQ override",
+                "never_altered": [
+                    "token_bbox", "render_bbox", "page", "occurrence_id", "code",
+                    "alignment", "wrapping", "casing", "overlay_font_family_override",
+                    "data_binding",
+                ],
+            },
+        )
+        return {
+            "ok": True,
+            "affected_count": len(touched),
+            "affected_occurrence_ids": sorted(touched),
+        }
+
+    # ==========================================================
     # TURN B — Substitution acknowledgements (per font_family group)
     # ==========================================================
     @api.post("/admin/contract-templates/{template_id}/substitution-acknowledgements")

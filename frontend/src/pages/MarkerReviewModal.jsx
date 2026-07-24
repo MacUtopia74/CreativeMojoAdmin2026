@@ -47,6 +47,7 @@ export default function MarkerReviewModal({ templateId, onClose }) {
   const [deleteConfirmOid, setDeleteConfirmOid] = useState(null);
   const [duplicatePreview, setDuplicatePreview] = useState(null);
   const [showAuditLog, setShowAuditLog] = useState(false);
+  const [matchSourcePreview, setMatchSourcePreview] = useState(null);
   const canvasRef = useRef(null);
   const overlayRef = useRef(null);
 
@@ -255,6 +256,38 @@ export default function MarkerReviewModal({ templateId, onClose }) {
     finally { setBusy(false); }
   };
 
+  // Phase 1B refinement — bulk Match Source
+  const requestMatchSourcePreview = async () => {
+    setBusy(true); setErr("");
+    try {
+      const { data } = await api.get(
+        `/admin/contract-templates/${templateId}/match-source-preview`,
+      );
+      setMatchSourcePreview(data);
+    } catch (e) { setErr(formatError(e)); }
+    finally { setBusy(false); }
+  };
+
+  const applyMatchSource = async () => {
+    setBusy(true); setErr("");
+    try {
+      await api.post(
+        `/admin/contract-templates/${templateId}/match-source-apply`,
+      );
+      // Regenerate whole-doc preview to refresh last_render_report so
+      // overflow badges reflect the new state instantly.
+      try {
+        await api.post(
+          `/admin/contract-templates/${templateId}/sample-preview.pdf`,
+          {}, { responseType: "blob" },
+        );
+      } catch { /* preview regen is best-effort */ }
+      await loadSummary();
+      setMatchSourcePreview(null);
+    } catch (e) { setErr(formatError(e)); }
+    finally { setBusy(false); }
+  };
+
   const handleCanvasClick = (e) => {
     if (!addMode || !overlayRef.current) return;
     const rect = overlayRef.current.getBoundingClientRect();
@@ -334,6 +367,12 @@ export default function MarkerReviewModal({ templateId, onClose }) {
                     data-testid="mr-download-preview"
                     className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold uppercase tracking-widest rounded-md bg-white border border-amber-300 text-amber-900 hover:bg-amber-50 disabled:opacity-50">
               <Download className="w-3.5 h-3.5" /> {busy ? "…" : "Preview PDF"}
+            </button>
+            <button onClick={requestMatchSourcePreview} disabled={busy}
+                    data-testid="mr-bulk-match-source"
+                    title="Set font_size_override AND min_font_size to the detected source font size on every occurrence that doesn't already have an HQ override."
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold uppercase tracking-widest rounded-md bg-white border border-stone-300 hover:bg-stone-50 disabled:opacity-50">
+              <Zap className="w-3.5 h-3.5" /> Match all
             </button>
             <button onClick={() => setShowAuditLog(true)} disabled={busy}
                     data-testid="mr-open-audit-log"
@@ -447,6 +486,14 @@ export default function MarkerReviewModal({ templateId, onClose }) {
           <AuditLogDrawer
             templateId={templateId}
             onClose={() => setShowAuditLog(false)}
+          />
+        )}
+        {matchSourcePreview && (
+          <MatchSourceConfirm
+            preview={matchSourcePreview}
+            onConfirm={applyMatchSource}
+            onCancel={() => setMatchSourcePreview(null)}
+            busy={busy}
           />
         )}
       </div>
@@ -1078,3 +1125,91 @@ function AuditLogDrawer({ templateId, onClose }) {
     </div>
   );
 }
+
+function MatchSourceConfirm({ preview, onConfirm, onCancel, busy }) {
+  if (!preview) return null;
+  const { eligible_count, skipped_count, will_overflow_count, eligible, will_overflow_after } = preview;
+  return (
+    <div className="fixed inset-0 z-[60] bg-stone-950/60 flex items-center justify-center p-4"
+         onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+         data-testid="mr-match-source-confirm">
+      <div className="bg-white rounded-lg shadow-2xl max-w-xl w-full p-5 space-y-3">
+        <h3 className="font-display text-lg text-stone-900">
+          Bulk Match Source
+        </h3>
+        <p className="text-sm text-stone-700">
+          Set <code>font_size_override</code> AND <code>min_font_size</code> to
+          the detected source font size on <strong>{eligible_count}</strong>{" "}
+          occurrence{eligible_count !== 1 ? "s" : ""} that don&apos;t already carry
+          an HQ font-size override.
+          {skipped_count > 0 && (
+            <> <strong>{skipped_count}</strong> occurrence{skipped_count !== 1 ? "s" : ""} with
+              existing overrides will be left untouched.</>
+          )}
+        </p>
+
+        {eligible_count === 0 ? (
+          <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded p-2">
+            Nothing to do — every occurrence already has an HQ override or no
+            detected source size.
+          </div>
+        ) : (
+          <>
+            <div className="text-[11px] border border-stone-200 rounded p-2 max-h-40 overflow-y-auto"
+                 data-testid="mr-match-eligible-list">
+              {eligible.map((e) => (
+                <div key={e.occurrence_id} className="flex justify-between gap-2">
+                  <code className="font-mono truncate">[[{e.code}]]</code>
+                  <span className="text-stone-500 whitespace-nowrap">
+                    p{e.page} · src {e.source_font_size}pt
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {will_overflow_count > 0 && (
+              <div className="text-[11px] border border-red-300 bg-red-50 rounded p-2"
+                   data-testid="mr-match-overflow-warning">
+                <div className="font-bold text-red-900 flex items-center gap-1 mb-1">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  {will_overflow_count} occurrence{will_overflow_count !== 1 ? "s" : ""} will start overflowing:
+                </div>
+                <ul className="space-y-0.5 text-red-800">
+                  {will_overflow_after.map((o) => (
+                    <li key={o.occurrence_id}>
+                      · <code>[[{o.code}]]</code> p{o.page} at {o.would_overflow_at}pt
+                    </li>
+                  ))}
+                </ul>
+                <div className="text-[10px] text-red-800 mt-1">
+                  This is the intended safety signal — after applying, use the
+                  overflow badges to enlarge each affected <code>render_bbox</code>.
+                </div>
+              </div>
+            )}
+
+            <div className="text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded p-2">
+              <strong>Never altered:</strong> token_bbox, render_bbox, page,
+              occurrence_id, code, alignment, wrapping, casing, font-family
+              override, data binding. HQ-set font-size overrides are preserved.
+            </div>
+          </>
+        )}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <button onClick={onCancel} disabled={busy}
+                  data-testid="mr-match-cancel"
+                  className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest rounded border border-stone-300 hover:bg-stone-50">
+            Cancel
+          </button>
+          <button onClick={onConfirm} disabled={busy || eligible_count === 0}
+                  data-testid="mr-match-apply"
+                  className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest rounded bg-stone-950 text-white hover:bg-stone-800 disabled:opacity-40">
+            {busy ? "Applying…" : `Apply to ${eligible_count}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
