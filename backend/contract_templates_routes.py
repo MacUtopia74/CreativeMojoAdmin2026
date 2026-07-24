@@ -175,6 +175,65 @@ def attach(api, db, require_role):
             raise HTTPException(404, detail="Template not found")
         return _public_view(doc)
 
+    # ---- Turn B helpers -----------------------------------------------
+    async def _ensure_occurrence_ids(template_id: str, markers: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Lazily assign a stable ``occurrence_id`` to any legacy markers
+        that pre-date Turn B. Idempotent — writes back only when needed."""
+        needs_write = False
+        for m in markers:
+            if not m.get("occurrence_id"):
+                m["occurrence_id"] = _new_id()
+                needs_write = True
+        if needs_write:
+            await db[TEMPLATES_COLLECTION].update_one(
+                {"id": template_id},
+                {"$set": {"markers": markers, "updated_at": _now_iso()}},
+            )
+        return markers
+
+    def _build_substitution_groups(
+        markers: List[Dict[str, Any]],
+        acknowledgements: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        """Aggregate markers by source ``font_family``. Each group is
+        the unit HQ acknowledges — one tick per family covers every
+        occurrence that uses that family."""
+        groups: Dict[str, Dict[str, Any]] = {}
+        for m in markers:
+            family = m.get("font_family") or "(unknown)"
+            g = groups.setdefault(family, {
+                "font_family": family,
+                "substitution_family": m.get("substitution_family"),
+                "is_embedded": m.get("is_embedded"),
+                "is_reusable": m.get("is_reusable"),
+                "occurrence_ids": [],
+                "occurrence_count": 0,
+                "sample_codes": set(),
+            })
+            g["occurrence_ids"].append(m.get("occurrence_id"))
+            g["occurrence_count"] += 1
+            g["sample_codes"].add(m.get("code"))
+        out: List[Dict[str, Any]] = []
+        for family, g in groups.items():
+            ack = acknowledgements.get(family) or {}
+            substitution_required = bool(g.get("is_embedded")) and not bool(g.get("is_reusable"))
+            out.append({
+                "font_family": family,
+                "substitution_family": g.get("substitution_family"),
+                "is_embedded": g.get("is_embedded"),
+                "is_reusable": g.get("is_reusable"),
+                "substitution_required": substitution_required,
+                "occurrence_count": g["occurrence_count"],
+                "occurrence_ids": g["occurrence_ids"],
+                "sample_codes": sorted(g["sample_codes"]),
+                "acknowledged": bool(ack.get("acknowledged")),
+                "acknowledged_by": ack.get("acknowledged_by"),
+                "acknowledged_at": ack.get("acknowledged_at"),
+            })
+        # Deterministic order — families that still need ack first
+        out.sort(key=lambda r: (r["acknowledged"], r["font_family"]))
+        return out
+
     @api.get("/admin/contract-templates/{template_id}/marker-summary")
     async def marker_summary(template_id: str, _: dict = Depends(require_role("admin"))):
         """Return the current template's marker layout + summary.
@@ -186,6 +245,7 @@ def attach(api, db, require_role):
         if not doc:
             raise HTTPException(404, detail="Template not found")
         markers = doc.get("markers", []) or []
+        markers = await _ensure_occurrence_ids(template_id, markers)
         lib_cur = db[markers_library.LIBRARY_COLLECTION].find({})
         lib_docs = [d async for d in lib_cur]
         # Rebuild the summary from stored markers
@@ -215,6 +275,12 @@ def attach(api, db, require_role):
             doc.get("contract_type", "other"),
             doc.get("template_required_codes", []) or [],
         )
+        acknowledgements = doc.get("substitution_acknowledgements", {}) or {}
+        substitution_groups = _build_substitution_groups(markers, acknowledgements)
+        all_required_acked = all(
+            (not g["substitution_required"]) or g["acknowledged"]
+            for g in substitution_groups
+        )
         return {
             "template_id": template_id,
             "pdf_page_count": doc.get("pdf_page_count", 0),
@@ -222,6 +288,8 @@ def attach(api, db, require_role):
             "markers": markers,
             "cross_line_errors": doc.get("cross_line_errors", []) or [],
             "summary": summary,
+            "substitution_groups": substitution_groups,
+            "all_substitutions_acknowledged": all_required_acked,
         }
 
     # ==========================================================
@@ -778,6 +846,299 @@ def attach(api, db, require_role):
                 "X-Source-SHA256-Pre":  integrity.get("pre_sha256",  ""),
                 "X-Source-SHA256-Post": integrity.get("post_sha256", ""),
                 "Cache-Control": "no-store",
+            },
+        )
+
+    # ==========================================================
+    # TURN B — Occurrence CRUD
+    # ==========================================================
+    # Editable fields on PATCH: render_bbox, alignment, font_size_override,
+    # min_font_size. token_bbox is NEVER user-editable — it must remain
+    # character-tight against the source glyphs for safe redaction.
+    _PATCHABLE_FIELDS = {"render_bbox", "alignment", "font_size_override", "min_font_size"}
+    _ALIGNMENT_VALUES = {"left", "center", "right", "justify"}
+
+    def _validate_bbox(name: str, value: Any) -> List[float]:
+        if not isinstance(value, (list, tuple)) or len(value) != 4:
+            raise HTTPException(400, detail=f"{name} must be a 4-tuple [x0,y0,x1,y1]")
+        try:
+            v = [float(x) for x in value]
+        except (TypeError, ValueError):
+            raise HTTPException(400, detail=f"{name} entries must be numeric")
+        x0, y0, x1, y1 = v
+        if x1 <= x0 or y1 <= y0:
+            raise HTTPException(400, detail=f"{name} must have positive width and height")
+        return v
+
+    @api.patch("/admin/contract-templates/{template_id}/markers/{occurrence_id}")
+    async def patch_marker_occurrence(
+        template_id: str, occurrence_id: str,
+        payload: Dict[str, Any],
+        user: dict = Depends(require_role("admin")),
+    ):
+        doc = await db[TEMPLATES_COLLECTION].find_one({"id": template_id})
+        if not doc:
+            raise HTTPException(404, detail="Template not found")
+        markers = doc.get("markers", []) or []
+        markers = await _ensure_occurrence_ids(template_id, markers)
+        idx = next((i for i, m in enumerate(markers) if m.get("occurrence_id") == occurrence_id), None)
+        if idx is None:
+            raise HTTPException(404, detail="Marker occurrence not found on this template")
+
+        update: Dict[str, Any] = {}
+        for k, v in payload.items():
+            if k not in _PATCHABLE_FIELDS:
+                continue
+            if v is None:
+                update[k] = None
+                continue
+            if k == "render_bbox":
+                update[k] = _validate_bbox("render_bbox", v)
+            elif k == "alignment":
+                if v not in _ALIGNMENT_VALUES:
+                    raise HTTPException(400, detail=f"alignment must be one of {sorted(_ALIGNMENT_VALUES)}")
+                update[k] = v
+            elif k in ("font_size_override", "min_font_size"):
+                try:
+                    fv = float(v)
+                except (TypeError, ValueError):
+                    raise HTTPException(400, detail=f"{k} must be numeric")
+                if fv <= 0 or fv > 96:
+                    raise HTTPException(400, detail=f"{k} must be between 0 and 96 points")
+                update[k] = fv
+        if not update:
+            raise HTTPException(400, detail="No editable fields supplied")
+
+        markers[idx].update(update)
+        # Keep the legacy `bbox` mirror in sync with render_bbox so the
+        # existing amber-overlay thumbnail endpoint stays accurate.
+        if "render_bbox" in update:
+            markers[idx]["bbox"] = list(update["render_bbox"])
+
+        await db[TEMPLATES_COLLECTION].update_one(
+            {"id": template_id},
+            {"$set": {
+                "markers": markers,
+                "updated_at": _now_iso(),
+                "updated_by": user.get("email"),
+            }},
+        )
+        return {"ok": True, "occurrence": markers[idx]}
+
+    @api.post("/admin/contract-templates/{template_id}/markers")
+    async def add_marker_occurrence(
+        template_id: str,
+        payload: Dict[str, Any],
+        user: dict = Depends(require_role("admin")),
+    ):
+        """Manually add an occurrence — used when Word swallowed a token
+        during export and the deterministic detector had nothing to hook.
+        HQ picks a code from the Library, a page, and paints a
+        ``render_bbox`` in the UI. ``token_bbox`` is set to the same
+        rect (nothing to redact — the token isn't actually present in
+        the source PDF text layer)."""
+        doc = await db[TEMPLATES_COLLECTION].find_one({"id": template_id})
+        if not doc:
+            raise HTTPException(404, detail="Template not found")
+
+        code = (payload.get("code") or "").strip()
+        if not code:
+            raise HTTPException(400, detail="code is required")
+        page = payload.get("page")
+        if not isinstance(page, int) or page < 1 or page > int(doc.get("pdf_page_count") or 1):
+            raise HTTPException(400, detail=f"page must be 1..{doc.get('pdf_page_count')}")
+        render_bbox = _validate_bbox("render_bbox", payload.get("render_bbox"))
+
+        # Validate the code against the live Marker Library
+        lib_entry = await db[markers_library.LIBRARY_COLLECTION].find_one({"code": code, "hidden": {"$ne": True}})
+        if not lib_entry:
+            raise HTTPException(400, detail=f"Marker code '{code}' is not in the live Marker Library")
+
+        occurrence = {
+            "occurrence_id": _new_id(),
+            "code": code,
+            "page": page,
+            "token_bbox": list(render_bbox),   # nothing to redact — mirror
+            "render_bbox": list(render_bbox),
+            "bbox": list(render_bbox),
+            "font_family": payload.get("font_family"),
+            "font_size": float(payload["font_size"]) if payload.get("font_size") else None,
+            "font_weight": payload.get("font_weight") or "normal",
+            "font_style": payload.get("font_style") or "normal",
+            "font_color": payload.get("font_color"),
+            "is_embedded": None,
+            "is_reusable": None,
+            "substitution_family": None,
+            "reconstructed_from_split": False,
+            "raw_token": f"[[{code}]]",
+            "alignment": payload.get("alignment"),
+            "font_size_override": None,
+            "min_font_size": None,
+            "manually_added": True,
+        }
+        if occurrence["alignment"] and occurrence["alignment"] not in _ALIGNMENT_VALUES:
+            raise HTTPException(400, detail=f"alignment must be one of {sorted(_ALIGNMENT_VALUES)}")
+
+        markers = doc.get("markers", []) or []
+        markers.append(occurrence)
+        await db[TEMPLATES_COLLECTION].update_one(
+            {"id": template_id},
+            {"$set": {
+                "markers": markers,
+                "updated_at": _now_iso(),
+                "updated_by": user.get("email"),
+            }},
+        )
+        return {"ok": True, "occurrence": occurrence}
+
+    @api.delete("/admin/contract-templates/{template_id}/markers/{occurrence_id}")
+    async def delete_marker_occurrence(
+        template_id: str, occurrence_id: str,
+        user: dict = Depends(require_role("admin")),
+    ):
+        doc = await db[TEMPLATES_COLLECTION].find_one({"id": template_id})
+        if not doc:
+            raise HTTPException(404, detail="Template not found")
+        markers = doc.get("markers", []) or []
+        markers = await _ensure_occurrence_ids(template_id, markers)
+        new_markers = [m for m in markers if m.get("occurrence_id") != occurrence_id]
+        if len(new_markers) == len(markers):
+            raise HTTPException(404, detail="Marker occurrence not found on this template")
+        await db[TEMPLATES_COLLECTION].update_one(
+            {"id": template_id},
+            {"$set": {
+                "markers": new_markers,
+                "updated_at": _now_iso(),
+                "updated_by": user.get("email"),
+            }},
+        )
+        return {"ok": True, "removed": occurrence_id, "remaining": len(new_markers)}
+
+    # ==========================================================
+    # TURN B — Substitution acknowledgements (per font_family group)
+    # ==========================================================
+    @api.post("/admin/contract-templates/{template_id}/substitution-acknowledgements")
+    async def set_substitution_ack(
+        template_id: str,
+        payload: Dict[str, Any],
+        user: dict = Depends(require_role("admin")),
+    ):
+        """Body: {"font_family": "TimesNewRomanPSMT", "acknowledged": true|false}"""
+        doc = await db[TEMPLATES_COLLECTION].find_one({"id": template_id})
+        if not doc:
+            raise HTTPException(404, detail="Template not found")
+        family = (payload.get("font_family") or "").strip()
+        if not family:
+            raise HTTPException(400, detail="font_family is required")
+        acknowledged = bool(payload.get("acknowledged"))
+
+        # Verify the family actually appears in this template
+        markers = doc.get("markers", []) or []
+        markers = await _ensure_occurrence_ids(template_id, markers)
+        if not any((m.get("font_family") or "(unknown)") == family for m in markers):
+            raise HTTPException(400, detail=f"font_family '{family}' is not used by any marker on this template")
+
+        existing_acks = doc.get("substitution_acknowledgements", {}) or {}
+        if acknowledged:
+            existing_acks[family] = {
+                "acknowledged": True,
+                "acknowledged_by": user.get("email"),
+                "acknowledged_at": _now_iso(),
+            }
+        else:
+            existing_acks.pop(family, None)
+
+        await db[TEMPLATES_COLLECTION].update_one(
+            {"id": template_id},
+            {"$set": {
+                "substitution_acknowledgements": existing_acks,
+                "updated_at": _now_iso(),
+                "updated_by": user.get("email"),
+            }},
+        )
+        groups = _build_substitution_groups(markers, existing_acks)
+        return {
+            "ok": True,
+            "font_family": family,
+            "acknowledged": acknowledged,
+            "substitution_groups": groups,
+            "all_substitutions_acknowledged": all(
+                (not g["substitution_required"]) or g["acknowledged"] for g in groups
+            ),
+        }
+
+    # ==========================================================
+    # TURN B — Per-marker sample-preview PNG (cropped)
+    # ==========================================================
+    # Renders the source page at the requested DPI, applies redaction +
+    # overlay for JUST this one occurrence, then crops to a padded box
+    # around the ``render_bbox`` so the Marker Review UI can show a
+    # thumbnail-sized "what will HQ get" preview per row.
+    @api.get("/admin/contract-templates/{template_id}/markers/{occurrence_id}/sample-preview.png")
+    async def marker_sample_preview_png(
+        template_id: str, occurrence_id: str,
+        dpi: int = Query(180, ge=72, le=300),
+        pad: int = Query(24, ge=0, le=200, description="padding in PDF points around render_bbox"),
+        _: dict = Depends(require_role("admin")),
+    ):
+        import contract_preview_generator as previewgen
+        import fitz
+        doc = await db[TEMPLATES_COLLECTION].find_one({"id": template_id})
+        if not doc:
+            raise HTTPException(404, detail="Template not found")
+        markers = doc.get("markers", []) or []
+        markers = await _ensure_occurrence_ids(template_id, markers)
+        marker = next((m for m in markers if m.get("occurrence_id") == occurrence_id), None)
+        if not marker:
+            raise HTTPException(404, detail="Marker occurrence not found on this template")
+
+        src = doc.get("source_pdf") or {}
+        key = src.get("r2_key")
+        if not key:
+            raise HTTPException(404, detail="No source PDF on file for this template.")
+        raw = _r2_get_bytes(key)
+        if raw is None:
+            raise HTTPException(502, detail="Source PDF unavailable — R2 fetch failed.")
+
+        # Enrich with data_type for synthetic default fallback
+        lib_entry = await db[markers_library.LIBRARY_COLLECTION].find_one({"code": marker.get("code")})
+        enriched = dict(marker)
+        enriched["data_type"] = (lib_entry or {}).get("data_type", "string")
+
+        page_num = int(marker.get("page") or 1)
+        pdf = fitz.open(stream=raw, filetype="pdf")
+        try:
+            if page_num < 1 or page_num > pdf.page_count:
+                raise HTTPException(400, detail=f"page {page_num} out of range")
+            page = pdf[page_num - 1]
+
+            value = previewgen.synthetic_default_for(
+                marker.get("code") or "",
+                enriched["data_type"],
+            )
+            previewgen._write_value(page, enriched, value)  # pylint: disable=protected-access
+
+            # Cropped clip around the render_bbox
+            rb = marker.get("render_bbox") or marker.get("bbox") or [0, 0, page.rect.width, page.rect.height]
+            x0, y0, x1, y1 = rb
+            clip = fitz.Rect(
+                max(page.rect.x0, x0 - pad),
+                max(page.rect.y0, y0 - pad),
+                min(page.rect.x1, x1 + pad),
+                min(page.rect.y1, y1 + pad),
+            )
+            pix = page.get_pixmap(dpi=dpi, clip=clip, alpha=False)
+            png_bytes = pix.tobytes("png")
+        finally:
+            pdf.close()
+
+        return Response(
+            content=png_bytes, media_type="image/png",
+            headers={
+                "Cache-Control": "no-store",
+                "X-Marker-Code": marker.get("code") or "",
+                "X-Marker-Page": str(page_num),
+                "X-Marker-Occurrence-Id": occurrence_id,
             },
         )
 

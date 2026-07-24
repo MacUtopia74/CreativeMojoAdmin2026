@@ -1,4 +1,41 @@
 # Creative Mojo — Admin & Franchisee Hub PRD
+- ✅ **CMS Phase 1B Turn B — Occurrence CRUD, Substitution Ack, Per-marker PNG (Feb 2026)**
+  Backend foundation for the visual Marker Review UI (Turn C):
+    • Each `MarkerOccurrence` now carries a stable `occurrence_id`
+      (UUID), plus editable overlay controls: `alignment`,
+      `font_size_override`, `min_font_size`, `manually_added`. Existing
+      markers get IDs lazily on first read (idempotent migration).
+    • **CRUD routes** (all admin-only):
+        - `PATCH /admin/contract-templates/{id}/markers/{occurrence_id}`
+          — edits `render_bbox`, `alignment`, `font_size_override`,
+          `min_font_size`. `token_bbox` is *never* editable.
+        - `POST /admin/contract-templates/{id}/markers` — manually add
+          an occurrence for the Word-swallowed-token case; validates
+          code against live Marker Library, page against page count,
+          bbox geometry.
+        - `DELETE /admin/contract-templates/{id}/markers/{occurrence_id}`
+          — removes a false-positive or manually-added occurrence.
+    • **Substitution acknowledgements** — grouped per source
+      `font_family`. `marker-summary` now returns
+      `substitution_groups[]` with `substitution_required`,
+      `occurrence_count`, `acknowledged`, `acknowledged_by`,
+      `acknowledged_at`. Endpoint:
+      `POST /admin/contract-templates/{id}/substitution-acknowledgements`.
+      Response also carries `all_substitutions_acknowledged` for the
+      publish-gate.
+    • **Per-marker sample-preview PNG** — cropped preview centred on
+      the marker: `GET /admin/contract-templates/{id}/markers/{oid}/sample-preview.png?dpi=180&pad=24`.
+      Applies redaction + overlay for that one marker only, clips to
+      `render_bbox` + padding. Returns PNG + `X-Marker-Code`,
+      `X-Marker-Page`, `X-Marker-Occurrence-Id` headers.
+  **Testing evidence**: 19 new HTTP E2E tests
+  (`test_phase1b_turn_b.py`) — CRUD happy paths + validation edges
+  (bad alignment, inverted bbox, unknown code, page out of range),
+  substitution ack toggle round-trip, PNG magic-bytes check + dpi
+  clamp, and unauth-denied. Existing 42 Phase 1A/B unit tests still
+  green. Total: 61 tests, all passing. Turn C (frontend UI) awaiting
+  user go-ahead.
+
 - ✅ **CMS Phase 1B Turn A — Redaction bbox split (Feb 2026)**
   Fixed the P0 redaction bug where PyMuPDF's `apply_redactions()` was
   destroying surrounding text (e.g. "AGREEMENT DATED " being erased

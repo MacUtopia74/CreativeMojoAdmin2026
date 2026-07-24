@@ -42,6 +42,7 @@ import io
 import logging
 import re
 import time
+import uuid
 from dataclasses import dataclass, field, asdict
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -86,6 +87,19 @@ class MarkerOccurrence:
     substitution_family: Optional[str] = None # nearest safe default
     reconstructed_from_split: bool = False
     raw_token: str = ""
+    # ---- Turn B fields ---------------------------------------------------
+    # Stable per-occurrence UUID used by CRUD routes and the frontend
+    # Marker Review UI. Generated at detection time; preserved across
+    # PATCH / add / delete operations.
+    occurrence_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    # Overlay layout controls (editable via PATCH). None means "use the
+    # value inferred from the source span".
+    alignment: Optional[str] = None           # 'left' | 'center' | 'right' | 'justify'
+    font_size_override: Optional[float] = None
+    min_font_size: Optional[float] = None
+    # True when HQ manually added this occurrence (Word-swallowed token
+    # case) — rendered/redacted like any other but flagged in the UI.
+    manually_added: bool = False
 
 
 @dataclass

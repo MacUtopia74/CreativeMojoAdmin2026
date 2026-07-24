@@ -145,7 +145,13 @@ def _write_value(page: fitz.Page, marker: Dict[str, Any], value: str) -> Dict[st
     page.apply_redactions()
 
     # Draw the personalised value inside the render bbox.
-    size = float(marker.get("font_size") or 11)
+    # ``font_size_override`` (Turn B) lets HQ manually pin a size when
+    # the auto-fit shrink algorithm produces text that's too small.
+    override = marker.get("font_size_override")
+    if override is not None:
+        size = float(override)
+    else:
+        size = float(marker.get("font_size") or 11)
     align_map = {"left": 0, "center": 1, "right": 2, "justify": 3}
     alignment = align_map.get((marker.get("alignment") or "left").lower(), 0)
 
