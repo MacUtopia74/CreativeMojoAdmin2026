@@ -15,7 +15,7 @@ import api, { formatError } from "@/lib/api";
 import {
   X, Loader2, Plus, Trash2, RefreshCw, Download, ChevronLeft,
   ChevronRight, ZoomIn, ZoomOut, Check, AlertTriangle, ImageIcon,
-  Copy, FileArchive, Clock, Zap,
+  Copy, FileArchive, Clock, Zap, Eye,
 } from "lucide-react";
 
 // Worker served from /public — see contract_preview_generator docs.
@@ -48,6 +48,7 @@ export default function MarkerReviewModal({ templateId, onClose }) {
   const [duplicatePreview, setDuplicatePreview] = useState(null);
   const [showAuditLog, setShowAuditLog] = useState(false);
   const [matchSourcePreview, setMatchSourcePreview] = useState(null);
+  const [inlinePreviewOn, setInlinePreviewOn] = useState(true);
   const canvasRef = useRef(null);
   const overlayRef = useRef(null);
 
@@ -345,6 +346,16 @@ export default function MarkerReviewModal({ templateId, onClose }) {
               <button onClick={() => setScale((s) => Math.min(3, +(s + 0.2).toFixed(2)))} data-testid="mr-zoom-in"
                       className="p-1 hover:bg-stone-100 rounded"><ZoomIn className="w-4 h-4" /></button>
             </div>
+            <button onClick={() => setInlinePreviewOn((v) => !v)} disabled={busy}
+                    data-testid="mr-inline-preview-toggle"
+                    title="Toggle inline live-render preview inside each marker box. Handy when the sample values obscure surrounding contract wording."
+                    className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold uppercase tracking-widest rounded-md border ${
+                      inlinePreviewOn
+                        ? "bg-stone-100 border-stone-400 text-stone-900"
+                        : "bg-white border-stone-300 text-stone-500 hover:bg-stone-50"
+                    }`}>
+              <Eye className="w-3.5 h-3.5" /> Live
+            </button>
             <button onClick={() => setAddMode((v) => !v)} disabled={busy}
                     data-testid="mr-add-toggle"
                     className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold uppercase tracking-widest rounded-md border ${
@@ -418,6 +429,8 @@ export default function MarkerReviewModal({ templateId, onClose }) {
                     px={toPx(m.render_bbox || m.bbox)}
                     tokenPx={toPx(m.token_bbox || m.bbox)}
                     selected={selectedOid === m.occurrence_id}
+                    inlinePreviewOn={inlinePreviewOn}
+                    scale={scale}
                     onSelect={() => setSelectedOid(m.occurrence_id)}
                     onChange={(rect) => persistOccurrence(m.occurrence_id, { render_bbox: toPt(rect) })}
                     disabled={busy}
@@ -514,42 +527,134 @@ function ModalShell({ onClose, children }) {
   );
 }
 
-function MarkerBox({ marker, px, tokenPx, selected, onSelect, onChange, disabled }) {
-  if (!px) return null;
+// Approximate PDF font-family → CSS font-stack mapping. Helvetica base14
+// families are Arial-metric-compatible; Times and Courier are as-is.
+const OVERLAY_CSS_FONT = {
+  helv: "Arial, Helvetica, sans-serif", hebo: "Arial, Helvetica, sans-serif",
+  heit: "Arial, Helvetica, sans-serif", hebi: "Arial, Helvetica, sans-serif",
+  tiro: "'Times New Roman', Times, serif", tibo: "'Times New Roman', Times, serif",
+  tiit: "'Times New Roman', Times, serif", tibi: "'Times New Roman', Times, serif",
+  cour: "'Courier New', Courier, monospace", cobo: "'Courier New', Courier, monospace",
+  coit: "'Courier New', Courier, monospace", cobi: "'Courier New', Courier, monospace",
+};
+const CSS_ALIGN = { left: "left", center: "center", right: "right", justify: "justify" };
+const CSS_TRANSFORM = { upper: "uppercase", lower: "lowercase", title: "capitalize" };
+
+function applyCasingClientSide(value, casing) {
+  if (!value) return value;
+  if (casing === "upper") return value.toUpperCase();
+  if (casing === "lower") return value.toLowerCase();
+  if (casing === "title") return value.replace(/\w\S*/g, (t) => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase());
+  if (casing === "sentence") return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+  return value;
+}
+
+function MarkerBox({ marker, px, tokenPx, selected, inlinePreviewOn, scale, onSelect, onChange, disabled }) {
+  // Local drag/resize state — kept purely visual during motion so the
+  // server call only fires on ``onDragStop`` / ``onResizeStop``. This
+  // gives smooth interaction and the debounce the spec asks for; the
+  // property panel's per-marker PNG then refreshes with the accurate
+  // server-rendered image once the drag ends.
+  const [live, setLive] = useState(null);
+  const currentPx = live || px;
+  if (!currentPx) return null;
+
+  const overflowed = marker.last_render_report?.overflow === true;
+  const value = applyCasingClientSide(marker.sample_value || `[[${marker.code}]]`, marker.casing);
+  const overlayFamily = marker.overlay_font_family_override || marker.last_render_report?.overlay_family || "helv";
+  const fontSizePt = marker.font_size_override || marker.font_size || 11;
+  const fontSizePx = fontSizePt * (scale || 1);
+  const cssAlign = CSS_ALIGN[marker.alignment || "left"] || "left";
+  const cssTransform = CSS_TRANSFORM[marker.casing] || "none";
+  // If casing is applied client-side, we don't also want CSS transform;
+  // but we keep the transform as a defensive fallback in case value
+  // arrives untransformed.
+  const wrapMode = marker.wrapping || "wrap";
+  const whiteSpace = wrapMode === "no_wrap" ? "nowrap" : "normal";
+  const overflowMode = wrapMode === "clip" ? "hidden" : "visible";
+
   return (
     <>
+      {/* Read-only token_bbox indicator (redaction zone) */}
       {tokenPx && selected && (
         <div
           data-testid={`mr-token-bbox-${marker.occurrence_id}`}
           className="absolute pointer-events-none border-2 border-dashed border-red-500 bg-red-500/10"
-          style={{ left: tokenPx.x, top: tokenPx.y, width: tokenPx.w, height: tokenPx.h, zIndex: 6 }}
+          style={{
+            left: tokenPx.x, top: tokenPx.y, width: tokenPx.w, height: tokenPx.h,
+            zIndex: 6,
+          }}
           title="token_bbox (redaction zone) — read-only"
         />
       )}
       <Rnd
-        position={{ x: px.x, y: px.y }}
-        size={{ width: px.w, height: px.h }}
+        position={{ x: currentPx.x, y: currentPx.y }}
+        size={{ width: currentPx.w, height: currentPx.h }}
         disableDragging={disabled}
         enableResizing={!disabled}
         bounds="parent"
-        onDragStop={(_e, d) => onChange({ x: d.x, y: d.y, w: px.w, h: px.h })}
-        onResizeStop={(_e, _dir, ref, _delta, pos) => onChange({
+        onDrag={(_e, d) => setLive({ x: d.x, y: d.y, w: currentPx.w, h: currentPx.h })}
+        onResize={(_e, _dir, ref, _delta, pos) => setLive({
           x: pos.x, y: pos.y,
           w: parseFloat(ref.style.width),
           h: parseFloat(ref.style.height),
         })}
+        onDragStop={(_e, d) => {
+          setLive(null);
+          onChange({ x: d.x, y: d.y, w: currentPx.w, h: currentPx.h });
+        }}
+        onResizeStop={(_e, _dir, ref, _delta, pos) => {
+          setLive(null);
+          onChange({
+            x: pos.x, y: pos.y,
+            w: parseFloat(ref.style.width),
+            h: parseFloat(ref.style.height),
+          });
+        }}
         onClick={(e) => { e.stopPropagation(); onSelect(); }}
         data-testid={`mr-marker-box-${marker.occurrence_id}`}
         style={{ zIndex: selected ? 8 : 7 }}
         className={`border-2 ${
-          selected
-            ? "border-amber-500 bg-amber-400/15"
-            : "border-amber-400/70 bg-amber-300/10 hover:bg-amber-300/20"
+          overflowed
+            ? "border-red-500 bg-red-400/10 animate-pulse"
+            : selected
+              ? "border-amber-500 bg-amber-400/15"
+              : "border-amber-400/70 bg-amber-300/10 hover:bg-amber-300/20"
         }`}
       >
         <div className="absolute -top-4 left-0 text-[10px] font-mono text-amber-900 bg-white/90 border border-amber-200 rounded px-1 whitespace-nowrap pointer-events-none">
           [[{marker.code}]]{marker.manually_added && <span title="manually added"> +</span>}
+          {overflowed && (
+            <span className="ml-1 text-red-700 font-bold" title="Overflow — value doesn't fit at min_font_size">⚠</span>
+          )}
         </div>
+        {/* Inline live-render preview — pure CSS, no server call while
+            dragging. The accurate PyMuPDF-rendered PNG in the property
+            panel takes over after onDragStop / onResizeStop. */}
+        {inlinePreviewOn && (
+          <div
+            data-testid={`mr-inline-preview-${marker.occurrence_id}`}
+            className="absolute inset-0 pointer-events-none flex px-[2px]"
+            style={{
+              fontFamily: OVERLAY_CSS_FONT[overlayFamily] || OVERLAY_CSS_FONT.helv,
+              fontSize: `${fontSizePx}px`,
+              lineHeight: 1.1,
+              textAlign: cssAlign,
+              textTransform: cssTransform,
+              whiteSpace: whiteSpace,
+              overflow: overflowMode,
+              color: "#111",
+              fontStyle: overlayFamily.endsWith("it") || overlayFamily.endsWith("bi") ? "italic" : "normal",
+              fontWeight: overlayFamily.endsWith("bo") || overlayFamily.endsWith("bi") ? "bold" : "normal",
+              alignItems: "center",
+              justifyContent: cssAlign === "center" ? "center" : cssAlign === "right" ? "flex-end" : "flex-start",
+            }}
+          >
+            <span className="w-full block" style={{ textAlign: cssAlign }}>
+              {value}
+            </span>
+          </div>
+        )}
       </Rnd>
     </>
   );

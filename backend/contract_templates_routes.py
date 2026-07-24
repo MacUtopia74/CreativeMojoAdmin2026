@@ -379,6 +379,15 @@ def attach(api, db, require_role):
             (not g["substitution_required"]) or g["acknowledged"]
             for g in substitution_groups
         )
+        # Sample value per marker — powers the inline live-render preview
+        # in the Marker Review UI. Never persisted; computed on read.
+        import contract_preview_generator as previewgen
+        lib_by_code = {d["code"]: d for d in lib_docs}
+        for m in markers:
+            entry = lib_by_code.get(m.get("code")) or {}
+            m["sample_value"] = previewgen.synthetic_default_for(
+                m.get("code") or "", entry.get("data_type", "string"),
+            )
         return {
             "template_id": template_id,
             "pdf_page_count": doc.get("pdf_page_count", 0),

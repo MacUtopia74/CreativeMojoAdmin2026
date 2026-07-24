@@ -1,4 +1,38 @@
 # Creative Mojo — Admin & Franchisee Hub PRD
+- ✅ **CMS Phase 1B refinement — Inline live-render preview inside marker boxes (Feb 2026)**
+  Final Phase 1B usability improvement. Each occurrence's editable
+  yellow `render_bbox` now shows a real-time WYSIWYG preview of what
+  the personalised value will look like at the current position/size
+  with the current alignment / font size override / min size /
+  wrapping / casing / overlay font override applied.
+    • **Backend**: `marker-summary` now includes a per-occurrence
+      `sample_value` computed by `synthetic_default_for()`. Never
+      persisted, computed on every read.
+    • **Frontend** (`MarkerBox`):
+        - Renders the sample value as an absolutely-positioned CSS
+          overlay inside the react-rnd. Font stack matches PDF font
+          (Helvetica → Arial, Times → Times New Roman, Courier →
+          Courier New). Font-weight and italic derived from the
+          overlay family code.
+        - Client-side transforms mirror the PyMuPDF pipeline: casing
+          applied to value; `no_wrap` → `white-space: nowrap`; `clip`
+          → `overflow: hidden`.
+        - **Zero server calls during drag/resize** — local `live`
+          state feeds the react-rnd `position`/`size` while dragging;
+          server PATCH only fires on `onDragStop` / `onResizeStop`.
+          Property panel's per-marker PNG then auto-refreshes with the
+          accurate PyMuPDF render.
+        - Overflow indicator: red pulsing border + ⚠ badge on the box
+          label when `last_render_report.overflow=true`.
+        - **Toggle** in the toolbar (`data-testid=mr-inline-preview-toggle`,
+          Eye icon labelled "Live") lets HQ turn the previews off when
+          they obscure surrounding contract wording.
+    • **Guarantees**: PDF canvas and source PDF are never modified;
+      `token_bbox` remains the read-only dashed-red indicator; no
+      audit rows are written for temporary live rendering (only the
+      final `onChange` PATCH is audited).
+    • **95 backend tests still green** — no backend logic touched.
+
 - ✅ **CMS Phase 1B refinement — Bulk Match Source (Feb 2026)**
   Toolbar action inside the Marker Review workspace that sets
   `font_size_override` AND `min_font_size` to the detected source
