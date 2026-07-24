@@ -1,4 +1,44 @@
 # Creative Mojo — Admin & Franchisee Hub PRD
+- ✅ **CMS Phase 1B Turn C — Visual Marker Review UI (Feb 2026)**
+  Full-screen modal invoked from the template detail page's `Marker
+  Review` button. Renders the source PDF with `pdfjs-dist@3.11.174`
+  (worker served from `/pdf.worker.min.js`) and overlays each
+  occurrence's `render_bbox` as a draggable/resizable `react-rnd` box.
+  `token_bbox` is shown as a read-only dashed-red indicator only when
+  its occurrence is selected — it has `pointer-events:none` so it
+  cannot be dragged or resized (Turn A redaction invariant preserved).
+  **Right sidebar features:**
+    • Property panel — `[[CODE]]`, page, source font family, live
+      per-marker preview PNG (auto-refetched on any change), alignment
+      buttons (left/center/right/justify), size override + min size
+      number inputs, and the read-only token_bbox + render_bbox
+      coordinates.
+    • Substitution acknowledgements — one row per source font family
+      with per-group checkbox (only shown when `substitution_required`
+      is true), plus **bulk "Acknowledge all → <overlay family>"**
+      shortcut that appears when 1+ pending required group shares the
+      same overlay family. Bulk confirm dialog shows exact source
+      families and total occurrence count; each ack is written via a
+      separate POST so per-family `acknowledged_by` / `acknowledged_at`
+      audit trail is preserved.
+    • Occurrence list — full navigation across all pages with amber
+      highlight for the selected row.
+  **Toolbar:** page prev/next, zoom in/out (50%..300%), Add-mode toggle
+  (with library-code selector), whole-document Preview PDF download.
+  **Add flow:** click Add → pick a code → click on canvas to place a
+  new occurrence (140×20 pt default box). `manually_added` chip
+  distinguishes it in the sidebar.
+  **Delete flow:** trash icon on property panel → confirm dialog
+  (data-testid=`mr-delete-confirm`).
+  **Testing evidence:** 15 Playwright E2E scenarios all pass on
+  Paloma template (7 occurrences · 5 pages) — modal open, PDF render,
+  selection, page nav, token_bbox indicator, property-panel controls,
+  refresh preview, add + delete, cancel-add, zoom, page nav, whole-doc
+  download, X-button + backdrop close, parent-page regression, and the
+  critical **token_bbox non-draggable invariant** (coordinates verified
+  unchanged after 200px drag attempt). Backend surface unchanged since
+  Turn B — 42 unit + 19 HTTP tests still green (61 total).
+
 - ✅ **CMS Phase 1B Turn B — Occurrence CRUD, Substitution Ack, Per-marker PNG (Feb 2026)**
   Backend foundation for the visual Marker Review UI (Turn C):
     • Each `MarkerOccurrence` now carries a stable `occurrence_id`
