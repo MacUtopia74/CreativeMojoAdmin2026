@@ -676,4 +676,102 @@ def attach(api, db, require_role):
             headers={"Cache-Control": "no-store"},
         )
 
+    # ==========================================================
+    # WHOLE-DOCUMENT SAMPLE PREVIEW (Phase 1B, preview-only)
+    # ==========================================================
+    # Non-persistent: never writes to R2, never creates a contract
+    # record, never mutates template state. Source PDF integrity check
+    # runs separately from the preview response (per user requirement).
+    @api.post("/admin/contract-templates/{template_id}/sample-preview.pdf")
+    async def sample_preview_pdf(
+        template_id: str,
+        payload: Optional[Dict[str, Any]] = None,
+        _: dict = Depends(require_role("admin")),
+    ):
+        import contract_preview_generator as previewgen
+        import hashlib
+
+        doc = await db[TEMPLATES_COLLECTION].find_one({"id": template_id})
+        if not doc:
+            raise HTTPException(404, detail="Template not found")
+
+        src = doc.get("source_pdf") or {}
+        key = src.get("r2_key")
+        if not key:
+            raise HTTPException(404, detail="No source PDF on file for this template.")
+        source_bytes = _r2_get_bytes(key)
+        if source_bytes is None:
+            raise HTTPException(502, detail="Source PDF unavailable — R2 fetch failed.")
+
+        expected_sha = doc.get("pdf_sha256")
+        pre_sha = hashlib.sha256(source_bytes).hexdigest()
+
+        markers = doc.get("markers", []) or []
+        # Merge marker with library data_type for synthetic defaults
+        lib_docs = [d async for d in db[markers_library.LIBRARY_COLLECTION].find({})]
+        lib_by_code = {m["code"]: m for m in lib_docs}
+        enriched = []
+        for m in markers:
+            e = dict(m)
+            lib = lib_by_code.get(m.get("code"))
+            if lib:
+                e["data_type"] = lib.get("data_type", "string")
+            enriched.append(e)
+
+        user_values = None
+        if payload:
+            user_values = payload.get("sample_values") or None
+
+        try:
+            pdf_bytes, report = previewgen.generate_sample_preview(
+                source_bytes, enriched, user_values, doc.get("name", "template"),
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Sample preview generation failed")
+            raise HTTPException(500, detail=f"Preview generation failed: {exc}") from exc
+
+        # Separate integrity check — never blocks the response.
+        integrity: Dict[str, Any] = {"status": "ok"}
+        try:
+            reread = _r2_get_bytes(key)
+            if reread is None:
+                integrity = {"status": "error", "reason": "second R2 read failed"}
+            else:
+                post_sha = hashlib.sha256(reread).hexdigest()
+                if post_sha == pre_sha == expected_sha:
+                    integrity = {
+                        "status": "ok",
+                        "pre_sha256": pre_sha,
+                        "post_sha256": post_sha,
+                        "expected_sha256": expected_sha,
+                    }
+                else:
+                    integrity = {
+                        "status": "mismatch",
+                        "pre_sha256": pre_sha,
+                        "post_sha256": post_sha,
+                        "expected_sha256": expected_sha,
+                    }
+        except Exception as exc:  # noqa: BLE001
+            integrity = {"status": "error", "reason": f"{exc}"}
+
+        fname_stub = previewgen.sanitise_filename_component(doc.get("name", "template"))
+        filename = f"PREVIEW_{fname_stub}.pdf"
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "X-Preview-Not-For-Issue": "1",
+                "X-Preview-Watermark-Pages": str(report.get("watermark_pages", 0)),
+                "X-Preview-Redaction-Verified": "1" if report.get("redaction_verified") else "0",
+                "X-Preview-Residual-Tokens": str(report.get("residual_token_count", 0)),
+                "X-Preview-Occurrences": str(len(report.get("occurrences", []))),
+                "X-Source-Integrity-Status": integrity.get("status", "unknown"),
+                "X-Source-SHA256-Pre":  integrity.get("pre_sha256",  ""),
+                "X-Source-SHA256-Post": integrity.get("post_sha256", ""),
+                "Cache-Control": "no-store",
+            },
+        )
+
     return api
