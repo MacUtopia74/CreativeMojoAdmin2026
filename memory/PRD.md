@@ -1,4 +1,51 @@
 # Creative Mojo — Admin & Franchisee Hub PRD
+- ✅ **CMS Phase 1C Turn B — Contract Value Resolver (Feb 2026, Maxx-on)**
+  Deterministic, pure resolver that turns a (template, contract, franchisee)
+  triplet into a fully-typed, formatted set of marker values, then freezes them
+  BY VALUE onto the contract so later Hub-profile edits can never mutate an
+  approved draft.
+    • **Bucket A — Franchisee record:** identity/contact markers resolve from
+      the existing franchisees collection (first/last/full name, organisation,
+      email, mobile, street/city/county/postcode/country, franchise number,
+      address block virtual assembly).
+    • **Bucket B — Contract record:** monthly fee, renewal fee, dates,
+      HQ signatory name/title, guarantor, special terms, territory description,
+      legal name, company number, trading address.
+    • **Bucket C — System-generated (with HQ override):** AGREEMENT_DATE
+      defaults to issue date (`d MMMM yyyy`), CONTRACT_REFERENCE auto-mints
+      `CM-YYYY-NNNN` (zero-padded from `franchise_number`), TERRITORY_MAP_URL
+      resolves from the FROZEN territory snapshot only.
+    • **Hard-fail on TERRITORY_MAP_URL** — if the template contains this marker
+      and the contract has no `frozen_territory_snapshot_id`, the resolver
+      refuses to freeze and returns a structured error with the fix hint
+      (`/freeze-territory`). No silent placeholder.
+    • **Endpoints on `/admin/contracts/{id}`:**
+        - `POST /variables/preview` — dry-run, never persists.
+        - `POST /resolve-variables` — first-time freeze, fails on any resolver
+          error; refuses to overwrite an existing snapshot.
+        - `POST /refresh-variables` — HQ refresh requiring a written `reason`;
+          appends `{previous_resolved_at, previous_resolved_by, refreshed_at,
+          refreshed_by, reason, previous_values_sha256}` to
+          `contract_variables.refresh_history` and emits a
+          `contract.variables.refresh` audit event.
+    • **Immutability contract:** frozen values live under
+      `contract.contract_variables.values[CODE].value` (formatted string, or
+      `{url, display, snapshot_id, url_sha256}` for hyperlinks) with a
+      full provenance triple — `source`, `resolver`, `format_applied` — so an
+      auditor can trace every value back to its origin. `values_sha256`
+      fingerprints the entire snapshot for tamper-evidence.
+    • **Immutability enforced:** editing the franchisee record after freeze
+      does NOT change frozen variables (verified by an integration test that
+      PATCHes the live franchisee and asserts the frozen value is unchanged).
+  **Verification (iteration_53):** 41/41 tests pass (31 Turn B + 10 complement
+  from the testing agent). Combined Turn A + Turn B: 69/69 pass, 1 documented
+  skip, zero critical or minor issues. No regressions on Phase 1B or Stop
+  Point 3. Test files: `tests/test_phase1c_turn_b.py`,
+  `tests/test_phase1c_turn_b_complement.py`.
+  **HELD:** Turn C (personalised PDF render + hyperlink annotation) — waiting
+  for HQ to confirm Maxx remains enabled before I start.
+
+
 - ✅ **CMS Phase 1C Turn A — Contract lifecycle + Territory-freeze scaffolding (Feb 2026)**
   Turn A lays the foundation for Phase 1C without touching any personalisation or
   rendering logic. Handshake with HQ locked in: mixed value-source model
