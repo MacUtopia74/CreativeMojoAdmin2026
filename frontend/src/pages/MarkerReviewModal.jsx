@@ -15,6 +15,7 @@ import api, { formatError } from "@/lib/api";
 import {
   X, Loader2, Plus, Trash2, RefreshCw, Download, ChevronLeft,
   ChevronRight, ZoomIn, ZoomOut, Check, AlertTriangle, ImageIcon,
+  Copy, FileArchive, Clock,
 } from "lucide-react";
 
 // Worker served from /public — see contract_preview_generator docs.
@@ -44,6 +45,8 @@ export default function MarkerReviewModal({ templateId, onClose }) {
   const [pageSize, setPageSize] = useState({ width: 0, height: 0 });
   const [showBulkAckConfirm, setShowBulkAckConfirm] = useState(null);
   const [deleteConfirmOid, setDeleteConfirmOid] = useState(null);
+  const [duplicatePreview, setDuplicatePreview] = useState(null);
+  const [showAuditLog, setShowAuditLog] = useState(false);
   const canvasRef = useRef(null);
   const overlayRef = useRef(null);
 
@@ -205,6 +208,53 @@ export default function MarkerReviewModal({ templateId, onClose }) {
     finally { setBusy(false); }
   };
 
+  // Turn D — Stop Point 3 evidence pack
+  const downloadEvidencePack = async () => {
+    setBusy(true); setErr("");
+    try {
+      const resp = await api.post(
+        `/admin/contract-templates/${templateId}/evidence-pack`,
+        {}, { responseType: "blob", timeout: 60000 },
+      );
+      const disp = resp.headers?.["content-disposition"] || "";
+      const match = /filename="([^"]+)"/i.exec(disp);
+      const filename = match ? match[1] : `EVIDENCE_PACK_${templateId}.zip`;
+      const blobUrl = URL.createObjectURL(new Blob([resp.data], { type: "application/zip" }));
+      const a = document.createElement("a");
+      a.href = blobUrl; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
+    } catch (e) { setErr(formatError(e)); }
+    finally { setBusy(false); }
+  };
+
+  // Turn C.5 — request duplicate preview from backend, then let the
+  // confirmation dialog show target list before committing.
+  const requestDuplicatePreview = async (oid, scope) => {
+    setBusy(true); setErr("");
+    try {
+      const { data } = await api.get(
+        `/admin/contract-templates/${templateId}/markers/${oid}/duplicate-preview?scope=${scope}`,
+      );
+      setDuplicatePreview({ ...data, oid, scope });
+    } catch (e) { setErr(formatError(e)); }
+    finally { setBusy(false); }
+  };
+
+  const applyDuplicate = async () => {
+    if (!duplicatePreview) return;
+    setBusy(true); setErr("");
+    try {
+      await api.post(
+        `/admin/contract-templates/${templateId}/markers/${duplicatePreview.oid}/duplicate-settings`,
+        { scope: duplicatePreview.scope },
+      );
+      await loadSummary();
+      setDuplicatePreview(null);
+    } catch (e) { setErr(formatError(e)); }
+    finally { setBusy(false); }
+  };
+
   const handleCanvasClick = (e) => {
     if (!addMode || !overlayRef.current) return;
     const rect = overlayRef.current.getBoundingClientRect();
@@ -285,6 +335,17 @@ export default function MarkerReviewModal({ templateId, onClose }) {
                     className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold uppercase tracking-widest rounded-md bg-white border border-amber-300 text-amber-900 hover:bg-amber-50 disabled:opacity-50">
               <Download className="w-3.5 h-3.5" /> {busy ? "…" : "Preview PDF"}
             </button>
+            <button onClick={() => setShowAuditLog(true)} disabled={busy}
+                    data-testid="mr-open-audit-log"
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold uppercase tracking-widest rounded-md bg-white border border-stone-300 hover:bg-stone-50 disabled:opacity-50">
+              <Clock className="w-3.5 h-3.5" /> Audit
+            </button>
+            <button onClick={downloadEvidencePack} disabled={busy}
+                    data-testid="mr-evidence-pack"
+                    title="Generate the Stop Point 3 evidence pack ZIP — manifest + source PDF + preview + markers.csv + audit log."
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold uppercase tracking-widest rounded-md bg-stone-950 text-white hover:bg-stone-800 disabled:opacity-50">
+              <FileArchive className="w-3.5 h-3.5" /> Evidence Pack
+            </button>
           </div>
         </div>
 
@@ -334,6 +395,7 @@ export default function MarkerReviewModal({ templateId, onClose }) {
                 templateId={templateId}
                 onChange={(patch) => persistOccurrence(selectedMarker.occurrence_id, patch)}
                 onDelete={() => setDeleteConfirmOid(selectedMarker.occurrence_id)}
+                onDuplicate={(scope) => requestDuplicatePreview(selectedMarker.occurrence_id, scope)}
                 busy={busy}
               />
             ) : (
@@ -371,6 +433,20 @@ export default function MarkerReviewModal({ templateId, onClose }) {
             onConfirm={() => deleteOccurrence(deleteConfirmOid)}
             onCancel={() => setDeleteConfirmOid(null)}
             busy={busy}
+          />
+        )}
+        {duplicatePreview && (
+          <DuplicateConfirm
+            preview={duplicatePreview}
+            onConfirm={applyDuplicate}
+            onCancel={() => setDuplicatePreview(null)}
+            busy={busy}
+          />
+        )}
+        {showAuditLog && (
+          <AuditLogDrawer
+            templateId={templateId}
+            onClose={() => setShowAuditLog(false)}
           />
         )}
       </div>
@@ -432,7 +508,7 @@ function MarkerBox({ marker, px, tokenPx, selected, onSelect, onChange, disabled
   );
 }
 
-function MarkerPropertyPanel({ marker, templateId, onChange, onDelete, busy }) {
+function MarkerPropertyPanel({ marker, templateId, onChange, onDelete, onDuplicate, busy }) {
   const [previewSrc, setPreviewSrc] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [alignment, setAlignment] = useState(marker.alignment || "left");
@@ -526,11 +602,91 @@ function MarkerPropertyPanel({ marker, templateId, onChange, onDelete, busy }) {
         />
       </div>
 
-      <div className="text-[10px] text-stone-500 space-y-0.5">
+      {/* Turn C.5 presentation controls */}
+      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-stone-200">
+        <SelectField
+          label="Wrapping" testid="mr-wrapping"
+          value={marker.wrapping ?? ""}
+          onChange={(v) => onChange({ wrapping: v || null })}
+          options={[["", "default (wrap)"], ["wrap", "wrap"], ["no_wrap", "no wrap"], ["clip", "clip w/ ellipsis"]]}
+        />
+        <NumberField
+          label="Max lines" testid="mr-max-lines"
+          value={marker.max_lines ?? ""}
+          onCommit={(v) => onChange({ max_lines: v === "" ? null : Number(v) })}
+          min={0} max={200} step={1} placeholder="0"
+        />
+        <SelectField
+          label="Casing" testid="mr-casing"
+          value={marker.casing ?? ""}
+          onChange={(v) => onChange({ casing: v || null })}
+          options={[["", "default"], ["none", "none"], ["upper", "UPPER"], ["lower", "lower"], ["title", "Title"], ["sentence", "Sentence"]]}
+        />
+        <SelectField
+          label="Overlay font" testid="mr-overlay-font"
+          value={marker.overlay_font_family_override ?? ""}
+          onChange={(v) => onChange({ overlay_font_family_override: v || null })}
+          options={[
+            ["", "auto"],
+            ["helv", "Helvetica"], ["hebo", "Helvetica Bold"],
+            ["heit", "Helvetica Italic"], ["hebi", "Helvetica Bold-Italic"],
+            ["tiro", "Times"], ["tibo", "Times Bold"],
+            ["tiit", "Times Italic"], ["tibi", "Times Bold-Italic"],
+            ["cour", "Courier"], ["cobo", "Courier Bold"],
+            ["coit", "Courier Italic"], ["cobi", "Courier Bold-Italic"],
+          ]}
+        />
+      </div>
+
+      {/* Turn C.5 duplicate-settings shortcuts */}
+      <div className="pt-2 border-t border-stone-200">
+        <div className="text-[10px] font-bold uppercase tracking-widest text-stone-500 mb-1">
+          Duplicate presentation to same code
+        </div>
+        <div className="grid grid-cols-2 gap-1">
+          <button
+            onClick={() => onDuplicate("next")} disabled={busy}
+            data-testid="mr-duplicate-next"
+            className="inline-flex items-center justify-center gap-1 px-2 py-1.5 text-[10px] font-bold uppercase tracking-widest rounded border border-stone-300 bg-white hover:bg-stone-50 disabled:opacity-50">
+            <Copy className="w-3 h-3" /> to next
+          </button>
+          <button
+            onClick={() => onDuplicate("all_later")} disabled={busy}
+            data-testid="mr-duplicate-all-later"
+            className="inline-flex items-center justify-center gap-1 px-2 py-1.5 text-[10px] font-bold uppercase tracking-widest rounded border border-stone-300 bg-white hover:bg-stone-50 disabled:opacity-50">
+            <Copy className="w-3 h-3" /> to all later
+          </button>
+        </div>
+        <div className="text-[10px] text-stone-500 mt-1">
+          Copies alignment, size override, min size, wrapping, max lines,
+          casing, overlay font. <strong>Never</strong> alters bboxes,
+          page, code, or data binding.
+        </div>
+      </div>
+
+      <div className="text-[10px] text-stone-500 space-y-0.5 pt-2 border-t border-stone-200">
         <div>token_bbox <em>(read-only)</em>: {(marker.token_bbox || marker.bbox || []).map((n) => n?.toFixed(1)).join(", ")}</div>
         <div>render_bbox: {(marker.render_bbox || marker.bbox || []).map((n) => n?.toFixed(1)).join(", ")}</div>
       </div>
     </div>
+  );
+}
+
+function SelectField({ label, value, onChange, options, testid }) {
+  return (
+    <label className="block">
+      <div className="text-[10px] font-bold uppercase tracking-widest text-stone-500 mb-1">{label}</div>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        data-testid={testid}
+        className="w-full text-xs border border-stone-300 rounded px-2 py-1 bg-white"
+      >
+        {options.map(([v, label]) => (
+          <option key={v} value={v}>{label}</option>
+        ))}
+      </select>
+    </label>
   );
 }
 
@@ -726,6 +882,143 @@ function DeleteConfirm({ marker, onConfirm, onCancel, busy }) {
             {busy ? "Deleting…" : "Delete"}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+
+function DuplicateConfirm({ preview, onConfirm, onCancel, busy }) {
+  if (!preview) return null;
+  const { scope, source, settings_to_copy: copied, targets, affected_count } = preview;
+  const scopeLabel = scope === "next" ? "next occurrence" : "all later occurrences";
+  return (
+    <div className="fixed inset-0 z-[60] bg-stone-950/60 flex items-center justify-center p-4"
+         onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+         data-testid="mr-duplicate-confirm">
+      <div className="bg-white rounded-lg shadow-2xl max-w-lg w-full p-5 space-y-3">
+        <h3 className="font-display text-lg text-stone-900">
+          Duplicate presentation settings → {scopeLabel}
+        </h3>
+        <p className="text-sm text-stone-700">
+          Source: <code className="bg-stone-100 px-1 rounded">[[{source.code}]]</code>
+          {" "}on page {source.page}. This will apply the presentation settings below
+          to <strong>{affected_count}</strong> occurrence{affected_count !== 1 ? "s" : ""}
+          {" "}of the same code.
+        </p>
+        {affected_count === 0 ? (
+          <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded p-2">
+            No later occurrences of <code>[[{source.code}]]</code> found — nothing to do.
+          </div>
+        ) : (
+          <>
+            <div className="text-[11px] border border-stone-200 rounded p-2 grid grid-cols-2 gap-x-3 gap-y-0.5">
+              {Object.entries(copied).map(([k, v]) => (
+                <div key={k} className="text-stone-600">
+                  <span className="font-mono">{k}</span>:{" "}
+                  <span className="text-stone-900">{v === null || v === "" ? "—" : String(v)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="text-[11px] text-stone-500">
+              <strong>Target occurrences</strong> (in reading order):
+              <ul className="mt-1 space-y-0.5">
+                {targets.map((t) => (
+                  <li key={t.occurrence_id} data-testid={`mr-dup-target-${t.occurrence_id}`}>
+                    · page {t.page} · <code className="font-mono">{t.occurrence_id.slice(0, 8)}</code>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded p-2">
+              <strong>Never altered:</strong> token_bbox, render_bbox, page,
+              occurrence_id, code, data binding, substitution acknowledgement.
+            </div>
+          </>
+        )}
+        <div className="flex justify-end gap-2 pt-2">
+          <button onClick={onCancel} disabled={busy}
+                  data-testid="mr-dup-cancel"
+                  className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest rounded border border-stone-300 hover:bg-stone-50">
+            Cancel
+          </button>
+          <button onClick={onConfirm} disabled={busy || affected_count === 0}
+                  data-testid="mr-dup-apply"
+                  className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest rounded bg-stone-950 text-white hover:bg-stone-800 disabled:opacity-40">
+            {busy ? "Applying…" : `Apply to ${affected_count}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AuditLogDrawer({ templateId, onClose }) {
+  const [rows, setRows] = useState(null);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await api.get(
+          `/admin/contract-templates/${templateId}/audit-log?limit=200`,
+        );
+        if (!cancelled) setRows(data.items || []);
+      } catch (e) {
+        if (!cancelled) setErr(formatError(e));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [templateId]);
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-stone-950/60 flex items-stretch justify-end"
+         onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+         data-testid="mr-audit-drawer">
+      <div className="w-[560px] bg-white shadow-2xl overflow-y-auto">
+        <div className="flex items-center justify-between p-4 border-b border-stone-200 bg-stone-50 sticky top-0">
+          <div>
+            <h3 className="font-display text-lg text-stone-900">Audit log</h3>
+            <div className="text-[11px] text-stone-500">
+              Every mutating action against this template. Bundled into the Evidence Pack.
+            </div>
+          </div>
+          <button onClick={onClose} data-testid="mr-audit-close"
+                  className="p-1.5 rounded border border-stone-300 hover:bg-white">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        {err && <div className="p-3 bg-red-50 text-red-800 text-xs">{err}</div>}
+        {rows === null ? (
+          <div className="p-4 flex items-center gap-2 text-xs text-stone-500">
+            <Loader2 className="w-4 h-4 animate-spin" /> Loading audit log…
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="p-4 text-xs text-stone-500">
+            No audit entries yet. Actions performed in this workspace will appear here.
+          </div>
+        ) : (
+          <ul className="divide-y divide-stone-100">
+            {rows.map((r) => (
+              <li key={r.id || `${r.at}-${r.action}`} className="p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <code className="text-[11px] font-mono text-stone-900">{r.action}</code>
+                  <span className="text-[10px] text-stone-500">
+                    {new Date(r.at).toLocaleString()}
+                  </span>
+                </div>
+                <div className="text-[10px] text-stone-600 mt-0.5">
+                  by <strong>{r.actor || "system"}</strong>
+                </div>
+                {r.extra && Object.keys(r.extra).length > 0 && (
+                  <pre className="text-[10px] mt-1 bg-stone-50 border border-stone-100 rounded p-1.5 overflow-x-auto max-h-32">
+                    {JSON.stringify(r.extra, null, 2)}
+                  </pre>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );

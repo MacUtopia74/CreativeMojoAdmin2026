@@ -28,16 +28,20 @@ Collections owned by this module:
   - contract_templates
   - contract_template_versions
   - contract_upload_jobs
+  - contract_template_audit  (Turn D — every write action logged here)
 
 All routes require admin role.
 """
 from __future__ import annotations
 
 import asyncio
+import csv
 import io
+import json
 import logging
 import os
 import uuid
+import zipfile
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -48,6 +52,9 @@ import contract_markers_pipeline as markers_pipeline
 import contract_markers_library as markers_library
 
 logger = logging.getLogger(__name__)
+
+
+AUDIT_COLLECTION = "contract_template_audit"
 
 
 # ---------------------------------------------------------------------------
@@ -149,6 +156,41 @@ def _public_view(doc: Dict[str, Any]) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 def attach(api, db, require_role):
     """Mount all Phase 1A admin routes onto ``api``."""
+
+    # ---- Audit log --------------------------------------------------------
+    # Every mutating action against a template writes one entry to
+    # ``contract_template_audit``. The Stop Point 3 evidence pack bundles
+    # this JSONL together with the source PDF, the preview PDF, and a
+    # marker CSV so HQ has a frozen, tamper-evident record of the
+    # review lifecycle.
+    async def _audit(template_id: str, action: str, actor: Optional[Dict[str, Any]],
+                     before: Any = None, after: Any = None, extra: Optional[Dict[str, Any]] = None) -> None:
+        try:
+            await db[AUDIT_COLLECTION].insert_one({
+                "id": _new_id(),
+                "template_id": template_id,
+                "action": action,
+                "actor": (actor or {}).get("email"),
+                "actor_id": (actor or {}).get("id"),
+                "at": _now_iso(),
+                "before": before,
+                "after": after,
+                "extra": extra or {},
+            })
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("audit log write failed for %s: %s", action, exc)
+
+    def _redact_marker_for_audit(m: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """Strip large/duplicative fields from audit before/after snapshots."""
+        if not m:
+            return m
+        keep = {
+            "occurrence_id", "code", "page", "token_bbox", "render_bbox",
+            "alignment", "font_size_override", "min_font_size",
+            "wrapping", "max_lines", "casing", "overlay_font_family_override",
+            "manually_added",
+        }
+        return {k: v for k, v in m.items() if k in keep}
 
     # ==========================================================
     # LIST / DETAIL
@@ -853,10 +895,26 @@ def attach(api, db, require_role):
     # TURN B — Occurrence CRUD
     # ==========================================================
     # Editable fields on PATCH: render_bbox, alignment, font_size_override,
-    # min_font_size. token_bbox is NEVER user-editable — it must remain
-    # character-tight against the source glyphs for safe redaction.
-    _PATCHABLE_FIELDS = {"render_bbox", "alignment", "font_size_override", "min_font_size"}
+    # min_font_size, wrapping, max_lines, casing, overlay_font_family_override.
+    # token_bbox is NEVER user-editable — it must remain character-tight
+    # against the source glyphs for safe redaction.
+    _PATCHABLE_FIELDS = {
+        "render_bbox", "alignment", "font_size_override", "min_font_size",
+        "wrapping", "max_lines", "casing", "overlay_font_family_override",
+    }
     _ALIGNMENT_VALUES = {"left", "center", "right", "justify"}
+    _WRAPPING_VALUES = {"wrap", "no_wrap", "clip"}
+    _CASING_VALUES = {"none", "upper", "lower", "title", "sentence"}
+    _OVERLAY_FAMILY_VALUES = {"helv", "hebo", "heit", "hebi",
+                              "tiro", "tibo", "tiit", "tibi",
+                              "cour", "cobo", "coit", "cobi"}
+    # Fields the Turn C.5 "Duplicate settings" action copies. STRICTLY
+    # presentation-only — never touches token_bbox, render_bbox, page,
+    # occurrence_id, code, or any data binding.
+    _DUPLICATE_FIELDS = (
+        "alignment", "font_size_override", "min_font_size",
+        "wrapping", "max_lines", "casing", "overlay_font_family_override",
+    )
 
     def _validate_bbox(name: str, value: Any) -> List[float]:
         if not isinstance(value, (list, tuple)) or len(value) != 4:
@@ -884,6 +942,7 @@ def attach(api, db, require_role):
         idx = next((i for i, m in enumerate(markers) if m.get("occurrence_id") == occurrence_id), None)
         if idx is None:
             raise HTTPException(404, detail="Marker occurrence not found on this template")
+        before = dict(markers[idx])
 
         update: Dict[str, Any] = {}
         for k, v in payload.items():
@@ -898,6 +957,26 @@ def attach(api, db, require_role):
                 if v not in _ALIGNMENT_VALUES:
                     raise HTTPException(400, detail=f"alignment must be one of {sorted(_ALIGNMENT_VALUES)}")
                 update[k] = v
+            elif k == "wrapping":
+                if v not in _WRAPPING_VALUES:
+                    raise HTTPException(400, detail=f"wrapping must be one of {sorted(_WRAPPING_VALUES)}")
+                update[k] = v
+            elif k == "casing":
+                if v not in _CASING_VALUES:
+                    raise HTTPException(400, detail=f"casing must be one of {sorted(_CASING_VALUES)}")
+                update[k] = v
+            elif k == "overlay_font_family_override":
+                if v not in _OVERLAY_FAMILY_VALUES:
+                    raise HTTPException(400, detail=f"overlay_font_family_override must be one of {sorted(_OVERLAY_FAMILY_VALUES)}")
+                update[k] = v
+            elif k == "max_lines":
+                try:
+                    iv = int(v)
+                except (TypeError, ValueError):
+                    raise HTTPException(400, detail="max_lines must be an integer")
+                if iv < 0 or iv > 200:
+                    raise HTTPException(400, detail="max_lines must be between 0 and 200 (0 = unlimited)")
+                update[k] = iv
             elif k in ("font_size_override", "min_font_size"):
                 try:
                     fv = float(v)
@@ -922,6 +1001,12 @@ def attach(api, db, require_role):
                 "updated_at": _now_iso(),
                 "updated_by": user.get("email"),
             }},
+        )
+        await _audit(
+            template_id, "marker.patch", user,
+            before=_redact_marker_for_audit(before),
+            after=_redact_marker_for_audit(markers[idx]),
+            extra={"changed_fields": sorted(update.keys())},
         )
         return {"ok": True, "occurrence": markers[idx]}
 
@@ -989,6 +1074,11 @@ def attach(api, db, require_role):
                 "updated_by": user.get("email"),
             }},
         )
+        await _audit(
+            template_id, "marker.add", user, before=None,
+            after=_redact_marker_for_audit(occurrence),
+            extra={"manually_added": True},
+        )
         return {"ok": True, "occurrence": occurrence}
 
     @api.delete("/admin/contract-templates/{template_id}/markers/{occurrence_id}")
@@ -1001,6 +1091,7 @@ def attach(api, db, require_role):
             raise HTTPException(404, detail="Template not found")
         markers = doc.get("markers", []) or []
         markers = await _ensure_occurrence_ids(template_id, markers)
+        removed = next((m for m in markers if m.get("occurrence_id") == occurrence_id), None)
         new_markers = [m for m in markers if m.get("occurrence_id") != occurrence_id]
         if len(new_markers) == len(markers):
             raise HTTPException(404, detail="Marker occurrence not found on this template")
@@ -1012,7 +1103,134 @@ def attach(api, db, require_role):
                 "updated_by": user.get("email"),
             }},
         )
+        await _audit(
+            template_id, "marker.delete", user,
+            before=_redact_marker_for_audit(removed), after=None,
+        )
         return {"ok": True, "removed": occurrence_id, "remaining": len(new_markers)}
+
+    # ==========================================================
+    # TURN C.5 — Duplicate presentation settings
+    # ==========================================================
+    # Copies ONLY presentation fields (alignment, font_size_override,
+    # min_font_size, wrapping, max_lines, casing,
+    # overlay_font_family_override) from a source occurrence to either
+    # the NEXT occurrence of the same code, or ALL LATER occurrences
+    # (page then y0 ascending). NEVER touches token_bbox, render_bbox,
+    # page, occurrence_id, code, or any data binding. Substitution
+    # acknowledgements stay at font-family level (untouched).
+    def _order_key(m: Dict[str, Any]) -> tuple:
+        rb = m.get("render_bbox") or m.get("bbox") or [0, 0, 0, 0]
+        return (int(m.get("page") or 0), float(rb[1] if len(rb) >= 2 else 0))
+
+    def _pick_targets(markers: List[Dict[str, Any]], source: Dict[str, Any], scope: str) -> List[Dict[str, Any]]:
+        code = source.get("code")
+        source_key = _order_key(source)
+        same_code = [
+            m for m in markers
+            if m.get("code") == code
+            and m.get("occurrence_id") != source.get("occurrence_id")
+            and _order_key(m) > source_key
+        ]
+        same_code.sort(key=_order_key)
+        if not same_code:
+            return []
+        if scope == "next":
+            return [same_code[0]]
+        return same_code  # 'all_later'
+
+    @api.get("/admin/contract-templates/{template_id}/markers/{occurrence_id}/duplicate-preview")
+    async def duplicate_settings_preview(
+        template_id: str, occurrence_id: str,
+        scope: str = Query("next", regex="^(next|all_later)$"),
+        _: dict = Depends(require_role("admin")),
+    ):
+        """Preview which occurrences would receive the copied settings —
+        used by the confirmation dialog before committing."""
+        doc = await db[TEMPLATES_COLLECTION].find_one({"id": template_id})
+        if not doc:
+            raise HTTPException(404, detail="Template not found")
+        markers = await _ensure_occurrence_ids(template_id, doc.get("markers", []) or [])
+        source = next((m for m in markers if m.get("occurrence_id") == occurrence_id), None)
+        if source is None:
+            raise HTTPException(404, detail="Source occurrence not found")
+        targets = _pick_targets(markers, source, scope)
+        return {
+            "source": {
+                "occurrence_id": source.get("occurrence_id"),
+                "code": source.get("code"),
+                "page": source.get("page"),
+            },
+            "scope": scope,
+            "settings_to_copy": {k: source.get(k) for k in _DUPLICATE_FIELDS},
+            "targets": [
+                {"occurrence_id": t.get("occurrence_id"), "page": t.get("page"),
+                 "code": t.get("code")}
+                for t in targets
+            ],
+            "affected_count": len(targets),
+            "never_altered": [
+                "token_bbox", "render_bbox", "page", "occurrence_id", "code",
+                "data_binding", "substitution_acknowledgement",
+            ],
+        }
+
+    @api.post("/admin/contract-templates/{template_id}/markers/{occurrence_id}/duplicate-settings")
+    async def duplicate_settings_apply(
+        template_id: str, occurrence_id: str,
+        payload: Dict[str, Any],
+        user: dict = Depends(require_role("admin")),
+    ):
+        scope = (payload.get("scope") or "next").lower()
+        if scope not in ("next", "all_later"):
+            raise HTTPException(400, detail="scope must be 'next' or 'all_later'")
+        doc = await db[TEMPLATES_COLLECTION].find_one({"id": template_id})
+        if not doc:
+            raise HTTPException(404, detail="Template not found")
+        markers = await _ensure_occurrence_ids(template_id, doc.get("markers", []) or [])
+        source = next((m for m in markers if m.get("occurrence_id") == occurrence_id), None)
+        if source is None:
+            raise HTTPException(404, detail="Source occurrence not found")
+
+        targets = _pick_targets(markers, source, scope)
+        if not targets:
+            return {"ok": True, "affected_count": 0, "message": "No later occurrences of same code."}
+
+        # Apply strictly-whitelisted fields. Anything else is untouched.
+        copied = {k: source.get(k) for k in _DUPLICATE_FIELDS}
+        target_ids = {t.get("occurrence_id") for t in targets}
+        for m in markers:
+            if m.get("occurrence_id") in target_ids:
+                for k, v in copied.items():
+                    m[k] = v
+
+        await db[TEMPLATES_COLLECTION].update_one(
+            {"id": template_id},
+            {"$set": {
+                "markers": markers,
+                "updated_at": _now_iso(),
+                "updated_by": user.get("email"),
+            }},
+        )
+        await _audit(
+            template_id, "marker.duplicate_settings", user,
+            before=None, after=None,
+            extra={
+                "source_occurrence_id": occurrence_id,
+                "scope": scope,
+                "affected_occurrence_ids": sorted(target_ids),
+                "copied_fields": list(_DUPLICATE_FIELDS),
+                "copied_values": copied,
+            },
+        )
+        return {
+            "ok": True,
+            "scope": scope,
+            "source_occurrence_id": occurrence_id,
+            "affected_count": len(targets),
+            "affected_occurrence_ids": sorted(target_ids),
+            "copied_fields": list(_DUPLICATE_FIELDS),
+        }
 
     # ==========================================================
     # TURN B — Substitution acknowledgements (per font_family group)
@@ -1055,6 +1273,12 @@ def attach(api, db, require_role):
                 "updated_at": _now_iso(),
                 "updated_by": user.get("email"),
             }},
+        )
+        await _audit(
+            template_id,
+            "substitution.ack" if acknowledged else "substitution.unack",
+            user, before=None, after=None,
+            extra={"font_family": family},
         )
         groups = _build_substitution_groups(markers, existing_acks)
         return {
@@ -1139,6 +1363,200 @@ def attach(api, db, require_role):
                 "X-Marker-Code": marker.get("code") or "",
                 "X-Marker-Page": str(page_num),
                 "X-Marker-Occurrence-Id": occurrence_id,
+            },
+        )
+
+    # ==========================================================
+    # TURN D — Stop Point 3 evidence pack + audit log
+    # ==========================================================
+    @api.get("/admin/contract-templates/{template_id}/audit-log")
+    async def audit_log(
+        template_id: str,
+        limit: int = Query(200, ge=1, le=2000),
+        _: dict = Depends(require_role("admin")),
+    ):
+        cur = db[AUDIT_COLLECTION].find({"template_id": template_id}).sort([("at", -1)]).limit(limit)
+        rows = []
+        async for d in cur:
+            d.pop("_id", None)
+            rows.append(d)
+        return {"template_id": template_id, "count": len(rows), "items": rows}
+
+    def _markers_to_csv(markers: List[Dict[str, Any]]) -> str:
+        buf = io.StringIO()
+        cols = [
+            "occurrence_id", "code", "page",
+            "token_bbox", "render_bbox",
+            "font_family", "font_size", "font_weight", "font_style",
+            "is_embedded", "is_reusable", "substitution_family",
+            "alignment", "font_size_override", "min_font_size",
+            "wrapping", "max_lines", "casing", "overlay_font_family_override",
+            "manually_added", "raw_token",
+        ]
+        w = csv.writer(buf)
+        w.writerow(cols)
+        for m in markers:
+            row = []
+            for c in cols:
+                v = m.get(c)
+                if isinstance(v, (list, tuple)):
+                    v = ";".join(str(x) for x in v)
+                row.append("" if v is None else v)
+            w.writerow(row)
+        return buf.getvalue()
+
+    def _evidence_readme(tpl: Dict[str, Any], marker_count: int, audit_count: int, pack_id: str) -> str:
+        return (
+            "# Stop Point 3 Evidence Pack\n\n"
+            f"Template : {tpl.get('name')}\n"
+            f"Template ID : {tpl.get('id')}\n"
+            f"Contract type : {tpl.get('contract_type')}\n"
+            f"Status : {tpl.get('status')}\n"
+            f"Source PDF SHA-256 : {tpl.get('pdf_sha256')}\n"
+            f"Page count : {tpl.get('pdf_page_count')}\n"
+            f"Marker occurrences : {marker_count}\n"
+            f"Audit log entries : {audit_count}\n"
+            f"Pack ID : {pack_id}\n"
+            f"Generated at (UTC): {_now_iso()}\n"
+            "\n"
+            "## Contents\n"
+            "\n"
+            "- manifest.json — machine-readable snapshot of every marker + substitution ack + template metadata\n"
+            "- source.pdf — byte-identical copy of the source PDF (verify against the SHA-256 above)\n"
+            "- preview.pdf — freshly-generated whole-document sample preview with watermark 'PREVIEW - NOT FOR ISSUE'\n"
+            "- markers.csv — flat marker table for auditor spreadsheet review\n"
+            "- audit_log.jsonl — one JSON object per historic mutating action against this template\n"
+            "\n"
+            "## Redaction / bbox invariants\n"
+            "\n"
+            "- token_bbox : character-tight around the [[MARKER_CODE]] glyphs only. Used exclusively for PyMuPDF redaction. NEVER editable via the UI.\n"
+            "- render_bbox : span-level union with horizontal clamp. Used for overlay text placement. Draggable/resizable via the Marker Review UI.\n"
+            "\n"
+            "This pack is an artefact of HQ template review. The source PDF byte stream is not modified in the pipeline; personalisation happens as a redact + overlay pass at issuance time.\n"
+        )
+
+    @api.post("/admin/contract-templates/{template_id}/evidence-pack")
+    async def build_evidence_pack(
+        template_id: str,
+        user: dict = Depends(require_role("admin")),
+    ):
+        """Return a ZIP containing manifest, source PDF, preview PDF,
+        markers CSV, audit log JSONL, and a README. Idempotent — regenerating
+        the pack does not mutate the template, but the fact that the pack
+        was built is itself audited so we know when HQ pulled evidence."""
+        import contract_preview_generator as previewgen  # local import — avoids circular
+
+        tpl = await db[TEMPLATES_COLLECTION].find_one({"id": template_id})
+        if not tpl:
+            raise HTTPException(404, detail="Template not found")
+        src = tpl.get("source_pdf") or {}
+        key = src.get("r2_key")
+        if not key:
+            raise HTTPException(404, detail="No source PDF on file for this template.")
+        raw = _r2_get_bytes(key)
+        if raw is None:
+            raise HTTPException(502, detail="Source PDF unavailable — R2 fetch failed.")
+
+        markers = await _ensure_occurrence_ids(template_id, tpl.get("markers", []) or [])
+        # Enrich markers with library data_type for preview overlay defaults
+        lib_docs = [d async for d in db[markers_library.LIBRARY_COLLECTION].find({})]
+        lib_by_code = {d["code"]: d for d in lib_docs}
+        enriched = []
+        for m in markers:
+            e = dict(m)
+            entry = lib_by_code.get(m.get("code"))
+            if entry:
+                e["data_type"] = entry.get("data_type", "string")
+            enriched.append(e)
+
+        try:
+            preview_bytes, preview_report = previewgen.generate_sample_preview(
+                raw, enriched, values=None, template_name=tpl.get("name") or "template",
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(500, detail=f"Preview generation failed: {exc}")
+
+        # Collect the full audit trail
+        audit_cur = db[AUDIT_COLLECTION].find({"template_id": template_id}).sort([("at", 1)])
+        audit_rows = []
+        async for d in audit_cur:
+            d.pop("_id", None)
+            audit_rows.append(d)
+
+        pack_id = _new_id()
+        manifest = {
+            "pack_id": pack_id,
+            "generated_at": _now_iso(),
+            "generated_by": user.get("email"),
+            "template": {
+                "id": tpl.get("id"),
+                "name": tpl.get("name"),
+                "contract_type": tpl.get("contract_type"),
+                "status": tpl.get("status"),
+                "pdf_sha256": tpl.get("pdf_sha256"),
+                "pdf_page_count": tpl.get("pdf_page_count"),
+                "template_required_codes": tpl.get("template_required_codes", []),
+                "created_at": tpl.get("created_at"),
+                "created_by": tpl.get("created_by"),
+                "updated_at": tpl.get("updated_at"),
+                "updated_by": tpl.get("updated_by"),
+            },
+            "markers": markers,
+            "marker_summary": tpl.get("marker_summary"),
+            "cross_line_errors": tpl.get("cross_line_errors", []),
+            "substitution_acknowledgements": tpl.get("substitution_acknowledgements", {}),
+            "preview_report": preview_report,
+            "detection_meta": tpl.get("detection_meta", {}),
+            "invariants": {
+                "token_bbox_editable": False,
+                "source_pdf_mutated": False,
+                "audit_log_count": len(audit_rows),
+            },
+        }
+
+        # Assemble the ZIP in memory
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr(
+                "README.md",
+                _evidence_readme(tpl, len(markers), len(audit_rows), pack_id),
+            )
+            zf.writestr("manifest.json", json.dumps(manifest, indent=2, sort_keys=True, default=str))
+            zf.writestr("source.pdf", raw)
+            zf.writestr("preview.pdf", preview_bytes)
+            zf.writestr("markers.csv", _markers_to_csv(markers))
+            zf.writestr(
+                "audit_log.jsonl",
+                "".join(json.dumps(r, default=str) + "\n" for r in audit_rows),
+            )
+        buf.seek(0)
+
+        # Audit the pack generation itself (before returning bytes)
+        await _audit(
+            template_id, "evidence_pack.generate", user,
+            before=None, after=None,
+            extra={
+                "pack_id": pack_id,
+                "marker_count": len(markers),
+                "audit_row_count": len(audit_rows),
+                "preview_bytes": len(preview_bytes),
+            },
+        )
+
+        # Compose a stable filename
+        safe = previewgen.sanitise_filename_component(tpl.get("name") or "template")
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        filename = f"EVIDENCE_PACK_{safe}_{ts}.zip"
+        return Response(
+            content=buf.getvalue(),
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "X-Pack-Id": pack_id,
+                "X-Marker-Count": str(len(markers)),
+                "X-Audit-Row-Count": str(len(audit_rows)),
+                "X-Source-Sha256": tpl.get("pdf_sha256") or "",
+                "Cache-Control": "no-store",
             },
         )
 

@@ -127,16 +127,29 @@ def _write_value(page: fitz.Page, marker: Dict[str, Any], value: str) -> Dict[st
     redact_rect = fitz.Rect(*token_bbox)
     overlay_rect = fitz.Rect(*render_bbox)
 
-    # Resolve overlay font
+    # Resolve overlay font. HQ can force a specific overlay family
+    # (Turn C.5 `overlay_font_family_override`) — bypasses the resolver
+    # heuristic when set; otherwise the resolver picks based on the
+    # source font metadata.
     weight = (marker.get("font_weight") or "normal") == "bold"
     italic = (marker.get("font_style") or "normal") == "italic"
-    fr = font_resolver.resolve_font(
-        marker.get("font_family"),
-        is_embedded=marker.get("is_embedded"),
-        is_reusable=marker.get("is_reusable"),
-        is_bold=weight,
-        is_italic=italic,
-    )
+    override_family = marker.get("overlay_font_family_override")
+    if override_family:
+        # Build a minimal FontResolution-shaped object so downstream
+        # report keys still populate.
+        class _ForcedFR:
+            overlay_family = override_family
+            overlay_display = override_family
+            substitution_required = True
+        fr = _ForcedFR()
+    else:
+        fr = font_resolver.resolve_font(
+            marker.get("font_family"),
+            is_embedded=marker.get("is_embedded"),
+            is_reusable=marker.get("is_reusable"),
+            is_bold=weight,
+            is_italic=italic,
+        )
 
     # Apply redaction — removes glyphs from text layer and paints the
     # background so [[...]] is gone from the output. Character-tight
@@ -144,9 +157,40 @@ def _write_value(page: fitz.Page, marker: Dict[str, Any], value: str) -> Dict[st
     page.add_redact_annot(redact_rect, fill=(1, 1, 1))
     page.apply_redactions()
 
+    # ---- Turn C.5 value transforms --------------------------------------
+    # Casing (`none|upper|lower|title|sentence`) is applied *before*
+    # any wrapping / clipping so it affects fit.
+    casing = (marker.get("casing") or "none").lower()
+    if casing == "upper":
+        value = value.upper()
+    elif casing == "lower":
+        value = value.lower()
+    elif casing == "title":
+        value = value.title()
+    elif casing == "sentence" and value:
+        value = value[0].upper() + value[1:].lower()
+
+    # Wrapping (`wrap` default, `no_wrap`, `clip`) — PyMuPDF has no
+    # native "no wrap" flag; we emulate by widening the render rect
+    # horizontally to the page bounds so the value renders on a single
+    # line, and by clipping when the value overflows.
+    wrapping = (marker.get("wrapping") or "wrap").lower()
+    if wrapping == "no_wrap":
+        page_rect = page.rect
+        overlay_rect = fitz.Rect(
+            overlay_rect.x0, overlay_rect.y0,
+            page_rect.x1 - 6, overlay_rect.y1,
+        )
+
+    # Max lines — hard-truncate the value after N line breaks so the
+    # overlay stays visually constrained. 0/None = unlimited.
+    max_lines = marker.get("max_lines")
+    if isinstance(max_lines, int) and max_lines > 0:
+        parts = value.split("\n")
+        if len(parts) > max_lines:
+            value = "\n".join(parts[:max_lines])
+
     # Draw the personalised value inside the render bbox.
-    # ``font_size_override`` (Turn B) lets HQ manually pin a size when
-    # the auto-fit shrink algorithm produces text that's too small.
     override = marker.get("font_size_override")
     if override is not None:
         size = float(override)
@@ -156,28 +200,53 @@ def _write_value(page: fitz.Page, marker: Dict[str, Any], value: str) -> Dict[st
     alignment = align_map.get((marker.get("alignment") or "left").lower(), 0)
 
     # Try to fit; if it overflows, shrink in 0.5pt steps down to a floor.
+    # For `wrapping == "clip"` we also progressively truncate the value
+    # with an ellipsis instead of shrinking — HQ has explicitly opted
+    # out of squeezing the text.
     min_size = float(marker.get("min_font_size") or 7)
     overflow = False
     current = size
-    while current >= min_size:
-        rc = page.insert_textbox(
-            overlay_rect, value,
-            fontname=fr.overlay_family,
-            fontsize=current,
-            align=alignment,
-            color=(0, 0, 0),
-        )
-        if rc >= 0:  # fit succeeded
-            break
-        current -= 0.5
+    working_value = value
+    if wrapping == "clip":
+        # Try full value first at the requested size
+        while working_value:
+            rc = page.insert_textbox(
+                overlay_rect, working_value,
+                fontname=fr.overlay_family,
+                fontsize=current,
+                align=alignment,
+                color=(0, 0, 0),
+            )
+            if rc >= 0:
+                break
+            # Trim one char + ellipsis, retry
+            trimmed = working_value[:-2].rstrip() + "…" if len(working_value) > 2 else "…"
+            if trimmed == working_value:
+                overflow = True
+                break
+            working_value = trimmed
+        else:
+            overflow = True
     else:
-        overflow = True
-        # Last resort — draw at min_size clipped
-        page.insert_textbox(
-            overlay_rect, value,
-            fontname=fr.overlay_family, fontsize=min_size,
-            align=alignment, color=(0.6, 0, 0),
-        )
+        while current >= min_size:
+            rc = page.insert_textbox(
+                overlay_rect, value,
+                fontname=fr.overlay_family,
+                fontsize=current,
+                align=alignment,
+                color=(0, 0, 0),
+            )
+            if rc >= 0:  # fit succeeded
+                break
+            current -= 0.5
+        else:
+            overflow = True
+            # Last resort — draw at min_size clipped
+            page.insert_textbox(
+                overlay_rect, value,
+                fontname=fr.overlay_family, fontsize=min_size,
+                align=alignment, color=(0.6, 0, 0),
+            )
 
     return {
         "code": marker.get("code"),

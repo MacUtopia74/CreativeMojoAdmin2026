@@ -100,6 +100,13 @@ class MarkerOccurrence:
     # True when HQ manually added this occurrence (Word-swallowed token
     # case) — rendered/redacted like any other but flagged in the UI.
     manually_added: bool = False
+    # ---- Turn C.5 presentation fields -----------------------------------
+    # All optional / None-defaulted so legacy occurrences continue to
+    # render exactly as they did before this field was introduced.
+    wrapping: Optional[str] = None            # 'wrap' | 'no_wrap' | 'clip'
+    max_lines: Optional[int] = None           # 0 or None = unlimited
+    casing: Optional[str] = None              # 'none'|'upper'|'lower'|'title'|'sentence'
+    overlay_font_family_override: Optional[str] = None  # e.g. 'helv','tiro','cour'
 
 
 @dataclass
