@@ -255,6 +255,43 @@ def _wrap_imported_numbers(html: str) -> str:
     return re.sub(r"(<h[1-4][^>]*>)(.+?)(?=</h[1-4]>)", _sub, html, flags=re.DOTALL | re.IGNORECASE)
 
 
+# Standalone block-level <img> siblings-of-<p> are NOT selectable inside
+# ProseMirror (mouse-click doesn't produce a NodeSelection because the
+# schema won't find a node at that position). Wrap them in a centered
+# <p> so Tiptap's Image extension can pick them up cleanly AND cover-
+# page artwork ends up centred — which is what Word puts them at anyway.
+def _wrap_standalone_images(html: str) -> str:
+    """Wrap every bare block-level <img> in a <p class="text-center">.
+
+    Uses a two-pass approach because a look-behind is fragile with HTML.
+    First pass: replace ALL <img> that appear immediately outside <p>
+    tags. We're conservative — if the pattern isn't confident it's a
+    block-level image, we leave it as-is.
+    """
+    # A simpler + reliable heuristic: search for images that are
+    # NOT preceded by an open <p> tag within the last 200 chars.
+    result_parts: List[str] = []
+    pos = 0
+    for m in re.finditer(r"<img\b[^>]*>", html, flags=re.IGNORECASE):
+        start, end = m.span()
+        # Look at the preceding 400 chars — if we see an unclosed <p ...>
+        # (i.e. more <p> opens than </p> closes since the last block),
+        # the image is inline inside a paragraph and we leave it alone.
+        preceding = html[max(0, start - 400):start]
+        # crude paragraph balance in the tail
+        opens = len(re.findall(r"<p\b", preceding, re.IGNORECASE))
+        closes = len(re.findall(r"</p>", preceding, re.IGNORECASE))
+        inside_p = opens > closes
+        result_parts.append(html[pos:start])
+        if inside_p:
+            result_parts.append(m.group(0))
+        else:
+            result_parts.append(f'<p class="text-center">{m.group(0)}</p>')
+        pos = end
+    result_parts.append(html[pos:])
+    return "".join(result_parts)
+
+
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
@@ -311,8 +348,11 @@ def convert_docx(
     for m in result.messages:
         warnings.append(str(m))
 
-    # Post-process: wrap legacy clause numbers with grey chips
+    # Post-process: wrap legacy clause numbers with grey chips + make
+    # standalone block-level <img> selectable in Tiptap by wrapping in
+    # a centred paragraph.
     html = _wrap_imported_numbers(html)
+    html = _wrap_standalone_images(html)
 
     # Also plain text (for verbatim diff downstream)
     try:

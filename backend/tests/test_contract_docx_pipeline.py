@@ -129,6 +129,20 @@ class TestBasics:
         r = p.convert_docx(docx, upload_image=_no_op_upload)
         assert "Hello world." in r.plain_text
 
+    def test_standalone_image_wrapped_in_paragraph(self):
+        # Bare block-level <img> siblings-of-<p> are wrapped so
+        # ProseMirror can select them.
+        html_in = 'Prefix<img class="cm-doc-image" src="data:img" />Suffix'
+        wrapped = p._wrap_standalone_images(html_in)
+        assert '<p class="text-center"><img' in wrapped
+
+    def test_image_inside_paragraph_left_alone(self):
+        html_in = '<p>Text <img src="x"/> more text</p>'
+        wrapped = p._wrap_standalone_images(html_in)
+        # The inline img stays inside the paragraph — do NOT double-wrap
+        assert wrapped.count("<p ") == 0
+        assert wrapped.count("<p>") == 1
+
 
 class TestPaloma:
     """End-to-end against the real Paloma DOCX. Skips if the file is
