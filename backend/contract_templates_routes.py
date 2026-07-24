@@ -191,8 +191,12 @@ def attach(api, db, require_role):
         # Rebuild the summary from stored markers
         occurrences_stub = []
         for m in markers:
+            legacy = tuple(m.get("bbox") or (0, 0, 0, 0))
+            tb = tuple(m.get("token_bbox") or legacy)
+            rb = tuple(m.get("render_bbox") or legacy)
             occurrences_stub.append(markers_pipeline.MarkerOccurrence(
-                code=m["code"], page=m["page"], bbox=tuple(m["bbox"]),
+                code=m["code"], page=m["page"],
+                token_bbox=tb, render_bbox=rb, bbox=rb,
                 font_family=m.get("font_family"),
                 font_size=m.get("font_size"),
                 font_weight=m.get("font_weight"),
@@ -437,9 +441,14 @@ def attach(api, db, require_role):
         if "template_required_codes" in update or "contract_type" in update:
             fresh = await db[TEMPLATES_COLLECTION].find_one({"id": template_id})
             lib_docs = [d async for d in db[markers_library.LIBRARY_COLLECTION].find({})]
-            occs = [
-                markers_pipeline.MarkerOccurrence(
-                    code=m["code"], page=m["page"], bbox=tuple(m["bbox"]),
+            occs = []
+            for m in (fresh.get("markers", []) or []):
+                legacy = tuple(m.get("bbox") or (0, 0, 0, 0))
+                tb = tuple(m.get("token_bbox") or legacy)
+                rb = tuple(m.get("render_bbox") or legacy)
+                occs.append(markers_pipeline.MarkerOccurrence(
+                    code=m["code"], page=m["page"],
+                    token_bbox=tb, render_bbox=rb, bbox=rb,
                     font_family=m.get("font_family"),
                     font_size=m.get("font_size"),
                     font_weight=m.get("font_weight"),
@@ -448,9 +457,7 @@ def attach(api, db, require_role):
                     is_embedded=m.get("is_embedded"),
                     is_reusable=m.get("is_reusable"),
                     substitution_family=m.get("substitution_family"),
-                )
-                for m in fresh.get("markers", []) or []
-            ]
+                ))
             summary = markers_pipeline.build_marker_summary(
                 occs,
                 fresh.get("cross_line_errors", []) or [],
@@ -774,4 +781,88 @@ def attach(api, db, require_role):
             },
         )
 
+    # ==========================================================
+    # BACKFILL — split legacy ``bbox`` into ``token_bbox`` + ``render_bbox``
+    # ==========================================================
+    # Idempotent. Re-fetches the stored source PDF from R2 and re-runs
+    # the deterministic pipeline against it, then rewrites ``markers``
+    # and ``marker_summary``. The source PDF bytes are never mutated.
+    @api.post("/admin/contract-templates/backfill-bbox-split")
+    async def backfill_bbox_split(
+        template_id: Optional[str] = Query(None, description="Backfill a single template; omit for all."),
+        dry_run: bool = Query(False),
+        user: dict = Depends(require_role("admin")),
+    ):
+        q: Dict[str, Any] = {}
+        if template_id:
+            q["id"] = template_id
+        docs = [d async for d in db[TEMPLATES_COLLECTION].find(q)]
+        if not docs:
+            raise HTTPException(404, detail="No templates matched.")
+
+        results: List[Dict[str, Any]] = []
+        for tdoc in docs:
+            tid = tdoc.get("id")
+            src = tdoc.get("source_pdf") or {}
+            key = src.get("r2_key")
+            if not key:
+                results.append({"template_id": tid, "status": "skipped", "reason": "no source PDF"})
+                continue
+            raw = _r2_get_bytes(key)
+            if raw is None:
+                results.append({"template_id": tid, "status": "error", "reason": "R2 fetch failed"})
+                continue
+
+            try:
+                detection = markers_pipeline.detect_markers(raw)
+            except Exception as exc:  # noqa: BLE001
+                results.append({"template_id": tid, "status": "error", "reason": f"detection failed: {exc}"})
+                continue
+
+            new_markers = markers_pipeline.occurrences_for_storage(detection.markers)
+            lib_docs = [d async for d in db[markers_library.LIBRARY_COLLECTION].find({})]
+            summary = markers_pipeline.build_marker_summary(
+                detection.markers,
+                detection.cross_line_errors,
+                lib_docs,
+                tdoc.get("contract_type", "other"),
+                tdoc.get("template_required_codes", []) or [],
+            )
+
+            row = {
+                "template_id": tid,
+                "name": tdoc.get("name"),
+                "old_marker_count": len(tdoc.get("markers", []) or []),
+                "new_marker_count": len(new_markers),
+                "detection_ms": detection.detection_ms,
+                "span_reconstruction_used": detection.span_reconstruction_used,
+                "pdf_sha256_matches": detection.pdf_sha256 == tdoc.get("pdf_sha256"),
+                "status": "dry_run" if dry_run else "updated",
+            }
+
+            if not dry_run:
+                await db[TEMPLATES_COLLECTION].update_one(
+                    {"id": tid},
+                    {"$set": {
+                        "markers": new_markers,
+                        "cross_line_errors": detection.cross_line_errors,
+                        "marker_summary": summary,
+                        "detection_meta": {
+                            **(tdoc.get("detection_meta") or {}),
+                            "detection_ms": detection.detection_ms,
+                            "span_reconstruction_used": detection.span_reconstruction_used,
+                            "engine_version": "phase1a-v2-bbox-split",
+                            "backfilled_at": _now_iso(),
+                            "backfilled_by": user.get("email"),
+                        },
+                        "updated_at": _now_iso(),
+                        "updated_by": user.get("email"),
+                    }},
+                )
+            results.append(row)
+
+        return {"count": len(results), "dry_run": dry_run, "results": results}
+
     return api
+
+

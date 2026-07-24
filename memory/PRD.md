@@ -1,4 +1,26 @@
 # Creative Mojo — Admin & Franchisee Hub PRD
+- ✅ **CMS Phase 1B Turn A — Redaction bbox split (Feb 2026)**
+  Fixed the P0 redaction bug where PyMuPDF's `apply_redactions()` was
+  destroying surrounding text (e.g. "AGREEMENT DATED " being erased
+  alongside `[[AGREEMENT_DATE]]`). Every marker now carries two
+  bounding boxes:
+    • `token_bbox` — character-tight union around `[[MARKER_CODE]]`
+      glyphs only, sourced from PyMuPDF `rawdict` per-character bboxes.
+      Used exclusively for `page.apply_redactions()`.
+    • `render_bbox` — span-level union, horizontally clamped to the
+      token so long-neighbour-word spans don't inflate the overlay
+      area. Used for `insert_textbox()` placement.
+    • `bbox` — legacy mirror of `render_bbox` for backwards-compat.
+  Preview watermark switched from em-dashes to ASCII hyphens
+  (`PREVIEW - NOT FOR ISSUE`) to avoid Helvetica base14 encoding
+  artefacts. New idempotent backfill endpoint
+  `POST /api/admin/contract-templates/backfill-bbox-split?dry_run=…`
+  re-extracts geometry from R2-stored PDFs and rewrites `markers`
+  without mutating source bytes. Applied to the Paloma test template
+  in Preview environment. 5 new regression tests
+  (`test_bbox_split_redaction.py`) + all 37 existing Phase 1A/B tests
+  green. Awaiting user visual sign-off before Turn B.
+
 - ✅ **CMS Phase 1A — Fixed-PDF Marker System (24 Jul 2026, Stop Point 2 PASSED)**
   Replaced the Tiptap/DOCX editor architecture with a deterministic
   fixed-PDF `[[MARKER]]` detection system, per the user's revised

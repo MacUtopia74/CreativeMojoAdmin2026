@@ -22,7 +22,7 @@ import contract_font_resolver as font_resolver
 
 logger = logging.getLogger(__name__)
 
-WATERMARK_TEXT = "PREVIEW — NOT FOR ISSUE"
+WATERMARK_TEXT = "PREVIEW - NOT FOR ISSUE"
 
 
 # ---------------------------------------------------------------------------
@@ -95,7 +95,7 @@ def _draw_watermark(page: fitz.Page) -> None:
     banners rather than a 45° diagonal — visible on every page without
     obscuring the content HQ needs to inspect."""
     rect = page.rect
-    banner = f"— {WATERMARK_TEXT} —"
+    banner = f"- {WATERMARK_TEXT} -"
     for y in (rect.y0 + 26, rect.y1 - 18):
         # Centre horizontally by using a full-width textbox with center align.
         band = fitz.Rect(rect.x0, y - 12, rect.x1, y + 12)
@@ -112,11 +112,20 @@ def _draw_watermark(page: fitz.Page) -> None:
 # ---------------------------------------------------------------------------
 def _write_value(page: fitz.Page, marker: Dict[str, Any], value: str) -> Dict[str, Any]:
     """Redact the marker area then draw the personalised value. Returns
-    a per-occurrence report row."""
-    bbox = marker.get("bbox") or []
-    if len(bbox) != 4:
+    a per-occurrence report row.
+
+    Uses ``token_bbox`` (character-tight around the ``[[MARKER_CODE]]``
+    glyphs) for redaction so surrounding text is never destroyed, and
+    ``render_bbox`` for placing the overlay value. Legacy templates
+    without the split fall back to the single ``bbox`` field for both.
+    """
+    legacy_bbox = marker.get("bbox") or []
+    token_bbox = marker.get("token_bbox") or legacy_bbox
+    render_bbox = marker.get("render_bbox") or legacy_bbox
+    if len(token_bbox) != 4 or len(render_bbox) != 4:
         return {"code": marker.get("code"), "ok": False, "reason": "bad bbox"}
-    rect = fitz.Rect(*bbox)
+    redact_rect = fitz.Rect(*token_bbox)
+    overlay_rect = fitz.Rect(*render_bbox)
 
     # Resolve overlay font
     weight = (marker.get("font_weight") or "normal") == "bold"
@@ -130,11 +139,12 @@ def _write_value(page: fitz.Page, marker: Dict[str, Any], value: str) -> Dict[st
     )
 
     # Apply redaction — removes glyphs from text layer and paints the
-    # background so [[...]] is gone from the output.
-    page.add_redact_annot(rect, fill=(1, 1, 1))
+    # background so [[...]] is gone from the output. Character-tight
+    # rect ensures surrounding words (e.g. "AGREEMENT DATED ") survive.
+    page.add_redact_annot(redact_rect, fill=(1, 1, 1))
     page.apply_redactions()
 
-    # Draw the personalised value.
+    # Draw the personalised value inside the render bbox.
     size = float(marker.get("font_size") or 11)
     align_map = {"left": 0, "center": 1, "right": 2, "justify": 3}
     alignment = align_map.get((marker.get("alignment") or "left").lower(), 0)
@@ -145,7 +155,7 @@ def _write_value(page: fitz.Page, marker: Dict[str, Any], value: str) -> Dict[st
     current = size
     while current >= min_size:
         rc = page.insert_textbox(
-            rect, value,
+            overlay_rect, value,
             fontname=fr.overlay_family,
             fontsize=current,
             align=alignment,
@@ -158,7 +168,7 @@ def _write_value(page: fitz.Page, marker: Dict[str, Any], value: str) -> Dict[st
         overflow = True
         # Last resort — draw at min_size clipped
         page.insert_textbox(
-            rect, value,
+            overlay_rect, value,
             fontname=fr.overlay_family, fontsize=min_size,
             align=alignment, color=(0.6, 0, 0),
         )
@@ -172,6 +182,7 @@ def _write_value(page: fitz.Page, marker: Dict[str, Any], value: str) -> Dict[st
         "substitution_required": fr.substitution_required,
         "final_size": round(current if not overflow else min_size, 1),
         "overflow": overflow,
+        "used_split_bboxes": bool(marker.get("token_bbox") and marker.get("render_bbox")),
         "ok": True,
     }
 
@@ -232,12 +243,12 @@ def generate_sample_preview(
 
         # 3) PDF metadata — clearly labels this a preview
         doc.set_metadata({
-            "title":    f"PREVIEW — {template_name}",
+            "title":    f"PREVIEW - {template_name}",
             "author":   "Creative Mojo Hub",
-            "subject":  "PREVIEW — NOT FOR ISSUE — Creative Mojo Hub",
+            "subject":  "PREVIEW - NOT FOR ISSUE - Creative Mojo Hub",
             "keywords": "preview,not-for-issue,sample,creative-mojo",
-            "producer": "Creative Mojo Hub · Sample Preview Generator",
-            "creator":  "Creative Mojo Hub · Sample Preview Generator",
+            "producer": "Creative Mojo Hub - Sample Preview Generator",
+            "creator":  "Creative Mojo Hub - Sample Preview Generator",
             "creationDate": fitz.get_pdf_now(),
             "modDate":  fitz.get_pdf_now(),
         })

@@ -64,7 +64,18 @@ MAX_SPAN_GAP_POINTS = 4.0  # roughly a hair space in a 10pt font
 class MarkerOccurrence:
     code: str
     page: int                # 1-based
-    bbox: Tuple[float, float, float, float]   # (x0, y0, x1, y1) in PDF points
+    # ``token_bbox`` — character-tight union around the ``[[MARKER_CODE]]``
+    # glyphs only. Used *exclusively* for ``page.apply_redactions()`` so
+    # surrounding text (e.g. "AGREEMENT DATED " preceding the token) is
+    # never redacted alongside the token.
+    token_bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+    # ``render_bbox`` — span-level union. Used for placing the overlay
+    # value text. Initially matches ``token_bbox``; the Phase 1B UI will
+    # let HQ resize/reposition this independently.
+    render_bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+    # ``bbox`` — legacy field kept for backwards-compat with the marker
+    # summary route + existing UI. Mirrors ``render_bbox``.
+    bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     font_family: Optional[str] = None
     font_size: Optional[float] = None
     font_weight: Optional[str] = None         # 'normal' | 'bold'
@@ -171,23 +182,49 @@ def _reconstruct_and_scan_line(
 ) -> Tuple[List[MarkerOccurrence], bool]:
     """Reconstruct a single visual line into (concatenated_text, span_map)
     then regex the concatenation. For each hit, project back into the
-    contributing spans to build a union bbox and pick the dominant font.
+    contributing spans and per-character bboxes to build BOTH:
+
+      - ``token_bbox`` — union of just the per-character bboxes covering
+        the ``[[MARKER_CODE]]`` glyphs. Used for redaction only.
+      - ``render_bbox`` — union of the contributing spans' bboxes. Used
+        for overlay text placement (gives Word's natural line-height /
+        vertical padding so the personalised value renders like real text).
 
     Returns (occurrences, used_reconstruction).
+
+    Note: ``line_spans`` are ``rawdict`` spans (each with ``chars``: a
+    list of ``{'c': str, 'bbox': [x0,y0,x1,y1], ...}``). Falls back to
+    the span bbox if per-character bboxes are unavailable.
     """
     line_spans = _spans_on_baseline(line_spans)
     if not line_spans:
         return [], False
 
-    text_parts: List[str] = []
-    # (char_index_in_concat, span_index) tuples so we can project matches back.
-    char_to_span: List[int] = []
+    # Build a flat character stream with per-char bbox provenance.
+    # Each element: (char, char_bbox_or_None, span_index)
+    stream: List[Tuple[str, Optional[Tuple[float, float, float, float]], int]] = []
     for si, sp in enumerate(line_spans):
-        t = sp.get("text") or ""
-        for _ in t:
-            char_to_span.append(si)
-        text_parts.append(t)
-    concat = "".join(text_parts)
+        chars = sp.get("chars") or []
+        if chars:
+            for ch in chars:
+                c = ch.get("c") or ""
+                bb = ch.get("bbox")
+                if bb and len(bb) == 4:
+                    stream.append((c, (float(bb[0]), float(bb[1]), float(bb[2]), float(bb[3])), si))
+                else:
+                    stream.append((c, None, si))
+        else:
+            # Fallback: no per-char data (shouldn't happen with rawdict
+            # but be defensive). Attribute every char to the span bbox.
+            t = sp.get("text") or ""
+            sb = sp.get("bbox") or [0, 0, 0, 0]
+            sb_tuple = (float(sb[0]), float(sb[1]), float(sb[2]), float(sb[3]))
+            for ch in t:
+                stream.append((ch, sb_tuple, si))
+
+    if not stream:
+        return [], False
+    concat = "".join(c for c, _, _ in stream)
     if "[[" not in concat:
         return [], False
 
@@ -196,24 +233,45 @@ def _reconstruct_and_scan_line(
     for m in MARKER_RE.finditer(concat):
         start, end = m.span()
         code = m.group(1)
-        # Which spans contributed?
-        span_indices = sorted({char_to_span[i] for i in range(start, end)})
+        span_indices = sorted({stream[i][2] for i in range(start, end)})
         spans_involved = [line_spans[i] for i in span_indices]
         if len(spans_involved) > 1:
             reconstructed_used = True
-        # Union bbox across contributing spans, but tightened to the
-        # marker glyph run — inflate by 0.5pt each side to guarantee the
-        # redaction covers the glyphs cleanly.
-        x0 = min(s["bbox"][0] for s in spans_involved)
-        y0 = min(s["bbox"][1] for s in spans_involved)
-        x1 = max(s["bbox"][2] for s in spans_involved)
-        y1 = max(s["bbox"][3] for s in spans_involved)
-        x0 -= 0.5; y0 -= 0.5; x1 += 0.5; y1 += 0.5
+
+        # ---- token_bbox: character-tight union across the token glyphs
+        char_bboxes = [stream[i][1] for i in range(start, end) if stream[i][1] is not None]
+        if char_bboxes:
+            tx0 = min(bb[0] for bb in char_bboxes)
+            ty0 = min(bb[1] for bb in char_bboxes)
+            tx1 = max(bb[2] for bb in char_bboxes)
+            ty1 = max(bb[3] for bb in char_bboxes)
+        else:
+            # Fallback — span union (legacy behaviour). This is the
+            # ONLY branch that could redact surrounding text; we only
+            # hit it if per-char geometry is missing.
+            tx0 = min(s["bbox"][0] for s in spans_involved)
+            ty0 = min(s["bbox"][1] for s in spans_involved)
+            tx1 = max(s["bbox"][2] for s in spans_involved)
+            ty1 = max(s["bbox"][3] for s in spans_involved)
+        # Tiny inflate to guarantee glyph coverage against subpixel drift
+        tx0 -= 0.4; ty0 -= 0.4; tx1 += 0.4; ty1 += 0.4
+
+        # ---- render_bbox: span-level union (matches original behaviour)
+        rx0 = min(s["bbox"][0] for s in spans_involved)
+        ry0 = min(s["bbox"][1] for s in spans_involved)
+        rx1 = max(s["bbox"][2] for s in spans_involved)
+        ry1 = max(s["bbox"][3] for s in spans_involved)
+        # Constrain render_bbox horizontally to the token area — Word
+        # frequently glues neighbouring words into the same span so the
+        # span bbox extends well beyond the token. Vertically we KEEP
+        # the span extent (so line-height/ascender is preserved).
+        rx0 = max(rx0, tx0 - 0.4)
+        rx1 = min(rx1, tx1 + 0.4)
 
         # Font metadata comes from the first contributing span (all
         # contributing spans should share the same font for a legitimate
         # marker; if they differ we still pick the dominant one).
-        primary = max(spans_involved, key=lambda s: len(s.get("text") or ""))
+        primary = max(spans_involved, key=lambda s: sum(len((ch.get("c") or "")) for ch in (s.get("chars") or [])) or len(s.get("text") or ""))
         font_name = primary.get("font") or None
         font_size = primary.get("size")
         flags = primary.get("flags", 0)
@@ -222,10 +280,15 @@ def _reconstruct_and_scan_line(
         is_embedded, is_reusable = _looks_embedded(page_fonts, font_name or "")
         subst = _substitution_family_for(font_name)
 
+        token_bbox = (round(tx0, 3), round(ty0, 3), round(tx1, 3), round(ty1, 3))
+        render_bbox = (round(rx0, 3), round(ry0, 3), round(rx1, 3), round(ry1, 3))
+
         occurrences.append(MarkerOccurrence(
             code=code,
             page=page_num,
-            bbox=(round(x0, 3), round(y0, 3), round(x1, 3), round(y1, 3)),
+            token_bbox=token_bbox,
+            render_bbox=render_bbox,
+            bbox=render_bbox,  # legacy mirror
             font_family=font_name,
             font_size=round(float(font_size), 2) if font_size is not None else None,
             font_weight=weight,
@@ -309,16 +372,23 @@ def detect_markers(pdf_bytes: bytes) -> MarkerDetection:
             page = doc[page_index]
             page_fonts = page.get_fonts(full=True) or []
 
-            # Extract structured text
-            page_dict = page.get_text("dict")
+            # Extract structured text WITH per-character bboxes.
+            # ``rawdict`` gives us ``chars`` inside each span — critical
+            # for computing character-tight ``token_bbox`` values so the
+            # subsequent redaction pass never touches surrounding text.
+            page_dict = page.get_text("rawdict")
             page_lines_text: List[str] = []
             for block in page_dict.get("blocks", []):
                 if block.get("type") != 0:  # not text
                     continue
                 for line in block.get("lines", []):
                     spans = line.get("spans", [])
-                    # Build the line's readable text for cross-line detection
-                    line_text = "".join((s.get("text") or "") for s in spans)
+                    # Build the visual line text (rawdict spans don't
+                    # expose ``text`` — reconstruct from chars).
+                    line_text = "".join(
+                        (ch.get("c") or "")
+                        for sp in spans for ch in (sp.get("chars") or [])
+                    )
                     page_lines_text.append(line_text)
                     # Marker scan for this visual line
                     occs, used = _reconstruct_and_scan_line(spans, page_num, page_fonts)
@@ -426,6 +496,8 @@ def occurrences_for_storage(occs: List[MarkerOccurrence]) -> List[Dict[str, Any]
     out: List[Dict[str, Any]] = []
     for o in occs:
         d = asdict(o)
-        d["bbox"] = list(d["bbox"])
+        d["token_bbox"] = list(d.get("token_bbox") or [])
+        d["render_bbox"] = list(d.get("render_bbox") or [])
+        d["bbox"] = list(d.get("bbox") or [])
         out.append(d)
     return out
