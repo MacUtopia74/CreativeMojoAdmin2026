@@ -1,4 +1,73 @@
 # Creative Mojo — Admin & Franchisee Hub PRD
+- ✅ **CMS Phase 1B Turn C.5 + Turn D — Duplicate Settings + Stop Point 3 Evidence Pack (Feb 2026)**
+  Closes out Phase 1B ahead of Stop Point 3 sign-off.
+
+  **Turn C.5 — Presentation fields + Duplicate shortcut**
+    • Four new per-occurrence fields (all optional, backwards-compat):
+      `wrapping` (`wrap`|`no_wrap`|`clip`), `max_lines` (int 0..200),
+      `casing` (`none`|`upper`|`lower`|`title`|`sentence`),
+      `overlay_font_family_override` (12 embeddable PDF base14 fonts).
+      All honoured by `contract_preview_generator._write_value`.
+    • Property panel gains four new dropdowns/inputs plus **Duplicate to
+      next / Duplicate to all later** buttons.
+    • Backend:
+        - `GET /admin/contract-templates/{id}/markers/{oid}/duplicate-preview?scope=next|all_later`
+          returns source, target list (ordered by page then y0),
+          settings to copy, and a `never_altered` audit list.
+        - `POST /admin/contract-templates/{id}/markers/{oid}/duplicate-settings`
+          `{scope: "next"|"all_later"}` writes strictly-whitelisted
+          fields (`alignment`, `font_size_override`, `min_font_size`,
+          `wrapping`, `max_lines`, `casing`,
+          `overlay_font_family_override`).
+    • Invariants (verified by tests): `token_bbox`, `render_bbox`,
+      `page`, `occurrence_id`, `code`, and source font metadata are
+      NEVER touched by the duplicate action. Substitution ack stays at
+      font-family level (untouched).
+    • Confirmation dialog surfaces exact target occurrences + emerald
+      "Never altered" disclaimer before HQ commits.
+
+  **Turn D — Audit log + Stop Point 3 evidence pack**
+    • New `contract_template_audit` collection. Every mutating action
+      writes `{template_id, action, actor, at, before, after, extra}`.
+      Wired into PATCH / POST-add / DELETE marker, substitution ack
+      toggle, duplicate-settings apply, and evidence-pack generation.
+    • `GET /admin/contract-templates/{id}/audit-log?limit=200` for UI
+      display; audit drawer inside the Marker Review modal shows the
+      last 200 entries with pretty-printed JSON extras.
+    • `POST /admin/contract-templates/{id}/evidence-pack` returns a
+      ZIP containing:
+        - `README.md` — human-readable index with SHA-256, marker
+          count, audit row count, generation timestamp
+        - `manifest.json` — machine-readable snapshot (template
+          metadata, all markers with token_bbox+render_bbox, marker
+          summary, cross-line errors, substitution acknowledgements,
+          preview report, invariants)
+        - `source.pdf` — byte-identical source
+        - `preview.pdf` — freshly generated sample preview
+        - `markers.csv` — flat CSV for spreadsheet review
+        - `audit_log.jsonl` — one JSON per historic action
+    • Pack generation is itself audited (`evidence_pack.generate`
+      row with `pack_id`).
+    • Response headers: `X-Pack-Id`, `X-Marker-Count`,
+      `X-Audit-Row-Count`, `X-Source-Sha256`.
+
+  **Testing evidence:**
+    - 17 new HTTP E2E tests in `test_phase1b_turn_c5_and_d.py` covering
+      PATCH-and-reject for all new fields, duplicate-preview both
+      scopes, duplicate-apply immutability invariant, audit-log
+      capture, evidence-pack ZIP structure + headers, and preview
+      generator honouring casing/max_lines.
+    - 15/15 Playwright UI scenarios pass on Paloma (report
+      `iteration_50.json`): new controls, duplicate confirmation
+      dialog + never-altered disclaimer, audit drawer, evidence-pack
+      button, full regression of Turn C features, and the critical
+      token_bbox non-draggable invariant.
+    - **Total: 78 backend tests green (42 pipeline + 19 Turn B + 17
+      Turn C.5+D) + 30 Playwright UI scenarios green** across the
+      phase. Paloma template reset via backfill after each test run.
+    - **Stop Point 3 EVIDENCE PACK is now live and downloadable from
+      the Marker Review workspace.**
+
 - ✅ **CMS Phase 1B Turn C — Visual Marker Review UI (Feb 2026)**
   Full-screen modal invoked from the template detail page's `Marker
   Review` button. Renders the source PDF with `pdfjs-dist@3.11.174`
