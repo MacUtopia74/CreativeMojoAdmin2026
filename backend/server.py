@@ -6723,6 +6723,17 @@ contract_templates_routes.attach(api, db, require_role)
 import contract_markers_library  # noqa: E402
 contract_markers_library.attach_routes(api, db, require_role)
 
+# Phase 1C — contract lifecycle (approve/retire/versions), contract
+# records (draft CRUD + territory freeze), and public snapshot reader.
+import contract_lifecycle_routes  # noqa: E402
+contract_lifecycle_routes.attach(api, db, require_role)
+
+import territory_snapshots_routes  # noqa: E402
+territory_snapshots_routes.attach(api, db, require_role)
+
+import contracts_routes  # noqa: E402
+contracts_routes.attach(api, db, require_role)
+
 # Idempotent seeder — runs at startup, only inserts missing markers.
 @app.on_event("startup")
 async def _seed_marker_library_on_startup():
