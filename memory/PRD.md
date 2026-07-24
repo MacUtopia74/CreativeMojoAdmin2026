@@ -1,4 +1,76 @@
 # Creative Mojo — Admin & Franchisee Hub PRD
+- ✅ **CMS Phase 1A — DOCX Import (24 Jul 2026, E2E validated 100%)**
+  Word (.docx) is now the PREFERRED source format for contract
+  templates. PDF import is retained as fallback. Driven by
+  python-mammoth (deterministic, no LLM step).
+    • **New backend module** `contract_docx_pipeline.py`:
+      - `convert_docx(docx_bytes, upload_image)` returns semantic
+        HTML + plain text + warnings + counts of images / tables /
+        headings / page-breaks
+      - Preprocessor rewrites `word/document.xml` +
+        `word/styles.xml` to translate inline paragraph
+        alignments (`w:jc`) and explicit page breaks
+        (`w:br type=page`) into synthetic named styles
+      - Style map covers Word Heading 1–3, plus CM custom styles
+        (CoverSheetMainTitle, CoverSheetTitle, CoverSheetParties,
+        CoverSheet, Recitals, TOC1/2/3, Header)
+      - Post-processors: wrap imported clause numbers in
+        `.cm-original-num` grey chips (same as PDF flow); wrap
+        every bare block-level `<img>` in `<p class="text-center">`
+        so ProseMirror can make them selectable
+    • **New backend endpoints**:
+      - `POST /api/admin/contract-templates/upload-async` accepts
+        `.docx` OR `.pdf` + optional `reference_pdf`; routes to
+        the appropriate pipeline based on extension
+      - `GET /api/admin/contract-templates/{id}/source-docx`
+        returns the original Word source with correct MIME
+    • **New template document fields**: `import_type`
+      (`"docx"` | `"pdf"`), `source_docx` (metadata),
+      `source_pdf.role` = `"source"` or `"reference"` so PDF
+      companions attached to DOCX imports are labelled distinctly
+    • **Frontend changes**:
+      - Upload modal accepts .docx AND .pdf; DOCX / PDF file-kind
+        badge; optional Reference PDF picker appears when a .docx
+        is selected
+      - LegalDocEditor now includes `@tiptap/extension-table` +
+        `TableRow` + `TableCell` + `TableHeader` (v3.28 named
+        imports), plus a `ResizableImage` extension with width +
+        align attributes
+      - Amber "Table:" contextual toolbar (add row/col before /
+        after, delete row/col, header row toggle, merge/split,
+        delete table)
+      - Sky-blue "Image:" contextual toolbar (25/50/75/100% resize,
+        left/centre/right align, delete)
+      - `onSelectionUpdate` re-render hook so both contextual
+        toolbars mount/unmount correctly on every selection
+        transition (Tiptap v3 React binding needs this)
+      - Editor top bar shows the green "DOCX IMPORT" badge, source
+        filename, and dual "Source DOCX" + "Reference PDF"
+        download buttons
+      - WeasyPrint branding CSS mirrors all DOCX-import classes
+        (`.cover-title`, `.cover-subtitle`, `.cover-parties`,
+        `.recital`, `.toc-1/2/3`, `.text-center/right/justify`,
+        table borders, `img[data-align]`) so the PDF preview
+        renders identically to the editor
+    • **New test suite** `test_contract_docx_pipeline.py`
+      (9 cases) plus 2 additional standalone-image tests. Full
+      pytest total: **56/56 green** on the 4 required Phase 1A
+      suites + 7 iter45 E2E tests.
+    • **Real-world validation** — Paloma renewal DOCX (322 KB):
+      converted in ~5s, verbatim match **100%**, 4 embedded
+      images preserved (Creative Mojo logo, artwork), 5 tables
+      preserved and editable, 348 headings preserved, cover-page
+      centering + recital italics + TOC indents all render
+      correctly in both the editor and the WeasyPrint PDF
+      preview.
+    • **Explicitly not preserved** (documented up-front to user
+      and confirmed): Word auto-TOC field (replaced by our TOC
+      node), Word headers/footers (WeasyPrint injects branded
+      header/footer), free-floating text boxes / drawing shapes,
+      multi-column sections (collapsed to single flow),
+      track-changes / comments (stripped).
+
+
 - ✅ **CMS Phase 1A — Async Upload Pipeline (23 Jul 2026)**
   Replaced the synchronous PDF upload endpoint with an async job
   pattern so long LLM-driven conversions no longer collide with the
