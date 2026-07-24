@@ -27,7 +27,10 @@ class TestFontResolver:
     def test_defaults_to_helvetica(self):
         r = fr.resolve_font(None, is_embedded=False, is_reusable=False)
         assert r.overlay_family == "helv"
-        assert r.substitution_required is True
+        # Semantic: only true when the source is embedded but as a
+        # non-reusable subset. Unembedded source → Base14 fallback is
+        # expected, no HQ acknowledgement needed. Matches UI groups.
+        assert r.substitution_required is False
 
     def test_times_maps_to_tiro(self):
         r = fr.resolve_font("TimesNewRomanPSMT", is_embedded=True, is_reusable=False)

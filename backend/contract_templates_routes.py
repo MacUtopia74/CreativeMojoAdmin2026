@@ -1718,6 +1718,18 @@ def attach(api, db, require_role):
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(500, detail=f"Preview generation failed: {exc}")
 
+        # Family-level substitution rollup — this is the same view HQ
+        # signs off on in the Marker Review UI. Including it in the
+        # manifest guarantees the evidence pack tells the same story
+        # as the UI (a family is only ``substitution_required`` when
+        # the source font is embedded but as a non-reusable subset).
+        acks = tpl.get("substitution_acknowledgements", {}) or {}
+        substitution_groups = _build_substitution_groups(markers, acks)
+        all_required_acked = all(
+            (not g["substitution_required"]) or g["acknowledged"]
+            for g in substitution_groups
+        )
+
         # Collect the full audit trail
         audit_cur = db[AUDIT_COLLECTION].find({"template_id": template_id}).sort([("at", 1)])
         audit_rows = []
@@ -1747,6 +1759,8 @@ def attach(api, db, require_role):
             "marker_summary": tpl.get("marker_summary"),
             "cross_line_errors": tpl.get("cross_line_errors", []),
             "substitution_acknowledgements": tpl.get("substitution_acknowledgements", {}),
+            "substitution_groups": substitution_groups,
+            "all_substitutions_acknowledged": all_required_acked,
             "preview_report": preview_report,
             "detection_meta": tpl.get("detection_meta", {}),
             "invariants": {

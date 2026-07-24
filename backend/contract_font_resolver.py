@@ -80,20 +80,21 @@ def resolve_font(
         variant = _BOLD_ITALIC_SUFFIX.get((base, False, False), (base, base_display))
     overlay_name, overlay_display = variant
 
-    # Substitution required whenever the source font is not embedded OR
-    # is a subset embed (which we can't reuse) OR the source family
-    # doesn't match the overlay display name (a rough proxy — a truly
-    # reusable source font is only in a couple of edge cases anyway).
-    substitution_required = not (is_embedded and is_reusable)
+    # HQ acknowledgement is only required when the source font IS
+    # embedded but as a non-reusable subset — that is the visible
+    # substitution HQ must sign off on. When the source isn't
+    # embedded at all, the Base14 fallback is the natural / expected
+    # rendering path and no acknowledgement is needed. This
+    # definition matches the Marker Review UI's family-group
+    # rollup (see ``_build_substitution_groups``) so the manifest
+    # in the Stop Point 3 evidence pack agrees with the UI.
+    substitution_required = bool(is_embedded) and not bool(is_reusable)
     if substitution_required:
-        if not source_family:
-            reason = "no source font detected — using default"
-        elif is_embedded is False:
-            reason = "source font not embedded in PDF"
-        elif is_reusable is False:
-            reason = "source font embedded as subset — not reusable"
-        else:
-            reason = "font substitution required"
+        reason = "source font embedded as subset — not reusable"
+    elif is_embedded is False:
+        reason = "source font not embedded — Base14 fallback (no acknowledgement needed)"
+    elif not source_family:
+        reason = "no source font detected — using default"
     else:
         reason = "source font can be reused"
 

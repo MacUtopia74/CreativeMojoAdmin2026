@@ -211,8 +211,15 @@ def _write_value(page: fitz.Page, marker: Dict[str, Any], value: str) -> Dict[st
     # native "no wrap" flag; we emulate by widening the render rect
     # horizontally to the page bounds so the value renders on a single
     # line, and by clipping when the value overflows.
+    #
+    # The widening only applies when the value would be drawn from the
+    # LEFT edge (default) or JUSTIFIED. For CENTER or RIGHT alignment,
+    # widening would push the value to the far edge of the page and
+    # detach it from its intended inline slot, so we keep the caller's
+    # ``render_bbox`` as authored.
     wrapping = (marker.get("wrapping") or "wrap").lower()
-    if wrapping == "no_wrap":
+    alignment_name = (marker.get("alignment") or "left").lower()
+    if wrapping == "no_wrap" and alignment_name in ("left", "justify"):
         page_rect = page.rect
         overlay_rect = fitz.Rect(
             overlay_rect.x0, overlay_rect.y0,

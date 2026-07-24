@@ -1,0 +1,33 @@
+{
+  "summary": "Stop Point 3 evidence-pack correction pass — all four HQ blockers verified fixed via 14 new E2E tests + 5 existing unit tests. 19/19 pytest tests pass against live preview backend for Paloma template c12c8ce1-423b-4667-b5f7-da897546fa23. (1) marker-summary rollup: substitution_groups shows Arial-BoldMT + ArialMT both with substitution_required=False and all_substitutions_acknowledged=True; occurrence overrides confirmed on Mongo — FRANCHISEE_LEGAL_NAME p3 font_size_override=11.0 & min_font_size=11.0, MONTHLY_FEE p4 alignment='right', FRANCHISEE_ORGANISATION p5 alignment='right'. (2) Evidence-pack ZIP contains README.md, manifest.json, source.pdf, preview.pdf, markers.csv, audit_log.jsonl; manifest.template.pdf_sha256 matches expected e3f7ac77…deb04c88; substitution_acknowledgements={}, all_substitutions_acknowledged=True; substitution_groups populated & every entry substitution_required=False, acknowledged=False; preview_report.residual_token_count=0, redaction_verified=True; every occurrence has overflow=False, final_size=11.0, substitution_required=False. (3) Source integrity: SHA-256 of source.pdf bytes inside ZIP == expected hash; /integrity-check returns ok=True. (4) preview.pdf opened via pymupdf — zero pages contain '[['. (5) POST /sample-preview.pdf returns X-Preview-Redaction-Verified=1, X-Preview-Residual-Tokens=0, X-Source-Integrity-Status=ok. (6) Idempotency verified — second evidence-pack run kept source SHA identical and marker/occurrence counts unchanged.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_stop_point_3_evidence.py",
+    "/app/backend/tests/test_stop_point_3_manifest.py",
+    "/app/test_reports/pytest/iter51_stop_point_3.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "test_stop_point_3_evidence.py fixture had to prefer `access_token` over `token` — /api/auth/login response key is `access_token`; earlier scaffolding mentioned `token`. Keep the login contract consistent across docs.",
+    "marker-summary API returns markers as a FLAT list where each entry IS an occurrence (page/token_bbox/render_bbox/overrides on the top-level marker dict). The reference note implied a nested `occurrences[]` shape — worth documenting in the OpenAPI schema so downstream agents don't get tripped up.",
+    "substitution_groups entries key the family on `font_family` (not `family`). Naming is fine but consider standardising with the UI's variable naming to reduce cognitive load."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_stop_point_3_evidence.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "n/a — frontend testing skipped per request"},
+  "test_credentials": "admin@creativemojo.co.uk / CreativeMojo2026! (JWT via /api/auth/login → access_token)",
+  "seed_data_creation": "None. Read-only against existing Paloma template c12c8ce1-423b-4667-b5f7-da897546fa23. Idempotency test triggers evidence-pack twice — verified source PDF hash stayed byte-identical and marker/occurrence counts unchanged.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Reusable regression file at /app/backend/tests/test_stop_point_3_evidence.py — parameterised by TEMPLATE_ID/EXPECTED_SHA constants at top. If the Paloma template is re-uploaded or its markers are altered, EXPECTED_SHA and the per-page occurrence assertions will need updating. Note the login token key is `access_token` (not `token`). marker-summary shape: flat markers[] where each element is one occurrence with page/alignment/font_size_override/min_font_size on the top level. substitution_groups[].font_family is the family key.",
+  "rca of the issue": "N/A — all four Stop Point 3 blockers verified fixed. Evidence pack is HQ sign-off ready."
+}
