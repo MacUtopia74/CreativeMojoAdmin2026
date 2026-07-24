@@ -117,6 +117,12 @@ export default function LegalDocEditor({
   onUpdateHtml,   // (html) => void — called on every edit, debounce upstream
   editable = true,
 }) {
+  // Force a re-render on every selection change so the context-sensitive
+  // Table / Image toolbars (which are guarded on editor.isActive(...))
+  // reflect the currently-selected node. Tiptap's React binding does
+  // NOT re-render on pure selection transitions by default — only on
+  // document changes via onUpdate.
+  const [, setSelTick] = useState(0);
   const editor = useEditor({
     editable,
     extensions: [
@@ -156,6 +162,9 @@ export default function LegalDocEditor({
     },
     onUpdate: ({ editor: ed }) => {
       if (onUpdateHtml) onUpdateHtml(ed.getHTML());
+    },
+    onSelectionUpdate: () => {
+      setSelTick((t) => (t + 1) & 0xffff);
     },
   });
 

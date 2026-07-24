@@ -1,0 +1,37 @@
+{
+  "summary": "FINAL RETEST (iter47) — Image contextual toolbar bug is FIXED. Main agent's minimal patch to LegalDocEditor.jsx (const [, setSelTick] = useState(0) + onSelectionUpdate: () => setSelTick(t => (t+1) & 0xffff) at line 125-168) works correctly and holds across all selection-transition scenarios. Full frontend flow validated on the real Paloma DOCX + reference PDF (template 0ebdd587-5e58-4698-b320-cdc7fb29144b): (1) upload → editor mounts with 4 imgs (3 standalone + 1 in-table-cell as expected from iter46 backend fix), (2) click first standalone image → [data-testid='image-toolbar'] mounts, offsetHeight=43 (visible), img.ProseMirror-selectednode class present on the clicked image, (3) click image-size-50 → img gets style='width: 50%;' via getAttribute, (4) click image-align-right → img gets style contains 'float: right; margin-left: 12px;', data-align='right', and computed style float === 'right', (5) click SECOND standalone image → toolbar remains visible with fresh selection; img[1] now has selectednode class, img[0] does not (attrs update working), (6) click into a plain paragraph → BOTH image-toolbar and table-toolbar UNMOUNT correctly (present=false, present=false), (7) click into a DOCX-imported table cell → table-toolbar mounts, has-row-before button present, (8) autosave persisted correctly — GET /api/admin/contract-templates/{id} returns current_content_html containing 'width: 50%', 'float: right', AND data-align=\"right\". Backend regression: 56/56 pytest green (4 required Phase 1A suites + 7 iter45 e2e). PDF preview endpoint: 200 application/pdf, 306KB (>100KB requirement met). 0 console errors during the full E2E run. Feature is READY FOR USER ACCEPTANCE.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/pytest/iter47_regression.xml",
+    "/app/backend/tests/test_contract_docx_pipeline.py",
+    "/app/backend/tests/test_iter45_docx_e2e.py",
+    "/app/backend/tests/test_contract_templates_phase1a.py",
+    "/app/backend/tests/test_contract_templates_upload_async.py",
+    "/app/backend/tests/test_contract_preview_toc.py"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "LegalDocEditor.jsx fix is minimal, correct, and idiomatic Tiptap v3 React pattern. The bit-masked (t+1) & 0xffff keeps the counter bounded which is a nice touch. Not strictly necessary but harmless.",
+    "Same onSelectionUpdate pattern would benefit any future NodeSelection-driven UI added to this editor (page-break handles, placeholder chip focus rings, etc.) — it now re-renders on every selection transition, which is what selection-sensitive React consumers need.",
+    "Consider extracting the two contextual toolbars (Table + Image) into a subcomponent that consumes editor via useEditorState (Tiptap v3 built-in selector) in a future refactor. That would let React skip re-renders when the selection changes but the isActive booleans don't. Not blocking — current perf is fine even with a 300+ line document."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "56/56 pytest = 100% (iter47_regression.xml)",
+    "frontend": "100% — all 8 required assertions passed: image-toolbar visible, selectednode class, size-50 → width:50%, align-right → data-align+float, 2nd image selection swap, image→paragraph unmount, paragraph→table cell table-toolbar mount, autosave persistence of width/align, PDF preview 200 application/pdf 306KB, 0 console errors."
+  },
+  "test_credentials": "admin@creativemojo.co.uk / CreativeMojo2026! — used successfully",
+  "seed_data_creation": "Created template 0ebdd587-5e58-4698-b320-cdc7fb29144b (iter47-toolbar-retest) via upload flow. Archived at end of test run.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "The image contextual toolbar bug that spanned iter45 (backend bare-img wrap) and iter46 (frontend selection re-render) is now fully closed. Both fixes are correct and complementary: contract_docx_pipeline._wrap_standalone_images() makes DOCX-imported <img> nodes NodeSelection-capable, and LegalDocEditor.jsx onSelectionUpdate forces React to re-render context-sensitive toolbars on every selection transition. Full behavioural spec verified end-to-end with the real Paloma DOCX. No further action needed on the CMS Phase 1A DOCX import feature — safe to ship to user manual acceptance.",
+  "rca of the issue": "Two-layer bug FULLY RESOLVED. LAYER 1 (iter45→iter46 backend fix): DOCX-imported <img> tags were emitted as bare block-level siblings of <p>/<table>, making them non-selectable in ProseMirror. Fix: contract_docx_pipeline._wrap_standalone_images() wraps every bare <img> in <p class='text-center'>, correctly leaving in-<td> and paragraph-inline images alone. Verified via backend unit tests and via DOM inspection (3 standalone imgs get ProseMirror-selectednode class on click; the 4th in-<td> img does not, as expected). LAYER 2 (iter46→iter47 frontend fix): The React toolbar block conditioned on editor.isActive('image') / editor.isActive('table') never re-rendered on selection transitions, because Tiptap v3's useEditor React binding only re-renders on onUpdate (doc changes), not onSelectionUpdate (selection changes). Fix: added `const [, setSelTick] = useState(0)` and `onSelectionUpdate: () => setSelTick(t => (t+1) & 0xffff)` in useEditor() config at LegalDocEditor.jsx:125-168. Verified: image-toolbar mounts/unmounts correctly on every image click/uncick; toolbar attrs update when clicking a DIFFERENT image (selectednode swap); table-toolbar mounts/unmounts on table-cell click; autosave persistence of resize+align survives across GET /api/admin/contract-templates/{id}. No regressions to placeholder chip / page-break / TOC / autosave / version history / PDF preview / approve-conversion flows."
+}
