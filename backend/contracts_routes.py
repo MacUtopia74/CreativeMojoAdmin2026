@@ -36,6 +36,8 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, HTTPException
 
+import contract_value_resolver as resolver
+import contract_markers_library as markers_library
 import territory_snapshots_routes as snapshots
 
 
@@ -378,4 +380,185 @@ def attach(api, db, require_role):
         })
         return _strip_mongo(await db[CONTRACTS_COLLECTION].find_one({"id": contract_id}))
 
+    # ----------------------------------------------------------------
+    # Turn B — value resolution + freeze / refresh / preview
+    # ----------------------------------------------------------------
+    async def _load_resolver_inputs(contract_id: str):
+        contract = await db[CONTRACTS_COLLECTION].find_one({"id": contract_id})
+        if not contract:
+            raise HTTPException(404, detail="Contract not found")
+        template = await db[TEMPLATES_COLLECTION].find_one({"id": contract["template_id"]})
+        if not template:
+            raise HTTPException(500, detail="Contract references a missing template.")
+        franchisee = await db[FRANCHISEES_COLLECTION].find_one({"id": contract["franchisee_id"]})
+        if not franchisee:
+            raise HTTPException(500, detail="Contract references a missing franchisee.")
+        library_entries = [d async for d in db[markers_library.LIBRARY_COLLECTION].find({})]
+        return contract, template, franchisee, library_entries
+
+    @api.post("/admin/contracts/{contract_id}/variables/preview")
+    async def preview_variables(
+        contract_id: str,
+        user: dict = Depends(require_role("admin")),
+    ):
+        """Dry-run — never persists. HQ uses this in the issuance
+        wizard to spot missing / bad values before hitting freeze."""
+        contract, template, franchisee, library = await _load_resolver_inputs(contract_id)
+        at = datetime.now(timezone.utc)
+        report = resolver.resolve_contract_variables(
+            template, contract, franchisee, library,
+            actor=user.get("email") or "admin",
+            at=at,
+        )
+        return {"ok": report.is_valid(), **report.to_dict()}
+
+    @api.post("/admin/contracts/{contract_id}/resolve-variables")
+    async def resolve_variables(
+        contract_id: str,
+        user: dict = Depends(require_role("admin")),
+    ):
+        """First-time freeze. Refuses to persist if any errors remain
+        (fail-fast). Refuses to overwrite an existing snapshot — that
+        path is ``/refresh-variables`` and requires a reason."""
+        contract, template, franchisee, library = await _load_resolver_inputs(contract_id)
+        if contract.get("status") != "draft":
+            raise HTTPException(
+                400,
+                detail=(
+                    f"Contract is in status '{contract.get('status')}' — "
+                    "variables can only be resolved on drafts."
+                ),
+            )
+        if contract.get("contract_variables"):
+            raise HTTPException(
+                400,
+                detail=(
+                    "Contract already has frozen variables. Use "
+                    "POST /admin/contracts/{id}/refresh-variables with "
+                    "an explicit reason to update them."
+                ),
+            )
+        at = datetime.now(timezone.utc)
+        report = resolver.resolve_contract_variables(
+            template, contract, franchisee, library,
+            actor=user.get("email") or "admin",
+            at=at,
+        )
+        if not report.is_valid():
+            raise HTTPException(
+                400,
+                detail={
+                    "message": (
+                        "Cannot freeze — resolver returned errors. Fix the "
+                        "source fields (or add HQ overrides on the "
+                        "contract) and try again."
+                    ),
+                    "errors": [asdict_err(e) for e in report.errors],
+                    "warnings": [asdict_err(w) for w in report.warnings],
+                    "partial_values": {c: rv.value for c, rv in report.resolved.items()},
+                },
+            )
+        frozen = await resolver.freeze_report_into_contract(
+            db,
+            contract_id=contract_id,
+            report=report,
+            actor=user.get("email") or "admin",
+            at=at,
+            is_refresh=False,
+        )
+        await db[AUDIT_COLLECTION].insert_one({
+            "id": _new_id(),
+            "contract_id": contract_id,
+            "action": "contract.variables.resolve",
+            "actor": user.get("email"),
+            "at": frozen["resolved_at"],
+            "extra": {
+                "values_sha256": frozen["values_sha256"],
+                "value_count": len(frozen["values"]),
+            },
+        })
+        return {"ok": True, **frozen}
+
+    @api.post("/admin/contracts/{contract_id}/refresh-variables")
+    async def refresh_variables(
+        contract_id: str,
+        payload: Dict[str, Any],
+        user: dict = Depends(require_role("admin")),
+    ):
+        """Controlled HQ refresh. Requires a written reason and only
+        works when a prior freeze exists. Every refresh appends an
+        entry to ``contract_variables.refresh_history`` and a separate
+        audit event, so the history of value drift is preserved."""
+        reason = (payload.get("reason") or "").strip()
+        if not reason:
+            raise HTTPException(400, detail="A written 'reason' is required to refresh contract variables.")
+        contract, template, franchisee, library = await _load_resolver_inputs(contract_id)
+        if contract.get("status") != "draft":
+            raise HTTPException(
+                400,
+                detail=(
+                    f"Contract is in status '{contract.get('status')}' — "
+                    "variables can only be refreshed on drafts."
+                ),
+            )
+        if not contract.get("contract_variables"):
+            raise HTTPException(
+                400,
+                detail=(
+                    "Contract has no frozen variables yet — call "
+                    "/resolve-variables for the first freeze."
+                ),
+            )
+        at = datetime.now(timezone.utc)
+        report = resolver.resolve_contract_variables(
+            template, contract, franchisee, library,
+            actor=user.get("email") or "admin",
+            at=at,
+        )
+        if not report.is_valid():
+            raise HTTPException(
+                400,
+                detail={
+                    "message": "Refresh failed — resolver returned errors.",
+                    "errors": [asdict_err(e) for e in report.errors],
+                    "warnings": [asdict_err(w) for w in report.warnings],
+                },
+            )
+        prior_hash = (contract.get("contract_variables") or {}).get("values_sha256")
+        frozen = await resolver.freeze_report_into_contract(
+            db,
+            contract_id=contract_id,
+            report=report,
+            actor=user.get("email") or "admin",
+            at=at,
+            reason=reason,
+            is_refresh=True,
+        )
+        await db[AUDIT_COLLECTION].insert_one({
+            "id": _new_id(),
+            "contract_id": contract_id,
+            "action": "contract.variables.refresh",
+            "actor": user.get("email"),
+            "at": frozen["resolved_at"],
+            "extra": {
+                "reason": reason,
+                "previous_values_sha256": prior_hash,
+                "values_sha256": frozen["values_sha256"],
+                "no_op": prior_hash == frozen["values_sha256"],
+            },
+        })
+        return {"ok": True, **frozen}
+
     return api
+
+
+def asdict_err(e) -> Dict[str, Any]:
+    """Small helper — dataclass -> dict without importing dataclasses
+    everywhere. Kept here so the module has no top-level dataclass
+    dep beyond the resolver's own types."""
+    return {
+        "code": getattr(e, "code", None),
+        "reason": getattr(e, "reason", ""),
+        "severity": getattr(e, "severity", "error"),
+        "hint": getattr(e, "hint", None),
+    }
