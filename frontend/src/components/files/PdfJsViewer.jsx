@@ -7,8 +7,10 @@ import {
   ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Loader2, AlertCircle,
 } from "lucide-react";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc =
-  `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+// The worker is served from /public/pdf.worker.min.js — see MarkerReviewModal.
+// A single local worker keeps every pdf.js consumer on the same version and
+// avoids the unpkg CDN + .mjs vs .js resolution issues we hit with v3.
+pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js";
 
 export default function PdfJsViewer({ url }) {
   const containerRef = useRef(null);

@@ -1,0 +1,732 @@
+// Marker Review Modal — Phase 1B Turn C.
+//
+// Full-screen review workspace for a single contract template. Pairs the
+// pdf.js-rendered page canvas with react-rnd overlays over each detected
+// marker's `render_bbox`, exposes a property panel for the selected
+// occurrence, a substitution-ack side panel with per-family and bulk
+// acknowledgement, and the whole-document sample preview refresh /
+// download controls. `token_bbox` is treated as read-only (character-tight
+// against the source glyphs — never draggable or resizable).
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Rnd } from "react-rnd";
+import * as pdfjsLib from "pdfjs-dist";
+import api, { formatError } from "@/lib/api";
+import {
+  X, Loader2, Plus, Trash2, RefreshCw, Download, ChevronLeft,
+  ChevronRight, ZoomIn, ZoomOut, Check, AlertTriangle, ImageIcon,
+} from "lucide-react";
+
+// Worker served from /public — see contract_preview_generator docs.
+if (typeof window !== "undefined" && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js";
+}
+
+const ALIGN_VALUES = ["left", "center", "right", "justify"];
+
+async function fetchAuthedImage(path) {
+  const r = await api.get(path, { responseType: "blob" });
+  return URL.createObjectURL(new Blob([r.data], { type: "image/png" }));
+}
+
+export default function MarkerReviewModal({ templateId, onClose }) {
+  const [summary, setSummary] = useState(null);
+  const [pdfDoc, setPdfDoc] = useState(null);
+  const [pageNum, setPageNum] = useState(1);
+  const [scale, setScale] = useState(1.4);
+  const [selectedOid, setSelectedOid] = useState(null);
+  const [addMode, setAddMode] = useState(false);
+  const [addCode, setAddCode] = useState("");
+  const [libraryCodes, setLibraryCodes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [pageSize, setPageSize] = useState({ width: 0, height: 0 });
+  const [showBulkAckConfirm, setShowBulkAckConfirm] = useState(null);
+  const [deleteConfirmOid, setDeleteConfirmOid] = useState(null);
+  const canvasRef = useRef(null);
+  const overlayRef = useRef(null);
+
+  const loadSummary = useCallback(async () => {
+    const { data } = await api.get(`/admin/contract-templates/${templateId}/marker-summary`);
+    setSummary(data);
+    return data;
+  }, [templateId]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        setLoading(true); setErr("");
+        const s = await loadSummary();
+        const lib = await api.get(`/admin/markers-library?include_hidden=false`);
+        const codes = (lib.data.items || []).map((m) => m.code).sort();
+        setLibraryCodes(codes);
+        if (codes.length) setAddCode(codes[0]);
+        const pdfResp = await api.get(
+          `/admin/contract-templates/${templateId}/source-pdf`,
+          { responseType: "arraybuffer" },
+        );
+        const doc = await pdfjsLib.getDocument({ data: pdfResp.data }).promise;
+        setPdfDoc(doc);
+        const firstPage = (s.markers?.[0]?.page) || 1;
+        setPageNum(firstPage);
+      } catch (e) {
+        setErr(formatError(e));
+      } finally {
+        setLoading(false);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templateId]);
+
+  useEffect(() => {
+    if (!pdfDoc || !canvasRef.current) return undefined;
+    let cancelled = false;
+    (async () => {
+      const page = await pdfDoc.getPage(pageNum);
+      if (cancelled) return;
+      const viewport = page.getViewport({ scale });
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext("2d");
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      canvas.style.width = `${viewport.width}px`;
+      canvas.style.height = `${viewport.height}px`;
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      setPageSize({
+        width: viewport.width, height: viewport.height,
+        ptHeight: page.view[3], ptWidth: page.view[2],
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [pdfDoc, pageNum, scale]);
+
+  const markers = summary?.markers || [];
+  const pageMarkers = useMemo(
+    () => markers.filter((m) => m.page === pageNum),
+    [markers, pageNum],
+  );
+  const selectedMarker = useMemo(
+    () => markers.find((m) => m.occurrence_id === selectedOid) || null,
+    [markers, selectedOid],
+  );
+
+  const toPx = useCallback((bbox) => {
+    if (!bbox || bbox.length !== 4) return null;
+    const [x0, y0, x1, y1] = bbox;
+    return { x: x0 * scale, y: y0 * scale, w: (x1 - x0) * scale, h: (y1 - y0) * scale };
+  }, [scale]);
+  const toPt = useCallback((rect) => [
+    rect.x / scale, rect.y / scale, (rect.x + rect.w) / scale, (rect.y + rect.h) / scale,
+  ], [scale]);
+
+  const persistOccurrence = async (oid, patch) => {
+    setBusy(true); setErr("");
+    try {
+      await api.patch(`/admin/contract-templates/${templateId}/markers/${oid}`, patch);
+      await loadSummary();
+    } catch (e) { setErr(formatError(e)); }
+    finally { setBusy(false); }
+  };
+
+  const addOccurrence = async (bboxPt) => {
+    if (!addCode) return;
+    setBusy(true); setErr("");
+    try {
+      const { data } = await api.post(
+        `/admin/contract-templates/${templateId}/markers`,
+        { code: addCode, page: pageNum, render_bbox: bboxPt, font_size: 11, alignment: "left" },
+      );
+      await loadSummary();
+      setSelectedOid(data.occurrence?.occurrence_id);
+      setAddMode(false);
+    } catch (e) { setErr(formatError(e)); }
+    finally { setBusy(false); }
+  };
+
+  const deleteOccurrence = async (oid) => {
+    setBusy(true); setErr("");
+    try {
+      await api.delete(`/admin/contract-templates/${templateId}/markers/${oid}`);
+      await loadSummary();
+      if (selectedOid === oid) setSelectedOid(null);
+      setDeleteConfirmOid(null);
+    } catch (e) { setErr(formatError(e)); }
+    finally { setBusy(false); }
+  };
+
+  const toggleAck = async (fontFamily, acknowledged) => {
+    setBusy(true); setErr("");
+    try {
+      await api.post(
+        `/admin/contract-templates/${templateId}/substitution-acknowledgements`,
+        { font_family: fontFamily, acknowledged },
+      );
+      await loadSummary();
+    } catch (e) { setErr(formatError(e)); }
+    finally { setBusy(false); }
+  };
+
+  const bulkAckSameOverlay = async (overlayFamily) => {
+    const targets = (summary?.substitution_groups || []).filter(
+      (g) => g.substitution_family === overlayFamily && g.substitution_required && !g.acknowledged,
+    );
+    setBusy(true); setErr("");
+    try {
+      for (const t of targets) {
+        // eslint-disable-next-line no-await-in-loop
+        await api.post(
+          `/admin/contract-templates/${templateId}/substitution-acknowledgements`,
+          { font_family: t.font_family, acknowledged: true },
+        );
+      }
+      await loadSummary();
+      setShowBulkAckConfirm(null);
+    } catch (e) { setErr(formatError(e)); }
+    finally { setBusy(false); }
+  };
+
+  const downloadWholeDoc = async () => {
+    setBusy(true); setErr("");
+    try {
+      const resp = await api.post(
+        `/admin/contract-templates/${templateId}/sample-preview.pdf`,
+        {}, { responseType: "blob" },
+      );
+      const disp = resp.headers?.["content-disposition"] || "";
+      const match = /filename="([^"]+)"/i.exec(disp);
+      const filename = match ? match[1] : `PREVIEW_${templateId}.pdf`;
+      const blobUrl = URL.createObjectURL(new Blob([resp.data], { type: "application/pdf" }));
+      const a = document.createElement("a");
+      a.href = blobUrl; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
+    } catch (e) { setErr(formatError(e)); }
+    finally { setBusy(false); }
+  };
+
+  const handleCanvasClick = (e) => {
+    if (!addMode || !overlayRef.current) return;
+    const rect = overlayRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const w = 140, h = 20;
+    addOccurrence(toPt({ x: x - w / 2, y: y - h / 2, w, h }));
+  };
+
+  if (loading) {
+    return (
+      <ModalShell onClose={onClose}>
+        <div className="flex items-center justify-center h-full text-stone-500 gap-2 p-6">
+          <Loader2 className="w-4 h-4 animate-spin" /> Loading Marker Review…
+        </div>
+      </ModalShell>
+    );
+  }
+
+  return (
+    <ModalShell onClose={onClose}>
+      <div className="flex flex-col h-full">
+        {/* Toolbar */}
+        <div className="flex items-center justify-between gap-3 p-3 border-b border-stone-200 bg-stone-50 flex-wrap">
+          <div className="flex items-center gap-2">
+            <button onClick={onClose} data-testid="mr-close"
+                    className="p-1.5 rounded border border-stone-300 hover:bg-white">
+              <X className="w-4 h-4" />
+            </button>
+            <h2 className="font-display text-lg text-stone-900">Marker Review</h2>
+            <span className="text-xs text-stone-500">
+              {markers.length} occurrences · {summary?.pdf_page_count} pages
+            </span>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1 border border-stone-300 rounded-md bg-white px-1">
+              <button onClick={() => setPageNum((p) => Math.max(1, p - 1))}
+                      disabled={pageNum <= 1} data-testid="mr-prev-page"
+                      className="p-1 hover:bg-stone-100 rounded disabled:opacity-30">
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-xs font-medium min-w-[4rem] text-center" data-testid="mr-page-indicator">
+                Page {pageNum} / {summary?.pdf_page_count}
+              </span>
+              <button onClick={() => setPageNum((p) => Math.min(summary?.pdf_page_count || 1, p + 1))}
+                      disabled={pageNum >= (summary?.pdf_page_count || 1)} data-testid="mr-next-page"
+                      className="p-1 hover:bg-stone-100 rounded disabled:opacity-30">
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex items-center gap-1 border border-stone-300 rounded-md bg-white px-1">
+              <button onClick={() => setScale((s) => Math.max(0.5, +(s - 0.2).toFixed(2)))} data-testid="mr-zoom-out"
+                      className="p-1 hover:bg-stone-100 rounded"><ZoomOut className="w-4 h-4" /></button>
+              <span className="text-xs w-12 text-center" data-testid="mr-zoom-indicator">{Math.round(scale * 100)}%</span>
+              <button onClick={() => setScale((s) => Math.min(3, +(s + 0.2).toFixed(2)))} data-testid="mr-zoom-in"
+                      className="p-1 hover:bg-stone-100 rounded"><ZoomIn className="w-4 h-4" /></button>
+            </div>
+            <button onClick={() => setAddMode((v) => !v)} disabled={busy}
+                    data-testid="mr-add-toggle"
+                    className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold uppercase tracking-widest rounded-md border ${
+                      addMode
+                        ? "bg-amber-600 text-white border-amber-600"
+                        : "bg-white border-stone-300 hover:bg-stone-50"
+                    }`}>
+              <Plus className="w-3.5 h-3.5" /> {addMode ? "Cancel" : "Add"}
+            </button>
+            {addMode && (
+              <select value={addCode} onChange={(e) => setAddCode(e.target.value)}
+                      data-testid="mr-add-code-select"
+                      className="text-xs border border-stone-300 rounded-md px-2 py-1.5 bg-white">
+                {libraryCodes.map((c) => (
+                  <option key={c} value={c}>[[{c}]]</option>
+                ))}
+              </select>
+            )}
+            <button onClick={downloadWholeDoc} disabled={busy}
+                    data-testid="mr-download-preview"
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold uppercase tracking-widest rounded-md bg-white border border-amber-300 text-amber-900 hover:bg-amber-50 disabled:opacity-50">
+              <Download className="w-3.5 h-3.5" /> {busy ? "…" : "Preview PDF"}
+            </button>
+          </div>
+        </div>
+
+        {err && (
+          <div className="p-2 bg-red-50 border-b border-red-200 text-xs text-red-800 flex items-center gap-1.5">
+            <AlertTriangle className="w-3.5 h-3.5" /> {err}
+          </div>
+        )}
+        {addMode && (
+          <div className="p-2 bg-amber-50 border-b border-amber-200 text-xs text-amber-900" data-testid="mr-add-instructions">
+            <strong>Add mode:</strong> click anywhere on the page to place a new
+            <code className="mx-1 px-1 bg-white border border-stone-200 rounded">[[{addCode}]]</code>
+            occurrence. You can drag/resize it afterwards.
+          </div>
+        )}
+
+        <div className="flex-1 flex overflow-hidden">
+          <div className="flex-1 overflow-auto bg-stone-100 p-6" data-testid="mr-canvas-wrap">
+            <div className="mx-auto shadow-xl bg-white inline-block relative"
+                 style={{ width: pageSize.width, height: pageSize.height }}>
+              <canvas ref={canvasRef} data-testid="mr-pdf-canvas" className="block" />
+              <div ref={overlayRef}
+                   data-testid="mr-overlay-layer"
+                   onClick={handleCanvasClick}
+                   className={`absolute inset-0 ${addMode ? "cursor-crosshair" : ""}`}
+                   style={{ zIndex: 5 }}>
+                {pageMarkers.map((m) => (
+                  <MarkerBox
+                    key={m.occurrence_id}
+                    marker={m}
+                    px={toPx(m.render_bbox || m.bbox)}
+                    tokenPx={toPx(m.token_bbox || m.bbox)}
+                    selected={selectedOid === m.occurrence_id}
+                    onSelect={() => setSelectedOid(m.occurrence_id)}
+                    onChange={(rect) => persistOccurrence(m.occurrence_id, { render_bbox: toPt(rect) })}
+                    disabled={busy}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="w-96 border-l border-stone-200 bg-white overflow-y-auto flex flex-col" data-testid="mr-sidebar">
+            {selectedMarker ? (
+              <MarkerPropertyPanel
+                marker={selectedMarker}
+                templateId={templateId}
+                onChange={(patch) => persistOccurrence(selectedMarker.occurrence_id, patch)}
+                onDelete={() => setDeleteConfirmOid(selectedMarker.occurrence_id)}
+                busy={busy}
+              />
+            ) : (
+              <div className="p-4 text-xs text-stone-500 border-b border-stone-200">
+                Select an occurrence on the page canvas to edit its properties, or use <strong>Add</strong> to place a new one.
+              </div>
+            )}
+            <SubstitutionAckPanel
+              groups={summary?.substitution_groups || []}
+              allAcked={summary?.all_substitutions_acknowledged}
+              onToggle={toggleAck}
+              onBulkForOverlay={(overlay) => setShowBulkAckConfirm(overlay)}
+              busy={busy}
+            />
+            <OccurrenceList
+              markers={markers}
+              selectedOid={selectedOid}
+              onSelect={(m) => { setSelectedOid(m.occurrence_id); setPageNum(m.page); }}
+            />
+          </div>
+        </div>
+
+        {showBulkAckConfirm && (
+          <BulkAckConfirm
+            overlayFamily={showBulkAckConfirm}
+            groups={summary?.substitution_groups || []}
+            onConfirm={() => bulkAckSameOverlay(showBulkAckConfirm)}
+            onCancel={() => setShowBulkAckConfirm(null)}
+            busy={busy}
+          />
+        )}
+        {deleteConfirmOid && (
+          <DeleteConfirm
+            marker={markers.find((m) => m.occurrence_id === deleteConfirmOid)}
+            onConfirm={() => deleteOccurrence(deleteConfirmOid)}
+            onCancel={() => setDeleteConfirmOid(null)}
+            busy={busy}
+          />
+        )}
+      </div>
+    </ModalShell>
+  );
+}
+
+
+function ModalShell({ onClose, children }) {
+  return (
+    <div className="fixed inset-0 z-50 bg-stone-950/60 backdrop-blur-sm flex items-stretch justify-stretch p-4"
+         data-testid="marker-review-modal"
+         onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="flex-1 bg-white rounded-lg shadow-2xl overflow-hidden">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function MarkerBox({ marker, px, tokenPx, selected, onSelect, onChange, disabled }) {
+  if (!px) return null;
+  return (
+    <>
+      {tokenPx && selected && (
+        <div
+          data-testid={`mr-token-bbox-${marker.occurrence_id}`}
+          className="absolute pointer-events-none border-2 border-dashed border-red-500 bg-red-500/10"
+          style={{ left: tokenPx.x, top: tokenPx.y, width: tokenPx.w, height: tokenPx.h, zIndex: 6 }}
+          title="token_bbox (redaction zone) — read-only"
+        />
+      )}
+      <Rnd
+        position={{ x: px.x, y: px.y }}
+        size={{ width: px.w, height: px.h }}
+        disableDragging={disabled}
+        enableResizing={!disabled}
+        bounds="parent"
+        onDragStop={(_e, d) => onChange({ x: d.x, y: d.y, w: px.w, h: px.h })}
+        onResizeStop={(_e, _dir, ref, _delta, pos) => onChange({
+          x: pos.x, y: pos.y,
+          w: parseFloat(ref.style.width),
+          h: parseFloat(ref.style.height),
+        })}
+        onClick={(e) => { e.stopPropagation(); onSelect(); }}
+        data-testid={`mr-marker-box-${marker.occurrence_id}`}
+        style={{ zIndex: selected ? 8 : 7 }}
+        className={`border-2 ${
+          selected
+            ? "border-amber-500 bg-amber-400/15"
+            : "border-amber-400/70 bg-amber-300/10 hover:bg-amber-300/20"
+        }`}
+      >
+        <div className="absolute -top-4 left-0 text-[10px] font-mono text-amber-900 bg-white/90 border border-amber-200 rounded px-1 whitespace-nowrap pointer-events-none">
+          [[{marker.code}]]{marker.manually_added && <span title="manually added"> +</span>}
+        </div>
+      </Rnd>
+    </>
+  );
+}
+
+function MarkerPropertyPanel({ marker, templateId, onChange, onDelete, busy }) {
+  const [previewSrc, setPreviewSrc] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [alignment, setAlignment] = useState(marker.alignment || "left");
+  const [override, setOverride] = useState(marker.font_size_override ?? "");
+  const [minSize, setMinSize] = useState(marker.min_font_size ?? "");
+
+  useEffect(() => {
+    setAlignment(marker.alignment || "left");
+    setOverride(marker.font_size_override ?? "");
+    setMinSize(marker.min_font_size ?? "");
+  }, [marker.occurrence_id, marker.alignment, marker.font_size_override, marker.min_font_size]);
+
+  const refreshPreview = useCallback(async () => {
+    setPreviewLoading(true);
+    try {
+      const url = await fetchAuthedImage(
+        `/admin/contract-templates/${templateId}/markers/${marker.occurrence_id}/sample-preview.png?dpi=180&pad=24&_t=${Date.now()}`,
+      );
+      setPreviewSrc((prev) => { if (prev) URL.revokeObjectURL(prev); return url; });
+    } catch (e) {
+      // preview is a nice-to-have; ignore
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [templateId, marker.occurrence_id]);
+
+  useEffect(() => { refreshPreview(); }, [refreshPreview, marker.render_bbox, marker.alignment, marker.font_size_override]);
+
+  return (
+    <div className="p-4 border-b border-stone-200 space-y-3" data-testid="mr-property-panel">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <div className="text-[10px] font-bold uppercase tracking-widest text-stone-500">Occurrence</div>
+          <code className="text-sm font-mono text-stone-900">[[{marker.code}]]</code>
+          <div className="text-[10px] text-stone-500 mt-0.5">
+            Page {marker.page} · {marker.font_family || "(no font)"}
+            {marker.manually_added && <span className="ml-1 text-amber-700">· manually added</span>}
+          </div>
+        </div>
+        <button onClick={onDelete} disabled={busy}
+                data-testid="mr-delete-btn"
+                className="p-1.5 rounded border border-red-200 text-red-700 hover:bg-red-50 disabled:opacity-50">
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      <div className="border border-stone-200 rounded bg-stone-50 min-h-[80px] flex items-center justify-center overflow-hidden">
+        {previewLoading ? (
+          <Loader2 className="w-4 h-4 animate-spin text-stone-400" />
+        ) : previewSrc ? (
+          <img src={previewSrc} alt="preview" data-testid="mr-marker-preview-img" className="max-w-full max-h-40" />
+        ) : (
+          <div className="text-[10px] text-stone-400 flex items-center gap-1"><ImageIcon className="w-3 h-3" /> preview…</div>
+        )}
+      </div>
+      <button onClick={refreshPreview} disabled={previewLoading}
+              data-testid="mr-preview-refresh"
+              className="w-full inline-flex items-center justify-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-widest rounded border border-stone-300 hover:bg-stone-50 disabled:opacity-50">
+        <RefreshCw className={`w-3 h-3 ${previewLoading ? "animate-spin" : ""}`} /> Refresh preview
+      </button>
+
+      <div>
+        <div className="text-[10px] font-bold uppercase tracking-widest text-stone-500 mb-1">Alignment</div>
+        <div className="grid grid-cols-4 gap-1" data-testid="mr-alignment-group">
+          {ALIGN_VALUES.map((v) => (
+            <button key={v}
+                    onClick={() => { setAlignment(v); onChange({ alignment: v }); }}
+                    disabled={busy}
+                    data-testid={`mr-alignment-${v}`}
+                    className={`px-1 py-1 text-[10px] font-bold uppercase tracking-widest rounded border ${
+                      alignment === v
+                        ? "bg-stone-950 text-white border-stone-950"
+                        : "bg-white border-stone-300 hover:bg-stone-50"
+                    }`}>{v}</button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <NumberField
+          label="Size override" value={override} testid="mr-font-override"
+          onCommit={(v) => { setOverride(v); onChange({ font_size_override: v === "" ? null : Number(v) }); }}
+          min={4} max={96} step={0.5}
+          placeholder={String(marker.font_size ?? "")}
+        />
+        <NumberField
+          label="Min size" value={minSize} testid="mr-min-size"
+          onCommit={(v) => { setMinSize(v); onChange({ min_font_size: v === "" ? null : Number(v) }); }}
+          min={4} max={96} step={0.5}
+          placeholder="7"
+        />
+      </div>
+
+      <div className="text-[10px] text-stone-500 space-y-0.5">
+        <div>token_bbox <em>(read-only)</em>: {(marker.token_bbox || marker.bbox || []).map((n) => n?.toFixed(1)).join(", ")}</div>
+        <div>render_bbox: {(marker.render_bbox || marker.bbox || []).map((n) => n?.toFixed(1)).join(", ")}</div>
+      </div>
+    </div>
+  );
+}
+
+function NumberField({ label, value, onCommit, testid, ...rest }) {
+  const [local, setLocal] = useState(value);
+  useEffect(() => { setLocal(value); }, [value]);
+  return (
+    <label className="block">
+      <div className="text-[10px] font-bold uppercase tracking-widest text-stone-500 mb-1">{label}</div>
+      <input
+        type="number"
+        value={local}
+        onChange={(e) => setLocal(e.target.value)}
+        onBlur={() => onCommit(local)}
+        data-testid={testid}
+        className="w-full text-xs border border-stone-300 rounded px-2 py-1"
+        {...rest}
+      />
+    </label>
+  );
+}
+
+function SubstitutionAckPanel({ groups, allAcked, onToggle, onBulkForOverlay, busy }) {
+  const overlayBuckets = useMemo(() => {
+    const b = {};
+    for (const g of groups) {
+      if (!g.substitution_required) continue;
+      const key = g.substitution_family || "(unknown)";
+      if (!b[key]) b[key] = { overlay: key, groups: [], pendingCount: 0 };
+      b[key].groups.push(g);
+      if (!g.acknowledged) b[key].pendingCount += g.occurrence_count;
+    }
+    return Object.values(b);
+  }, [groups]);
+
+  return (
+    <div className="p-4 border-b border-stone-200" data-testid="mr-subst-panel">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-[10px] font-bold uppercase tracking-widest text-stone-500">
+          Substitution acknowledgements
+        </div>
+        {allAcked && (
+          <span className="inline-flex items-center gap-1 text-emerald-700 text-[10px] font-bold uppercase tracking-widest">
+            <Check className="w-3 h-3" /> all cleared
+          </span>
+        )}
+      </div>
+
+      {groups.length === 0 && (
+        <div className="text-[11px] text-stone-500">No font substitutions detected.</div>
+      )}
+
+      {groups.map((g) => (
+        <div key={g.font_family} className="border border-stone-200 rounded mb-1.5 p-2" data-testid={`mr-subst-group-${g.font_family}`}>
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-mono text-stone-900 truncate">{g.font_family}</div>
+              <div className="text-[10px] text-stone-500">
+                → {g.substitution_family || "(unresolved)"} · {g.occurrence_count} occurrence{g.occurrence_count !== 1 ? "s" : ""}
+                {!g.substitution_required && <> · <span className="text-emerald-700">not required</span></>}
+              </div>
+            </div>
+            {g.substitution_required && (
+              <label className="inline-flex items-center gap-1 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={g.acknowledged}
+                  onChange={(e) => onToggle(g.font_family, e.target.checked)}
+                  disabled={busy}
+                  data-testid={`mr-ack-toggle-${g.font_family}`}
+                  className="w-3.5 h-3.5"
+                />
+                <span className="text-[10px] font-bold uppercase tracking-widest text-stone-700">Ack</span>
+              </label>
+            )}
+          </div>
+          {g.acknowledged && g.acknowledged_by && (
+            <div className="text-[10px] text-emerald-700 mt-1">
+              ✓ {g.acknowledged_by} · {new Date(g.acknowledged_at).toLocaleString()}
+            </div>
+          )}
+        </div>
+      ))}
+
+      {overlayBuckets.filter((b) => b.pendingCount > 0).map((b) => (
+        <button
+          key={b.overlay}
+          onClick={() => onBulkForOverlay(b.overlay)}
+          disabled={busy}
+          data-testid={`mr-bulk-ack-${b.overlay}`}
+          className="w-full mt-1.5 inline-flex items-center justify-center gap-1 px-2 py-1.5 text-[10px] font-bold uppercase tracking-widest rounded border border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+        >
+          Acknowledge all → {b.overlay} ({b.pendingCount} occurrence{b.pendingCount !== 1 ? "s" : ""})
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function OccurrenceList({ markers, selectedOid, onSelect }) {
+  return (
+    <div className="p-4 flex-1 overflow-y-auto">
+      <div className="text-[10px] font-bold uppercase tracking-widest text-stone-500 mb-2">
+        All occurrences ({markers.length})
+      </div>
+      <ul className="space-y-1" data-testid="mr-occurrence-list">
+        {markers.map((m) => (
+          <li key={m.occurrence_id}>
+            <button
+              onClick={() => onSelect(m)}
+              data-testid={`mr-occurrence-item-${m.occurrence_id}`}
+              className={`w-full text-left px-2 py-1 rounded text-[11px] flex items-center justify-between gap-2 ${
+                selectedOid === m.occurrence_id
+                  ? "bg-amber-100 border border-amber-300"
+                  : "hover:bg-stone-50 border border-transparent"
+              }`}
+            >
+              <code className="font-mono truncate">[[{m.code}]]</code>
+              <span className="text-[10px] text-stone-500 whitespace-nowrap">
+                p{m.page}{m.manually_added && " +"}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function BulkAckConfirm({ overlayFamily, groups, onConfirm, onCancel, busy }) {
+  const affected = groups.filter(
+    (g) => g.substitution_family === overlayFamily && g.substitution_required && !g.acknowledged,
+  );
+  const occurrenceCount = affected.reduce((n, g) => n + g.occurrence_count, 0);
+  const familyCount = affected.length;
+  return (
+    <div className="fixed inset-0 z-[60] bg-stone-950/60 flex items-center justify-center p-4"
+         onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+         data-testid="mr-bulk-ack-confirm">
+      <div className="bg-white rounded-lg shadow-2xl max-w-md w-full p-5 space-y-3">
+        <h3 className="font-display text-lg text-stone-900">Acknowledge all substitutions → {overlayFamily}</h3>
+        <p className="text-sm text-stone-700">
+          This will acknowledge <strong>{familyCount}</strong> source font famil{familyCount === 1 ? "y" : "ies"} affecting
+          &nbsp;<strong>{occurrenceCount}</strong> occurrence{occurrenceCount !== 1 ? "s" : ""} on this template.
+          Each acknowledgement is recorded separately with your email and timestamp — the audit trail is preserved.
+        </p>
+        <div className="text-xs text-stone-500 border border-stone-200 rounded p-2 space-y-0.5">
+          {affected.map((g) => (
+            <div key={g.font_family}>
+              <code>{g.font_family}</code> · {g.occurrence_count} occurrence{g.occurrence_count !== 1 ? "s" : ""}
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2 pt-2">
+          <button onClick={onCancel} disabled={busy}
+                  data-testid="mr-bulk-ack-cancel"
+                  className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest rounded border border-stone-300 hover:bg-stone-50">
+            Cancel
+          </button>
+          <button onClick={onConfirm} disabled={busy}
+                  data-testid="mr-bulk-ack-apply"
+                  className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50">
+            {busy ? "Acknowledging…" : `Acknowledge ${familyCount}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DeleteConfirm({ marker, onConfirm, onCancel, busy }) {
+  if (!marker) return null;
+  return (
+    <div className="fixed inset-0 z-[60] bg-stone-950/60 flex items-center justify-center p-4"
+         onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+         data-testid="mr-delete-confirm">
+      <div className="bg-white rounded-lg shadow-2xl max-w-md w-full p-5 space-y-3">
+        <h3 className="font-display text-lg text-stone-900">Delete this occurrence?</h3>
+        <p className="text-sm text-stone-700">
+          You&apos;re about to remove <code className="bg-stone-100 px-1 rounded">[[{marker.code}]]</code>
+          {" "}on page {marker.page}. The source PDF is not modified — only this template&apos;s
+          detected occurrence record. You can add it back later via the <strong>Add</strong> tool.
+        </p>
+        <div className="flex justify-end gap-2 pt-2">
+          <button onClick={onCancel} disabled={busy}
+                  data-testid="mr-delete-cancel"
+                  className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest rounded border border-stone-300 hover:bg-stone-50">
+            Cancel
+          </button>
+          <button onClick={onConfirm} disabled={busy}
+                  data-testid="mr-delete-apply"
+                  className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50">
+            {busy ? "Deleting…" : "Delete"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

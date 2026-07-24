@@ -6,8 +6,9 @@ import { useParams, useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import {
   ArrowLeft, Loader2, Download, AlertTriangle, CheckCircle2, RefreshCw,
-  FileText, Hash, Shield,
+  FileText, Hash, Shield, LayoutTemplate,
 } from "lucide-react";
+import MarkerReviewModal from "./MarkerReviewModal";
 
 const STATUS_STYLES = {
   draft:    "bg-stone-100 text-stone-700 border-stone-300",
@@ -24,6 +25,7 @@ export default function AdminContractTemplateDetailPage() {
   const [err, setErr] = useState("");
   const [integrity, setIntegrity] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true); setErr("");
@@ -130,6 +132,12 @@ export default function AdminContractTemplateDetailPage() {
                   title="Download a sample-value populated preview of the whole PDF. PREVIEW — NOT FOR ISSUE."
                   className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold uppercase tracking-widest rounded-lg bg-white border border-amber-300 text-amber-900 hover:bg-amber-50 disabled:opacity-50">
             <Download className="w-3.5 h-3.5" /> {busy ? "Generating…" : "Sample Preview PDF"}
+          </button>
+          <button onClick={() => setReviewOpen(true)}
+                  data-testid="open-marker-review"
+                  title="Open the visual Marker Review workspace — drag/resize marker boxes, edit properties, acknowledge substitutions."
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold uppercase tracking-widest rounded-lg bg-stone-950 text-white hover:bg-stone-800">
+            <LayoutTemplate className="w-3.5 h-3.5" /> Marker Review
           </button>
           {tpl.status === "draft" && ready && (
             <button onClick={publish} disabled={busy} data-testid="publish-btn"
@@ -267,6 +275,12 @@ export default function AdminContractTemplateDetailPage() {
           </table>
         </div>
       </div>
+      {reviewOpen && (
+        <MarkerReviewModal
+          templateId={id}
+          onClose={() => { setReviewOpen(false); load(); }}
+        />
+      )}
     </div>
   );
 }
