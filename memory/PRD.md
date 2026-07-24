@@ -1,4 +1,50 @@
 # Creative Mojo — Admin & Franchisee Hub PRD
+- ✅ **CMS Phase 1C Turn A — Contract lifecycle + Territory-freeze scaffolding (Feb 2026)**
+  Turn A lays the foundation for Phase 1C without touching any personalisation or
+  rendering logic. Handshake with HQ locked in: mixed value-source model
+  (franchisee vs contract vs system-generated), strict approval gate with no
+  force-approve, immutable issuances (corrections via supersede-links), same R2
+  bucket with separate `contract-issuances/{id}/` prefix, black-underlined
+  hyperlink text with display default "View Agreed Territory Map", and
+  permanent URL format `https://hub.creativemojo.co.uk/agreed-territory/{snapshot_id}/{secure_token}`.
+    • **Marker Library:** `TERRITORY_MAP_URL` added as the 29th approved seed
+      entry (`value_source=system_generated`, new `data_type=hyperlink`,
+      `formula=frozen_territory_map_link`, `format.requires_frozen_snapshot=true`,
+      applicable to `new_franchise`, `franchise_renewal`, `territory_amendment`).
+    • **Strict Approval Gate (`contract_lifecycle_routes.py`):**
+      `POST /admin/contract-templates/{id}/approve` refuses unless overflow=0
+      AND all required substitutions acknowledged AND residual tokens=0 AND
+      source PDF SHA in R2 matches the DB value. No force-approve option.
+      Companion `approval-check` (dry-run) returns the same blocker list without
+      state changes. Approving auto-retires prior approved templates of the
+      same `contract_type`. `/retire` and `/versions` also shipped.
+    • **Contract Records (`contracts_routes.py`):** New `contracts` collection
+      + draft CRUD. Rejects unknown fields (`DRAFT_EDITABLE_FIELDS` allow-list),
+      rejects references to unapproved templates, blocks PATCH/DELETE on
+      non-draft contracts. Supersede-link support is present but the flip to
+      `superseded` will happen at issuance time (Turn C).
+    • **Immutable Territory Snapshots (`territory_snapshots_routes.py`):**
+      `POST /admin/contracts/{id}/freeze-territory` snapshots the franchisee's
+      current territory tiles BY VALUE into a new `territory_snapshots`
+      collection, mints an unguessable 32-char urlsafe token, records
+      `frozen_territory_map_url` + SHA-256 on the contract, and is refused on
+      any second attempt. Public read at
+      `GET /api/territory-snapshots/{id}/{secure_token}` is unauthenticated by
+      design (needed so franchisees can follow the link inside their PDF);
+      wrong token and wrong snapshot ID both return the same 404 shape (no
+      info leak); public payload scrubs to `{id, postcode, county, airtable_id}`
+      per tile and never leaks the token.
+    • **Config:** `CONTRACT_LINK_BASE_URL=https://hub.creativemojo.co.uk` added
+      to `backend/.env` so URLs baked into issued PDFs remain valid for the
+      lifetime of the contract.
+  **Verification (iteration_52):** 28/28 pass (+1 documented skip), zero
+  critical or minor issues. Regression: Paloma template `c12c8ce1-…-fa23`
+  untouched (still `draft`); marker library still 29 entries; Stop Point 3
+  evidence pack still generates cleanly. Test files:
+  `tests/test_phase1c_turn_a.py`, `tests/test_phase1c_turn_a_complement.py`.
+  **HELD:** Turn B (value resolver) waiting for HQ to enable Maxx.
+
+
 - ✅ **CMS Phase 1B Stop Point 3 — Evidence Pack sign-off corrections (Feb 2026)**
   Cleared HQ's four final Paloma-template blockers before Phase 1B sign-off.
     • **Manifest/UI substitution consistency.** `contract_font_resolver.resolve_font()`
