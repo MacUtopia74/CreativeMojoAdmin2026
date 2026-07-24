@@ -1,4 +1,45 @@
 # Creative Mojo — Admin & Franchisee Hub PRD
+- ✅ **CMS Phase 1B refinement — Automatic render_bbox whitespace expansion (Feb 2026)**
+  Addresses HQ feedback that ordinary single-line markers should not
+  require manual bbox resizing after upload. The pipeline now
+  automatically extends `render_bbox` into surrounding whitespace so
+  common cases (dates, names, fees, references, single-line addresses)
+  fit at the source font size out of the box.
+    • **Horizontal expansion**: for each detected occurrence, scan all
+      rawdict spans on the same page. Find the leftmost blocker whose
+      x0 sits to the right of the token's x1 AND vertically overlaps
+      the token band. When the token-containing span itself extends
+      past the token (e.g. "before [[MARKER]] middle-text"),
+      per-character bboxes are inspected to find the true first
+      blocker glyph. Extends `render_bbox.x1` to `blocker.x0 - 3pt`,
+      capped by the page right margin (36pt).
+    • **Vertical expansion**: PyMuPDF's `insert_textbox` fit-check
+      requires ≈1.95 × font_size vertical room for a source-size
+      value. Detector now grows `render_bbox` downward toward the
+      next line's `y0`, then upward toward the previous line's `y1`
+      until it hits that height threshold. The extra pixels are only
+      used for the fit-check — glyphs draw at the top so no visible
+      overlap with adjacent lines.
+    • **Invariants preserved**: `token_bbox` remains character-tight
+      (untouched — still drives redaction). `render_bbox` only grows,
+      never shrinks. HQ overrides in the Marker Review UI always win.
+    • **Single-line wrapping default**: known single-line data types
+      (`string`, `date`, `number`, `currency`, `reference`) now
+      default to `wrapping="no_wrap"` if the library entry doesn't
+      specify one — matching HQ's authoring rule that dates, names,
+      fees, references and single-line addresses never wrap.
+  **Result on Paloma**: 6/7 occurrences now auto-fit at 11pt with no
+  HQ intervention. Only 1 (FRANCHISEE_LEGAL_NAME p3, sat in a
+  tight-line numbered block) still requires a small manual resize.
+  Preview PDF renders the cover page with "AGREEMENT DATED 1 August
+  2026" and "Sample Franchisee Limited" at correct 11pt inline — no
+  silent shrinking to 7pt.
+  **Testing evidence**: 4 new tests in
+  `test_auto_whitespace_expansion.py` — expansion when no blocker
+  (reaches page margin), token_bbox unchanged, vertical expansion
+  supports insert_textbox at source size, blocker to the right
+  correctly limits expansion. **99 backend tests total green.**
+
 - ✅ **CMS Phase 1B refinement — Inline live-render preview inside marker boxes (Feb 2026)**
   Final Phase 1B usability improvement. Each occurrence's editable
   yellow `render_bbox` now shows a real-time WYSIWYG preview of what

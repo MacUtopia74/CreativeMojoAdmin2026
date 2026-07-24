@@ -368,6 +368,138 @@ def _scan_for_cross_line_errors(page_text_lines: List[str], page_num: int) -> Li
     return errors
 
 
+def _extend_render_bboxes_into_whitespace(
+    markers: List[MarkerOccurrence],
+    all_spans: List[Dict[str, Any]],
+    page_rect: Any,
+    right_margin_pts: float = 36.0,
+    right_pad_pts: float = 3.0,
+    vertical_pad_pts: float = 3.0,
+) -> None:
+    """Expand each occurrence's ``render_bbox`` into surrounding white
+    space so HQ isn't forced to resize every occurrence manually just
+    because the detected span was tight around the token.
+
+    Horizontal rules:
+      * Look at all rawdict text spans on the page.
+      * A span is "in the way" if it vertically overlaps the marker's
+        token band AND starts to the right of the token's right edge.
+        We exclude the span that actually contains the token itself.
+      * The new ``render_bbox.x1`` is the leftmost such blocker's x0
+        minus a small horizontal pad, clamped against the page's
+        right margin.
+      * If nothing blocks (marker at end of line), extend to
+        ``page_rect.x1 - right_margin_pts``.
+
+    Vertical rules:
+      * The detected span bbox is often tight around the glyph run
+        without leaving descender room, which PyMuPDF's
+        ``insert_textbox`` interprets as overflow even for a single
+        short value at the source size.
+      * Pad ``render_bbox.y1`` downward by ``vertical_pad_pts`` (or
+        until it would collide with the next line's top y0, whichever
+        is smaller). ``ry0`` is left alone — vertical alignment starts
+        at the source baseline.
+
+    Invariants:
+      * ``token_bbox`` is NEVER touched — remains character-tight.
+      * ``render_bbox`` only grows (never shrinks) so any pre-existing
+        HQ override survives the pipeline running again.
+    """
+    if not markers:
+        return
+    page_right_limit = float(page_rect.x1) - right_margin_pts
+    for m in markers:
+        tb = m.token_bbox
+        if not tb or len(tb) != 4:
+            continue
+        tx0, ty0, tx1, ty1 = tb
+        y_center = (ty0 + ty1) / 2.0
+        blockers_x0: List[float] = []
+        next_line_y0: Optional[float] = None
+        for sp in all_spans:
+            sb = sp.get("bbox") or []
+            if len(sb) != 4:
+                continue
+            sx0, sy0, sx1, sy1 = sb
+            # Same-line collision (horizontal blocker)
+            if sy0 < y_center < sy1:
+                # Case A: span sits entirely to the right of the token
+                if sx0 > tx1 + 0.5:
+                    blockers_x0.append(sx0)
+                    continue
+                # Case B: span horizontally spans the token position.
+                # This is either the token-containing span itself OR a
+                # single Word run like "before [[MARKER]] after" where
+                # the marker sits in the middle. Inspect its own chars
+                # to find any glyph that starts to the right of the
+                # token. If found, that's the true blocker; otherwise
+                # the span ends at the token and there's nothing after.
+                if sx0 <= tx1 + 0.5 and sx1 >= tx0 - 0.5:
+                    chars = sp.get("chars") or []
+                    for ch in chars:
+                        cb = ch.get("bbox") or []
+                        if len(cb) != 4:
+                            continue
+                        if cb[0] > tx1 + 0.5 and (ch.get("c") or "").strip():
+                            blockers_x0.append(cb[0])
+                            break
+            # Next-line detection (vertical clamp for the pad)
+            elif sy0 > ty1 - 0.5:
+                if next_line_y0 is None or sy0 < next_line_y0:
+                    next_line_y0 = sy0
+        if blockers_x0:
+            proposed_x1 = min(blockers_x0) - right_pad_pts
+        else:
+            proposed_x1 = page_right_limit
+        proposed_x1 = min(proposed_x1, page_right_limit)
+
+        rx0, ry0, rx1, ry1 = m.render_bbox
+        new_x1 = max(rx1, round(proposed_x1, 3))
+
+        # Vertical: PyMuPDF's ``insert_textbox`` fit-check requires
+        # roughly ``1.8 × font_size`` of height for the box. The
+        # extra space is only used for the fit-check itself — the
+        # glyphs are drawn at the top of the box.
+        # Strategy:
+        #   1. Compute needed height.
+        #   2. Extend downward toward ``next_line_y0``.
+        #   3. If still short, extend upward into the previous-line
+        #      whitespace (limited by ``prev_line_y1``).
+        font_size = float(m.font_size) if m.font_size else 11.0
+        needed = 1.95 * font_size
+        # Detect the previous line's bottom for the upward expansion.
+        prev_line_y1: Optional[float] = None
+        for sp in all_spans:
+            sb = sp.get("bbox") or []
+            if len(sb) != 4:
+                continue
+            sy0, sy1 = sb[1], sb[3]
+            # A span sits ABOVE the token band if its bottom is <= our top
+            if sy1 <= ty0 - 0.5:
+                if prev_line_y1 is None or sy1 > prev_line_y1:
+                    prev_line_y1 = sy1
+
+        # Downward expansion first
+        vertical_limit_down = next_line_y0 if next_line_y0 is not None else (float(page_rect.y1) - 12.0)
+        new_y1 = min(vertical_limit_down, max(ry1 + vertical_pad_pts, ry0 + needed))
+        current_h = new_y1 - ry0
+        # If we still don't have enough, expand upward into empty space
+        # above (limited by previous line's bottom).
+        new_y0 = ry0
+        if current_h < needed:
+            deficit = needed - current_h
+            upward_limit = (prev_line_y1 + 0.5) if prev_line_y1 is not None else (float(page_rect.y0) + 12.0)
+            new_y0 = max(upward_limit, ry0 - deficit)
+
+        new_y1 = max(ry1, round(new_y1, 3))
+        new_y0 = min(ry0, round(new_y0, 3))
+
+        m.render_bbox = (rx0, new_y0, new_x1, new_y1)
+        m.bbox = m.render_bbox
+
+
+
 def detect_markers(pdf_bytes: bytes) -> MarkerDetection:
     """Public entry point — deterministic marker detection.
 
@@ -399,25 +531,28 @@ def detect_markers(pdf_bytes: bytes) -> MarkerDetection:
             # subsequent redaction pass never touches surrounding text.
             page_dict = page.get_text("rawdict")
             page_lines_text: List[str] = []
+            page_start_marker_idx = len(result.markers)
+            all_spans_on_page: List[Dict[str, Any]] = []
             for block in page_dict.get("blocks", []):
                 if block.get("type") != 0:  # not text
                     continue
                 for line in block.get("lines", []):
                     spans = line.get("spans", [])
-                    # Build the visual line text (rawdict spans don't
-                    # expose ``text`` — reconstruct from chars).
                     line_text = "".join(
                         (ch.get("c") or "")
                         for sp in spans for ch in (sp.get("chars") or [])
                     )
                     page_lines_text.append(line_text)
-                    # Marker scan for this visual line
+                    all_spans_on_page.extend(spans)
                     occs, used = _reconstruct_and_scan_line(spans, page_num, page_fonts)
                     if used:
                         result.span_reconstruction_used = True
                     result.markers.extend(occs)
 
-            # Cross-line / orphan-bracket detection
+            # Extend render_bbox rightward into available white space
+            page_markers = result.markers[page_start_marker_idx:]
+            _extend_render_bboxes_into_whitespace(page_markers, all_spans_on_page, page.rect)
+
             errs = _scan_for_cross_line_errors(page_lines_text, page_num)
             result.cross_line_errors.extend(errs)
     finally:

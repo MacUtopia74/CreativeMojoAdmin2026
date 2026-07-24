@@ -198,21 +198,32 @@ def attach(api, db, require_role):
         ``wrapping='no_wrap', alignment='left', min_font_size=11``),
         apply it to newly-detected occurrences of that code whose
         per-occurrence field is still None. HQ can still override in
-        the property panel. Mutates ``markers`` in place."""
+        the property panel. Mutates ``markers`` in place.
+
+        Additionally, for known single-line data types (string, date,
+        number, currency, reference) we default ``wrapping='no_wrap'``
+        when the library entry doesn't already specify one — HQ's
+        authoring rule is that dates, names, fees, references and
+        single-line addresses never wrap."""
+        SINGLE_LINE_DATA_TYPES = {"string", "date", "number", "currency", "reference"}
         defaults_by_code: Dict[str, Dict[str, Any]] = {}
+        data_type_by_code: Dict[str, str] = {}
         for lib in lib_docs or []:
+            code = lib.get("code")
             dp = lib.get("default_presentation") or {}
             if dp:
-                defaults_by_code[lib.get("code")] = dp
-        if not defaults_by_code:
-            return
+                defaults_by_code[code] = dp
+            data_type_by_code[code] = lib.get("data_type") or "string"
         for m in markers:
-            dp = defaults_by_code.get(m.get("code"))
-            if not dp:
-                continue
-            for k, v in dp.items():
-                if m.get(k) is None:
-                    m[k] = v
+            code = m.get("code")
+            dp = defaults_by_code.get(code)
+            if dp:
+                for k, v in dp.items():
+                    if m.get(k) is None:
+                        m[k] = v
+            # Data-type fallback for wrapping
+            if m.get("wrapping") is None and data_type_by_code.get(code) in SINGLE_LINE_DATA_TYPES:
+                m["wrapping"] = "no_wrap"
 
     async def _persist_render_reports(template_id: str, occurrences_reports: List[Dict[str, Any]]) -> None:
         """After a preview render, write each row's overflow / final_size /

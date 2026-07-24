@@ -148,14 +148,17 @@ if BASE_URL:
             assert addr["alignment"] == "left"
             assert addr["min_font_size"] == 11
 
-        def test_non_address_markers_get_no_forced_defaults(self, admin_client, address_template):
+        def test_non_address_markers_get_appropriate_wrap_defaults(self, admin_client, address_template):
             markers = admin_client.get(
                 f"{BASE_URL}/api/admin/contract-templates/{address_template}/marker-summary",
             ).json()["markers"]
             date_marker = next(m for m in markers if m["code"] == "AGREEMENT_DATE")
             # AGREEMENT_DATE has no default_presentation in the library
+            # but its data_type is 'date' which is a single-line type,
+            # so wrapping defaults to 'no_wrap' per the pipeline rule.
+            assert date_marker.get("wrapping") == "no_wrap"
+            # min_font_size is not forced (no library default for date)
             assert date_marker.get("min_font_size") is None
-            assert date_marker.get("wrapping") is None
 
         def test_hq_override_survives_within_current_markers_array(self, admin_client, address_template):
             """HQ-set values must not be clobbered by the defaults
