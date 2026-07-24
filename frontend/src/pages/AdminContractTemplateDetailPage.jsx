@@ -56,6 +56,33 @@ export default function AdminContractTemplateDetailPage() {
     window.open(url, "_blank");
   };
 
+  const downloadSamplePreview = async () => {
+    setBusy(true); setErr("");
+    try {
+      const resp = await api.post(
+        `/admin/contract-templates/${id}/sample-preview.pdf`,
+        {},
+        { responseType: "blob" },
+      );
+      // Filename comes from the endpoint's Content-Disposition header
+      const disp = resp.headers?.["content-disposition"] || "";
+      const match = /filename="([^"]+)"/i.exec(disp);
+      const filename = match ? match[1] : `PREVIEW_${tpl?.name || "template"}.pdf`;
+      const blobUrl = URL.createObjectURL(new Blob([resp.data], { type: "application/pdf" }));
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Sample preview generation failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const publish = async () => {
     setBusy(true);
     try { await api.post(`/admin/contract-templates/${id}/publish`); await load(); }
@@ -97,6 +124,12 @@ export default function AdminContractTemplateDetailPage() {
           <button onClick={downloadSource} data-testid="download-source"
                   className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold uppercase tracking-widest rounded-lg bg-white border border-stone-300 hover:bg-stone-50">
             <Download className="w-3.5 h-3.5" /> Source PDF
+          </button>
+          <button onClick={downloadSamplePreview} disabled={busy}
+                  data-testid="download-sample-preview"
+                  title="Download a sample-value populated preview of the whole PDF. PREVIEW — NOT FOR ISSUE."
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold uppercase tracking-widest rounded-lg bg-white border border-amber-300 text-amber-900 hover:bg-amber-50 disabled:opacity-50">
+            <Download className="w-3.5 h-3.5" /> {busy ? "Generating…" : "Sample Preview PDF"}
           </button>
           {tpl.status === "draft" && ready && (
             <button onClick={publish} disabled={busy} data-testid="publish-btn"
