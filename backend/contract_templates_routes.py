@@ -430,9 +430,11 @@ def attach(api, db, require_role):
         update["updated_at"] = _now_iso()
         update["updated_by"] = user.get("email")
         await db[TEMPLATES_COLLECTION].update_one({"id": template_id}, {"$set": update})
-        # If the template_required_codes changed, recompute the summary
-        # against the live library.
-        if "template_required_codes" in update:
+        # If either the template_required_codes OR the contract_type
+        # changed, recompute the summary against the live library so
+        # not_eligible_for_type / template_required_missing stay current
+        # without needing an extra GET.
+        if "template_required_codes" in update or "contract_type" in update:
             fresh = await db[TEMPLATES_COLLECTION].find_one({"id": template_id})
             lib_docs = [d async for d in db[markers_library.LIBRARY_COLLECTION].find({})]
             occs = [

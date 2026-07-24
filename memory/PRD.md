@@ -1,4 +1,74 @@
 # Creative Mojo — Admin & Franchisee Hub PRD
+- ✅ **CMS Phase 1A — Fixed-PDF Marker System (24 Jul 2026, Stop Point 2 PASSED)**
+  Replaced the Tiptap/DOCX editor architecture with a deterministic
+  fixed-PDF `[[MARKER]]` detection system, per the user's revised
+  specification and the 12 amendments approved on Phase 0.
+    • **New backend modules**:
+        - `contract_markers_library.py` — global catalogue with soft-
+          delete-only semantics, 28-marker approved seed (17 automatic
+          / 9 manual / 2 system_generated), CRUD + hide/unhide +
+          usage endpoints, code validation, per-marker
+          `eligible_contract_types` + `repeat_allowed`.
+        - `contract_markers_pipeline.py` — deterministic detection
+          engine (PyMuPDF only, no LLM). Span reconstruction handles
+          Word's split-token exports; cross-line and orphan-bracket
+          errors surfaced; font family/size/weight/embed metadata
+          captured per occurrence; SHA-256 of source bytes recorded.
+        - `contract_templates_routes.py` — pruned to Phase 1A surface:
+          list, detail, upload-marker-pdf (6-stage async job, no LLM),
+          marker-summary, rename, publish (freezes version), archive,
+          set-default, duplicate, source-pdf download, integrity-check
+          endpoint (on-demand SHA-256 verify against R2), page
+          thumbnail with amber overlay.
+    • **Marker Library** — global catalogue independent of template
+      instances (amendment #2): `library.available` vs
+      `library.eligible[]` vs `template_required[]` are four
+      independent flags. Contract-type eligibility per marker.
+      Content types are `string / multiline_text / date / currency /
+      integer / decimal` — no HTML anywhere (amendment #4).
+      Soft delete only — hidden flag, in-use guard blocks physical
+      delete (amendment #2, #11).
+    • **Detection**: LLM-free (amendment #13 hard requirement,
+      verified: zero references to `EMERGENT_LLM_KEY` / `litellm` /
+      `anthropic` / `openai` in the new pipeline). Detects inline-
+      in-sentence markers correctly (amendment #8). Repeat markers
+      permitted for identity codes by default (amendment #7).
+      Automatic markers with missing Hub values surface as
+      `fallback_on_missing="manual_review_required"` never silently
+      blanked or invented (amendment #1).
+    • **Source PDF preservation** — original bytes stored in R2
+      untouched; SHA-256 recorded at upload; on-demand integrity
+      check verifies R2 object matches recorded hash. Personalised
+      PDF is deliberately NOT generated in Phase 1A (amendment #12).
+      R2 Bucket Locks NOT enabled — application works independent
+      of them (amendment #10).
+    • **Evidence surface**: Marker Summary drawer at
+      `/admin/contracts/templates/{id}` shows summary banner
+      (ready / not ready), source PDF metadata + SHA-256, integrity-
+      check button, categorised marker lists (recognised /
+      unrecognised / not-eligible / template-required missing),
+      per-page thumbnails with amber marker overlays, full occurrence
+      table with page + bbox + font + embed status.
+    • **Admin Marker Library UI** at `/admin/markers-library` —
+      searchable list of all 28 seed markers with source badges,
+      new-marker modal with code validation, hide/unhide toggle,
+      contract-type eligibility multi-select. Full visual PDF
+      placement editor is deferred to Phase 1B.
+    • **Legacy code isolation** (amendment #11): archived under
+      `_legacy/` with `__init__` files. Frontend legacy `.jsx`
+      renamed to `.jsx.legacy` so webpack skips them. Nothing
+      permanently deleted. Tiptap packages still installed
+      because `RichTextEditor.jsx` (marketing e-shot, HQ updates)
+      shares them — full removal deferred until user Stop Point 4.
+    • **Test coverage**: 19 unit tests
+      (`test_contract_markers_pipeline.py`) + 28 E2E integration tests
+      (`test_phase1a_e2e.py`), **47/47 green**.
+    • **Documentation delivered**:
+        - `/app/memory/word_authoring_guide.md` — HQ-facing one-pager
+        - `/app/memory/r2_bucket_locks_guidance.md` — optional
+          hardening reference, no code changes required
+
+
 - ✅ **CMS Phase 1A — DOCX Import (24 Jul 2026, E2E validated 100%)**
   Word (.docx) is now the PREFERRED source format for contract
   templates. PDF import is retained as fallback. Driven by
