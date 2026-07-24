@@ -48,7 +48,7 @@ CONTRACT_TYPES = [
 ]
 
 VALUE_SOURCES = {"automatic", "manual", "system_generated", "calculated"}
-DATA_TYPES = {"string", "multiline_text", "date", "currency", "integer", "decimal"}
+DATA_TYPES = {"string", "multiline_text", "date", "currency", "integer", "decimal", "hyperlink"}
 
 # When a marker is `automatic` but the Hub returns null/missing, we
 # never invent or blank — we surface a required review prompt to HQ.
@@ -392,6 +392,48 @@ SEED_MARKERS: List[Dict[str, Any]] = [
         "format": {"date_pattern": "d MMMM yyyy"},
         "repeat_allowed": True,
         "eligible_contract_types": CONTRACT_TYPES,
+    },
+    {
+        "code": "TERRITORY_MAP_URL",
+        "label": "Territory map — secure link",
+        "description": (
+            "Secure clickable link to the FROZEN territory map snapshot "
+            "associated with this specific contract. The link resolves "
+            "to the exact territory version that was agreed at the time "
+            "the contract was issued — it must never automatically follow "
+            "the franchisee's currently editable territory. Rendered as a "
+            "clickable hyperlink annotation in the PDF; the display text "
+            "is configurable (default: 'View Agreed Territory Map') so "
+            "the printed page does not contain a long raw URL. Generation "
+            "is BLOCKED if this marker is present in the template but no "
+            "frozen territory snapshot / valid link exists on the contract "
+            "record. The destination URL, its SHA-256 fingerprint, and the "
+            "frozen territory snapshot ID are persisted on the contract "
+            "record and captured in the issuance audit trail."
+        ),
+        "value_source": "system_generated",
+        "formula": "frozen_territory_map_link",  # resolver keyword — see contract_value_resolver
+        "data_field": "contracts.frozen_territory_snapshot_id",
+        "data_type": "hyperlink",
+        "format": {
+            "display_text_default": "View Agreed Territory Map",
+            "casing": "as_is",
+            "requires_frozen_snapshot": True,
+        },
+        "default_presentation": {
+            "wrapping": "no_wrap",
+            "alignment": "left",
+            "min_font_size": 11,
+        },
+        "repeat_allowed": True,
+        # Applicable where a territory schedule appears — new franchise
+        # agreements and franchise renewals (and territory amendments,
+        # which by definition reference the newly-frozen territory).
+        "eligible_contract_types": [
+            "new_franchise",
+            "franchise_renewal",
+            "territory_amendment",
+        ],
     },
 ]
 
