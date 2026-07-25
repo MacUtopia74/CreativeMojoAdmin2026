@@ -50,6 +50,7 @@ CONTRACT_STATUSES = {
     "draft",
     "pending_issue",
     "issued",
+    "signed",
     "superseded",
     "retired",
 }

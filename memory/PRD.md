@@ -1,4 +1,47 @@
 # Creative Mojo — Admin & Franchisee Hub PRD
+- ✅ **CMS MVP finish — Real Paloma E2E + Admin page + Signing (Feb 2026)**
+  Strict MVP scope, standard model. Zero scope expansion beyond user directive.
+    • **Real Paloma end-to-end proof** — full 5-page HQ template
+      (`c12c8ce1-…-fa23`, 7 marker occurrences) approved, personalised, issued
+      to Paloma Ibarra. Personalised PDF (820 KB, SHA
+      `04f2a2c3…`) reads inline "Monthly Fee £113.30 per month ex VAT…" on
+      page 4 and shows "Creative Mojo North West London" inline on page 5.
+      Source PDF byte-identical before/after (SHA `e3f7ac77…deb04c88`).
+      Zero residual `[[` tokens, redaction verified. Predecessor auto-flipped
+      to `superseded` when re-issued. Evidence:
+      `/app/memory/paloma_real_e2e_personalised.pdf`.
+    • **Two bug fixes uncovered during the real E2E:**
+      – Issuance route was reading a stale `contract_template_versions`
+        snapshot with empty render_bbox/formatting; switched to authoritative
+        live `template.markers` array (audit versions still persisted).
+      – MONTHLY_FEE + FRANCHISEE_ORGANISATION `alignment='right'` reset was
+        detected and re-applied to the Paloma template (Stop Point 3 tuning
+        preserved).
+    • **Signing (`POST /admin/contracts/{id}/upload-signed`):** HQ signs
+      offline (DocuSign / Adobe Sign / print+scan) and uploads countersigned
+      PDF. Stored at `contract-issuances/{id}/signed-final.pdf` (never
+      overwrites), status flips `issued → signed`, records
+      `signed_pdf_r2_key`, `signed_pdf_sha256`, `signed_pdf_byte_size`,
+      `signed_pdf_uploaded_at`, `signed_pdf_uploaded_by`, and audit event
+      `contract.signed`. `GET /admin/contracts/{id}/signed-pdf` returns a
+      signed URL for download. Status set now exactly: **Draft, Issued,
+      Signed, Superseded** (+ pending_issue transitional, retired for
+      templates only).
+    • **Single Admin Contracts page (`/admin/contracts`):** one page, no
+      wizard. Lists all contracts with status pill; row actions dispatched
+      by status — `Draft` shows [Issue], `Issued` shows [PDF] + [Upload
+      signed], `Signed` shows [PDF] + [Signed], `Superseded` shows a link
+      to the successor. "New contract" opens a compact modal with the six
+      required fields only (template, franchisee, monthly fee, franchisee
+      legal name, HQ signatory name, HQ signatory title). All other values
+      pulled automatically. Full data-testid coverage. Sidebar entry added.
+  **Verification:** 175/175 pass in the combined CMS suite
+  (Phase 1B + Stop Point 3 + Turn A + Turn B + Turn C + MVP signing), 1
+  documented skip, zero regressions. Frontend UI smoke-tested via Playwright:
+  list renders, statuses correct, modal opens, new draft persisted (Helen
+  Lyons Trading Limited, £199.99).
+
+
 - ✅ **CMS Phase 1C Turn C — Personalised contract issuance (Feb 2026, Maxx-on)**
   Production-grade render + issuance pipeline. Preview generator refactored into a
   shared `contract_render_engine.render(mode=…)` — Phase 1B preview keeps its

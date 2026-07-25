@@ -30,7 +30,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, UploadFile, File
 
 import contract_render_engine as engine
 import file_storage as fs
@@ -100,18 +100,16 @@ async def _load_source_pdf_and_verify(template: Dict[str, Any]) -> Tuple[bytes, 
 async def _pick_frozen_markers(
     db, template: Dict[str, Any],
 ) -> Tuple[List[Dict[str, Any]], Optional[int]]:
-    """Prefer the frozen ``contract_template_versions`` snapshot for the
-    template's ``approved_version`` when available — that way an issued
-    contract is bound to the exact marker set HQ approved. Falls back
-    to the live template markers if no version snapshot exists (Phase
-    1B ``current``-status templates)."""
+    """Use the LIVE template markers array as the source of truth for
+    render bboxes, alignment, wrapping and per-occurrence overrides.
+
+    The ``contract_template_versions`` snapshot exists for audit
+    provenance — it captures who approved what and when — but the
+    live template.markers is authoritative for rendering. This
+    matches the Stop Point 3 fine-tuning workflow where HQ nudges
+    render_bbox / alignment on specific occurrences.
+    """
     approved_v = template.get("approved_version") or template.get("current_version")
-    if approved_v:
-        v = await db[TEMPLATE_VERSIONS_COLLECTION].find_one(
-            {"template_id": template["id"], "version_number": approved_v},
-        )
-        if v and v.get("markers"):
-            return list(v["markers"]), approved_v
     return list(template.get("markers") or []), approved_v
 
 
@@ -409,5 +407,102 @@ def attach(api, db, require_role):
         cur = db[AUDIT_COLLECTION].find({"contract_id": contract_id}).sort([("at", 1)])
         items = [_strip_mongo(d) async for d in cur]
         return {"items": items, "total": len(items)}
+
+    @api.post("/admin/contracts/{contract_id}/upload-signed")
+    async def upload_signed_pdf(
+        contract_id: str,
+        pdf: UploadFile = File(...),
+        user: dict = Depends(require_role("admin")),
+    ):
+        """Store an HQ-countersigned PDF (signed offline via DocuSign /
+        Adobe Sign / print + scan). Flips the contract from ``issued``
+        to ``signed``. Never overwrites an existing signed PDF —
+        corrections must go through the supersede flow.
+        """
+        if not pdf or not hasattr(pdf, "read"):
+            raise HTTPException(400, detail="A PDF file is required (multipart field 'pdf').")
+        contract = await db[CONTRACTS_COLLECTION].find_one({"id": contract_id})
+        if not contract:
+            raise HTTPException(404, detail="Contract not found.")
+        if contract.get("status") != "issued":
+            raise HTTPException(
+                409,
+                detail=(
+                    f"Contract is in status '{contract.get('status')}' — "
+                    "only issued contracts can accept a signed PDF."
+                ),
+            )
+        signed_key = f"contract-issuances/{contract_id}/signed-final.pdf"
+        if fs.head_object(signed_key) is not None:
+            raise HTTPException(
+                409,
+                detail=(
+                    f"An object already exists at {signed_key}. Signed "
+                    "PDFs are immutable — create a supersede draft to "
+                    "correct."
+                ),
+            )
+        payload = await pdf.read()
+        if not payload or not payload.startswith(b"%PDF"):
+            raise HTTPException(400, detail="Uploaded file is not a PDF.")
+        signed_sha = hashlib.sha256(payload).hexdigest()
+        signed_size = len(payload)
+        fs.get_client().put_object(
+            Bucket=fs.R2_BUCKET,
+            Key=signed_key,
+            Body=payload,
+            ContentType="application/pdf",
+            CacheControl="private, no-store",
+            Metadata={
+                "contract-id": contract_id,
+                "signed-sha256": signed_sha,
+                "content-length": str(signed_size),
+                "uploaded-by": user.get("email") or "admin",
+            },
+        )
+        now = _now_iso()
+        await db[CONTRACTS_COLLECTION].update_one(
+            {"id": contract_id, "status": "issued"},
+            {"$set": {
+                "status": "signed",
+                "signed_pdf_r2_key": signed_key,
+                "signed_pdf_sha256": signed_sha,
+                "signed_pdf_byte_size": signed_size,
+                "signed_pdf_uploaded_at": now,
+                "signed_pdf_uploaded_by": user.get("email"),
+                "signed_at": now,
+                "updated_at": now,
+                "updated_by": user.get("email"),
+            }},
+        )
+        await _emit_audit(
+            db, contract_id, "contract.signed", user.get("email") or "admin",
+            {"r2_key": signed_key, "signed_sha256": signed_sha, "byte_size": signed_size},
+        )
+        return _strip_mongo(await db[CONTRACTS_COLLECTION].find_one({"id": contract_id}))
+
+    @api.get("/admin/contracts/{contract_id}/signed-pdf")
+    async def signed_pdf_signed_url(
+        contract_id: str,
+        _: dict = Depends(require_role("admin")),
+    ):
+        contract = await db[CONTRACTS_COLLECTION].find_one({"id": contract_id})
+        if not contract:
+            raise HTTPException(404, detail="Contract not found.")
+        if not contract.get("signed_pdf_r2_key"):
+            raise HTTPException(404, detail="This contract has no signed PDF yet.")
+        url = fs.presigned_get_url(
+            contract["signed_pdf_r2_key"],
+            expires_in=600,
+            content_disposition=f'inline; filename="{contract_id}-signed.pdf"',
+        )
+        return {
+            "url": url,
+            "r2_key": contract["signed_pdf_r2_key"],
+            "sha256": contract["signed_pdf_sha256"],
+            "byte_size": contract["signed_pdf_byte_size"],
+            "created_at": contract.get("signed_pdf_uploaded_at"),
+            "expires_in_seconds": 600,
+        }
 
     return api
