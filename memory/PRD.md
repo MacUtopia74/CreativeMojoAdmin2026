@@ -1,4 +1,56 @@
 # Creative Mojo — Admin & Franchisee Hub PRD
+- ✅ **CMS Phase 1C Turn C — Personalised contract issuance (Feb 2026, Maxx-on)**
+  Production-grade render + issuance pipeline. Preview generator refactored into a
+  shared `contract_render_engine.render(mode=…)` — Phase 1B preview keeps its
+  lenient behaviour, Phase 1C `mode='issuance'` enforces strict invariants and
+  supersede semantics.
+    • **Render engine (`contract_render_engine.py`):** shared write pipeline for
+      preview + issuance. Strict-mode invariants (issuance): every declared
+      marker MUST have a resolved value; overflow at `min_font_size` → hard
+      fail; residual `[[` in output → hard fail; empty hyperlink URL → hard
+      fail. `RenderError` carries offender list. Preview watermark suppressed
+      in issuance; PDF metadata clearly identifies "Issued contract".
+    • **Hyperlink annotations:** `TERRITORY_MAP_URL` produces a genuine
+      `LINK_URI` annotation whose rect covers the display text ("View Agreed
+      Territory Map"). Text is drawn in black with a thin underline stroke —
+      matches HQ's legal-document styling directive. Verified via
+      `page.get_links()` on the downloaded R2 object.
+    • **Issuance endpoint (`contract_issuance_routes.py`):**
+      `POST /admin/contracts/{id}/issue` runs the full pipeline —
+      status → `pending_issue`, render (strict), no-overwrite R2 put at
+      `contract-issuances/{contract_id}/personalised.pdf`, status → `issued`.
+      Records `personalised_pdf_r2_key`, `personalised_pdf_sha256`,
+      `personalised_pdf_byte_size`, `personalised_pdf_created_at`,
+      `issued_at`, `issued_by`, and a full `render_report_summary`
+      (occurrence_count, hyperlink_count, link_annotations, residual_token_count,
+      redaction_verified, template_version, source_pdf_sha256) on the
+      contract. Failures during render roll the status back to `draft` and
+      emit `contract.issue.aborted` audit.
+    • **Supersede rules:** issuing a draft whose `supersedes_id` points at an
+      `issued` predecessor auto-flips the predecessor to `superseded` with
+      `superseded_at`, `superseded_by`, `superseded_by_contract_id` and a
+      `contract.superseded` audit entry — no in-place regeneration is ever
+      possible.
+    • **No-overwrite guarantee:** R2 `head_object` is checked BEFORE and
+      AFTER render; any existing object at the target key aborts with 409.
+      R2 metadata carries `contract-id, template-id, template-version,
+      personalised-sha256, content-length, issued-by` for downstream audit.
+      Uploaded with `ContentType=application/pdf`, `CacheControl=private,
+      no-store`. Signed URLs for HQ view via
+      `GET /admin/contracts/{id}/personalised-pdf` (10-minute expiry).
+    • **Source PDF integrity:** `template.pdf_sha256` verified against R2
+      before render; source bytes are byte-identical before and after
+      issuance (proven by evidence run).
+  **Verification (iteration_54):** 28/28 direct pass (21 Turn C + 7 complement).
+  Combined 1B + Stop Point 3 + Turn A + Turn B + Turn C: **201 passed / 1
+  documented skip / 0 failures**, zero critical or minor issues.
+  Evidence artefacts saved: `/app/memory/turn_c_personalised_evidence.pdf`
+  (real issued PDF, 1586 B, clickable territory link to
+  `https://hub.creativemojo.co.uk/agreed-territory/{snapshot_id}/{secure_token}`).
+  **HELD:** Turn D (admin issuance wizard UI) — awaiting HQ review of Turn C
+  evidence and confirmation to switch Maxx OFF before starting.
+
+
 - ✅ **CMS Phase 1C Turn B — Contract Value Resolver (Feb 2026, Maxx-on)**
   Deterministic, pure resolver that turns a (template, contract, franchisee)
   triplet into a fully-typed, formatted set of marker values, then freezes them
