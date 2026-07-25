@@ -540,7 +540,38 @@ const OVERLAY_CSS_FONT = {
 const CSS_ALIGN = { left: "left", center: "center", right: "right", justify: "justify" };
 const CSS_TRANSFORM = { upper: "uppercase", lower: "lowercase", title: "capitalize" };
 
+// Normalise any marker value to a safe display string.
+//
+// Marker Library entries can be plain strings (dates, names, fees) OR
+// hyperlink shapes like ``{url, display}`` (TERRITORY_MAP_URL, and any
+// future ``data_type=hyperlink``). React can only render strings in
+// JSX children — passing the raw ``{url, display}`` object triggers
+// "Objects are not valid as a React child". Every marker-value render
+// site in Marker Review MUST go through this helper.
+export function normaliseMarkerDisplayValue(v) {
+  if (v === null || v === undefined) return "";
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  if (typeof v === "object") {
+    // Hyperlink shape — prefer display, fall back to url.
+    if (typeof v.display === "string" && v.display) return v.display;
+    if (typeof v.url === "string" && v.url) return v.url;
+    // Arrays / anything else — coerce safely without leaking [object Object].
+    try { return JSON.stringify(v); } catch { return ""; }
+  }
+  return String(v);
+}
+
+// URL companion — hyperlink markers may want an anchor href. Returns
+// null for non-hyperlink values so callers can safely ``if (url)``.
+export function extractMarkerHref(v) {
+  if (v && typeof v === "object" && typeof v.url === "string" && v.url) return v.url;
+  return null;
+}
+
 function applyCasingClientSide(value, casing) {
+  if (!value) return value;
+  if (typeof value !== "string") value = normaliseMarkerDisplayValue(value);
   if (!value) return value;
   if (casing === "upper") return value.toUpperCase();
   if (casing === "lower") return value.toLowerCase();
@@ -560,7 +591,8 @@ function MarkerBox({ marker, px, tokenPx, selected, inlinePreviewOn, scale, onSe
   if (!currentPx) return null;
 
   const overflowed = marker.last_render_report?.overflow === true;
-  const value = applyCasingClientSide(marker.sample_value || `[[${marker.code}]]`, marker.casing);
+  const displayValue = normaliseMarkerDisplayValue(marker.sample_value) || `[[${marker.code}]]`;
+  const value = applyCasingClientSide(displayValue, marker.casing);
   const overlayFamily = marker.overlay_font_family_override || marker.last_render_report?.overlay_family || "helv";
   const fontSizePt = marker.font_size_override || marker.font_size || 11;
   const fontSizePx = fontSizePt * (scale || 1);
