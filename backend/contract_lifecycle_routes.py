@@ -303,6 +303,56 @@ def attach(api, db, require_role):
         })
         return _strip_mongo(await db[TEMPLATES_COLLECTION].find_one({"id": template_id}))
 
+    @api.patch("/admin/contract-templates/{template_id}/signing-block")
+    async def set_signing_block(
+        template_id: str,
+        payload: dict,
+        user: dict = Depends(require_role("admin")),
+    ):
+        """Set the rectangle on a template where the electronic
+        acceptance block (typed name + timestamp + contract reference)
+        is overlaid on portal acceptance. When not set, a sensible
+        default (last page, bottom-left) is used."""
+        existing = await db[TEMPLATES_COLLECTION].find_one({"id": template_id})
+        if not existing:
+            raise HTTPException(404, detail="Template not found")
+        # Accept either a full block or nulls to clear.
+        clear = payload.get("clear") is True
+        if clear:
+            update = {"signing_block": None}
+        else:
+            try:
+                block = {
+                    "page":   int(payload.get("page") or 1),
+                    "x":      float(payload["x"]),
+                    "y":      float(payload["y"]),
+                    "width":  float(payload["width"]),
+                    "height": float(payload["height"]),
+                }
+            except (KeyError, TypeError, ValueError):
+                raise HTTPException(400, detail="Body must include page, x, y, width, height (numeric), or {clear: true}.")
+            if block["width"] < 40 or block["height"] < 20:
+                raise HTTPException(400, detail="width must be ≥ 40 and height ≥ 20 points.")
+            pages = int(existing.get("pdf_page_count") or 1)
+            if block["page"] < 1 or block["page"] > pages:
+                raise HTTPException(400, detail=f"page must be between 1 and {pages}.")
+            update = {"signing_block": block}
+        now = _now_iso()
+        update["updated_at"] = now
+        update["updated_by"] = user.get("email")
+        await db[TEMPLATES_COLLECTION].update_one(
+            {"id": template_id}, {"$set": update},
+        )
+        await db[AUDIT_COLLECTION].insert_one({
+            "id": _new_id(),
+            "template_id": template_id,
+            "action": "template.signing_block.set",
+            "actor": user.get("email"),
+            "at": now,
+            "extra": update.get("signing_block"),
+        })
+        return _strip_mongo(await db[TEMPLATES_COLLECTION].find_one({"id": template_id}))
+
     @api.get("/admin/contract-templates/{template_id}/versions")
     async def list_versions(
         template_id: str,

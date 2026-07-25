@@ -74,6 +74,7 @@ import PortalTerritoryPage from "@/pages/portal/PortalTerritoryPage";
 import PortalEventsPage from "@/pages/portal/PortalEventsPage";
 import PortalFilesPage from "@/pages/portal/PortalFilesPage";
 import PortalUpdatesPage from "@/pages/portal/PortalUpdatesPage";
+import PortalContractsPage from "@/pages/portal/PortalContractsPage";
 // Portal invoices module — clone of admin Sandra's Invoices, scoped to franchisee.
 import PortalInvoicesShell from "@/pages/portal/invoices/PortalInvoicesShell";
 import PortalInvoiceList from "@/pages/portal/invoices/PortalInvoiceList";
@@ -129,6 +130,7 @@ export default function App() {
               <Route path="account/subscriptions" element={<PortalSubscriptionsPage />} />
               <Route path="files" element={<PortalFilesPage />} />
               <Route path="updates" element={<PortalUpdatesPage />} />
+              <Route path="contracts" element={<PortalContractsPage />} />
               <Route path="invoices" element={<PortalInvoicesShell />}>
                 <Route index element={<PortalInvoiceList />} />
                 <Route path="reconcile" element={<PortalReconcile />} />

@@ -6737,6 +6737,9 @@ contracts_routes.attach(api, db, require_role)
 import contract_issuance_routes  # noqa: E402
 contract_issuance_routes.attach(api, db, require_role)
 
+import portal_contracts_routes  # noqa: E402
+portal_contracts_routes.attach(api, db, require_role)
+
 # Idempotent seeder — runs at startup, only inserts missing markers.
 @app.on_event("startup")
 async def _seed_marker_library_on_startup():
