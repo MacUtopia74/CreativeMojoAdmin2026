@@ -1,4 +1,51 @@
 # Creative Mojo — Admin & Franchisee Hub PRD
+- ✅ **CMS — Draft Preview + Franchisee-record integration (Feb 2026)**
+  Two workflow additions requested to unblock day-to-day HQ usage.
+    * **Draft-only Preview PDF** — new `POST /admin/contracts/{id}/preview-pdf`.
+      Streams a watermarked PDF (every page carries `PREVIEW — NOT FOR
+      ISSUE`) using either the frozen `contract_variables` if
+      resolve-variables has already run, or a dry-run of the resolver
+      plus synthetic defaults for anything unresolved. No R2 write,
+      no audit rows, no status change, no franchisee visibility.
+      Rejected with 409 on non-draft contracts (issued/signed/superseded
+      contracts must go through the standard `personalised-pdf`
+      endpoint). Also tightened the portal loader: franchisees can no
+      longer `GET /portal/contracts/{id}` on any non-issued row — same
+      404 as an unknown ID (no info leak). Preview button appears
+      beside Issue on the Admin Contracts page and on the
+      franchisee-page CMS strip.
+    * **Franchisee-page CMS integration** — the "Add / Renew contract"
+      button on the franchisee record now opens the same central
+      New Contract modal, with the franchisee **locked** to the
+      current record and the renewal toggle **pre-selected** whenever
+      a prior issued/signed CMS contract exists (auto-sets
+      `supersedes_id`). Franchisee legal name is prefilled from the
+      record's `organisation`; HQ signatory fields left blank so the
+      resolver falls back to settings defaults. Saving creates the
+      same draft in the central `contracts` collection.
+    * **Central Contracts Register strip** — new
+      `CmsContractsPanel` (`components/franchisee/CmsContractsPanel.jsx`)
+      lives inside the existing Contracts panel on the franchisee page,
+      below the legacy Current Contract card. Lists every central CMS
+      contract for this franchisee with the same status pills
+      (Draft/Issued/Signed/Superseded) and the same Preview / Issue /
+      PDF / Upload-signed actions as the Admin Contracts page.
+      Reuses the exported `NewContractModal` and `StatusPill` from
+      `AdminContractsPage` — no duplicate workflow logic.
+  **Verification** — 21 tests green:
+    * `tests/test_draft_preview_pdf.py` (5) — watermark on every page,
+      status stays `draft`, no R2 write, no portal exposure, preview is
+      idempotent, 409 after issue.
+    * `tests/test_portal_signing_e2e.py` (9) — full acceptance flow
+      still passes end-to-end.
+    * `tests/test_marker_review_hyperlink_normalisation.py` (7) —
+      hyperlink-marker normalisation still locked.
+  Live-verified against Helen Lyons' franchisee page: 86 CMS contracts
+  now visible under "Central Contracts Register", modal opens with
+  franchisee locked + legal name prefilled + Renewal auto-linking
+  to the most recent issued contract.
+
+
 - ✅ **CMS Phase 1C — In-Hub Electronic Contract Acceptance (Feb 2026)**
   Franchisees can now log into the Hub and accept their issued franchise
   agreement electronically — no offline signing / DocuSign required. The

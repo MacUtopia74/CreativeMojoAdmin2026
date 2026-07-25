@@ -31,8 +31,11 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import Depends, HTTPException, UploadFile, File
+from fastapi.responses import StreamingResponse
 
 import contract_render_engine as engine
+import contract_preview_generator as previewgen
+import contract_value_resolver as resolver
 import file_storage as fs
 
 logger = logging.getLogger(__name__)
@@ -365,6 +368,111 @@ def attach(api, db, require_role):
         )
 
         return _strip_mongo(await db[CONTRACTS_COLLECTION].find_one({"id": contract_id}))
+
+    # ------------------------------------------------------------------
+    # Draft-only preview PDF.
+    #
+    # HQ needs to visually check a draft before it becomes visible to the
+    # franchisee. This endpoint runs the render engine in **preview
+    # mode** (lenient, PREVIEW watermark on every page) and STREAMS the
+    # bytes back inline. It never:
+    #   * changes contract.status
+    #   * writes to R2 (no personalised.pdf key is created)
+    #   * emits contract audit rows
+    #   * exposes the contract to the franchisee portal
+    #
+    # Values used, in priority order:
+    #   1. Any frozen ``contract_variables`` already on the draft
+    #      (i.e. HQ has already called resolve-variables).
+    #   2. Otherwise, a dry-run of the resolver — whatever it can
+    #      produce, plus synthetic defaults for any code that still
+    #      has no value. This mirrors ``generate_sample_preview``.
+    # ------------------------------------------------------------------
+    @api.post("/admin/contracts/{contract_id}/preview-pdf")
+    async def preview_draft_pdf(
+        contract_id: str,
+        _: dict = Depends(require_role("admin")),
+    ):
+        contract = await db[CONTRACTS_COLLECTION].find_one({"id": contract_id})
+        if not contract:
+            raise HTTPException(404, detail="Contract not found.")
+        if contract.get("status") != "draft":
+            raise HTTPException(
+                409,
+                detail=(
+                    f"Preview is only available for drafts. This contract "
+                    f"is in status '{contract.get('status')}' — download the "
+                    "personalised PDF via the standard endpoint instead."
+                ),
+            )
+        template = await db[TEMPLATES_COLLECTION].find_one({"id": contract["template_id"]})
+        if not template:
+            raise HTTPException(500, detail="Contract references a missing template.")
+
+        source_bytes, _sha = await _load_source_pdf_and_verify(template)
+        markers, _tv = await _pick_frozen_markers(db, template)
+
+        # Prefer frozen variables when present; otherwise, run the
+        # resolver as a dry-run and fall back to synthetic defaults for
+        # any marker it couldn't resolve. Preview mode never persists.
+        values_map: Dict[str, Any] = {}
+        frozen_cv = contract.get("contract_variables") or {}
+        if frozen_cv.get("values"):
+            for code, rv in frozen_cv["values"].items():
+                if rv.get("value") not in (None, ""):
+                    values_map[code] = rv["value"]
+        else:
+            franchisee = await db["franchisees"].find_one({"id": contract["franchisee_id"]})
+            library_col = "contract_marker_library"
+            try:
+                import contract_markers_library as _mlib
+                library_col = _mlib.LIBRARY_COLLECTION
+            except Exception:
+                pass
+            library = [d async for d in db[library_col].find({})]
+            if franchisee:
+                try:
+                    report = resolver.resolve_contract_variables(
+                        template, contract, franchisee, library,
+                        actor="preview",
+                        at=datetime.now(timezone.utc),
+                    )
+                    for code, rv in (report.resolved or {}).items():
+                        if getattr(rv, "value", None) not in (None, ""):
+                            values_map[code] = rv.value
+                except Exception as exc:
+                    logger.warning(
+                        "Preview resolver dry-run failed for %s: %s — falling "
+                        "back to synthetic defaults only.", contract_id, exc,
+                    )
+
+        # Fill any still-missing markers with synthetic defaults.
+        for m in markers:
+            code = m.get("code") or ""
+            if code and code not in values_map:
+                values_map[code] = previewgen.synthetic_default_for(
+                    code, (m.get("data_type") or "string").lower(),
+                )
+
+        pdf_bytes, _report = engine.render(
+            source_bytes,
+            markers,
+            values_map,
+            mode="preview",
+            template_name=(template.get("name") or "template"),
+        )
+
+        filename = f"contract-{contract_id[:8]}-DRAFT.pdf"
+        headers = {
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Cache-Control": "no-store, must-revalidate",
+            "X-Preview-Watermark": "PREVIEW-NOT-FOR-ISSUE",
+        }
+        return StreamingResponse(
+            io.BytesIO(pdf_bytes),
+            media_type="application/pdf",
+            headers=headers,
+        )
 
     @api.get("/admin/contracts/{contract_id}/personalised-pdf")
     async def personalised_pdf_signed_url(

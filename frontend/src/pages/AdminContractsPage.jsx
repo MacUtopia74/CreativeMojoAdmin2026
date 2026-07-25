@@ -23,7 +23,7 @@ function fmt(iso) {
   catch { return iso; }
 }
 
-function StatusPill({ status }) {
+export function StatusPill({ status }) {
   const s = STATUS_STYLES[status] || { label: status || "?", cls: "bg-stone-100 text-stone-700 border-stone-300" };
   return (
     <span data-testid={`contract-status-${status}`}
@@ -96,6 +96,26 @@ export default function AdminContractsPage() {
       const d = e?.response?.data?.detail;
       alert(`Issue failed: ${typeof d === "string" ? d : JSON.stringify(d || e.message)}`);
     } finally { setBusyRow(null); }
+  }
+
+  async function downloadDraftPreview(cid) {
+    try {
+      const resp = await api.post(
+        `/admin/contracts/${cid}/preview-pdf`,
+        null,
+        { responseType: "blob" },
+      );
+      const url = window.URL.createObjectURL(
+        new Blob([resp.data], { type: "application/pdf" }),
+      );
+      // Open in a new tab. The watermark is baked into every page and
+      // the URL is a short-lived object URL that is revoked on unload.
+      window.open(url, "_blank", "noopener");
+      // Revoke after a beat so the new tab has time to grab the blob.
+      setTimeout(() => window.URL.revokeObjectURL(url), 30_000);
+    } catch (e) {
+      alert(`Preview failed: ${e?.response?.data?.detail || e.message}`);
+    }
   }
 
   async function downloadPersonalised(cid) {
@@ -213,6 +233,15 @@ export default function AdminContractsPage() {
                       <div className="flex items-center justify-end gap-1.5">
                         {c.status === "draft" && (
                           <button
+                            onClick={() => downloadDraftPreview(c.id)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs border rounded bg-white hover:bg-stone-50"
+                            data-testid={`contract-preview-btn-${c.id}`}
+                            title="Render the draft with a PREVIEW watermark. Does not change status or make the contract visible to the franchisee.">
+                            <FileText className="h-3 w-3" /> Preview
+                          </button>
+                        )}
+                        {c.status === "draft" && (
+                          <button
                             onClick={() => resolveAndIssue(c.id)}
                             disabled={isBusy}
                             className="inline-flex items-center gap-1 px-2.5 py-1 text-xs border rounded bg-emerald-600 border-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
@@ -283,15 +312,26 @@ export default function AdminContractsPage() {
   );
 }
 
-function NewContractModal({ templates, franchisees, onClose, onCreated }) {
+export function NewContractModal({ templates, franchisees, onClose, onCreated, lockedFranchiseeId, renewalOf }) {
   const [templateId, setTemplateId] = useState(templates[0]?.id || "");
-  const [franchiseeId, setFranchiseeId] = useState("");
+  const [franchiseeId, setFranchiseeId] = useState(lockedFranchiseeId || "");
   const [monthlyFee, setMonthlyFee] = useState("");
-  const [franchiseeLegalName, setFranchiseeLegalName] = useState("");
+  const lockedFr = lockedFranchiseeId
+    ? franchisees.find((f) => f.id === lockedFranchiseeId)
+    : null;
+  const defaultLegalName = lockedFr
+    ? (lockedFr.organisation ||
+        `${lockedFr.first_name || ""} ${lockedFr.last_name || ""}`.trim())
+    : "";
+  const [franchiseeLegalName, setFranchiseeLegalName] = useState(defaultLegalName);
   const [hqSignatoryName, setHqSignatoryName] = useState("");
   const [hqSignatoryTitle, setHqSignatoryTitle] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  // "Renewal — supersedes #X" auto-links this draft to a prior CMS
+  // contract for the same franchisee. Defaults ON when the caller
+  // passes a ``renewalOf`` reference (franchisee page always does).
+  const [renewalOn, setRenewalOn] = useState(Boolean(renewalOf));
 
   const franchiseesSorted = useMemo(() =>
     [...franchisees].sort((a, b) => {
@@ -311,6 +351,7 @@ function NewContractModal({ templates, franchisees, onClose, onCreated }) {
       if (franchiseeLegalName) body.franchisee_legal_name = franchiseeLegalName;
       if (hqSignatoryName) body.hq_signatory_name = hqSignatoryName;
       if (hqSignatoryTitle) body.hq_signatory_title = hqSignatoryTitle;
+      if (renewalOn && renewalOf?.id) body.supersedes_id = renewalOf.id;
       await api.post("/admin/contracts", body);
       await onCreated();
     } catch (e) {
@@ -323,12 +364,32 @@ function NewContractModal({ templates, franchisees, onClose, onCreated }) {
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" data-testid="new-contract-modal">
       <div className="bg-white rounded-lg shadow-lg w-full max-w-lg">
         <div className="flex items-center justify-between p-4 border-b">
-          <h2 className="text-lg font-semibold">New contract</h2>
+          <h2 className="text-lg font-semibold">
+            {renewalOn && renewalOf ? "Renew contract" : "New contract"}
+          </h2>
           <button onClick={onClose} className="text-stone-500 hover:text-stone-800" data-testid="new-contract-close-btn">
             <X className="h-5 w-5" />
           </button>
         </div>
         <div className="p-4 space-y-3">
+          {renewalOf && (
+            <label className="flex items-start gap-2 text-xs bg-amber-50 border border-amber-200 rounded p-2 cursor-pointer"
+                   data-testid="new-contract-renewal-toggle-row">
+              <input
+                type="checkbox"
+                checked={renewalOn}
+                onChange={(e) => setRenewalOn(e.target.checked)}
+                className="mt-0.5"
+                data-testid="new-contract-renewal-toggle" />
+              <span className="text-amber-900">
+                <strong>Renewal</strong> — this draft supersedes
+                <code className="mx-1 px-1 bg-white border border-amber-200 rounded">
+                  {renewalOf.contract_reference || `#${renewalOf.id.slice(0, 8)}`}
+                </code>
+                when it is issued.
+              </span>
+            </label>
+          )}
           <label className="block text-sm">
             <span className="text-stone-700">Template</span>
             <select
@@ -343,11 +404,12 @@ function NewContractModal({ templates, franchisees, onClose, onCreated }) {
             </select>
           </label>
           <label className="block text-sm">
-            <span className="text-stone-700">Franchisee</span>
+            <span className="text-stone-700">Franchisee{lockedFranchiseeId && " (locked to this record)"}</span>
             <select
               value={franchiseeId}
               onChange={(e) => setFranchiseeId(e.target.value)}
-              className="w-full mt-1 border rounded-md px-2 py-1.5 text-sm"
+              disabled={Boolean(lockedFranchiseeId)}
+              className="w-full mt-1 border rounded-md px-2 py-1.5 text-sm disabled:bg-stone-100 disabled:text-stone-500"
               data-testid="new-contract-franchisee-select">
               <option value="">— select franchisee —</option>
               {franchiseesSorted.map((f) => (

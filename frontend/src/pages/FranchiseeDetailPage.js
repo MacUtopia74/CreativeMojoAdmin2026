@@ -10,7 +10,7 @@ import PortalModulesPanel from "@/components/franchisee/PortalModulesPanel";
 import FranchiseeTerritoryWidget from "@/components/territory/FranchiseeTerritoryWidget";
 import RecentFilesStrip from "@/components/files/RecentFilesStrip";
 import FilePreviewModal from "@/components/files/FilePreviewModal";
-import AddContractModal from "@/components/franchisee/AddContractModal";
+import CmsContractsPanel from "@/components/franchisee/CmsContractsPanel";
 import LaunchChecklistModal from "@/components/LaunchChecklistModal";
 import DBSModal from "@/components/dbs/DBSModal";
 import LoginLog from "@/components/auth/LoginLog";
@@ -423,7 +423,10 @@ export default function FranchiseeDetailPage() {
   const [previewFile, setPreviewFile] = useState(null);
   const [photoBusy, setPhotoBusy] = useState(false);
   const fileInputRef = useRef(null);
-  const [contractModal, setContractModal] = useState(null); // null | "new" | {previous}
+  // Signal-based trigger for the CMS New/Renew modal that lives inside
+  // <CmsContractsPanel>. Setting this to a truthy value asks the panel
+  // to open its own <NewContractModal> pre-locked to this franchisee.
+  const [cmsContractTrigger, setCmsContractTrigger] = useState(0);
   // In-house Launch Prep checklist modal — only available post-conversion,
   // so it lives on the Franchisee page (not on the Contact drawer).
   const [launchOpen, setLaunchOpen] = useState(false);
@@ -820,19 +823,40 @@ export default function FranchiseeDetailPage() {
         {f.sales_handoff && <SalesHandoffPanel handoff={f.sales_handoff} />}
         <Panel icon={FileText} title={`Contracts (${contracts.length})`} testid="panel-contracts"
           action={
-            <button onClick={() => setContractModal(contracts.length ? { previous: current } : "new")}
+            <button onClick={() => setCmsContractTrigger((n) => n + 1)}
               data-testid="add-contract-btn"
               className="text-[10px] uppercase tracking-widest font-bold text-stone-700 hover:text-stone-950 flex items-center gap-1 px-2.5 py-1 border border-stone-300 hover:bg-stone-50 rounded-md">
               <FileText className="w-3 h-3" /> {contracts.length ? "Add / Renew contract" : "Add first contract"}
             </button>
           }>
           {contracts.length === 0 ? (
-            <div className="text-sm text-stone-500 text-center py-6">
-              No contracts on file. Click <strong>Add first contract</strong> above to start the term.
+            <div className="space-y-4">
+              <div className="text-sm text-stone-500 text-center py-3">
+                No legacy contracts on file. Use <strong>Add / Renew contract</strong> above
+                to create a draft in the central Contracts register.
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-2">
+                  Central Contracts Register
+                </div>
+                <CmsContractsPanel
+                  franchiseeId={f.id}
+                  openSignal={cmsContractTrigger}
+                  onModalHandled={() => { /* trigger consumed */ }} />
+              </div>
             </div>
           ) : (
             <div className="space-y-5">
               {current && <CurrentContractCard contract={current} />}
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-2">
+                  Central Contracts Register
+                </div>
+                <CmsContractsPanel
+                  franchiseeId={f.id}
+                  openSignal={cmsContractTrigger}
+                  onModalHandled={() => { /* trigger consumed */ }} />
+              </div>
               {history.length > 0 && (
                 <div>
                   <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-3">Previous Contracts ({history.length})</div>
@@ -1009,23 +1033,6 @@ export default function FranchiseeDetailPage() {
           }));
         }}
       />
-      {contractModal && (
-        <AddContractModal
-          franchisee={data.franchisee}
-          previous={contractModal === "new" ? null : contractModal.previous}
-          onClose={() => setContractModal(null)}
-          onSaved={async (newContract) => {
-            setContractModal(null);
-            // refresh contracts list — re-fetch the franchisee detail
-            try {
-              const { data: fresh } = await api.get(`/franchisees/${id}`);
-              setData(fresh);
-            } catch (e) {
-              setData((d) => ({ ...d, contracts: [...(d.contracts || []), newContract] }));
-            }
-          }}
-        />
-      )}
     </div>
   );
 }

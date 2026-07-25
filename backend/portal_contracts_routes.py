@@ -202,6 +202,12 @@ def attach(api, db, require_role):
         if contract.get("franchisee_id") != user.get("franchisee_id"):
             # Never leak — same 404 as if the row didn't exist.
             raise HTTPException(404, detail="Contract not found.")
+        # Franchisees may only ever see contracts that HQ has already
+        # issued. Drafts and ``pending_issue`` rows are HQ-only — even
+        # a franchisee who guesses the contract ID must get the same
+        # 404 as if the row didn't exist.
+        if contract.get("status") not in {"issued", "signed", "superseded"}:
+            raise HTTPException(404, detail="Contract not found.")
         return contract
 
     @api.get("/portal/contracts")
