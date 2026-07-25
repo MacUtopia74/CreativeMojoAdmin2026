@@ -35,6 +35,7 @@ import io
 import logging
 import uuid
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from typing import Any, Dict, Optional
 
 import fitz
@@ -126,9 +127,9 @@ def _default_signing_block(pdf_page_count: int) -> Dict[str, Any]:
     return {
         "page": pdf_page_count,
         "x": 60,
-        "y": 700,
-        "width": 300,
-        "height": 60,
+        "y": 680,
+        "width": 340,
+        "height": 70,
     }
 
 
@@ -156,34 +157,33 @@ def _overlay_acceptance_block(
         h = float(signing_block.get("height", 60))
         page = src[page_num - 1]
 
-        # Draw a small border so HQ can see the overlay clearly
-        # (kept subtle — thin grey line).
+        # Draw a subtle border around the acceptance block so HQ can
+        # locate the overlay clearly on the signing page.
         page.draw_rect(fitz.Rect(x, y, x + w, y + h),
                        color=(0.6, 0.6, 0.6), width=0.4)
 
-        # Typed name — the acceptance signature line
+        # UK local time for the acceptance date/time line.
+        accepted_uk = accepted_at.astimezone(ZoneInfo("Europe/London"))
+        date_str = accepted_uk.strftime("%-d %B %Y, %H:%M")
+
+        # Line 1 — typed full name (the electronic signature line).
         page.insert_text(
-            (x + 6, y + 16), typed_name,
-            fontsize=11, fontname="hebo", color=(0, 0, 0),
+            (x + 6, y + 16),
+            f"Electronically accepted by: {typed_name}",
+            fontsize=10, fontname="helv", color=(0, 0, 0),
         )
-        # Small caption under the name
+        # Line 2 — UK date + time.
         page.insert_text(
-            (x + 6, y + 28),
-            "Franchisee - electronic acceptance",
-            fontsize=7, fontname="helv", color=(0.4, 0.4, 0.4),
+            (x + 6, y + 32),
+            f"Date and time: {date_str}",
+            fontsize=10, fontname="helv", color=(0, 0, 0),
         )
-        # Acceptance date + time
-        page.insert_text(
-            (x + 6, y + 42),
-            f"Accepted: {accepted_at.strftime('%d %B %Y, %H:%M UTC')}",
-            fontsize=8, fontname="helv", color=(0, 0, 0),
-        )
-        # Contract reference — small, in the block for auditability
+        # Line 3 — contract reference (if present).
         if contract_reference:
             page.insert_text(
-                (x + 6, y + 54),
-                f"Ref: {contract_reference}",
-                fontsize=7, fontname="helv", color=(0.35, 0.35, 0.35),
+                (x + 6, y + 48),
+                f"Contract reference: {contract_reference}",
+                fontsize=10, fontname="helv", color=(0, 0, 0),
             )
 
         out = io.BytesIO()

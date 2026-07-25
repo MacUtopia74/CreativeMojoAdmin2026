@@ -1,4 +1,64 @@
 # Creative Mojo — Admin & Franchisee Hub PRD
+- ✅ **CMS Phase 1C — In-Hub Electronic Contract Acceptance (Feb 2026)**
+  Franchisees can now log into the Hub and accept their issued franchise
+  agreement electronically — no offline signing / DocuSign required. The
+  existing HQ manual signed-PDF upload endpoint is preserved as a fallback.
+    • **New sidebar entry** on the Franchisee Portal — "Contracts" between
+      File Vault and Comfort Zone. Test-id `portal-nav-contracts`. Route
+      `/portal/contracts`.
+    • **Portal page (`PortalContractsPage.jsx`):** lists all `issued /
+      signed / superseded` contracts belonging to the authenticated
+      franchisee (403 for admin, 404 for other franchisees — no info leak).
+      Row shows status pill, `contract_reference` (or short ID),
+      issued/signed timestamps, and an Open button. Open displays the
+      issued PDF inline plus an acceptance form: read confirmation
+      checkbox + typed full-name field + "Accept and sign contract"
+      button. Signed contracts show a green "Signed on" notice with the
+      accepting name and swap the iframe over to `signed-final.pdf`.
+    • **Backend routes (`portal_contracts_routes.py`):**
+        - `GET /portal/contracts` — franchisee's own contracts, redacted
+          projection (no R2 keys, no render_report internals).
+        - `GET /portal/contracts/{id}` — one contract, ownership-checked.
+        - `GET /portal/contracts/{id}/personalised-pdf` — 10-min
+          presigned URL for the issued PDF.
+        - `GET /portal/contracts/{id}/signed-pdf` — 10-min presigned URL
+          for the signed-final PDF.
+        - `POST /portal/contracts/{id}/accept` — the electronic
+          acceptance endpoint. Validates checkbox + typed name (400 on
+          either failure), requires `status='issued'` (409 otherwise),
+          re-verifies the personalised PDF SHA-256 against R2 for
+          tamper protection, overlays the acceptance block, writes
+          `signed-final.pdf` at
+          `contract-issuances/{id}/signed-final.pdf` (no-overwrite —
+          head_object CAS both before and after), flips status
+          `issued → signed` under a Mongo CAS guard (`{status:'issued'}`),
+          persists a full `acceptance_record` (typed name, timestamp,
+          IP, user-agent, issued PDF SHA, signed PDF SHA, method), and
+          emits `contract.accepted` + `contract.signed` audit rows.
+    • **Overlay content** (drawn on the signing page — last page by
+      default, or a template's configured `signing_block`):
+        - `Electronically accepted by: <typed name>`
+        - `Date and time: <UK Europe/London-localised date + time>`
+        - `Contract reference: <CM-YYYY-NNNN>` (only if present in
+          frozen variables)
+      Rendered at 10pt Helvetica black with a subtle 0.4pt grey border
+      around the block. Original personalised PDF at
+      `.../personalised.pdf` is **never modified** — the overlay is
+      applied to an in-memory copy and stored under a separate R2 key.
+    • **Immutability guarantees:** second-accept attempts return 409;
+      HQ's `upload-signed` fallback and the portal accept path both
+      share the same signed-final key so they cannot race silently.
+  **Verification:** 9/9 tests pass in
+  `tests/test_portal_signing_e2e.py` — full round-trip against the
+  live preview backend using the real franchisee test account:
+  list-own, open-issued PDF, reject unticked checkbox, reject empty
+  name, accept flow flips status, overlay text present on signing page,
+  second-accept refused, admin (non-franchisee) blocked with 403,
+  HQ fallback route still registered. Evidence PDF saved at
+  `/app/memory/portal_signed_evidence.pdf`; rendered signing page at
+  `/app/memory/portal_signed_signing_page.png`.
+
+
 - ✅ **CMS MVP finish — Real Paloma E2E + Admin page + Signing (Feb 2026)**
   Strict MVP scope, standard model. Zero scope expansion beyond user directive.
     • **Real Paloma end-to-end proof** — full 5-page HQ template
