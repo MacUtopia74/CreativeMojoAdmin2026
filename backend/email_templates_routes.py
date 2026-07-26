@@ -21,6 +21,31 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+# Allowed values for ``EmailTemplate.display_color`` — three greens,
+# three oranges, three reds, plus None for "no colour" (neutral). The
+# frontend picker mirrors this ordering. Kept as a module-level set so
+# both the create and update validators share the source of truth.
+ALLOWED_DISPLAY_COLORS = {
+    "green_1", "green_2", "green_3",
+    "orange_1", "orange_2", "orange_3",
+    "red_1", "red_2", "red_3",
+}
+
+
+def _validate_display_color(value):
+    if value in (None, ""):
+        return None
+    if value in ALLOWED_DISPLAY_COLORS:
+        return value
+    raise HTTPException(
+        400,
+        detail=(
+            f"Invalid display_color '{value}'. Must be one of "
+            f"{sorted(ALLOWED_DISPLAY_COLORS)} or null."
+        ),
+    )
+
+
 class EmailAttachment(BaseModel):
     """A linked file inside a template body. The R2 ``key`` is stored so
     we can mint a fresh signed URL at send time — that way templates
@@ -51,6 +76,16 @@ class EmailTemplate(BaseModel):
     default_bcc: list[str] = Field(default_factory=list)
     attachments: list[EmailAttachment] = Field(default_factory=list)
     category: Optional[str] = None            # free-text tag — e.g. "franchise" / "licence"
+    # Short bold tag shown in the "Reply with template" dropdown and on
+    # the templates list rail — e.g. "BLANK INTRO", "AREA TAKEN". Keeps
+    # HQ from having to squint at long template names to pick the right
+    # reply. Empty / null = fall back to ``name``.
+    display_name: Optional[str] = None
+    # Colour tag for the display_name pill. One of the 9 values below
+    # (three greens / three oranges / three reds) or None for a neutral
+    # stone chip. Deliberately fixed to a small palette so the picker in
+    # the UI stays tight and the whole library scans at a glance.
+    display_color: Optional[str] = None
 
 
 def build_email_templates_router(db, require_role):  # noqa: D401
@@ -128,6 +163,12 @@ def build_email_templates_router(db, require_role):  # noqa: D401
         if not body.name.strip():
             raise HTTPException(400, detail="Template name is required")
         doc = body.model_dump()
+        # Normalise the display fields — validator raises 400 on garbage
+        # colour strings so the DB never carries anything the picker
+        # can't render.
+        doc["display_color"] = _validate_display_color(doc.get("display_color"))
+        if doc.get("display_name"):
+            doc["display_name"] = doc["display_name"].strip() or None
         # Persist only the editable body — the signature is system-managed
         # and re-applied on every read/preview/send.
         doc["body_html"] = _strip_signature(doc.get("body_html") or "")
@@ -153,10 +194,17 @@ def build_email_templates_router(db, require_role):  # noqa: D401
         EDITABLE = {
             "name", "subject", "body_html", "default_from", "sender_name",
             "default_cc", "default_bcc", "attachments", "category",
+            "display_name", "display_color",
         }
         update = {k: v for k, v in (body or {}).items() if k in EDITABLE}
         if not update:
             raise HTTPException(400, detail="No editable fields provided")
+        # Normalise / validate the display_color pill choice.
+        if "display_color" in update:
+            update["display_color"] = _validate_display_color(update["display_color"])
+        if "display_name" in update:
+            dn = (update["display_name"] or "").strip()
+            update["display_name"] = dn or None
         # Always strip the signature on write — Tiptap can mangle it, and
         # we recompute it from SIGNATURE_HTML at render time anyway.
         if "body_html" in update:

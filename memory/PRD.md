@@ -1,4 +1,53 @@
 # Creative Mojo — Admin & Franchisee Hub PRD
+- ✅ **Email Templates — Display Name + Colour Tag (Feb 2026)**
+  Reply-with-template picker previously showed near-identical long
+  template names, making the right choice hard to spot. Now every
+  template can carry a short bold "Display Name" (e.g. `BLANK INTRO`,
+  `AREA TAKEN`, `FOLLOW UP`) plus a colour tag drawn from a fixed
+  9-value palette (three greens, three oranges, three reds) or no
+  colour (neutral chip).
+    * **Backend** (`email_templates_routes.py`): added `display_name`
+      (str, empty collapses to null) and `display_color` (enum) to the
+      `EmailTemplate` model + `EDITABLE` PATCH allow-list.
+      `_validate_display_color` rejects anything outside the palette
+      with a 400 that names the accepted values. `null` explicitly
+      clears the colour.
+    * **Template editor** (`EmailTemplatesPage.jsx`): new **Display
+      Name** input sits in the previously-empty slot next to
+      *Category* (the red-circled space in the user's screenshot).
+      Beneath it, a compact **Colour tag** row of ten circular
+      swatches (neutral grey + 9 palette entries), each with an
+      accessible tooltip. A live **Preview** pill renders the chip
+      exactly as it will appear elsewhere in the app.
+    * **Templates list rail**: widened from `w-72` → `w-96` so the
+      coloured pill + long template names both fit without
+      truncation. Each row now shows the coloured pill at the top of
+      its card.
+    * **Reply-with-template dropdown** (`ReplyWithTemplateModal.jsx`):
+      swapped the native `<select>` (which can't paint per-option
+      backgrounds cross-browser) for a custom keyboard/mouse-friendly
+      `TemplatePicker` listbox. Every option shows the coloured pill
+      on top, the full template name below, plus the category. Still
+      grouped by `CATEGORY_BUCKETS` and closes on outside-click /
+      Escape.
+    * **Shared component** (`lib/emailTemplateColors.js`): a single
+      `DISPLAY_COLOR_OPTIONS` table + `DisplayNamePill` React
+      component drives the pill wherever it appears — one source of
+      truth for palette, sizing and typography.
+  **Verification** — 24/24 tests green in
+  `tests/test_email_template_display_tag.py`:
+  round-trip PATCH of both fields; all 9 palette values accepted
+  (parametrised); five invalid values rejected with 400
+  (`purple_5`, `GREEN_1`, `blue`, `green_4`, `42`); `null` clears the
+  colour; empty display_name string collapses to `None`; frontend
+  wiring locked (palette module exports all 9, reply modal uses the
+  custom `TemplatePicker` + `DisplayNamePill`, page rail is wider
+  than `w-72`, editor has display-name input + all 9 + neutral
+  swatches). Live-verified against the templates page — pills render
+  as expected in green/orange/red on the list rail and in the editor
+  preview.
+
+
 - ✅ **CMS — Draft Preview + Franchisee-record integration (Feb 2026)**
   Two workflow additions requested to unblock day-to-day HQ usage.
     * **Draft-only Preview PDF** — new `POST /admin/contracts/{id}/preview-pdf`.

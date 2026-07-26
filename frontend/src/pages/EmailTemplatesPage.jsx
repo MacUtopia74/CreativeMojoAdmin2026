@@ -8,6 +8,7 @@ import api from "@/lib/api";
 import DOMPurify from "dompurify";
 import RichTextEditor from "@/components/RichTextEditor";
 import { CATEGORY_BUCKETS, groupTemplatesByBucket } from "@/lib/emailTemplateCategories";
+import { DISPLAY_COLOR_OPTIONS, DisplayNamePill, displayColorClasses } from "@/lib/emailTemplateColors";
 import {
   Loader2, Plus, Copy, Trash2, Save, X, Mail,
   Paperclip, FileText, ChevronRight, Search, AlertTriangle, CheckCircle2,
@@ -56,8 +57,9 @@ export default function EmailTemplatesPage() {
 
   return (
     <div className="flex h-[calc(100vh-4rem)]" data-testid="email-templates-page">
-      {/* Left rail — list */}
-      <div className="w-72 border-r border-stone-200 flex flex-col bg-stone-50">
+      {/* Left rail — list. Wider (w-96 = 24rem) so long template names
+          + the coloured Display Name pill both fit without truncation. */}
+      <div className="w-96 border-r border-stone-200 flex flex-col bg-stone-50">
         <div className="px-4 py-3 border-b border-stone-200 flex items-center justify-between">
           <h2 className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-700 flex items-center gap-1.5">
             <Mail className="w-3 h-3" /> Email Templates
@@ -91,6 +93,11 @@ export default function EmailTemplatesPage() {
                           <button onClick={() => setSelectedId(t.id)}
                             data-testid={`template-row-${t.id}`}
                             className={`w-full text-left px-4 py-3 border-b border-stone-200 transition-colors ${active ? "bg-white" : "hover:bg-white"}`}>
+                            {t.display_name && (
+                              <div className="mb-1.5">
+                                <DisplayNamePill displayName={t.display_name} color={t.display_color} />
+                              </div>
+                            )}
                             <div className="text-sm font-semibold text-stone-900 truncate">{t.name}</div>
                             <div className="text-[11px] text-stone-500 truncate mt-0.5">{t.subject || "— no subject —"}</div>
                             {t.category && (
@@ -323,6 +330,51 @@ function TemplateEditor({ template, onChanged, onDuplicate, onDelete }) {
           <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1">Category (optional tag)</label>
           <input value={draft.category || ""} onChange={set("category")} placeholder="franchise / licence / shadow-day" data-testid="template-category"
             className="w-full px-3 py-2 bg-white border border-stone-300 text-sm rounded-lg focus:outline-none focus:border-stone-900" />
+        </div>
+        <div>
+          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1">
+            Display name <span className="text-stone-400 normal-case font-normal tracking-normal">— short tag shown in the &ldquo;Reply with template&rdquo; dropdown</span>
+          </label>
+          <input
+            value={draft.display_name || ""}
+            onChange={set("display_name")}
+            placeholder="BLANK INTRO / AREA TAKEN / FOLLOW UP"
+            data-testid="template-display-name"
+            className="w-full px-3 py-2 bg-white border border-stone-300 text-sm rounded-lg focus:outline-none focus:border-stone-900 uppercase tracking-wider font-bold text-stone-900 placeholder:font-normal placeholder:tracking-normal placeholder:text-stone-400 placeholder:normal-case" />
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <span className="text-[10px] text-stone-500 mr-1">Colour tag:</span>
+            <button
+              type="button"
+              onClick={() => setDraft((d) => ({ ...d, display_color: null }))}
+              title="No colour — neutral chip"
+              data-testid="template-display-color-none"
+              className={`w-6 h-6 rounded-full border-2 bg-stone-200 border-stone-400 ${!draft.display_color ? "ring-2 ring-offset-1 ring-stone-900" : "hover:ring-1 hover:ring-stone-400"}`}>
+              <span className="sr-only">No colour</span>
+            </button>
+            {DISPLAY_COLOR_OPTIONS.map((opt) => {
+              const c = displayColorClasses(opt.value);
+              const active = draft.display_color === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setDraft((d) => ({ ...d, display_color: opt.value }))}
+                  title={opt.label}
+                  data-testid={`template-display-color-${opt.value}`}
+                  className={`w-6 h-6 rounded-full border-2 ${c.bg} ${c.border} ${active ? "ring-2 ring-offset-1 ring-stone-900" : "hover:ring-1 hover:ring-stone-400"}`}>
+                  <span className="sr-only">{opt.label}</span>
+                </button>
+              );
+            })}
+            {(draft.display_name || draft.display_color) && (
+              <div className="ml-2 flex items-center gap-1.5">
+                <span className="text-[10px] text-stone-500">Preview:</span>
+                <DisplayNamePill
+                  displayName={draft.display_name || "TAG"}
+                  color={draft.display_color} />
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

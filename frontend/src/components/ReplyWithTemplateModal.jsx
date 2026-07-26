@@ -6,13 +6,14 @@
 //
 // Once Resend is wired (stage 2), this same modal grows a real Send
 // handler and the disabled flag flips off.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import api from "@/lib/api";
 import DOMPurify from "dompurify";
 import { toast } from "sonner";
 import { CATEGORY_BUCKETS, groupTemplatesByBucket } from "@/lib/emailTemplateCategories";
+import { DisplayNamePill } from "@/lib/emailTemplateColors";
 import {
-  Loader2, Send, X, AlertTriangle, FileText, Mail,
+  Loader2, Send, X, AlertTriangle, FileText, Mail, ChevronDown, Check,
 } from "lucide-react";
 
 export default function ReplyWithTemplateModal({ open, contact, onClose, onSent }) {
@@ -217,34 +218,20 @@ export default function ReplyWithTemplateModal({ open, contact, onClose, onSent 
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-          {/* Template picker */}
+          {/* Template picker — custom listbox so the coloured Display
+              Name pills actually render (native <option> backgrounds
+              aren't honoured cross-browser). Same keyboard-friendly
+              affordances a native select would give. */}
           <div>
             <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1">Template</label>
-            <select value={selectedId || ""} onChange={(e) => setSelectedId(e.target.value || null)} data-testid="reply-template-picker"
-              className="w-full px-3 py-2 bg-white border border-stone-300 text-sm rounded-lg focus:outline-none focus:border-stone-900">
-              <option value="">— Choose a template —</option>
-              {loadingTemplates && <option disabled>Loading…</option>}
-              {/* Group by category bucket for at-a-glance scanning. Mirrors
-                  the sidebar grouping on /admin/email-templates. */}
-              {(() => {
-                const buckets = groupTemplatesByBucket(templates);
-                return CATEGORY_BUCKETS.map((b) => {
-                  const rows = buckets[b.id] || [];
-                  if (rows.length === 0) return null;
-                  return (
-                    <optgroup key={b.id} label={b.label}>
-                      {rows.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.name || "(untitled)"}{t.category ? `   —   ${t.category}` : ""}
-                        </option>
-                      ))}
-                    </optgroup>
-                  );
-                });
-              })()}
-            </select>
+            <TemplatePicker
+              templates={templates}
+              loading={loadingTemplates}
+              value={selectedId}
+              onChange={(id) => setSelectedId(id)}
+            />
             <div className="text-[10px] text-stone-500 mt-1">
-              Don&apos;t see your template? Open <a href="/admin/email-templates" target="_blank" rel="noopener noreferrer" className="underline">Email Templates</a> and rename it &mdash; the name shown above is what differentiates options here.
+              Don&apos;t see your template? Open <a href="/admin/email-templates" target="_blank" rel="noopener noreferrer" className="underline">Email Templates</a> and give it a bold Display Name &mdash; the coloured tag above is what differentiates options here.
             </div>
           </div>
 
@@ -400,6 +387,126 @@ export default function ReplyWithTemplateModal({ open, contact, onClose, onSent 
           </button>
         </div>
       </aside>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// TemplatePicker — custom listbox used inside ReplyWithTemplateModal.
+// Native <select> can't paint per-option backgrounds cross-browser, so
+// we render our own dropdown that shows the coloured DisplayNamePill
+// beside each row and groups options by CATEGORY_BUCKETS just like the
+// sidebar on /admin/email-templates.
+// ---------------------------------------------------------------------------
+function TemplatePicker({ templates, loading, value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+  const selected = useMemo(
+    () => templates.find((t) => t.id === value) || null,
+    [templates, value],
+  );
+
+  // Close on outside click / Escape.
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => {
+      if (!wrapRef.current) return;
+      if (!wrapRef.current.contains(e.target)) setOpen(false);
+    };
+    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const buckets = useMemo(() => groupTemplatesByBucket(templates), [templates]);
+
+  return (
+    <div ref={wrapRef} className="relative" data-testid="reply-template-picker">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        data-testid="reply-template-picker-button"
+        className="w-full px-3 py-2 bg-white border border-stone-300 text-sm rounded-lg focus:outline-none focus:border-stone-900 flex items-center gap-2 text-left">
+        {selected ? (
+          <>
+            {selected.display_name && (
+              <DisplayNamePill
+                displayName={selected.display_name}
+                color={selected.display_color} />
+            )}
+            <span className="flex-1 truncate text-stone-900">{selected.name}</span>
+          </>
+        ) : (
+          <span className="flex-1 text-stone-500">— Choose a template —</span>
+        )}
+        <ChevronDown className="w-4 h-4 text-stone-500 shrink-0" />
+      </button>
+
+      {open && (
+        <div
+          role="listbox"
+          data-testid="reply-template-picker-listbox"
+          className="absolute z-20 mt-1 w-full max-h-96 overflow-y-auto bg-white border border-stone-200 rounded-lg shadow-xl">
+          {loading && (
+            <div className="px-3 py-4 text-xs text-stone-500 flex items-center gap-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading templates…
+            </div>
+          )}
+          {!loading && templates.length === 0 && (
+            <div className="px-3 py-4 text-xs text-stone-500">No templates yet.</div>
+          )}
+          {!loading && CATEGORY_BUCKETS.map((b) => {
+            const rows = buckets[b.id] || [];
+            if (rows.length === 0) return null;
+            return (
+              <div key={b.id}>
+                <div className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 bg-stone-50 border-b border-stone-100">
+                  {b.label}
+                </div>
+                <ul>
+                  {rows.map((t) => {
+                    const active = t.id === value;
+                    return (
+                      <li key={t.id}>
+                        <button
+                          type="button"
+                          onClick={() => { onChange(t.id); setOpen(false); }}
+                          role="option"
+                          aria-selected={active}
+                          data-testid={`reply-template-option-${t.id}`}
+                          className={`w-full text-left px-3 py-2 flex items-start gap-2 border-b border-stone-100 last:border-0 ${active ? "bg-stone-100" : "hover:bg-stone-50"}`}>
+                          {active
+                            ? <Check className="w-3.5 h-3.5 text-stone-900 shrink-0 mt-0.5" />
+                            : <span className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />}
+                          <div className="flex-1 min-w-0">
+                            {t.display_name && (
+                              <div className="mb-1">
+                                <DisplayNamePill
+                                  displayName={t.display_name}
+                                  color={t.display_color} />
+                              </div>
+                            )}
+                            <div className="text-sm text-stone-900 truncate">{t.name || "(untitled)"}</div>
+                            {t.category && (
+                              <div className="text-[10px] text-stone-500 truncate mt-0.5">{t.category}</div>
+                            )}
+                          </div>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
