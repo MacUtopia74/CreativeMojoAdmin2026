@@ -292,6 +292,56 @@ def build_resend_router(db, require_role):
         await db.email_sends.insert_one(doc)
         doc.pop("_id", None)
 
+        # ----------------------------- Follow-up workflow (Feb 2026)
+        # If the contact already had at least one prior templated send,
+        # this new send is their FOLLOW-UP EMAIL. Stamp the send with a
+        # ``follow_up_index`` (1 for the first follow-up, 2 for the next
+        # etc.), bump a denormalised counter on the contact so the CRM
+        # card can render its ✉¹ badge in one query, and — if the card
+        # was sitting in the ``follow_up_due`` column — nudge it back
+        # into ``contacted`` per the workflow spec. Manual stages
+        # (``qualified`` / ``dormant`` / ``lost`` / ...) are NEVER
+        # overwritten by this path.
+        prior_send_count = await db.email_sends.count_documents({
+            "contact_id": body.contact_id,
+            "template_id": {"$ne": None},
+            "id": {"$ne": send_id},
+        })
+        follow_up_index = 0
+        if body.template_id and prior_send_count >= 1:
+            follow_up_index = prior_send_count  # 1-based: prior=1 → this is FU#1
+            await db.email_sends.update_one(
+                {"id": send_id},
+                {"$set": {"follow_up_index": follow_up_index}},
+            )
+            doc["follow_up_index"] = follow_up_index
+            # Bump the contact-level counter + flip pipeline back to
+            # ``contacted`` (only if it was in ``follow_up_due``). Try
+            # both collections; whichever matches wins.
+            fu_now = datetime.now(timezone.utc).isoformat()
+            for coll_name in ("web_form_contacts", "contacts"):
+                bump_res = await db[coll_name].update_one(
+                    {"id": body.contact_id},
+                    {
+                        "$inc": {"follow_up_sent_count": 1},
+                        "$set": {
+                            "last_follow_up_sent_at": fu_now,
+                            "updated_at": fu_now,
+                        },
+                    },
+                )
+                if bump_res.matched_count:
+                    # Only flip if currently in follow_up_due — never
+                    # tramp on Interested / Dormant / Lost.
+                    await db[coll_name].update_one(
+                        {"id": body.contact_id, "pipeline_status": "follow_up_due"},
+                        {"$set": {
+                            "pipeline_status": "contacted",
+                            "pipeline_status_updated_at": fu_now,
+                        }},
+                    )
+                    break
+
         # Auto-advance a "new" pipeline contact to "contacted" as soon
         # as a templated email is sent — we've now made contact, so
         # leaving it in NEW is misleading and inflates the sidebar
@@ -385,6 +435,14 @@ def build_resend_router(db, require_role):
             }},
         )
         return {"ok": True}
+
+    # ----------------------------- CRM follow-up workflow (Feb 2026)
+    # Debug / on-demand trigger for the hourly scheduler. Admin can
+    # force a full sweep from a browser tab when testing.
+    @router.post("/email/follow-up/scan")
+    async def follow_up_scan(_user: dict = Depends(require_role("admin"))):
+        from follow_up_workflow import scan_and_move_due_contacts
+        return await scan_and_move_due_contacts(db)
 
     # -------------------------------------------------------- lead temperature
     # Phase 4 — auto-compute a lead-temperature score per contact based

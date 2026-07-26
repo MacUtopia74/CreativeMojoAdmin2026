@@ -1,4 +1,45 @@
 # Creative Mojo — Admin & Franchisee Hub PRD
+- ✅ **CRM — Follow-Up Due Workflow (Feb 2026)**
+  Adds a lightweight daily-chase workflow **on top of** the existing
+  email tracking system — no duplicate timestamps, no second heat
+  score, no rewrite of Mark-as-Replied. Just a new column and a
+  denormalised counter.
+    * **Pipeline order** now: `New → Contacted → Follow-up Due →
+      Interested → Dormant → Lost`. Extended `PIPELINE_STAGES` in
+      `server.py` and `STAGES` in `ContactsPage.js`.
+    * **Automatic move** — `follow_up_workflow.py` (new module) runs
+      hourly. Scans contacts still in `contacted`, finds the earliest
+      templated `email_sends` row (source of truth — no new field);
+      if it's ≥ 7 calendar days old AND `follow_up_sent_count == 0`
+      AND no send has a `replied` event AND `auto_followed_up_at` is
+      unset, flips them to `follow_up_due` and stamps
+      `auto_followed_up_at` so they never auto-move a second time.
+    * **Send-time flip-back** — `resend_routes.py::send_reply` now
+      detects when a new templated send is the contact's follow-up
+      (any prior templated send exists), stamps the send with
+      `follow_up_index` and bumps the contact's
+      `follow_up_sent_count`. If the card was in `follow_up_due` it
+      flips back to `contacted`. Interested/Dormant/Lost are NEVER
+      overwritten.
+    * **CRM card badge** — compact ✉N chip renders when
+      `follow_up_sent_count >= 1`. Hidden otherwise. Sits alongside
+      the existing heat chip; existing score unchanged.
+    * **New filters** — "All / Not sent / Sent" chip row in the
+      contacts toolbar (`data-testid="followup-filter"`). Works
+      alongside the existing source filter and `sortByHot`.
+    * **Debug hook** — `POST /email/follow-up/scan` (admin-only)
+      triggers a manual sweep for testing.
+  **Verification** — 8/8 tests green in
+  `tests/test_follow_up_workflow.py`:
+  moves at 7d+ / no follow-up / no reply · doesn't move inside 7d ·
+  skips replied · skips already-followed-up · never auto-moves twice
+  (`auto_followed_up_at` guard) · ignores free-text sends (no
+  template_id) · idempotent across repeat sweeps · never touches
+  contacts outside `contacted`. Scheduler is confirmed live via
+  startup log: `Follow-up workflow scheduler started (hourly)`, and
+  the first sweep scanned 68 preview contacts cleanly.
+
+
 - ✅ **Email Templates — Display Name + Colour Tag (Feb 2026)**
   Reply-with-template picker previously showed near-identical long
   template names, making the right choice hard to spot. Now every

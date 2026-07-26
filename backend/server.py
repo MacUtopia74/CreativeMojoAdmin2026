@@ -5227,7 +5227,7 @@ class PipelineUpdateRequest(BaseModel):
     pipeline_status: str
 
 
-PIPELINE_STAGES = ["new", "contacted", "qualified", "demo_booked", "converted", "dormant", "lost", "archive"]
+PIPELINE_STAGES = ["new", "contacted", "follow_up_due", "qualified", "demo_booked", "converted", "dormant", "lost", "archive"]
 
 
 class ContactImportRow(BaseModel):
@@ -6685,6 +6685,17 @@ async def on_startup():
         logger.info("Monthly subscriptions scheduler started (hourly check)")
     except Exception as e:
         logger.warning(f"Could not start subscriptions scheduler: {e}")
+
+    # CRM follow-up workflow — hourly sweep that moves "contacted"
+    # contacts to "follow_up_due" once their initial info email is 7
+    # days old (reuses the existing email_sends timestamps — no new
+    # tracking fields).
+    try:
+        from follow_up_workflow import schedule_follow_up_loop
+        asyncio.create_task(schedule_follow_up_loop(db, every_seconds=3600))
+        logger.info("Follow-up workflow scheduler started (hourly)")
+    except Exception as e:
+        logger.warning(f"Could not start follow-up scheduler: {e}")
 
 
 @app.on_event("shutdown")

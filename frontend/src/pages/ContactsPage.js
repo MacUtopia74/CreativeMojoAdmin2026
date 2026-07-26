@@ -15,6 +15,7 @@ import LeadTemperatureBadge from "@/components/LeadTemperatureBadge";
 const STAGES = [
   { key: "new", label: "New", color: "bg-stone-100 text-stone-700 border-stone-300", barColor: "bg-stone-400" },
   { key: "contacted", label: "Contacted", color: "bg-blue-50 text-blue-700 border-blue-200", barColor: "bg-blue-400" },
+  { key: "follow_up_due", label: "Follow-up Due", color: "bg-amber-50 text-amber-800 border-amber-300", barColor: "bg-amber-500" },
   { key: "qualified", label: "Interested", color: "bg-amber-50 text-amber-800 border-amber-200", barColor: "bg-amber-400" },
   { key: "dormant", label: "Dormant", color: "bg-orange-50 text-orange-800 border-orange-200", barColor: "bg-orange-400" },
   { key: "lost", label: "Lost", color: "bg-red-50 text-red-700 border-red-200", barColor: "bg-red-400" },
@@ -1700,6 +1701,11 @@ export default function ContactsPage() {
   // spot the geography at a glance. Cleared on mouse-leave.
   const [hoveredContactId, setHoveredContactId] = useState(null);
   const [sourceFilter, setSourceFilter] = useState("all"); // 'all' | 'franchise' | 'licence'
+  // Follow-up email filter (Feb 2026). 'all' shows everyone,
+  // 'sent' shows contacts who've received at least one follow-up
+  // email, 'not_sent' shows contacts who haven't. Works alongside
+  // (not in place of) the existing sortByHot toggle + source filter.
+  const [followUpFilter, setFollowUpFilter] = useState("all"); // 'all' | 'sent' | 'not_sent'
   const [collapsedStages, setCollapsedStages] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem("pipelineCollapsedStages") || "[]")); }
     catch { return new Set(); }
@@ -1723,6 +1729,9 @@ export default function ContactsPage() {
       if (!af.test(daysSince(c.date || c.date_added))) return false;
       if (sourceFilter === "franchise" && c.source !== "franchise_enquiry") return false;
       if (sourceFilter === "licence"   && c.source !== "licence_enquiry")   return false;
+      const followUpCount = Number(c.follow_up_sent_count || 0);
+      if (followUpFilter === "sent" && followUpCount < 1) return false;
+      if (followUpFilter === "not_sent" && followUpCount >= 1) return false;
       return true;
     });
     const ts = (c) => {
@@ -1732,7 +1741,7 @@ export default function ContactsPage() {
       return Number.isFinite(t) ? t : -Infinity;
     };
     return filtered.sort((a, b) => ts(b) - ts(a));
-  }, [data.items, ageFilter, sourceFilter]);
+  }, [data.items, ageFilter, sourceFilter, followUpFilter]);
 
   // Care Home filter: resolve preset → concrete date range (ISO YYYY-MM-DD).
   const careHomeRange = useMemo(() => {
@@ -2437,6 +2446,31 @@ export default function ContactsPage() {
               })}
             </div>
             <span className="text-stone-300">·</span>
+            <div className="flex items-center gap-2 flex-wrap" data-testid="followup-filter">
+              <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500 mr-1">Follow-up</span>
+              {[
+                { key: "all",      label: "All"    },
+                { key: "not_sent", label: "Not sent" },
+                { key: "sent",     label: "Sent"     },
+              ].map((s) => {
+                const active = followUpFilter === s.key;
+                const count = s.key === "all"
+                  ? data.items.length
+                  : s.key === "sent"
+                    ? data.items.filter((c) => Number(c.follow_up_sent_count || 0) >= 1).length
+                    : data.items.filter((c) => Number(c.follow_up_sent_count || 0) === 0).length;
+                return (
+                  <button key={s.key} onClick={() => setFollowUpFilter(s.key)} data-testid={`followup-${s.key}`}
+                    className={`px-3 py-1 text-[11px] font-bold uppercase tracking-wider border rounded-lg transition-colors flex items-center gap-1.5 ${
+                      active ? "bg-stone-950 text-white border-stone-950" : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"
+                    }`}>
+                    {s.key === "sent" && <Mail className="w-2.5 h-2.5" />}
+                    {s.label} <span className={`ml-1 tabular-nums ${active ? "text-stone-300" : "text-stone-500"}`}>{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <span className="text-stone-300">·</span>
             <button
               onClick={async () => {
                 if (!window.confirm("Find and remove duplicate Sales Pipeline contacts?\n\nThe same email submitted multiple times via Gravity Forms creates duplicate cards. This removes the newer 'new' duplicates when an older, already-triaged copy exists. Safe — never deletes triaged records.")) return;
@@ -2563,6 +2597,20 @@ export default function ContactsPage() {
                                 </span>
                               );
                             })()}
+                            {/* Follow-up email indicator. Renders a
+                                compact ✉N chip when at least one
+                                follow-up email has been sent so HQ can
+                                see at a glance that this contact has
+                                already received a chase. Hidden when
+                                follow_up_sent_count is 0. */}
+                            {Number(c.follow_up_sent_count || 0) >= 1 && (
+                              <span
+                                title={`Follow-up email sent (${c.follow_up_sent_count}× so far)`}
+                                data-testid={`card-followup-${c.id}`}
+                                className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded border text-[9px] font-bold bg-emerald-50 border-emerald-300 text-emerald-700">
+                                <Mail className="w-2.5 h-2.5" />{c.follow_up_sent_count}
+                              </span>
+                            )}
                             {/* Lead-temperature picker. Pipeline-only: any
                                 contact in the kanban is by definition in
                                 the pipeline, so always render here. */}
