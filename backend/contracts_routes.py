@@ -66,6 +66,11 @@ DRAFT_EDITABLE_FIELDS = {
     # Contract-specific values (Bucket A on the contract, per user directive)
     "monthly_fee",
     "renewal_fee",
+    # Initial franchise purchase fee — one-off GBP amount payable by
+    # the franchisee at signing of their FIRST franchise contract.
+    # Renewal contracts leave this blank; the value stays frozen on
+    # the initial contract.
+    "initial_franchise_fee",
     "contract_term_years",
     "commencement_date",
     "renewal_date",
@@ -201,6 +206,26 @@ def attach(api, db, require_role):
             "updated_by": user.get("email"),
         }
         await db[CONTRACTS_COLLECTION].insert_one(doc)
+        # Mirror the initial franchise fee onto the franchisee's
+        # canonical ``bought_for`` field so the summary KPI card,
+        # the modal on the next edit, and the resolver all read from
+        # ONE source of truth. Never touched on a renewal draft.
+        if (
+            not payload.get("supersedes_id")
+            and payload.get("initial_franchise_fee") is not None
+        ):
+            try:
+                await db[FRANCHISEES_COLLECTION].update_one(
+                    {"id": franchisee["id"]},
+                    {"$set": {
+                        "bought_for": float(payload["initial_franchise_fee"]),
+                        "bought_for_updated_at": now,
+                        "bought_for_updated_by": user.get("email"),
+                    }},
+                )
+            except Exception:  # noqa: BLE001
+                # Never block contract creation on a bookkeeping mirror.
+                pass
         await db[AUDIT_COLLECTION].insert_one({
             "id": _new_id(),
             "contract_id": contract_id,

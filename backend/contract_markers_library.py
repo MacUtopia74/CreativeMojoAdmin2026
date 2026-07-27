@@ -262,6 +262,25 @@ SEED_MARKERS: List[Dict[str, Any]] = [
         "eligible_contract_types": CONTRACT_TYPES,
     },
     {
+        "code": "INITIAL_FRANCHISE_FEE",
+        "label": "Initial franchise fee",
+        "description": (
+            "One-off GBP fee payable at signing of a new franchise "
+            "agreement. Frozen into contract_variables on issuance so "
+            "the amount printed on the PDF is the historic amount, "
+            "never the live franchisee.bought_for. Only offered on "
+            "initial franchise / licence templates — not renewals."
+        ),
+        "value_source": "automatic",
+        "data_field": "contracts.initial_franchise_fee",
+        "data_type": "currency",
+        "format": {"currency": "GBP", "thousand_sep": True, "decimals": 2},
+        "repeat_allowed": True,
+        # Restricted to first-time contract templates — the renewal
+        # ones deliberately don't get this marker.
+        "eligible_contract_types": ["new_franchise", "licence"],
+    },
+    {
         "code": "RENEWAL_FEE",
         "label": "Renewal fee",
         "description": "One-off renewal fee as GBP. Falls back to manual entry when absent.",

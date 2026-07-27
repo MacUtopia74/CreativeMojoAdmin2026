@@ -6929,6 +6929,65 @@ async def _seed_marker_library_on_startup():
     except Exception:  # noqa: BLE001
         logger.exception("Marker library seed failed on startup")
 
+
+# One-shot legacy-tag backfill — writes the canonical
+# ``franchisees.bought_for`` amount from the migrated Airtable
+# "£X.Xk+VAT" / "£X,XXX +VAT" tag when the field is empty. Never
+# overwrites an existing value; safe to run every boot. This unblocks
+# the "Bought For" KPI card + the initial-fee pre-fill on the CMS
+# contract modal for pre-existing franchisees.
+@app.on_event("startup")
+async def _backfill_bought_for_from_tags():
+    try:
+        pattern = re.compile(r"£\s*([0-9]+(?:[.,][0-9]+)?)(\s*k)?", re.IGNORECASE)
+        updated = 0
+        scanned = 0
+        async for f in db.franchisees.find(
+            {
+                "tags": {"$exists": True, "$ne": []},
+                "$or": [{"bought_for": {"$exists": False}}, {"bought_for": None}],
+            },
+            {"_id": 0, "id": 1, "tags": 1},
+        ):
+            scanned += 1
+            tags = f.get("tags") or []
+            if not isinstance(tags, list):
+                tags = [tags]
+            for t in tags:
+                s = str(t)
+                if "£" not in s:
+                    continue
+                m = pattern.search(s)
+                if not m:
+                    continue
+                try:
+                    n = float(m.group(1).replace(",", "."))
+                except ValueError:
+                    continue
+                if m.group(2):
+                    n *= 1000.0
+                if n <= 0:
+                    continue
+                await db.franchisees.update_one(
+                    {"id": f["id"], "$or": [
+                        {"bought_for": {"$exists": False}},
+                        {"bought_for": None},
+                    ]},
+                    {"$set": {
+                        "bought_for": float(n),
+                        "bought_for_source": "legacy_tag_backfill",
+                        "bought_for_source_tag": s,
+                    }},
+                )
+                updated += 1
+                break
+        if scanned or updated:
+            logger.info(
+                "[bought_for-backfill] scanned=%d updated=%d", scanned, updated,
+            )
+    except Exception:  # noqa: BLE001
+        logger.exception("bought_for tag backfill failed")
+
 import youtube_routes  # noqa: E402
 youtube_routes.attach(api, db, require_role)
 import territory_plus_routes  # noqa: E402

@@ -595,16 +595,26 @@ export default function FranchiseeDetailPage() {
     return { years: diff, since: earliest };
   }, [data]);
 
-  // Sum of every contract's initial starting fee — surfaced in the KPI
-  // strip as "Bought For" so HQ can see the lifetime investment at a
-  // glance without drilling into each contract.
-  const totalStartingFee = useMemo(() => {
-    if (!data?.contracts?.length) return null;
-    const total = data.contracts.reduce(
-      (acc, c) => acc + (Number(c.initial_starting_fee) || 0), 0,
-    );
-    return total > 0 ? total : null;
+  // "Bought For" card — canonical initial franchise purchase fee.
+  // Single source of truth: ``franchisees.bought_for``. HQ sets this
+  // when creating an initial CMS contract (the modal mirrors the value
+  // onto the franchisee record) or via the one-shot legacy-tag
+  // backfill that runs on backend startup. The card is dashed only
+  // when no value has ever been recorded for this franchisee.
+  const boughtForDisplay = useMemo(() => {
+    if (!data) return null;
+    const f = data.franchisee || {};
+    const canonical = Number(f.bought_for);
+    if (Number.isFinite(canonical) && canonical > 0) {
+      return { amount: canonical };
+    }
+    return null;
   }, [data]);
+  const boughtForLabel = boughtForDisplay
+    ? (boughtForDisplay.amount >= 1000
+        ? `£${(boughtForDisplay.amount / 1000).toFixed(boughtForDisplay.amount % 1000 === 0 ? 0 : 1)}k`
+        : `£${boughtForDisplay.amount.toLocaleString("en-GB")}`)
+    : null;
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-stone-500 text-sm uppercase tracking-widest">Loading…</div>;
   if (error || !data) return (
@@ -774,15 +784,16 @@ export default function FranchiseeDetailPage() {
                   <div className="font-display text-2xl text-stone-300 mt-1">—</div>
                 )}
               </div>
-              {/* Bought For — total initial starting fees across every
-                  contract, shown alongside Tenure so the lifetime
-                  investment is visible from the KPI strip. */}
+              {/* Bought For — canonical initial franchise purchase fee
+                  (franchisees.bought_for). Single source of truth,
+                  set either by HQ on the initial CMS contract modal
+                  or by the legacy-tag backfill on backend startup. */}
               <div className="bg-white p-4" data-testid="kpi-bought-for">
                 <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Bought For</div>
-                {totalStartingFee != null ? (
+                {boughtForDisplay != null ? (
                   <>
-                    <div className="font-display text-2xl text-stone-950 mt-1 tabular-nums">£{totalStartingFee >= 1000 ? `${(totalStartingFee / 1000).toFixed(totalStartingFee % 1000 === 0 ? 0 : 1)}k` : totalStartingFee.toLocaleString()}</div>
-                    <div className="text-xs text-stone-500 mt-0.5">across {contracts.length} contract{contracts.length === 1 ? "" : "s"}</div>
+                    <div className="font-display text-2xl text-stone-950 mt-1 tabular-nums">{boughtForLabel}</div>
+                    <div className="text-xs text-stone-500 mt-0.5">Initial franchise fee</div>
                   </>
                 ) : (
                   <div className="font-display text-2xl text-stone-300 mt-1">—</div>

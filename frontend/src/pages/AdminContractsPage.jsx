@@ -332,6 +332,23 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
   // contract for the same franchisee. Defaults ON when the caller
   // passes a ``renewalOf`` reference (franchisee page always does).
   const [renewalOn, setRenewalOn] = useState(Boolean(renewalOf));
+  // Initial Franchise Fee (GBP, ex-VAT). Only surfaced when the
+  // draft is NOT a renewal. Pre-populated from the franchisee's
+  // canonical ``bought_for`` field when present so HQ just confirms
+  // rather than re-typing a historic amount.
+  const currentFr = franchiseeId
+    ? franchisees.find((f) => f.id === franchiseeId)
+    : lockedFr;
+  const [initialFranchiseFee, setInitialFranchiseFee] = useState(() => {
+    const v = currentFr?.bought_for;
+    return v == null || v === "" ? "" : String(v);
+  });
+  // Keep the field in sync when the selected franchisee changes
+  // (open modal from Admin Contracts page where the picker is live).
+  useEffect(() => {
+    const v = currentFr?.bought_for;
+    setInitialFranchiseFee(v == null || v === "" ? "" : String(v));
+  }, [franchiseeId, currentFr]);
 
   const franchiseesSorted = useMemo(() =>
     [...franchisees].sort((a, b) => {
@@ -352,6 +369,12 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
       if (hqSignatoryName) body.hq_signatory_name = hqSignatoryName;
       if (hqSignatoryTitle) body.hq_signatory_title = hqSignatoryTitle;
       if (renewalOn && renewalOf?.id) body.supersedes_id = renewalOf.id;
+      // Initial Franchise Fee — only sent on non-renewal drafts, so
+      // renewals never carry (or overwrite) the historic amount.
+      const isRenewal = renewalOn && renewalOf?.id;
+      if (!isRenewal && initialFranchiseFee !== "") {
+        body.initial_franchise_fee = Number(initialFranchiseFee);
+      }
       await api.post("/admin/contracts", body);
       await onCreated();
     } catch (e) {
@@ -429,6 +452,27 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
               className="w-full mt-1 border rounded-md px-2 py-1.5 text-sm"
               data-testid="new-contract-monthly-fee-input" />
           </label>
+          {/* Initial Franchise Fee — first-contract only, ex-VAT.
+              Renewal drafts never see this field so the historic
+              amount recorded on the initial contract stays frozen. */}
+          {!(renewalOn && renewalOf?.id) && (
+            <label className="block text-sm" data-testid="new-contract-initial-franchise-fee-row">
+              <span className="text-stone-700">Initial Franchise Fee (£)</span>
+              <input
+                type="number" step="0.01" min="0"
+                value={initialFranchiseFee}
+                onChange={(e) => setInitialFranchiseFee(e.target.value)}
+                placeholder="e.g. 3500"
+                className="w-full mt-1 border rounded-md px-2 py-1.5 text-sm"
+                data-testid="new-contract-initial-franchise-fee-input" />
+              <span className="block mt-1 text-[11px] text-stone-500">
+                Enter the initial franchise purchase fee excluding VAT.
+                {currentFr?.bought_for != null && currentFr?.bought_for !== "" && (
+                  <> This franchisee&apos;s recorded &ldquo;Bought For&rdquo; value has been pre-filled — amend if the historic contract used a different figure.</>
+                )}
+              </span>
+            </label>
+          )}
           <label className="block text-sm">
             <span className="text-stone-700">Franchisee legal name</span>
             <input
