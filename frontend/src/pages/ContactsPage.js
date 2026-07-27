@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import LinkExistingFranchiseeModal from "@/components/contacts/LinkExistingFranchiseeModal";
 import MergeContactsModal from "@/components/contacts/MergeContactsModal";
 import DuplicatesModal from "@/components/contacts/DuplicatesModal";
+import ContactPostcodeMapModal from "@/components/contacts/ContactPostcodeMapModal";
 import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, ChevronsLeft, ChevronsRight, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus, Plus, Sparkles, Upload, FileText, CheckCircle2, Send, Award, Target, Link2, GitMerge, Home, Package, Flame, Clock, Pencil, RefreshCw } from "lucide-react";
 import ReplyWithTemplateModal from "@/components/ReplyWithTemplateModal";
 import EmailTimeline from "@/components/EmailTimeline";
@@ -762,6 +763,11 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
   const [busy, setBusy] = useState(false);
   const [converting, setConverting] = useState(false);
   const [replyModalOpen, setReplyModalOpen] = useState(false);  // Reply-with-template modal
+  // UK-wide territory-atlas modal, opened by the compact "Map" button
+  // next to the postcode line. Renders a red pin at the contact's
+  // postcode over a full colour-coded map of every franchisee's
+  // territory so HQ can see at a glance where the enquiry sits.
+  const [postcodeMapContact, setPostcodeMapContact] = useState(null);
   // Bumped after a successful send so <EmailTimeline> re-fetches and
   // surfaces the new entry without a page reload.
   const [emailRefreshSignal, setEmailRefreshSignal] = useState(0);
@@ -1098,9 +1104,25 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
                     <div className="flex items-start gap-2" data-testid="drawer-address">
                       <MapPin className="w-3.5 h-3.5 text-stone-400 mt-1 shrink-0" />
                       <div className="text-stone-900 leading-snug">
-                        {lines.map((ln, i) => (
-                      <div key={`addr-${i}-${ln}`}>{ln}</div>
-                    ))}
+                        {lines.map((ln, i) => {
+                          const isPostcode = contact.postcode && ln === contact.postcode;
+                          return (
+                            <div key={`addr-${i}-${ln}`} className={isPostcode ? "flex items-center gap-2" : ""}>
+                              <span>{ln}</span>
+                              {isPostcode && (
+                                <button
+                                  type="button"
+                                  onClick={() => setPostcodeMapContact(contact)}
+                                  data-testid="drawer-postcode-map-btn"
+                                  title={`See ${contact.postcode} on the UK territory atlas`}
+                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border border-stone-300 rounded hover:bg-stone-100 text-stone-700"
+                                >
+                                  <MapPin className="w-2.5 h-2.5" /> Map
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
                   </div>
                 </div>
               );
@@ -1342,6 +1364,12 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
         onClose={() => setReplyModalOpen(false)}
         onSent={() => setEmailRefreshSignal((n) => n + 1)}
       />
+      {postcodeMapContact && (
+        <ContactPostcodeMapModal
+          contact={postcodeMapContact}
+          onClose={() => setPostcodeMapContact(null)}
+        />
+      )}
     </div>
   );
 }
