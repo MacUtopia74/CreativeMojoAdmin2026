@@ -148,17 +148,55 @@ function XeroPill({ franchiseeId }) {
   );
 }
 
-function Panel({ icon: Icon, title, action, children, testid }) {
+function Panel({ icon: Icon, title, action, children, testid, collapsible = false, defaultOpen = true }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const headerClickable = collapsible;
   return (
     <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid={testid}>
-      <div className="px-5 py-3 border-b border-stone-200 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          {Icon && <Icon className="w-3.5 h-3.5 text-stone-500" />}
-          <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">{title}</div>
+      <div
+        className={`px-5 py-3 border-b border-stone-200 flex items-center justify-between gap-3 ${headerClickable ? "cursor-pointer select-none hover:brightness-95" : ""}`}
+        style={{ backgroundColor: "#eeee84" }}
+        onClick={headerClickable ? () => setOpen((v) => !v) : undefined}
+        onKeyDown={
+          headerClickable
+            ? (e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setOpen((v) => !v);
+                }
+              }
+            : undefined
+        }
+        role={headerClickable ? "button" : undefined}
+        tabIndex={headerClickable ? 0 : undefined}
+        aria-expanded={collapsible ? open : undefined}
+        data-testid={testid ? `${testid}-header` : undefined}
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          {collapsible && (
+            <span
+              className="w-5 h-5 rounded-full bg-stone-950/10 text-stone-950 flex items-center justify-center shrink-0"
+              aria-hidden="true"
+            >
+              <svg
+                viewBox="0 0 20 20"
+                className={`w-3 h-3 transition-transform ${open ? "rotate-90" : ""}`}
+                fill="currentColor"
+              >
+                <path d="M7 5l6 5-6 5V5z" />
+              </svg>
+            </span>
+          )}
+          {Icon && <Icon className="w-3.5 h-3.5 text-stone-950/70 shrink-0" />}
+          <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-950 truncate">{title}</div>
         </div>
-        {action}
+        {action && (
+          <div onClick={(e) => e.stopPropagation()} className="shrink-0">
+            {action}
+          </div>
+        )}
       </div>
-      <div className="p-5">{children}</div>
+      {(!collapsible || open) && <div className="p-5">{children}</div>}
     </div>
   );
 }
@@ -350,6 +388,7 @@ function GoCardlessPanel({ franchisee, onRefreshed }) {
       icon={CreditCard}
       title="GoCardless · Direct Debit"
       testid="panel-gocardless"
+      collapsible defaultOpen={false}
       action={
         <button onClick={handleRefresh} disabled={busy} data-testid="gc-refresh"
           className="text-[10px] uppercase tracking-widest font-bold text-stone-500 hover:text-stone-950 flex items-center gap-1 disabled:opacity-50">
@@ -822,6 +861,7 @@ export default function FranchiseeDetailPage() {
         {/* CONTRACTS — full-width prominent */}
         {f.sales_handoff && <SalesHandoffPanel handoff={f.sales_handoff} />}
         <Panel icon={FileText} title={`Contracts (${contracts.length})`} testid="panel-contracts"
+          collapsible defaultOpen={false}
           action={
             <button onClick={() => setCmsContractTrigger((n) => n + 1)}
               data-testid="add-contract-btn"
@@ -902,7 +942,7 @@ export default function FranchiseeDetailPage() {
         {/* Files — scoped to this franchisee's R2 folder. Phase-3 portal
             users land here as their primary view. Admins see it inline so
             they don't need to bounce to the global Files menu. */}
-        <Panel icon={FolderOpen} title="Files" testid="panel-files">
+        <Panel icon={FolderOpen} title="Files" testid="panel-files" collapsible defaultOpen={false}>
           {/* Live recents — last 30 days of activity scoped to this
               franchisee's own folder + shared brand files. */}
           <RecentFilesStrip
@@ -915,7 +955,7 @@ export default function FranchiseeDetailPage() {
         </Panel>
 
         {/* Portal access — enable/disable login + reset password */}
-        <Panel icon={LockKeyhole} title="Portal Access" testid="panel-portal">
+        <Panel icon={LockKeyhole} title="Portal Access" testid="panel-portal" collapsible defaultOpen={false}>
           <FranchiseePortalControls franchisee={f}
             onChanged={async () => {
               // refresh franchisee data so toggle reflects immediately
@@ -929,7 +969,7 @@ export default function FranchiseeDetailPage() {
         </Panel>
 
         {/* Phase 5 — Per-franchisee portal module toggles */}
-        <Panel icon={ClipboardList} title="Portal Modules" testid="panel-portal-modules">
+        <Panel icon={ClipboardList} title="Portal Modules" testid="panel-portal-modules" collapsible defaultOpen={false}>
           <PortalModulesPanel franchisee={f}
             onChanged={async () => {
               try {
@@ -948,6 +988,7 @@ export default function FranchiseeDetailPage() {
           icon={Map}
           title="Territory Map"
           testid="panel-map"
+          collapsible defaultOpen={false}
           action={
             <Link to={`/territory-builder?franchisee_id=${f.id}`}
               data-testid="edit-territory-btn"
@@ -970,7 +1011,7 @@ export default function FranchiseeDetailPage() {
           </CareHomeEnquiriesOverlay>
         </Panel>
 
-        <Panel icon={MessageSquare} title="Notes" testid="panel-notes">
+        <Panel icon={MessageSquare} title="Notes" testid="panel-notes" collapsible defaultOpen={false}>
           {editing ? (
             <textarea value={draft.notes ?? ""} onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))}
               rows={6} data-testid="edit-notes"
@@ -998,7 +1039,7 @@ export default function FranchiseeDetailPage() {
         {/* Per-franchisee activity & audit log. Lazy-loaded sub-panels;
             each one re-uses the same component as the global Logs page
             but is scoped to THIS franchisee via the `franchiseeId` prop. */}
-        <Panel icon={ClipboardList} title="Activity &amp; Logs" testid="panel-activity-logs">
+        <Panel icon={ClipboardList} title="Activity &amp; Logs" testid="panel-activity-logs" collapsible defaultOpen={false}>
           <p className="text-xs text-stone-500 mb-3">
             Everything this franchisee has done in the portal — logins, HQ Updates
             opened, files downloaded, and marketing e-shots they've sent.
