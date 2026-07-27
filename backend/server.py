@@ -5381,6 +5381,53 @@ async def update_pipeline(contact_id: str, body: PipelineUpdateRequest, _: dict 
     return {"ok": True, "pipeline_status": body.pipeline_status}
 
 
+# ---------------------------------------------------------------------------
+# Mark follow-up as manually sent (retroactive)
+#
+# Rollout gap: HQ replied to a bunch of contacts BEFORE the automated
+# 7-day Follow-Up Due workflow shipped. Those contacts still show as
+# "not yet chased" and the scheduler keeps trying to move them to
+# ``follow_up_due``. This endpoint lets HQ stamp them as already
+# followed-up so the automation permanently skips them and the CRM
+# card no longer nags.
+# ---------------------------------------------------------------------------
+@api.post("/contacts/{contact_id}/mark-follow-up-sent")
+async def mark_follow_up_sent(contact_id: str, _: dict = Depends(require_role("admin"))):
+    now_iso = datetime.now(timezone.utc).isoformat()
+    patch = {
+        "auto_followed_up_at": now_iso,
+        "follow_up_marked_manual_at": now_iso,
+        "updated_at": now_iso,
+    }
+    # Try the pipeline (web_form_contacts) collection first — that's
+    # where the automation actually operates. Also flip status out of
+    # ``follow_up_due`` if the card happens to be sitting there.
+    target = None
+    doc = await db.web_form_contacts.find_one({"id": contact_id})
+    if doc:
+        target = ("web_form_contacts", doc)
+    else:
+        doc = await db.contacts.find_one({"id": contact_id})
+        if doc:
+            target = ("contacts", doc)
+    if not target:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    coll, existing = target
+    current_count = int(existing.get("follow_up_sent_count") or 0)
+    patch["follow_up_sent_count"] = max(1, current_count)
+    if existing.get("pipeline_status") == "follow_up_due":
+        # Follow-up already happened → move card back to ``contacted``.
+        patch["pipeline_status"] = "contacted"
+        patch["pipeline_status_updated_at"] = now_iso
+    await db[coll].update_one({"id": contact_id}, {"$set": patch})
+    return {
+        "ok": True,
+        "follow_up_sent_count": patch["follow_up_sent_count"],
+        "auto_followed_up_at": now_iso,
+        "pipeline_status": patch.get("pipeline_status", existing.get("pipeline_status")),
+    }
+
+
 class AdminNotesUpdate(BaseModel):
     admin_notes: Optional[str] = None
 
