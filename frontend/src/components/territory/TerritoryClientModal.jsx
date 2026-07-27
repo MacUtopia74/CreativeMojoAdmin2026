@@ -36,7 +36,20 @@ const CONTACT_METHOD_OPTIONS = [
   { value: "other",           label: "Other" },
 ];
 
-export default function TerritoryClientModal({ initial, onClose, onSaved, onDeleted, cqcSnapshot = null, marketingEnabled = false }) {
+export default function TerritoryClientModal({
+  initial, onClose, onSaved, onDeleted,
+  cqcSnapshot = null, marketingEnabled = false,
+  // HQ notes (Feb 2026). When ``hqNoteEditable`` is true we render an
+  // editable amber section — used on the admin franchisee page so HQ
+  // can annotate any care home in the territory. When false the same
+  // note renders read-only for the franchisee (Plus portal). Passing
+  // ``null`` for both suppresses the section entirely.
+  hqNote = null,          // { note, updated_at, updated_by } | string | null
+  hqNoteEditable = false,
+  onHqNoteSave = null,    // async (source, home_id, note) => void
+  hqSource = null,        // "cqc" | "scotland" | "wales" | "ni" (admin only)
+  hqHomeId = null,        // required with hqSource when adding a fresh note
+}) {
   const navigate = useNavigate();
   const [form, setForm] = useState(() => {
     const empty = Object.fromEntries(FIELDS.map((f) => [f.key, ""]));
@@ -298,6 +311,21 @@ export default function TerritoryClientModal({ initial, onClose, onSaved, onDele
                   className="w-full px-3 py-2 text-sm bg-stone-50 border border-stone-300 rounded-lg focus:outline-none focus:border-stone-950"
                 />
               </div>
+
+              {/* HQ note — amber panel. Editable on the admin franchisee
+                  page; read-only on the franchisee portal. Rendered
+                  even for basic-MyTerritory (no franchisee_clients doc)
+                  because the note lives against the CQC entry itself
+                  via /admin/franchisees/{id}/hq-home-notes. */}
+              {(hqNoteEditable || (hqNote && (typeof hqNote === "string" ? hqNote : hqNote.note))) && (
+                <HqNoteSection
+                  hqNote={hqNote}
+                  editable={hqNoteEditable}
+                  onSave={onHqNoteSave}
+                  source={hqSource || initial?.source}
+                  homeId={hqHomeId || initial?.home_id}
+                />
+              )}
 
               {(form.email || "").trim() && (
                 <label className="flex items-center gap-2 text-sm cursor-pointer">
@@ -774,5 +802,90 @@ function MarketingCrmPanel({ form, set, marketingEnabled, onOpenMarketingPlus, c
         )}
       </div>
     </section>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
+// HqNoteSection — amber panel showing HQ's note on this care home.
+// Editable on the admin franchisee page, read-only on the portal.
+// Uses the ``/admin/franchisees/{id}/hq-home-notes`` PUT route via the
+// ``onSave`` callback provided by the parent widget.
+// ---------------------------------------------------------------------------
+function HqNoteSection({ hqNote, editable, onSave, source, homeId }) {
+  const initialNote = typeof hqNote === "string"
+    ? hqNote
+    : (hqNote?.note || "");
+  const meta = typeof hqNote === "object" && hqNote ? hqNote : null;
+  const [draft, setDraft] = useState(initialNote);
+  const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [savedAt, setSavedAt] = useState(null);
+
+  useEffect(() => {
+    setDraft(initialNote);
+    setDirty(false);
+  }, [initialNote]);
+
+  const save = async () => {
+    if (!onSave || !source || !homeId) return;
+    setSaving(true);
+    try {
+      await onSave(source, homeId, draft);
+      setDirty(false);
+      setSavedAt(new Date().toISOString());
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div
+      className="border border-amber-300 bg-amber-50 rounded-lg p-3"
+      data-testid="hq-note-section"
+    >
+      <div className="flex items-center justify-between mb-1.5">
+        <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-amber-900 flex items-center gap-1.5">
+          HQ Note
+          {!editable && (
+            <span className="px-1.5 py-0.5 text-[9px] bg-amber-200 text-amber-900 rounded uppercase tracking-wider">Read-only</span>
+          )}
+        </div>
+        {meta?.updated_at && (
+          <div className="text-[10px] text-amber-800">
+            Updated {new Date(meta.updated_at).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short" })}
+          </div>
+        )}
+      </div>
+      {editable ? (
+        <>
+          <textarea
+            value={draft}
+            onChange={(e) => { setDraft(e.target.value); setDirty(true); }}
+            rows={3}
+            placeholder="Notes from HQ about this care home — visible to the franchisee if they have MyTerritory+."
+            data-testid="hq-note-textarea"
+            className="w-full px-3 py-2 text-sm bg-white border border-amber-300 rounded-md focus:outline-none focus:border-amber-500"
+          />
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <div className="text-[10px] text-amber-800">
+              {savedAt && !dirty && <span>Saved.</span>}
+              {dirty && <span>Unsaved changes.</span>}
+            </div>
+            <button
+              type="button"
+              onClick={save}
+              disabled={!dirty || saving}
+              data-testid="hq-note-save"
+              className="px-3 py-1.5 text-[10px] uppercase tracking-wider font-bold rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40"
+            >
+              {saving ? "Saving…" : draft.trim() ? "Save HQ note" : "Clear HQ note"}
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="text-sm text-amber-950 whitespace-pre-wrap leading-relaxed">
+          {initialNote || <span className="text-amber-700 italic">No HQ note.</span>}
+        </div>
+      )}
+    </div>
   );
 }

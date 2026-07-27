@@ -36,6 +36,15 @@ export default function FranchiseeTerritoryWidget({
   // Enquiries overlay so the teal enquiry pins aren't obscured by the
   // ~100+ green home pins in a densely-populated territory.
   hideHomeMarkers = false,
+  // Admin-mode toggle (Feb 2026). When true:
+  //   * Care Groups panel + Territory+ layout render regardless of the
+  //     franchisee's actual Plus status — HQ always sees the full view.
+  //   * HQ Note field is editable inside TerritoryClientModal, backed by
+  //     /api/admin/franchisees/{id}/hq-home-notes.
+  //   * Row/marker click on any CQC home opens the modal in "note-only"
+  //     mode so HQ can annotate homes without promoting them to a
+  //     franchisee_clients doc.
+  adminMode = false,
 }) {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -79,6 +88,15 @@ export default function FranchiseeTerritoryWidget({
   // Sales-flow leads (per-franchisee personal CRM bookmark per home).
   // Keyed by "${source}:${home_id}" for O(1) lookup from list/map.
   const [leads, setLeads] = useState([]);
+  // HQ notes on CQC entries. Keyed by "${source}:${home_id}" so a
+  // marker/row click can pull the current note in one lookup.
+  //   adminMode      → loads from /admin/franchisees/{id}/hq-home-notes
+  //   franchisee/Plus → loads from /portal/hq-home-notes (read-only)
+  const [hqNotesMap, setHqNotesMap] = useState({});
+  // When HQ clicks a home that isn't already a franchisee_clients doc,
+  // we open the modal in "note-only" mode with a lightweight seed so
+  // the amber HQ Note panel is the only actionable field.
+  const [hqNoteOnly, setHqNoteOnly] = useState(null);
 
   useEffect(() => {
     try { localStorage.setItem("cm.portal.basemap", basemap); } catch {/* noop */}
@@ -87,9 +105,35 @@ export default function FranchiseeTerritoryWidget({
   // Probe access once on mount — silent failure → no Territory+ UI.
   // ``forceBasic`` short-circuits the probe so the demo can show the
   // vanilla "My Territory" view side-by-side with "My Territory+".
+  // ``adminMode`` forces the Territory+ layout on regardless of the
+  // franchisee's actual Plus status — HQ always sees the full picture.
   useEffect(() => {
     if (forceBasic) {
       setPlusAccess({ allowed: false, is_demo: false });
+      return;
+    }
+    if (adminMode) {
+      // Skip the /portal/territory-plus/access probe (it uses the
+      // logged-in HQ session, which isn't tied to the target
+      // franchisee). Load the franchisee's clients + leads directly
+      // via the same portal endpoints — those routes accept an
+      // optional franchisee_id override for admins.
+      setPlusAccess({ allowed: true, is_admin_view: true });
+      (async () => {
+        try {
+          const params = franchiseeId ? { franchisee_id: franchiseeId } : {};
+          const [clientsRes, leadsRes, notesRes] = await Promise.all([
+            api.get("/portal/territory-plus/clients", { params }).catch(() => ({ data: { items: [] } })),
+            api.get("/portal/territory-plus/leads", { params }).catch(() => ({ data: { items: [] } })),
+            franchiseeId
+              ? api.get(`/admin/franchisees/${franchiseeId}/hq-home-notes`)
+              : Promise.resolve({ data: { map: {} } }),
+          ]);
+          setMyClients(clientsRes.data.items || []);
+          setLeads(leadsRes.data.items || []);
+          setHqNotesMap(notesRes.data?.map || {});
+        } catch (e) { /* noop */ }
+      })();
       return;
     }
     (async () => {
@@ -97,18 +141,37 @@ export default function FranchiseeTerritoryWidget({
         const { data } = await api.get("/portal/territory-plus/access");
         setPlusAccess(data);
         if (data?.allowed) {
-          const [clientsRes, leadsRes] = await Promise.all([
+          const [clientsRes, leadsRes, hqNotesRes] = await Promise.all([
             api.get("/portal/territory-plus/clients"),
             api.get("/portal/territory-plus/leads"),
+            // Franchisee's own read-only view of HQ notes.
+            api.get("/portal/hq-home-notes").catch(() => ({ data: { map: {} } })),
           ]);
           setMyClients(clientsRes.data.items || []);
           setLeads(leadsRes.data.items || []);
+          setHqNotesMap(hqNotesRes.data?.map || {});
         }
       } catch (e) {
         setPlusAccess({ allowed: false });
       }
     })();
-  }, [forceBasic]);
+  }, [forceBasic, adminMode, franchiseeId]);
+
+  // Persist an HQ note on a CQC entry via the admin endpoint. Empty
+  // strings delete the row backend-side.
+  const saveHqNote = async (source, homeId, note) => {
+    if (!adminMode || !franchiseeId) return;
+    try {
+      await api.put(
+        `/admin/franchisees/${franchiseeId}/hq-home-notes/${source}/${homeId}`,
+        { note },
+      );
+      // Refresh the local map so the amber badge/panel updates
+      // immediately without waiting for a full remount.
+      const { data } = await api.get(`/admin/franchisees/${franchiseeId}/hq-home-notes`);
+      setHqNotesMap(data?.map || {});
+    } catch (e) { /* noop */ }
+  };
 
   const reloadClients = async () => {
     try {
@@ -240,11 +303,23 @@ export default function FranchiseeTerritoryWidget({
       setEditingClient(client);
       return;
     }
-    // Not yet a client. Open the modal pre-seeded from the CQC home so
-    // the franchisee can add notes / extra contacts / amend details
-    // without first having to commit to "Mark as my client". Saving
-    // creates a custom client row (no gold-star marker — they can hit
-    // "Mark as my client" later if they want it on the marker map).
+    // Not yet a client. In admin mode we open a lightweight "HQ note
+    // only" modal — HQ is annotating the CQC entry, NOT promoting it
+    // to a franchisee_clients doc. In franchisee/Plus mode we open the
+    // existing seeded modal so they can commit to marking the home.
+    if (adminMode) {
+      const source = String(home.country || "").toLowerCase().includes("scot") ? "scotland" : "cqc";
+      setHqNoteOnly({
+        source,
+        home_id: key,
+        name: home.name || "",
+        postcode: home.postalCode || home.postcode || "",
+        address: home.fullAddress || "",
+        provider: home.providerName || "",
+      });
+      return;
+    }
+    // Franchisee/Plus path — seeded modal (unchanged).
     const fullAddress = home.fullAddress
       || [home.postalAddressLine1, home.postalAddressLine2, home.postalAddressTownCity, home.postalAddressCounty, home.postalCode]
           .filter(Boolean).join(", ");
@@ -643,9 +718,28 @@ export default function FranchiseeTerritoryWidget({
               ? homeById.get(editingClient.home_id) || null
               : null}
             marketingEnabled={marketingEnabled}
+            hqNote={editingClient.source && editingClient.home_id
+              ? hqNotesMap[`${editingClient.source}:${editingClient.home_id}`] || null
+              : null}
+            hqNoteEditable={adminMode}
+            onHqNoteSave={saveHqNote}
+            hqSource={editingClient.source}
+            hqHomeId={editingClient.home_id}
             onClose={() => setEditingClient(null)}
             onSaved={() => { reloadClients(); }}
             onDeleted={() => { reloadClients(); }}
+          />
+        )}
+
+        {/* Admin note-only modal — HQ is annotating a CQC entry without
+            creating a franchisee_clients doc. The rest of the form is
+            hidden by ``noteOnly``, leaving just the amber HQ Note panel. */}
+        {hqNoteOnly && (
+          <HqNoteOnlyModal
+            entry={hqNoteOnly}
+            hqNote={hqNotesMap[`${hqNoteOnly.source}:${hqNoteOnly.home_id}`] || null}
+            onSave={saveHqNote}
+            onClose={() => setHqNoteOnly(null)}
           />
         )}
       </div>
@@ -687,6 +781,93 @@ export default function FranchiseeTerritoryWidget({
           onZoomHome={(h) => setFlyTo({ lat: h.latitude, lng: h.longitude, _t: Date.now() })}
         />
       )}
+    </div>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
+// HqNoteOnlyModal — admin-only. HQ clicks a CQC home in the territory
+// list, no franchisee_clients doc exists for it yet, and HQ just wants
+// to annotate the CQC entry (see design decision #2 in the Feb 2026
+// spec). Lightweight modal — no client fields, just the amber HQ Note
+// panel + home context header.
+// ---------------------------------------------------------------------------
+function HqNoteOnlyModal({ entry, hqNote, onSave, onClose }) {
+  const initialNote = (typeof hqNote === "string" ? hqNote : hqNote?.note) || "";
+  const meta = typeof hqNote === "object" && hqNote ? hqNote : null;
+  const [draft, setDraft] = useState(initialNote);
+  const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await onSave(entry.source, entry.home_id, draft);
+      setDirty(false);
+      onClose?.();
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+      data-testid="hq-note-only-modal"
+    >
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden">
+        <div className="px-4 py-3 border-b border-stone-200 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-amber-700 mb-0.5">HQ Note · CQC entry</div>
+            <div className="text-base font-bold text-stone-950 truncate">{entry.name || "Care home"}</div>
+            <div className="text-xs text-stone-500 truncate mt-0.5">
+              {entry.postcode && <span className="font-mono">{entry.postcode}</span>}
+              {entry.provider && <span>{entry.postcode ? " · " : ""}{entry.provider}</span>}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            data-testid="hq-note-only-close"
+            className="shrink-0 w-8 h-8 rounded-full border border-stone-300 text-stone-600 hover:bg-stone-50 flex items-center justify-center"
+            aria-label="Close"
+          >×</button>
+        </div>
+        <div className="p-4 space-y-3">
+          <div className="text-xs text-stone-600 bg-stone-50 border border-stone-200 rounded-md p-2.5 leading-relaxed">
+            This note is attached to the CQC entry — the franchisee&apos;s pipeline is
+            unaffected. Plus franchisees will see this as a read-only amber panel.
+          </div>
+          <textarea
+            value={draft}
+            onChange={(e) => { setDraft(e.target.value); setDirty(true); }}
+            rows={6}
+            placeholder="e.g. Spoke to Kate, revisit April. Manager currently away."
+            data-testid="hq-note-only-textarea"
+            className="w-full px-3 py-2 text-sm bg-amber-50 border border-amber-300 rounded-lg focus:outline-none focus:border-amber-500 text-stone-950"
+          />
+          {meta?.updated_at && (
+            <div className="text-[10px] text-stone-500">
+              Last updated {new Date(meta.updated_at).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short" })}
+            </div>
+          )}
+        </div>
+        <div className="px-4 py-3 border-t border-stone-200 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3 py-2 text-xs uppercase tracking-wider font-bold rounded bg-white border border-stone-300 text-stone-700 hover:bg-stone-50"
+          >Cancel</button>
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving || (!dirty && !initialNote && !draft)}
+            data-testid="hq-note-only-save"
+            className="px-3 py-2 text-xs uppercase tracking-wider font-bold rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40"
+          >
+            {saving ? "Saving…" : draft.trim() ? "Save HQ note" : "Clear HQ note"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

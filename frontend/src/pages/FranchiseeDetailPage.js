@@ -964,6 +964,7 @@ export default function FranchiseeDetailPage() {
                   hoveredExtraPinId={hoverId}
                   onExtraPinClick={(id) => setHoverId(id)}
                   hideHomeMarkers={enabled}
+                  adminMode={true}
                 />
               )}
             </CareHomeEnquiriesOverlay>

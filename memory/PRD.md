@@ -1,4 +1,50 @@
 # Creative Mojo — Admin & Franchisee Hub PRD
+- ✅ **Admin franchisee page — HQ notes on CQC entries + Care Groups panel (Feb 2026)**
+    * **Care Groups panel** — `TerritoryCareGroupsCard` (previously
+      portal-Plus only) now always renders on the admin franchisee
+      page next to the map. Uses the exact same component + data
+      pipeline; no code duplication.
+    * **HQ notes** — new backend module `hq_home_notes_routes.py`
+      exposes `GET/PUT/DELETE /api/admin/franchisees/{id}/hq-home-notes`
+      + read-only `GET /api/portal/hq-home-notes` for Plus
+      franchisees. Notes are stored in a NEW `hq_home_notes`
+      collection keyed by `(franchisee_id, source, home_id)` —
+      **deliberately decoupled** from `franchisee_clients` so HQ can
+      annotate any CQC entry (Basic-MyTerritory franchisees included)
+      without silently promoting the home to "my client" on the
+      franchisee's side. Empty note strings auto-delete the row to
+      avoid orphan blanks. Unique index enforced on
+      `(franchisee_id, source, home_id)`.
+    * **Widget wiring** — `FranchiseeTerritoryWidget` gains an
+      `adminMode` prop. When on: forces the Territory+ layout
+      (skipping the `/portal/territory-plus/access` probe which
+      returns HQ's session), loads clients/leads via the same
+      `/portal/territory-plus/*` endpoints, and loads HQ notes via
+      the new admin route. Click on any CQC home row (or map marker)
+      that isn't already a `franchisee_clients` doc opens a
+      lightweight `HqNoteOnlyModal` — no full client form, just an
+      amber HQ Note textarea + save/clear. Clicking a home that IS a
+      client opens the existing `TerritoryClientModal` with a new
+      amber HQ Note section added below the franchisee's own notes.
+    * **Franchisee portal (Plus)** — HQ notes are surfaced read-only
+      as an amber panel inside `TerritoryClientModal`; Basic
+      franchisees don't see them (they have no MyTerritory+ UI, but
+      the endpoint returns them harmlessly so we can enable exposure
+      later without a schema change).
+    * **Row/marker indicators** — reserved for a follow-up
+      enhancement (currently the note surfaces on modal open — HQ has
+      an explicit workflow of clicking a home to make a call).
+  **Verification** — 8/8 tests green in
+  `tests/test_hq_home_notes.py`: empty-by-default list · PUT creates
+  · PUT updates existing · empty note deletes · DELETE removes ·
+  invalid source rejected (400) · notes scoped per franchisee ·
+  portal endpoint returns notes for own franchisee only + franchisee
+  cannot write via admin route (403). Live-verified on preview
+  against Helen Lyons' franchisee page — Care Groups panel renders
+  with 78 groups, homes list clicks open `HqNoteOnlyModal`, notes
+  save + refetch cleanly.
+
+
 - ✅ **CRM Follow-Up — Toolbar chip + FOLLOW-UP tag gate (Feb 2026)**
     * **Toolbar chip** — new `Follow-up Due · N waiting` chip in the
       CRM top toolbar (visible on the pipeline tab). Amber when N>0,
