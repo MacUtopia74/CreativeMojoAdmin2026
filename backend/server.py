@@ -1671,43 +1671,159 @@ async def upload_franchisee_photo(
 ):
     """Admin-only: upload (or replace) a franchisee's profile photo.
 
-    Stored on disk under `UPLOADS_DIR/franchisees/<id>_<ts>.<ext>` and served
-    via `/api/uploads/...`. The franchisee's `photos[0].url` is rewritten so
-    the rest of the app (detail page, listings, portal greeting) picks it up
-    immediately. Existing photos are preserved as `photos[1..n]` so we can
-    revert if needed."""
+    Persistent storage: photos are written to Cloudflare R2 (survives
+    pod redeploys). The stored ``photo_url`` is a stable proxy route
+    ``/api/franchisees/{id}/photo?v={ts}`` — the cache-buster changes
+    on every re-upload so browsers pick up new photos immediately.
+
+    Fallback: if R2 isn't configured (local dev, first boot), we still
+    write to the pod's ``UPLOADS_DIR`` so nothing breaks. Anything
+    written there is EPHEMERAL and will not survive a redeploy — R2
+    is the only durable target.
+    """
     from migration import FRANCHISEE_PHOTOS_DIR
-    FRANCHISEE_PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
     f = await db.franchisees.find_one({"id": franchisee_id}, {"_id": 0})
     if not f:
         raise HTTPException(404, detail="Franchisee not found")
     ct = (file.content_type or "").lower()
     if not ct.startswith("image/"):
         raise HTTPException(415, detail="Only image uploads are accepted")
-    # Pick an extension we trust — never echo the user-supplied filename.
     ext = {"image/jpeg": "jpg", "image/jpg": "jpg", "image/png": "png",
            "image/webp": "webp", "image/gif": "gif"}.get(ct, "jpg")
     ts = int(datetime.now(timezone.utc).timestamp())
-    fname = f"{franchisee_id}_{ts}.{ext}"
-    dest = FRANCHISEE_PHOTOS_DIR / fname
     payload = await file.read()
     if len(payload) > 8 * 1024 * 1024:
         raise HTTPException(413, detail="Photo too large (max 8 MB)")
-    dest.write_bytes(payload)
-    new_url = f"/api/uploads/franchisees/{fname}"
-    new_entry = {"url": new_url, "uploaded": True,
-                 "uploaded_by": user.get("email"),
-                 "uploaded_at": datetime.now(timezone.utc).isoformat()}
+
+    # Prefer R2 for durability. Falls back to disk only if unconfigured.
+    photo_key: Optional[str] = None
+    disk_url: Optional[str] = None
+    try:
+        import file_storage as fs
+        if fs.r2_configured():
+            photo_key = f"shared/_franchisee_photos/{franchisee_id}_{ts}.{ext}"
+            fs.get_client().put_object(
+                Bucket=fs.R2_BUCKET,
+                Key=photo_key,
+                Body=payload,
+                ContentType=ct,
+                CacheControl="public, max-age=31536000, immutable",
+            )
+    except Exception as e:  # noqa: BLE001
+        logger.exception("[franchisee-photo] R2 upload failed for %s: %s", franchisee_id, e)
+        photo_key = None
+
+    if not photo_key:
+        # Ephemeral fallback — write to pod disk.
+        FRANCHISEE_PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
+        fname = f"{franchisee_id}_{ts}.{ext}"
+        dest = FRANCHISEE_PHOTOS_DIR / fname
+        dest.write_bytes(payload)
+        disk_url = f"/api/uploads/franchisees/{fname}"
+
+    # Stable proxy URL — always the same route; changes only when ``ts``
+    # is bumped after a fresh upload. Works for both R2 and disk paths.
+    new_url = f"/api/franchisees/{franchisee_id}/photo?v={ts}"
+    new_entry = {
+        "url": new_url,
+        "uploaded": True,
+        "uploaded_by": user.get("email"),
+        "uploaded_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if photo_key:
+        new_entry["r2_key"] = photo_key
+    if disk_url:
+        new_entry["disk_url"] = disk_url
     existing = f.get("photos") or []
-    # Keep existing as fallback at the tail so we can audit / revert later.
     photos = [new_entry] + [p for p in existing if p.get("url") != new_url]
-    await db.franchisees.update_one({"id": franchisee_id}, {"$set": {
+    set_patch: Dict[str, Any] = {
         "photos": photos,
         "photo_url": new_url,
+        "photo_updated_at": ts,
         "updated_at": datetime.now(timezone.utc),
         "updated_by": user.get("email"),
-    }})
-    return {"photo_url": new_url, "photos": photos}
+    }
+    if photo_key:
+        set_patch["photo_r2_key"] = photo_key
+        set_patch["photo_content_type"] = ct
+    await db.franchisees.update_one({"id": franchisee_id}, {"$set": set_patch})
+    return {"photo_url": new_url, "photos": photos, "r2": bool(photo_key)}
+
+
+@api.get("/franchisees/{franchisee_id}/photo")
+async def get_franchisee_photo(franchisee_id: str, v: Optional[str] = None):
+    """Public proxy for a franchisee's profile photo.
+
+    Resolves the current photo from Mongo and streams it from R2 when
+    a ``photo_r2_key`` is set, falling back to the pod's ephemeral
+    ``/api/uploads/...`` file when the record still references the
+    legacy on-disk path (migration-time photos and any pre-R2
+    uploads). ``v`` is a cache-buster only — ignored server-side.
+    """
+    doc = await db.franchisees.find_one(
+        {"id": franchisee_id},
+        {"_id": 0, "photo_r2_key": 1, "photo_content_type": 1, "photos": 1, "photo_url": 1},
+    )
+    if not doc:
+        raise HTTPException(404, detail="Franchisee not found")
+
+    r2_key = doc.get("photo_r2_key")
+    # Photos array may carry the R2 key too (belt & braces for legacy rows).
+    if not r2_key:
+        for p in (doc.get("photos") or []):
+            if p.get("r2_key"):
+                r2_key = p.get("r2_key")
+                break
+
+    if r2_key:
+        try:
+            import file_storage as fs
+            obj = fs.get_client().get_object(Bucket=fs.R2_BUCKET, Key=r2_key)
+            body = obj["Body"].read()
+            ct = doc.get("photo_content_type") or obj.get("ContentType") or "image/jpeg"
+            return Response(
+                content=body,
+                media_type=ct,
+                headers={"Cache-Control": "public, max-age=3600"},
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.exception("[franchisee-photo] R2 fetch failed for %s: %s", franchisee_id, e)
+            # fall through to disk
+
+    # Legacy path — the photo was written to the pod's uploads dir.
+    from migration import FRANCHISEE_PHOTOS_DIR
+    # Prefer the latest photos[0].disk_url, then the migration-time file.
+    disk_url: Optional[str] = None
+    for p in (doc.get("photos") or []):
+        if p.get("disk_url"):
+            disk_url = p["disk_url"]
+            break
+    if not disk_url:
+        legacy_url = doc.get("photo_url") or ""
+        if legacy_url.startswith("/api/uploads/franchisees/"):
+            disk_url = legacy_url
+    # Try the current photo file, then the migration-time file that
+    # matches the franchisee id (no _ts suffix).
+    candidates: list[Path] = []
+    if disk_url:
+        fname = disk_url.rsplit("/", 1)[-1].split("?", 1)[0]
+        candidates.append(FRANCHISEE_PHOTOS_DIR / fname)
+    for ext in ("jpg", "jpeg", "png", "webp", "gif"):
+        candidates.append(FRANCHISEE_PHOTOS_DIR / f"{franchisee_id}.{ext}")
+    for cand in candidates:
+        try:
+            if cand.exists():
+                data = cand.read_bytes()
+                ct = "image/jpeg" if cand.suffix.lower() in (".jpg", ".jpeg") else f"image/{cand.suffix.lstrip('.').lower()}"
+                return Response(
+                    content=data,
+                    media_type=ct,
+                    headers={"Cache-Control": "public, max-age=3600"},
+                )
+        except Exception:  # noqa: BLE001
+            continue
+
+    raise HTTPException(404, detail="Photo not found")
 
 
 # ----------------------------------------------------------------------------
