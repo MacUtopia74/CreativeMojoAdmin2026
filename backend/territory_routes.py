@@ -724,6 +724,39 @@ def build_territory_router(db, require_role):  # noqa: D401
                 out.append({"sector": c, "geometry": None, "district": c.split(" ")[0], "home_count": c_map.get(c, 0)})
         return {"sectors": out, "count": len(out)}
 
+    # ----------------------------------------------------------------
+    # Reverse point-in-polygon lookup — resolves an arbitrary lat/lng
+    # to the postcode sector whose ONS boundary contains it. Used by
+    # the Territory Builder so admins can click any empty area on the
+    # map (even sectors outside the current search radius that haven't
+    # been fetched yet) and have the geometry auto-loaded and toggled.
+    # ----------------------------------------------------------------
+    @router.get("/territory/sector-at-point")
+    async def sector_at_point(
+        lat: float = Query(..., ge=-90, le=90),
+        lon: float = Query(..., ge=-180, le=180),
+        _user: dict = Depends(require_role("admin", "franchisee")),
+    ):
+        doc = await db.postcode_sector_polygons.find_one(
+            {
+                "geometry": {
+                    "$geoIntersects": {
+                        "$geometry": {"type": "Point", "coordinates": [lon, lat]},
+                    },
+                },
+            },
+            {"_id": 0, "sector": 1, "geometry": 1, "district": 1},
+        )
+        if not doc:
+            raise HTTPException(status_code=404, detail="No sector contains this point")
+        counts = await _count_homes_per_sector([doc["sector"]])
+        return {
+            "sector": doc["sector"],
+            "geometry": doc["geometry"],
+            "district": doc.get("district"),
+            "home_count": counts.get(doc["sector"], 0),
+        }
+
     # Back-compat alias for any old frontend caches still hitting the
     # legacy endpoint name — same payload, just reads from the new collection.
     @router.get("/territory/sector-geometries")

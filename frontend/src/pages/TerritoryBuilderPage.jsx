@@ -396,6 +396,28 @@ export default function TerritoryBuilderPage() {
     setSelected((cur) => cur.includes(sec) ? cur.filter((s) => s !== sec) : [...cur, sec]);
   };
 
+  // Empty-map click → resolve the sector under that lat/lng and toggle it.
+  // Fixes the "I can see a white sector on the map but can't click it"
+  // gap that appears when the sector sits outside the current search
+  // radius (its polygon was never fetched). We top up ``sectors`` with
+  // the freshly-fetched geometry so subsequent hover/label chrome works.
+  const handleMapBodyClick = useCallback(async ({ lat, lng }) => {
+    try {
+      const { data } = await api.get("/territory/sector-at-point", { params: { lat, lon: lng } });
+      if (!data?.sector) return;
+      setSectors((cur) => {
+        if (cur.some((s) => s.sector === data.sector)) return cur;
+        return [...cur, { sector: data.sector, geometry: data.geometry, district: data.district, home_count: data.home_count || 0, distance_km: 9999 }];
+      });
+      toggleSector(data.sector);
+    } catch (e) {
+      // 404 = sea, Northern Ireland, or genuinely no sector at that point — silent.
+      if (e?.response?.status !== 404) {
+        console.error("[TerritoryBuilder] sector-at-point failed", e);
+      }
+    }
+  }, []);
+
   // Live home count for the selected sectors (server-side authority)
   const [homeCount, setHomeCount] = useState({ count: 0, per_sector: {} });
   useEffect(() => {
@@ -989,6 +1011,7 @@ export default function TerritoryBuilderPage() {
               centre={centre}
               centreLabel={centreLabel}
               onToggleSector={toggleSector}
+              onMapClick={handleMapBodyClick}
               height={820}
               franchiseeOverlay={showOverlay ? overlay : null}
               searchPin={searchPin}

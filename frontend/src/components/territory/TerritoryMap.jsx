@@ -682,9 +682,20 @@ export default function TerritoryMap({
     if (!ready || !mapRef.current) return;
     const map = mapRef.current;
     const handler = (e) => {
-      if (mapClickRef.current) {
-        mapClickRef.current({ lat: e.lngLat.lat, lng: e.lngLat.lng });
-      }
+      if (!mapClickRef.current) return;
+      // Only fire when the click lands on empty map (no sector or
+      // franchisee polygon under the pointer). If a sector was hit,
+      // its own click handler already toggles the selection — we
+      // don't want to double-fire here. Territory Builder uses this
+      // path to lookup a sector at any lat/lng, even one whose
+      // geometry hasn't been loaded yet.
+      try {
+        const hit = map.queryRenderedFeatures(e.point, {
+          layers: ["sectors-fill", "franchisee-fill"].filter((l) => map.getLayer(l)),
+        });
+        if (hit && hit.length) return;
+      } catch { /* fall through — better to over-fire than not fire */ }
+      mapClickRef.current({ lat: e.lngLat.lat, lng: e.lngLat.lng });
     };
     map.on("click", handler);
     return () => { try { map.off("click", handler); } catch { /* map already torn down */ } };
