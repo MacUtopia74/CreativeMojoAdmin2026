@@ -35,6 +35,9 @@ import {
   Sparkles,
   ClipboardList,
   ExternalLink,
+  Facebook,
+  Landmark,
+  MessageCircle,
   FileText,
   Menu,
   X,
@@ -164,6 +167,21 @@ const SIDEBAR_V2 = [
   { kind: "divider" },
   { kind: "item", to: "/admin/subscription-requests", label: "Subscription Requests", icon: Sparkles,  testid: "nav-subscription-requests", permKey: "subscription-requests" },
   { kind: "divider" },
+  // External single-click launchers — open in a new tab.  Kept above
+  // the Admin group so HQ can jump into Xero / Facebook / GoCardless
+  // / the Comfort Zone Facebook Group in one click without leaving
+  // the Hub.
+  { kind: "external", to: "https://login.xero.com/identity/user/login",
+    label: "Xero", icon: Calculator, testid: "nav-ext-xero" },
+  { kind: "external", to: "https://business.facebook.com/settings/pages?business_id=1067136643338520",
+    label: "Facebook Pages", icon: Facebook, testid: "nav-ext-fb-pages" },
+  { kind: "external", to: "https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=28266295&columns=name%2Cerrors%2Cdelivery%2Cresults%2Creach%2Cimpressions%2Ccost_per_result%2Cbudget%2Cspend%2Cend_time%2Cschedule%2Crelevance_score%3Ascore%2Ctotal_unique_actions&attribution_windows=default&business_id=1067136643338520&nav_source=no_referrer#",
+    label: "Facebook Ads", icon: Facebook, testid: "nav-ext-fb-ads" },
+  { kind: "external", to: "https://manage.gocardless.com/sign-in",
+    label: "GoCardless", icon: Landmark, testid: "nav-ext-gocardless" },
+  { kind: "external", to: "https://www.facebook.com/groups/223912961485958/",
+    label: "Comfort Zone", icon: MessageCircle, testid: "nav-ext-comfort-zone" },
+  { kind: "divider" },
   {
     kind: "group", key: "admin", label: "Admin", icon: Wrench, testid: "nav-admin-group",
     children: [
@@ -279,6 +297,27 @@ function firstAllowedPath(permissions) {
 // ---------------------------------------------------------------------------
 // Leaf nav link — used at every level of the tree
 // ---------------------------------------------------------------------------
+// External-link sidebar entry — renders a plain anchor (not NavLink)
+// that opens in a new tab. Never shows the "active" indicator since it
+// never matches the router path. Small `ExternalLink` glyph on the
+// right hints that the click leaves the Hub.
+function ExternalNavItem({ to, label, icon: Icon, testid, depth = 0 }) {
+  const padLeft = depth === 0 ? "px-6" : depth === 1 ? "pl-10 pr-6" : "pl-14 pr-6";
+  return (
+    <a
+      href={to}
+      target="_blank"
+      rel="noopener noreferrer"
+      data-testid={testid}
+      className={`flex items-center gap-3 ${padLeft} py-2 text-sm font-semibold transition-colors duration-150 border-l-2 border-l-transparent text-stone-600 hover:text-stone-950 hover:bg-white/50`}
+    >
+      {Icon && <Icon className="w-4 h-4 shrink-0" strokeWidth={2} />}
+      <span className="flex-1 truncate">{label}</span>
+      <ExternalLink className="w-3 h-3 shrink-0 text-stone-400" strokeWidth={2} aria-hidden="true" />
+    </a>
+  );
+}
+
 function NavItem({ to, label, icon: Icon, testid, badge, depth = 0 }) {
   // Sub-items are indented to give visual hierarchy without arrow icons.
   const padLeft = depth === 0 ? "px-6" : depth === 1 ? "pl-10 pr-6" : "pl-14 pr-6";
@@ -383,6 +422,10 @@ export default function Layout() {
       for (const n of nodes) {
         if (n.kind === "item") {
           if (!n.permKey || allowed.has(n.permKey)) out.push(n);
+        } else if (n.kind === "external") {
+          // External launchers are visible to any admin who can see
+          // the sidebar — no per-item permKey plumbing needed.
+          out.push(n);
         } else if (n.kind === "group" || n.kind === "subgroup") {
           const kids = walk(n.children);
           if (kids.length > 0) out.push({ ...n, children: kids });
@@ -572,6 +615,9 @@ export default function Layout() {
     if (node.kind === "divider") return <Divider key={`d-${idx}`} />;
     if (node.kind === "item") {
       return <NavItem key={node.to} {...node} depth={depth} badge={resolveBadge(node)} />;
+    }
+    if (node.kind === "external") {
+      return <ExternalNavItem key={`ext-${node.to}`} {...node} depth={depth} />;
     }
     if (node.kind === "group") {
       const open = isGroupOpen(node.key);
