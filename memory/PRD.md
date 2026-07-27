@@ -1,4 +1,41 @@
 # Creative Mojo — Admin & Franchisee Hub PRD
+- ✅ **CRM Follow-Up — Toolbar chip + FOLLOW-UP tag gate (Feb 2026)**
+    * **Toolbar chip** — new `Follow-up Due · N waiting` chip in the
+      CRM top toolbar (visible on the pipeline tab). Amber when N>0,
+      neutral grey when 0. Click auto-switches to pipeline view,
+      expands the `follow_up_due` column if collapsed, scrolls it
+      into view, and briefly highlights the column border in amber
+      (auto-clears after 2.5s). `data-testid="followup-due-chip"` +
+      `followup-due-count`. Purely additive — no schema change.
+    * **FOLLOW-UP-only counter** — `follow_up_sent_count` is now
+      only incremented when the sent template's ``display_name`` is
+      exactly `FOLLOW UP` (case-insensitive, whitespace-trimmed).
+      Unrelated templated emails (`AREA TAKEN`, `BLANK INTRO`,
+      `SETUP`, `OVERSEAS`, untagged legacy templates) no longer
+      accidentally mark Follow-up Email 1 as sent, and they no longer
+      flip contacts out of Follow-up Due. Classifier lives in
+      `follow_up_workflow.is_follow_up_template()` — single source
+      of truth, non-string values return False safely.
+    * **`follow_up_index`** likewise now stamped only on FOLLOW-UP
+      sends (was previously any subsequent templated send).
+  **Verification** — 31/31 tests green:
+    * `tests/test_follow_up_tag_gating.py` (14 unit + wire-up):
+      classifier positive cases (`FOLLOW UP`, `follow up`,
+      `Follow Up`, mixed whitespace) · negative cases (`AREA TAKEN`,
+      `FOLLOWUP`, `FOLLOW-UP`, `FOLLOW UP 2`, empty, None, wrong types)
+      · `send_reply` imports and uses the helper · no inline
+      `== "FOLLOW UP"` string comparison remains · counter bump +
+      pipeline flip + follow_up_index all inside the
+      `if is_follow_up_template:` branch.
+    * `tests/test_follow_up_workflow.py` (8 scheduler tests) all
+      still pass — no regression to the auto-move logic.
+  Preview screenshot blocked by the same recurring preview-only
+  Contacts-page hydration quirk that has affected earlier sessions
+  (not a regression from these changes — webpack compiles clean,
+  every other page loads); visual verification of the toolbar chip
+  will surface on production after redeploy.
+
+
 - ✅ **CRM — Follow-Up Due Workflow (Feb 2026)**
   Adds a lightweight daily-chase workflow **on top of** the existing
   email tracking system — no duplicate timestamps, no second heat

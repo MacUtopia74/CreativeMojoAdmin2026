@@ -1706,6 +1706,11 @@ export default function ContactsPage() {
   // email, 'not_sent' shows contacts who haven't. Works alongside
   // (not in place of) the existing sortByHot toggle + source filter.
   const [followUpFilter, setFollowUpFilter] = useState("all"); // 'all' | 'sent' | 'not_sent'
+  // When the toolbar "Follow-up Due · N waiting" chip is clicked we
+  // set this to ``"follow_up_due"`` so the useEffect below scrolls the
+  // right column into view + briefly highlights it. Cleared on any
+  // other pipeline action (drag / stage move / clicking elsewhere).
+  const [focusStage, setFocusStage] = useState(null);
   const [collapsedStages, setCollapsedStages] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem("pipelineCollapsedStages") || "[]")); }
     catch { return new Set(); }
@@ -1720,6 +1725,32 @@ export default function ContactsPage() {
   };
 
   const clearSelection = () => { setSelectedIds(new Set()); setLastSelectedId(null); };
+
+  // When the toolbar "Follow-up Due · N waiting" chip is pressed we
+  // set ``focusStage`` and switch to pipeline view. This effect
+  // (1) makes sure that column isn't collapsed, (2) scrolls it into
+  // view, and (3) auto-clears the ring after 2.5s so the highlight
+  // is a nudge, not a persistent state.
+  useEffect(() => {
+    if (!focusStage) return;
+    // Expand the target column if it happens to be collapsed.
+    if (collapsedStages.has(focusStage)) {
+      setCollapsedStages((prev) => {
+        const next = new Set(prev);
+        next.delete(focusStage);
+        try { localStorage.setItem("pipelineCollapsedStages", JSON.stringify([...next])); } catch {/* ignore */}
+        return next;
+      });
+    }
+    const t1 = setTimeout(() => {
+      const el = document.querySelector(`[data-testid="pipeline-column-${focusStage}"]`);
+      if (el && el.scrollIntoView) {
+        el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+      }
+    }, 60);
+    const t2 = setTimeout(() => setFocusStage(null), 2500);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [focusStage, collapsedStages]);
   // Visible items (filtered + age + source) — needed so shift-select knows the range.
   // Default order: newest "contacted on" date at the top, oldest at the bottom.
   // Cards without a date sink to the bottom (rare — usually means an import gap).
@@ -2209,6 +2240,39 @@ export default function ContactsPage() {
           <span className="text-xs text-stone-500">{data.total.toLocaleString()} records</span>
         </div>
         <div className="flex items-center gap-3">
+          {isPipeline && (() => {
+            // Count contacts currently in the ``follow_up_due`` stage
+            // — this is the "chase list" HQ needs to see the moment
+            // they open the CRM. Chip is always rendered so a count of
+            // 0 is a positive "inbox zero" signal; click switches to
+            // pipeline view, scrolls the column into view and briefly
+            // highlights it.
+            const dueCount = data.items.filter(
+              (c) => c.pipeline_status === "follow_up_due"
+            ).length;
+            return (
+              <button
+                type="button"
+                onClick={() => {
+                  setView("pipeline");
+                  setFocusStage("follow_up_due");
+                }}
+                title={dueCount ? `${dueCount} contact${dueCount === 1 ? "" : "s"} waiting for a follow-up email` : "No contacts waiting for a follow-up"}
+                data-testid="followup-due-chip"
+                className={`px-3 py-2 text-xs font-bold uppercase tracking-wider rounded-lg border inline-flex items-center gap-1.5 transition-colors ${
+                  dueCount > 0
+                    ? "bg-amber-500 hover:bg-amber-600 text-white border-amber-500"
+                    : "bg-white hover:bg-stone-50 text-stone-500 border-stone-300"
+                }`}>
+                <Mail className="w-3 h-3" />
+                Follow-up Due
+                <span className={`ml-1 tabular-nums ${dueCount > 0 ? "text-amber-100" : "text-stone-400"}`}>·</span>
+                <span className="tabular-nums" data-testid="followup-due-count">
+                  {dueCount} {dueCount === 1 ? "waiting" : "waiting"}
+                </span>
+              </button>
+            );
+          })()}
           {isPipeline && view === "pipeline" && (
             <button
               type="button"
@@ -2544,7 +2608,14 @@ export default function ContactsPage() {
                 );
               }
               return (
-                <div key={stage.key} className="flex-1 min-w-0 bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid={`pipeline-column-${stage.key}`}>
+                <div
+                  key={stage.key}
+                  className={`flex-1 min-w-0 bg-white border rounded-2xl overflow-hidden transition-all ${
+                    focusStage === stage.key
+                      ? "border-amber-500 ring-2 ring-amber-400 shadow-lg"
+                      : "border-stone-200"
+                  }`}
+                  data-testid={`pipeline-column-${stage.key}`}>
                   <div className={`px-3 py-2.5 border-b border-stone-200 ${stage.color.split(" ")[0]}`}>
                     <div className="flex items-center justify-between gap-2">
                       <button

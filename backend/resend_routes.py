@@ -293,23 +293,39 @@ def build_resend_router(db, require_role):
         doc.pop("_id", None)
 
         # ----------------------------- Follow-up workflow (Feb 2026)
-        # If the contact already had at least one prior templated send,
-        # this new send is their FOLLOW-UP EMAIL. Stamp the send with a
-        # ``follow_up_index`` (1 for the first follow-up, 2 for the next
-        # etc.), bump a denormalised counter on the contact so the CRM
-        # card can render its ✉¹ badge in one query, and — if the card
-        # was sitting in the ``follow_up_due`` column — nudge it back
-        # into ``contacted`` per the workflow spec. Manual stages
-        # (``qualified`` / ``dormant`` / ``lost`` / ...) are NEVER
-        # overwritten by this path.
-        prior_send_count = await db.email_sends.count_documents({
-            "contact_id": body.contact_id,
-            "template_id": {"$ne": None},
-            "id": {"$ne": send_id},
-        })
+        # A "follow-up email" is defined narrowly: the template MUST be
+        # tagged with the Display Name ``FOLLOW UP`` (case-insensitive,
+        # whitespace-trimmed). This means HQ can send unrelated templated
+        # emails (e.g. ``AREA TAKEN``, ``BLANK INTRO``, ``SETUP``,
+        # ``OVERSEAS``) without accidentally marking Follow-up Email 1
+        # as sent and pulling the contact out of the Follow-up Due column.
+        #
+        # Only when a FOLLOW-UP-tagged template is sent do we:
+        #   * stamp the send with ``follow_up_index`` (1-based),
+        #   * bump the contact's ``follow_up_sent_count`` counter,
+        #   * flip the card back from ``follow_up_due`` → ``contacted``.
+        # Manual stages (``qualified`` / ``dormant`` / ``lost`` / ...)
+        # are NEVER overwritten by this path.
+        is_follow_up_template = False
+        if body.template_id:
+            tpl = await db.email_templates.find_one(
+                {"id": body.template_id},
+                {"_id": 0, "display_name": 1},
+            )
+            from follow_up_workflow import is_follow_up_template as _is_fu
+            is_follow_up_template = _is_fu(tpl)
+
         follow_up_index = 0
-        if body.template_id and prior_send_count >= 1:
-            follow_up_index = prior_send_count  # 1-based: prior=1 → this is FU#1
+        if is_follow_up_template:
+            # Count how many prior FOLLOW-UP sends this contact has —
+            # not raw templated sends. ``follow_up_index`` is 1 for the
+            # first follow-up, 2 for the next, etc.
+            prior_fu_count = await db.email_sends.count_documents({
+                "contact_id": body.contact_id,
+                "follow_up_index": {"$exists": True, "$ne": None},
+                "id": {"$ne": send_id},
+            })
+            follow_up_index = prior_fu_count + 1
             await db.email_sends.update_one(
                 {"id": send_id},
                 {"$set": {"follow_up_index": follow_up_index}},

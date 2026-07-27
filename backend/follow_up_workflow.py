@@ -47,6 +47,27 @@ logger = logging.getLogger("creative-mojo-admin.follow-up")
 FOLLOW_UP_WINDOW_DAYS = 7
 CONTACT_COLLECTIONS = ("web_form_contacts", "contacts")
 
+# The single, authoritative string that identifies a template as
+# "the follow-up email". Matched case-insensitively and after
+# whitespace-trimming so HQ can type "follow up", "FOLLOW UP",
+# " Follow Up " etc. in the template editor.
+FOLLOW_UP_DISPLAY_NAME = "FOLLOW UP"
+
+
+def is_follow_up_template(template_doc) -> bool:
+    """Pure classifier — returns True iff a template row identifies
+    itself as HQ's follow-up email via ``display_name == "FOLLOW UP"``.
+    Any unrelated template (``AREA TAKEN``, ``BLANK INTRO``,
+    ``SETUP``, ``OVERSEAS``, or an untagged legacy template) returns
+    False so it can never accidentally bump ``follow_up_sent_count``
+    or pull a contact out of the Follow-up Due column."""
+    if not template_doc:
+        return False
+    raw = template_doc.get("display_name")
+    if not isinstance(raw, str):
+        return False
+    return raw.strip().upper() == FOLLOW_UP_DISPLAY_NAME
+
 
 def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
