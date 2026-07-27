@@ -16,6 +16,7 @@ import {
   Users, AlertCircle, CheckCircle2, Pencil, ChevronRight, ArrowLeft,
   ClipboardPaste, Layers, Eye, EyeOff, ChevronDown, ChevronUp,
   Share2, Copy, Link as LinkIcon, FolderOpen, History, X,
+  Lock, Unlock,
 } from "lucide-react";
 
 const TARGET_HOMES = 150;
@@ -393,8 +394,26 @@ export default function TerritoryBuilderPage() {
   };
 
   const toggleSector = (sec) => {
+    if (franchiseeId && !editMode) return;  // locked — silently ignore
     setSelected((cur) => cur.includes(sec) ? cur.filter((s) => s !== sec) : [...cur, sec]);
+    if (franchiseeId) setDirty(true);
   };
+
+  // ── Edit lock — franchisee mode only ───────────────────────────────
+  // Defaults to LOCKED (read-only) when opening the builder for an
+  // existing franchisee. Prospect mode (no franchisee_id) stays fully
+  // editable — nothing to lock. Auto-relocks after a successful save
+  // so admins can't accidentally keep editing an "already saved"
+  // territory. Unsaved edits trigger a beforeunload confirm.
+  const [editMode, setEditMode] = useState(() => !franchiseeId);
+  const [dirty, setDirty] = useState(false);
+  useEffect(() => {
+    if (!franchiseeId) return;
+    if (!editMode || !dirty) return;
+    const onBeforeUnload = (e) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [franchiseeId, editMode, dirty]);
 
   // Empty-map click → resolve the sector under that lat/lng and toggle it.
   // Fixes the "I can see a white sector on the map but can't click it"
@@ -402,6 +421,7 @@ export default function TerritoryBuilderPage() {
   // radius (its polygon was never fetched). We top up ``sectors`` with
   // the freshly-fetched geometry so subsequent hover/label chrome works.
   const handleMapBodyClick = useCallback(async ({ lat, lng }) => {
+    if (franchiseeId && !editMode) return;  // locked — silently ignore
     try {
       const { data } = await api.get("/territory/sector-at-point", { params: { lat, lon: lng } });
       if (!data?.sector) return;
@@ -409,14 +429,15 @@ export default function TerritoryBuilderPage() {
         if (cur.some((s) => s.sector === data.sector)) return cur;
         return [...cur, { sector: data.sector, geometry: data.geometry, district: data.district, home_count: data.home_count || 0, distance_km: 9999 }];
       });
-      toggleSector(data.sector);
+      setSelected((cur) => cur.includes(data.sector) ? cur.filter((s) => s !== data.sector) : [...cur, data.sector]);
+      setDirty(true);
     } catch (e) {
       // 404 = sea, Northern Ireland, or genuinely no sector at that point — silent.
       if (e?.response?.status !== 404) {
         console.error("[TerritoryBuilder] sector-at-point failed", e);
       }
     }
-  }, []);
+  }, [franchiseeId, editMode]);
 
   // Live home count for the selected sectors (server-side authority)
   const [homeCount, setHomeCount] = useState({ count: 0, per_sector: {} });
@@ -453,6 +474,11 @@ export default function TerritoryBuilderPage() {
           ok: true,
           message: `Territory saved · ${data.sectors.length} sector${data.sectors.length === 1 ? "" : "s"} · ${data.home_count} home${data.home_count === 1 ? "" : "s"}`,
         });
+        // Successful save → auto-relock to prevent accidental follow-on
+        // edits, and clear the "dirty" flag so the unsaved-changes guard
+        // stops warning on nav-away.
+        setEditMode(false);
+        setDirty(false);
         // Re-pull the history list so the new snapshot appears.
         reloadHistory();
       } else {
@@ -674,6 +700,48 @@ export default function TerritoryBuilderPage() {
               <ArrowLeft className="w-3 h-3" /> Back to contact
             </Link>
           )}
+          {/* Lock / Unlock — franchisee context only. Defaults to
+              LOCKED so an admin has to explicitly opt into editing
+              (prevents accidental clicks silently mutating a live
+              territory). Auto-relocks after a successful save. */}
+          {franchiseeId && (
+            <div className="mt-3 inline-flex items-center gap-2" data-testid="territory-lock-pill">
+              {editMode ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (dirty && !window.confirm(
+                        "You have unsaved sector changes. Lock without saving? Unsaved edits will be lost.",
+                      )) return;
+                      setEditMode(false);
+                      setDirty(false);
+                      // Revert unsaved edits back to the last-saved territory.
+                      if (franchisee?.territory_sectors) setSelected(franchisee.territory_sectors);
+                    }}
+                    data-testid="territory-lock-btn"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wider bg-amber-500 text-white hover:bg-amber-600 rounded-full shadow-sm"
+                  >
+                    <Unlock className="w-3.5 h-3.5" /> Editing — click to lock
+                  </button>
+                  {dirty && (
+                    <span className="text-[11px] text-amber-700 font-bold uppercase tracking-wider" data-testid="territory-dirty-indicator">
+                      · Unsaved changes
+                    </span>
+                  )}
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setEditMode(true)}
+                  data-testid="territory-unlock-btn"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wider bg-stone-200 text-stone-800 hover:bg-stone-300 rounded-full"
+                >
+                  <Lock className="w-3.5 h-3.5" /> Locked — click to edit
+                </button>
+              )}
+            </div>
+          )}
         </div>
         <div className="bg-white border border-stone-200 rounded-xl p-4 flex items-center gap-5">
           <div>
@@ -725,8 +793,13 @@ export default function TerritoryBuilderPage() {
             onChange={(e) => setRadiusMi(+e.target.value)} className="w-32" data-testid="radius-slider" />
           <span className="tabular-nums font-bold text-stone-900">{radiusMi} mi</span>
         </div>
-        <button onClick={() => setPasteOpen(true)} data-testid="open-paste"
-          className="px-3 py-2 text-xs font-bold uppercase tracking-wider bg-white border border-stone-300 text-stone-900 hover:bg-stone-50 rounded-lg flex items-center gap-1.5">
+        <button
+          onClick={() => setPasteOpen(true)}
+          disabled={franchiseeId && !editMode}
+          data-testid="open-paste"
+          className="px-3 py-2 text-xs font-bold uppercase tracking-wider bg-white border border-stone-300 text-stone-900 hover:bg-stone-50 rounded-lg flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+          title={franchiseeId && !editMode ? "Unlock the territory to paste sectors" : undefined}
+        >
           <ClipboardPaste className="w-3.5 h-3.5" /> Paste sectors
         </button>
         <button
@@ -1227,17 +1300,22 @@ export default function TerritoryBuilderPage() {
               </div>
             )}
             <div className="flex items-center gap-2 mt-3">
-              <button onClick={save} disabled={saving || !selected.length} data-testid="save-plan"
-                className="flex-1 px-3 py-2 text-xs font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-[#aaaa11] rounded-lg disabled:opacity-50 flex items-center justify-center gap-1.5">
+              <button onClick={save} disabled={saving || !selected.length || (franchiseeId && !editMode)} data-testid="save-plan"
+                className="flex-1 px-3 py-2 text-xs font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-[#aaaa11] rounded-lg disabled:opacity-50 flex items-center justify-center gap-1.5"
+                title={franchiseeId && !editMode ? "Unlock the territory to save changes" : undefined}>
                 {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                {franchiseeId ? "Lock territory" : (savedPlan ? "Update plan" : "Save plan")}
+                {franchiseeId ? "Save territory" : (savedPlan ? "Update plan" : "Save plan")}
               </button>
               {savedPlan && !franchiseeId && (
                 <button onClick={deletePlan} className="px-3 py-2 text-xs font-bold rounded-lg border border-red-300 text-red-700 hover:bg-red-50" data-testid="delete-plan">
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               )}
-              <button onClick={() => { setSelected([]); }} className="px-3 py-2 text-xs font-bold rounded-lg border border-stone-300 hover:bg-stone-50" title="Clear all sectors">
+              <button
+                onClick={() => { setSelected([]); if (franchiseeId) setDirty(true); }}
+                disabled={franchiseeId && !editMode}
+                className="px-3 py-2 text-xs font-bold rounded-lg border border-stone-300 hover:bg-stone-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                title={franchiseeId && !editMode ? "Unlock the territory to clear sectors" : "Clear all sectors"}>
                 <RotateCcw className="w-3.5 h-3.5" />
               </button>
             </div>
