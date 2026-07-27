@@ -941,47 +941,46 @@ export default function FranchiseeDetailPage() {
             }} />
         </Panel>
 
-        {/* Side-by-side details + map placeholder */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Territory map — live Mapbox (Phase 4) */}
-          <Panel
-            icon={Map}
-            title="Territory Map"
-            testid="panel-map"
-            action={
-              <Link to={`/territory-builder?franchisee_id=${f.id}`}
-                data-testid="edit-territory-btn"
-                className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-md flex items-center gap-1.5">
-                <Pencil className="w-3 h-3" /> {(f.territory_sectors || []).length ? "Edit territory" : "Set territory"}
-              </Link>
-            }
-          >
-            <CareHomeEnquiriesOverlay franchiseeId={f.id}>
-              {({ extraPins, hoverId, setHoverId, enabled }) => (
-                <FranchiseeTerritoryWidget
-                  franchiseeId={f.id}
-                  extraPins={extraPins}
-                  hoveredExtraPinId={hoverId}
-                  onExtraPinClick={(id) => setHoverId(id)}
-                  hideHomeMarkers={enabled}
-                  adminMode={true}
-                />
-              )}
-            </CareHomeEnquiriesOverlay>
-          </Panel>
-
-          <Panel icon={MessageSquare} title="Notes" testid="panel-notes">
-            {editing ? (
-              <textarea value={draft.notes ?? ""} onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))}
-                rows={6} data-testid="edit-notes"
-                className="w-full px-3 py-2 text-sm border border-stone-300 rounded-lg bg-white focus:outline-none focus:border-stone-900" />
-            ) : (
-              <div className="text-sm text-stone-700 whitespace-pre-wrap leading-relaxed min-h-[60px]">
-                {f.notes || <span className="text-stone-300">No notes</span>}
-              </div>
+        {/* Territory Map — full-width so the map + clients rail +
+            Care Groups panel underneath it all get real breathing room.
+            Notes moved below (see next Panel). */}
+        <Panel
+          icon={Map}
+          title="Territory Map"
+          testid="panel-map"
+          action={
+            <Link to={`/territory-builder?franchisee_id=${f.id}`}
+              data-testid="edit-territory-btn"
+              className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-md flex items-center gap-1.5">
+              <Pencil className="w-3 h-3" /> {(f.territory_sectors || []).length ? "Edit territory" : "Set territory"}
+            </Link>
+          }
+        >
+          <CareHomeEnquiriesOverlay franchiseeId={f.id}>
+            {({ extraPins, hoverId, setHoverId, enabled }) => (
+              <FranchiseeTerritoryWidget
+                franchiseeId={f.id}
+                extraPins={extraPins}
+                hoveredExtraPinId={hoverId}
+                onExtraPinClick={(id) => setHoverId(id)}
+                hideHomeMarkers={enabled}
+                adminMode={true}
+              />
             )}
-          </Panel>
-        </div>
+          </CareHomeEnquiriesOverlay>
+        </Panel>
+
+        <Panel icon={MessageSquare} title="Notes" testid="panel-notes">
+          {editing ? (
+            <textarea value={draft.notes ?? ""} onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))}
+              rows={6} data-testid="edit-notes"
+              className="w-full px-3 py-2 text-sm border border-stone-300 rounded-lg bg-white focus:outline-none focus:border-stone-900" />
+          ) : (
+            <div className="text-sm text-stone-700 whitespace-pre-wrap leading-relaxed min-h-[60px]">
+              {f.notes || <span className="text-stone-300">No notes</span>}
+            </div>
+          )}
+        </Panel>
 
         {enquiries.length > 0 && (
           <Panel icon={MessageSquare} title={`Original Enquiry (${enquiries.length})`} testid="panel-enquiries">
