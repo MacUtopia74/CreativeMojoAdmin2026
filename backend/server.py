@@ -6952,6 +6952,29 @@ async def _seed_marker_library_on_startup():
         except Exception:  # noqa: BLE001
             logger.exception("[markers] rename INITIAL_FRANCHISE_FEE→INITIAL_FEE failed")
 
+        # Second one-shot — reshape the FRANCHISEE_LEGAL_NAME row from
+        # ``manual`` to ``automatic`` and point it at the composite
+        # first+last name resolver. The legacy row (pre-July 2026)
+        # was manual, which meant the modal's ``defaultLegalName =
+        # organisation`` silently mirrored the trading name onto the
+        # contract → both markers rendered identically. The resolver
+        # now still honours ``contracts.franchisee_legal_name`` as an
+        # HQ override; the migration only touches the library entry
+        # so untouched contracts start pulling from first+last name.
+        try:
+            await db.contract_markers_library.update_one(
+                {"code": "FRANCHISEE_LEGAL_NAME"},
+                {"$set": {
+                    "value_source": "automatic",
+                    "data_field": "franchisees.first_name+franchisees.last_name",
+                    "format": {"casing": "as_is", "join": " "},
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "updated_by": "system:legal-name-auto",
+                }},
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("[markers] reshape FRANCHISEE_LEGAL_NAME failed")
+
         result = await contract_markers_library.seed_library(db)
         logger.info("Marker library seed on startup: %s", result)
     except Exception:  # noqa: BLE001

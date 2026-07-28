@@ -299,10 +299,20 @@ SEED_MARKERS: List[Dict[str, Any]] = [
     {
         "code": "FRANCHISEE_LEGAL_NAME",
         "label": "Franchisee legal name",
-        "description": "The registered legal entity name (may differ from natural-person name or trading name). Manually entered by HQ.",
-        "value_source": "manual",
+        "description": (
+            "The natural-person legal name (First + Last name) that "
+            "signs the agreement. Automatically composed from "
+            "franchisees.first_name + franchisees.last_name. Can be "
+            "overridden per contract via ``contracts.franchisee_legal_name`` "
+            "for LLC / limited-company edge cases; the resolver only "
+            "falls back to the franchisee organisation/trading name "
+            "when BOTH first and last name are empty AND no override "
+            "was entered."
+        ),
+        "value_source": "automatic",
+        "data_field": "franchisees.first_name+franchisees.last_name",
         "data_type": "string",
-        "format": {"casing": "as_is"},
+        "format": {"casing": "as_is", "join": " "},
         "repeat_allowed": True,
         "eligible_contract_types": CONTRACT_TYPES,
     },

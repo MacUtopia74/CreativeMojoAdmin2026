@@ -319,11 +319,12 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
   const lockedFr = lockedFranchiseeId
     ? franchisees.find((f) => f.id === lockedFranchiseeId)
     : null;
-  const defaultLegalName = lockedFr
-    ? (lockedFr.organisation ||
-        `${lockedFr.first_name || ""} ${lockedFr.last_name || ""}`.trim())
-    : "";
-  const [franchiseeLegalName, setFranchiseeLegalName] = useState(defaultLegalName);
+  // Legal name is now AUTO-RESOLVED at issuance from the franchisee's
+  // First name + Last name. Leave this field blank — it's an optional
+  // per-contract OVERRIDE for LLC / limited-company edge cases. Never
+  // pre-fill from ``organisation`` because that silently made the
+  // legal name and trading name resolve identically on the PDF.
+  const [franchiseeLegalName, setFranchiseeLegalName] = useState("");
   const [hqSignatoryName, setHqSignatoryName] = useState("");
   const [hqSignatoryTitle, setHqSignatoryTitle] = useState("");
   const [saving, setSaving] = useState(false);
@@ -584,14 +585,23 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
             </div>
           </fieldset>
           <label className="block text-sm">
-            <span className="text-stone-700">Franchisee legal name</span>
+            <span className="text-stone-700">Franchisee legal name <span className="text-stone-400 font-normal">(optional override)</span></span>
             <input
               type="text"
               value={franchiseeLegalName}
               onChange={(e) => setFranchiseeLegalName(e.target.value)}
-              placeholder="e.g. Paloma Ibarra Limited"
+              placeholder={
+                currentFr
+                  ? `${currentFr.first_name || ""} ${currentFr.last_name || ""}`.trim() || "e.g. Paloma Ibarra"
+                  : "e.g. Paloma Ibarra"
+              }
               className="w-full mt-1 border rounded-md px-2 py-1.5 text-sm"
               data-testid="new-contract-legal-name-input" />
+            <span className="block mt-1 text-[11px] text-stone-500">
+              Leave blank to auto-resolve to the franchisee&apos;s <strong>First name + Last name</strong> on the Hub profile.
+              Only enter a value here if the signing entity is a limited company or otherwise differs from the natural person&apos;s name.
+              <strong> The trading / organisation name resolves separately via <code className="bg-stone-100 rounded px-1">[[FRANCHISEE_ORGANISATION]]</code>.</strong>
+            </span>
           </label>
           <div className="grid grid-cols-2 gap-3">
             <label className="block text-sm">

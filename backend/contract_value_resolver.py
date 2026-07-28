@@ -610,6 +610,21 @@ def _resolve_one(
                 parts_specs = [p.strip() for p in data_field.split("+")]
             else:
                 parts_specs = ["franchisees.first_name", "franchisees.last_name"]
+            # FRANCHISEE_LEGAL_NAME — honour an HQ-entered override on
+            # the contract record before falling back to the composite
+            # name. This preserves the "LLC / limited-company signing
+            # entity" edge case without needing a separate marker.
+            if code == "FRANCHISEE_LEGAL_NAME":
+                override = contract.get("franchisee_legal_name")
+                if not _is_missing(override):
+                    return ResolvedValue(
+                        code=code,
+                        value=_apply_casing(str(override).strip(), lib_format.get("casing")),
+                        raw_value=str(override).strip(),
+                        source="contracts.franchisee_legal_name (manual override)",
+                        resolver="auto:manual-override",
+                        format_applied={"join": join_char, "casing": lib_format.get("casing", "as_is")},
+                    )
             pieces: List[str] = []
             for spec in parts_specs:
                 if not spec.startswith("franchisees."):
@@ -621,6 +636,23 @@ def _resolve_one(
                 if not _is_missing(v):
                     pieces.append(str(v).strip())
             if not pieces:
+                # Explicit safeguard for FRANCHISEE_LEGAL_NAME — if the
+                # franchisee has no first/last name AND no manual
+                # override, fall back to the organisation with a
+                # loud warning flag surfaced in preview + resolve
+                # metadata (so HQ can see it happened).
+                if code == "FRANCHISEE_LEGAL_NAME":
+                    org = _read_field(franchisee, "franchisees.organisation")
+                    if not _is_missing(org):
+                        raw = str(org).strip()
+                        return ResolvedValue(
+                            code=code,
+                            value=_apply_casing(raw, lib_format.get("casing")),
+                            raw_value=raw,
+                            source="franchisees.organisation (⚠ fallback — legal name empty)",
+                            resolver="auto:legal-name-fallback",
+                            format_applied={"casing": lib_format.get("casing", "as_is"), "fallback": True},
+                        )
                 raise _MissingRequired(
                     f"Franchisee has none of the components required for {code}.",
                 )
