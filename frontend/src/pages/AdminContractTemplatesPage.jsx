@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import {
   FileText, Upload, Loader2, AlertTriangle, CheckCircle2, Archive,
-  Copy, Pencil, Star, StarOff, X, Check, ExternalLink,
+  Copy, Pencil, Star, StarOff, X, Check, ExternalLink, Trash2,
 } from "lucide-react";
 
 const CONTRACT_TYPES = [
@@ -254,6 +254,33 @@ function TemplateRow({ t, onChanged, navigate }) {
                     onClick={() => wrap(() => api.post(`/admin/contract-templates/${t.id}/archive`))}
                     className="p-1.5 rounded border border-stone-300 hover:bg-white"><Archive className="w-3.5 h-3.5 text-stone-600" /></button>
           )}
+          {/* Delete — guarded on the server against templates that
+              still have issued contracts pointing at them. First
+              click confirms; if the server returns 409 (contracts
+              exist) we re-prompt with a stronger warning + force
+              flag. Draft templates delete on the first confirm. */}
+          <button title="Delete" data-testid={`delete-btn-${t.id}`}
+                  disabled={busy}
+                  onClick={() => wrap(async () => {
+                    if (!window.confirm(`Delete "${t.name}"?\n\nThis removes the template, its versions, and the source PDF from storage. Cannot be undone.`)) return;
+                    try {
+                      await api.delete(`/admin/contract-templates/${t.id}`);
+                    } catch (e) {
+                      const status = e?.response?.status;
+                      const msg = e?.response?.data?.detail || "Delete failed.";
+                      if (status === 409) {
+                        // Contracts still reference it — re-prompt with force.
+                        if (window.confirm(`${msg}\n\nDelete anyway? Any linked contracts will keep their frozen PDF & variables, but will show a "template deleted" note.`)) {
+                          await api.delete(`/admin/contract-templates/${t.id}?force=true`);
+                        }
+                      } else {
+                        window.alert(msg);
+                      }
+                    }
+                  })}
+                  className="p-1.5 rounded border border-red-300 text-red-600 hover:bg-red-50">
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
         </div>
       </td>
     </tr>

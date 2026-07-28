@@ -6975,6 +6975,21 @@ async def _seed_marker_library_on_startup():
         except Exception:  # noqa: BLE001
             logger.exception("[markers] reshape FRANCHISEE_LEGAL_NAME failed")
 
+        # Third one-shot — sweep any ``TEST_*`` markers left in the
+        # library by automated E2E test suites. They serve no purpose
+        # in production and just clutter the library UI. Deletion is
+        # safe because the ``code`` field is unique and the marker
+        # summary rebuild will re-flag any referenced-but-missing
+        # markers on next template touch.
+        try:
+            r = await db.contract_markers_library.delete_many(
+                {"code": {"$regex": r"^TEST_"}},
+            )
+            if r.deleted_count:
+                logger.info("[markers] purged %d TEST_* leftovers", r.deleted_count)
+        except Exception:  # noqa: BLE001
+            logger.exception("[markers] TEST_* purge failed")
+
         result = await contract_markers_library.seed_library(db)
         logger.info("Marker library seed on startup: %s", result)
     except Exception:  # noqa: BLE001

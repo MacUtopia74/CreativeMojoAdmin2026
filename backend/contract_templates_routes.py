@@ -721,6 +721,85 @@ def attach(api, db, require_role):
         )
         return _public_view(await db[TEMPLATES_COLLECTION].find_one({"id": template_id}))
 
+    @api.delete("/admin/contract-templates/{template_id}")
+    async def delete_template(
+        template_id: str,
+        force: bool = False,
+        user: dict = Depends(require_role("admin")),
+    ):
+        """Hard-delete a contract template + its versions + its R2 source PDF.
+
+        Guardrails:
+        * Templates referenced by any existing contract (draft, issued,
+          signed, superseded) are refused unless ``?force=true`` is
+          passed — HQ can then wipe the whole stack knowingly, but
+          the default protects issued PDFs from becoming orphans.
+        * R2 cleanup is best-effort — a stale key just costs storage;
+          the DB record IS the source of truth.
+        """
+        existing = await db[TEMPLATES_COLLECTION].find_one({"id": template_id})
+        if not existing:
+            raise HTTPException(404, detail="Template not found")
+        # Referenced by any contract?
+        try:
+            contract_ref_count = await db["contracts"].count_documents(
+                {"template_id": template_id},
+            )
+        except Exception:  # noqa: BLE001
+            contract_ref_count = 0
+        if contract_ref_count and not force:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Cannot delete — {contract_ref_count} contract"
+                    f"{'s' if contract_ref_count != 1 else ''} still reference this template. "
+                    "Archive the template instead, or pass ?force=true to delete anyway."
+                ),
+            )
+        # Best-effort R2 cleanup for the source PDF + any versioned copies.
+        r2_keys: list[str] = []
+        src = existing.get("source_pdf") or {}
+        if src.get("r2_key"):
+            r2_keys.append(src["r2_key"])
+        async for v in db[VERSIONS_COLLECTION].find({"template_id": template_id}, {"_id": 0, "source_pdf": 1}):
+            vk = (v.get("source_pdf") or {}).get("r2_key")
+            if vk and vk not in r2_keys:
+                r2_keys.append(vk)
+        if r2_keys:
+            try:
+                from file_storage import get_client, R2_BUCKET, r2_configured
+                if r2_configured():
+                    for k in r2_keys:
+                        try:
+                            get_client().delete_object(Bucket=R2_BUCKET, Key=k)
+                        except Exception:  # noqa: BLE001
+                            logger.warning("R2 delete failed for %s (ignored)", k)
+            except Exception:  # noqa: BLE001
+                logger.exception("R2 cleanup during template delete failed")
+        # Wipe the DB records.
+        await db[VERSIONS_COLLECTION].delete_many({"template_id": template_id})
+        await db[TEMPLATES_COLLECTION].delete_one({"id": template_id})
+        try:
+            await db["contract_template_audit"].insert_one({
+                "id": _new_id(),
+                "template_id": template_id,
+                "action": "delete",
+                "at": _now_iso(),
+                "by": user.get("email"),
+                "referenced_contracts": contract_ref_count,
+                "forced": bool(contract_ref_count and force),
+            })
+        except Exception:  # noqa: BLE001
+            pass
+        return {
+            "ok": True,
+            "template_id": template_id,
+            "deleted_versions": True,
+            "r2_keys_deleted": len(r2_keys),
+            "referenced_contracts": contract_ref_count,
+            "forced": bool(contract_ref_count and force),
+        }
+
     @api.post("/admin/contract-templates/{template_id}/duplicate")
     async def duplicate_template(template_id: str, user: dict = Depends(require_role("admin"))):
         existing = await db[TEMPLATES_COLLECTION].find_one({"id": template_id})
