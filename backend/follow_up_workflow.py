@@ -115,6 +115,21 @@ async def _any_reply_recorded(db, contact_id: str) -> bool:
     return False
 
 
+async def _has_linked_territory_plan(db, contact_id: str) -> bool:
+    """True if HQ has attached a Territory Plan to this contact.
+
+    A plan implies HQ is actively working the opportunity — usually
+    a bespoke map for a serious prospect. The 7-day follow-up chase
+    would just add noise, so these contacts are excluded from the
+    scan even when their initial info email is > 7 days old.
+    """
+    doc = await db.territory_plans.find_one(
+        {"contact_id": contact_id},
+        {"_id": 1},
+    )
+    return doc is not None
+
+
 async def _find_contact(db, contact_id: str):
     """Contacts live in one of two collections during the pipeline
     migration. Return (doc, collection_name) or (None, None)."""
@@ -166,6 +181,40 @@ async def scan_and_move_due_contacts(db) -> Dict[str, int]:
     skipped_replied = 0
     skipped_followed_up = 0
     skipped_no_send = 0
+    skipped_has_plan = 0
+    skipped_qualified = 0
+    reconciled = 0
+
+    # ─── Reconcile pass ─────────────────────────────────────────────
+    # Any contact currently sitting in ``follow_up_due`` that has
+    # since gained a linked territory plan is pulled back to
+    # ``contacted``. HQ is clearly working the deal actively, so the
+    # "chase me" flag should come off the card. We stamp
+    # ``auto_followed_up_at`` too so the scan below can never
+    # re-promote them into Follow-up Due again.
+    for coll in CONTACT_COLLECTIONS:
+        cur = db[coll].find(
+            {"pipeline_status": "follow_up_due"},
+            {"_id": 0, "id": 1},
+        )
+        async for row in cur:
+            cid = row.get("id")
+            if not cid:
+                continue
+            if not await _has_linked_territory_plan(db, cid):
+                continue
+            now_iso = _iso(_now_utc())
+            res = await db[coll].update_one(
+                {"id": cid, "pipeline_status": "follow_up_due"},
+                {"$set": {
+                    "pipeline_status": "contacted",
+                    "pipeline_status_updated_at": now_iso,
+                    "auto_followed_up_at": now_iso,
+                    "updated_at": now_iso,
+                }},
+            )
+            if res.modified_count > 0:
+                reconciled += 1
 
     # Gather all contact_ids currently in ``contacted`` across both
     # collections. Small enough to hold in memory even for a large
@@ -203,8 +252,23 @@ async def scan_and_move_due_contacts(db) -> Dict[str, int]:
         if await _any_reply_recorded(db, cid):
             skipped_replied += 1
             continue
+        # HQ has already opened a bespoke Territory Plan for this
+        # contact — active pipeline work is in flight, so the
+        # generic 7-day chase would be noise.
+        if await _has_linked_territory_plan(db, cid):
+            skipped_has_plan += 1
+            continue
         contact, coll = await _find_contact(db, cid)
         if not contact:
+            continue
+        # Belt-and-braces on "Interested" — the loop already targets
+        # ``pipeline_status = 'contacted'`` at query time, but a
+        # concurrent HQ promotion between the initial fetch and this
+        # point could land the contact in ``qualified`` (a.k.a.
+        # "Interested"). Skip explicitly so the auto-move never races
+        # a manual promotion.
+        if (contact.get("pipeline_status") or "").lower() == "qualified":
+            skipped_qualified += 1
             continue
         # Follow-up email already sent — skip.
         if int(contact.get("follow_up_sent_count") or 0) > 0:
@@ -218,11 +282,13 @@ async def scan_and_move_due_contacts(db) -> Dict[str, int]:
         if did:
             moved += 1
 
-    if moved or scanned:
+    if moved or scanned or reconciled:
         logger.info(
             "[follow-up] scan complete — scanned=%d moved=%d skipped_replied=%d "
-            "skipped_followed_up=%d skipped_no_send=%d",
-            scanned, moved, skipped_replied, skipped_followed_up, skipped_no_send,
+            "skipped_followed_up=%d skipped_no_send=%d skipped_has_plan=%d "
+            "skipped_qualified=%d reconciled=%d",
+            scanned, moved, skipped_replied, skipped_followed_up,
+            skipped_no_send, skipped_has_plan, skipped_qualified, reconciled,
         )
     return {
         "scanned": scanned,
@@ -230,6 +296,9 @@ async def scan_and_move_due_contacts(db) -> Dict[str, int]:
         "skipped_replied": skipped_replied,
         "skipped_followed_up": skipped_followed_up,
         "skipped_no_send": skipped_no_send,
+        "skipped_has_plan": skipped_has_plan,
+        "skipped_qualified": skipped_qualified,
+        "reconciled": reconciled,
     }
 
 
