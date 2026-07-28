@@ -328,6 +328,34 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
   const [hqSignatoryTitle, setHqSignatoryTitle] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  // Contract dates + term. All backed by ``contracts.*`` fields on
+  // the draft doc and freezable via the CMS marker resolver
+  // ({{COMMENCEMENT_DATE}}, {{RENEWAL_DATE}}, {{CONTRACT_TERM_YEARS}}).
+  // Renewal drafts also take a renewal_fee; new drafts take an
+  // initial_franchise_fee. All optional at draft time; issuance
+  // validates whichever markers the template embeds.
+  const [contractTermYears, setContractTermYears] = useState("");
+  const [commencementDate, setCommencementDate] = useState("");
+  const [renewalDate, setRenewalDate] = useState("");
+  const [renewalFee, setRenewalFee] = useState("");
+  // Auto-populate renewal_date from commencement + term when both
+  // are set and HQ hasn't manually overridden it. Manual edits win —
+  // once the user types in the renewal_date field we stop auto-syncing
+  // (tracked by ``renewalDateManual``).
+  const [renewalDateManual, setRenewalDateManual] = useState(false);
+  useEffect(() => {
+    if (renewalDateManual) return;
+    if (!commencementDate || !contractTermYears) return;
+    try {
+      const d = new Date(commencementDate);
+      if (isNaN(d.getTime())) return;
+      const years = Number(contractTermYears);
+      if (!Number.isFinite(years) || years <= 0) return;
+      d.setFullYear(d.getFullYear() + years);
+      const iso = d.toISOString().slice(0, 10);
+      setRenewalDate(iso);
+    } catch { /* ignore */ }
+  }, [commencementDate, contractTermYears, renewalDateManual]);
   // "Renewal — supersedes #X" auto-links this draft to a prior CMS
   // contract for the same franchisee. Defaults ON when the caller
   // passes a ``renewalOf`` reference (franchisee page always does).
@@ -369,11 +397,27 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
       if (hqSignatoryName) body.hq_signatory_name = hqSignatoryName;
       if (hqSignatoryTitle) body.hq_signatory_title = hqSignatoryTitle;
       if (renewalOn && renewalOf?.id) body.supersedes_id = renewalOf.id;
+      // Dates & term — always pass through when set. Backend accepts
+      // ISO date strings; empty strings are dropped so a partially
+      // filled draft can still be saved for later completion.
+      if (contractTermYears) body.contract_term_years = Number(contractTermYears);
+      if (commencementDate) {
+        body.commencement_date = commencementDate;
+        // Legacy alias — some template markers still reference the
+        // older ``term_start_date`` field name. Keeping both in sync
+        // avoids "missing value" issues at issuance for older PDFs.
+        body.term_start_date = commencementDate;
+      }
+      if (renewalDate) body.renewal_date = renewalDate;
       // Initial Franchise Fee — only sent on non-renewal drafts, so
       // renewals never carry (or overwrite) the historic amount.
       const isRenewal = renewalOn && renewalOf?.id;
       if (!isRenewal && initialFranchiseFee !== "") {
         body.initial_franchise_fee = Number(initialFranchiseFee);
+      }
+      // Renewal fee — only on renewals.
+      if (isRenewal && renewalFee !== "") {
+        body.renewal_fee = Number(renewalFee);
       }
       await api.post("/admin/contracts", body);
       await onCreated();
@@ -385,8 +429,8 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" data-testid="new-contract-modal">
-      <div className="bg-white rounded-lg shadow-lg w-full max-w-lg">
-        <div className="flex items-center justify-between p-4 border-b">
+      <div className="bg-white rounded-lg shadow-lg w-full max-w-2xl max-h-[92vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-white z-10">
           <h2 className="text-lg font-semibold">
             {renewalOn && renewalOf ? "Renew contract" : "New contract"}
           </h2>
@@ -473,6 +517,72 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
               </span>
             </label>
           )}
+          {/* Renewal fee — only surfaced when the draft supersedes an
+              earlier CMS contract. Freezes into the renewal PDF via
+              the {{RENEWAL_FEE}} marker (Bucket A). */}
+          {(renewalOn && renewalOf?.id) && (
+            <label className="block text-sm" data-testid="new-contract-renewal-fee-row">
+              <span className="text-stone-700">Renewal fee (£)</span>
+              <input
+                type="number" step="0.01" min="0"
+                value={renewalFee}
+                onChange={(e) => setRenewalFee(e.target.value)}
+                placeholder="e.g. 500"
+                className="w-full mt-1 border rounded-md px-2 py-1.5 text-sm"
+                data-testid="new-contract-renewal-fee-input" />
+              <span className="block mt-1 text-[11px] text-stone-500">
+                One-off renewal fee for the next term (excluding VAT).
+              </span>
+            </label>
+          )}
+          {/* Dates & term — populates the ``{{COMMENCEMENT_DATE}}``,
+              ``{{RENEWAL_DATE}}`` and ``{{CONTRACT_TERM_YEARS}}``
+              markers on the PDF. Renewal-date auto-computes from
+              commencement + term until HQ manually overrides it. */}
+          <fieldset className="border border-stone-200 rounded-lg p-3 space-y-3" data-testid="new-contract-dates-fieldset">
+            <legend className="px-1 text-[10px] uppercase tracking-widest font-bold text-stone-500">Dates &amp; term</legend>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="block text-sm">
+                <span className="text-stone-700">Commencement date</span>
+                <input
+                  type="date"
+                  value={commencementDate}
+                  onChange={(e) => setCommencementDate(e.target.value)}
+                  className="w-full mt-1 border rounded-md px-2 py-1.5 text-sm"
+                  data-testid="new-contract-commencement-date-input" />
+                <span className="block mt-1 text-[11px] text-stone-500">
+                  The date the term starts. Also used as <code className="bg-stone-100 rounded px-1">term_start_date</code>.
+                </span>
+              </label>
+              <label className="block text-sm">
+                <span className="text-stone-700">Term (years)</span>
+                <input
+                  type="number" min="1" max="20" step="1"
+                  value={contractTermYears}
+                  onChange={(e) => setContractTermYears(e.target.value)}
+                  placeholder="e.g. 5"
+                  className="w-full mt-1 border rounded-md px-2 py-1.5 text-sm"
+                  data-testid="new-contract-term-years-input" />
+                <span className="block mt-1 text-[11px] text-stone-500">
+                  Length of the agreement in whole years.
+                </span>
+              </label>
+              <label className="block text-sm sm:col-span-2">
+                <span className="text-stone-700">Renewal / expiry date</span>
+                <input
+                  type="date"
+                  value={renewalDate}
+                  onChange={(e) => { setRenewalDate(e.target.value); setRenewalDateManual(true); }}
+                  className="w-full mt-1 border rounded-md px-2 py-1.5 text-sm"
+                  data-testid="new-contract-renewal-date-input" />
+                <span className="block mt-1 text-[11px] text-stone-500">
+                  {renewalDateManual
+                    ? "Manual — auto-sync from commencement + term is disabled."
+                    : "Auto-computed from Commencement + Term. Edit to override."}
+                </span>
+              </label>
+            </div>
+          </fieldset>
           <label className="block text-sm">
             <span className="text-stone-700">Franchisee legal name</span>
             <input
