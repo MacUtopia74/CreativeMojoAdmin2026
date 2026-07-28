@@ -1,0 +1,2982 @@
+{
+  "clementina": {
+    "id": "6bbf65a1-af0c-4c00-abe1-f2814766e230",
+    "name": "Clementina Phillips",
+    "franchise_number": "0091",
+    "organisation": "Creative Mojo Kingston upon Thames, Weybridge & Cobham",
+    "sector_count": 69,
+    "TW11_9_present": false
+  },
+  "counts": {
+    "live_with_filter": 115,
+    "staging_with_filter": 169,
+    "delta_with_filter": 54,
+    "live_all_registered": 343,
+    "staging_all_registered": 563,
+    "delta_all_registered": 220,
+    "territory_home_count_field": 115
+  },
+  "manual_overlay_totals": {
+    "total_records": 0,
+    "by_source": {},
+    "cqc_linked_home_ids": 0
+  },
+  "strict_matches_enriched": [
+    {
+      "locationId": "1-28240862424",
+      "name": "Hallmark Esher Residences Luxury Care Home",
+      "postalCode": "KT10 9JH",
+      "postcode_sector": "KT10 9",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Nursing homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-552131547",
+      "name": "Silvermere Care Home",
+      "postalCode": "KT11 1EF",
+      "postcode_sector": "KT11 1",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Residential homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-4126012893",
+      "name": "Springfield House Nursing Home",
+      "postalCode": "KT11 3AS",
+      "postcode_sector": "KT11 3",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Nursing homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-8531217650",
+      "name": "Cossins House Care Home",
+      "postalCode": "KT11 3LZ",
+      "postcode_sector": "KT11 3",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Residential homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-27713065213",
+      "name": "Adelaide House Care Home",
+      "postalCode": "KT12 1JJ",
+      "postcode_sector": "KT12 1",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Nursing homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-27776403415",
+      "name": "Walton Park Care Home",
+      "postalCode": "KT12 3BH",
+      "postcode_sector": "KT12 3",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Nursing homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-3857230256",
+      "name": "Walton Park Care Home",
+      "postalCode": "KT12 3BH",
+      "postcode_sector": "KT12 3",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Nursing homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-6844640707",
+      "name": "Kings Lodge Care Centre",
+      "postalCode": "KT14 7BQ",
+      "postcode_sector": "KT14 7",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Nursing homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-4734428714",
+      "name": "Chertsey Parklands Manor Care Home",
+      "postalCode": "KT16 9FS",
+      "postcode_sector": "KT16 9",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Nursing homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-3534741180",
+      "name": "Swallowfields Care Centre",
+      "postalCode": "KT17 4DB",
+      "postcode_sector": "KT17 4",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Residential homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-410293045",
+      "name": "Linden House",
+      "postalCode": "KT17 4HF",
+      "postcode_sector": "KT17 4",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Residential homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-595182006",
+      "name": "Redroof House Supported Living",
+      "postalCode": "KT17 4AR",
+      "postcode_sector": "KT17 4",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies",
+        "Supported living"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-9668348941",
+      "name": "Mill Road",
+      "postalCode": "KT17 4AR",
+      "postcode_sector": "KT17 4",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Supported living"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-5311490326",
+      "name": "Guarantee Care Services Ltd",
+      "postalCode": "KT18 5AD",
+      "postcode_sector": "KT18 5",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies",
+        "Supported living"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-6097028949",
+      "name": "Burgh Heath Care Centre",
+      "postalCode": "KT18 5XA",
+      "postcode_sector": "KT18 5",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Residential homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-9654506648",
+      "name": "17 Heathcote Road",
+      "postalCode": "KT18 5DX",
+      "postcode_sector": "KT18 5",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Supported living"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "RXX17",
+      "name": "Hillcroft",
+      "postalCode": "KT19 8QJ",
+      "postcode_sector": "KT19 8",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Residential homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "RXX18",
+      "name": "The Shieling",
+      "postalCode": "KT19 8QJ",
+      "postcode_sector": "KT19 8",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Residential homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "RXXFR",
+      "name": "Ashmount",
+      "postalCode": "KT19 8QJ",
+      "postcode_sector": "KT19 8",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Nursing homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "RXXFT",
+      "name": "Derby House",
+      "postalCode": "KT19 8QJ",
+      "postcode_sector": "KT19 8",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Residential homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "RXXZ2",
+      "name": "Jasmine at Primrose",
+      "postalCode": "KT19 8PB",
+      "postcode_sector": "KT19 8",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Residential homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-443534401",
+      "name": "Tigh Grianan",
+      "postalCode": "KT19 9QP",
+      "postcode_sector": "KT19 9",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Residential homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-4910332958",
+      "name": "Oakfield Nursing Home",
+      "postalCode": "KT21 2RD",
+      "postcode_sector": "KT21 2",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Nursing homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-9660381734",
+      "name": "Chandon",
+      "postalCode": "KT21 2TQ",
+      "postcode_sector": "KT21 2",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Supported living"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-8680528358",
+      "name": "QEF Care and Rehabilitation Centre",
+      "postalCode": "KT22 0BN",
+      "postcode_sector": "KT22 0",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Nursing homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-27951818739",
+      "name": "SeeAbility Surrey North Support Service",
+      "postalCode": "KT22 7AH",
+      "postcode_sector": "KT22 7",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Supported living"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-5751133710",
+      "name": "Hartfield House Care Home",
+      "postalCode": "KT22 7GQ",
+      "postcode_sector": "KT22 7",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Nursing homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-7699543356",
+      "name": "Accordia Supported Living Services",
+      "postalCode": "KT22 7PL",
+      "postcode_sector": "KT22 7",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Supported living"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "RXXHQ",
+      "name": "Trust Headquarters",
+      "postalCode": "KT22 7AD",
+      "postcode_sector": "KT22 7",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Community services - Learning disabilities",
+        "Community services - Mental Health",
+        "Prison healthcare",
+        "Supported living",
+        "Community services - Substance abuse"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-310870757",
+      "name": "The Grange Supported Living Service",
+      "postalCode": "KT23 4DZ",
+      "postcode_sector": "KT23 4",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies",
+        "Supported living"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-4518081348",
+      "name": "Liberham Lodge",
+      "postalCode": "KT23 4DY",
+      "postcode_sector": "KT23 4",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Nursing homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-657642041",
+      "name": "Creating Lifestyles Surbiton Limited",
+      "postalCode": "KT6 5LA",
+      "postcode_sector": "KT6 5",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Supported living"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-4309669977",
+      "name": "Elysium Care Partnerships Limited - 1a Upper Brighton Road",
+      "postalCode": "KT6 6LQ",
+      "postcode_sector": "KT6 6",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Residential homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-744717194",
+      "name": "The Royal Star & Garter Homes - Surbiton",
+      "postalCode": "KT6 6JY",
+      "postcode_sector": "KT6 6",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Nursing homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-840450080",
+      "name": "Elysium Care Partnerships Limited - 89 Ewell Road",
+      "postalCode": "KT6 6AH",
+      "postcode_sector": "KT6 6",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Residential homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-359898714",
+      "name": "Rosclare Residential Home Limited",
+      "postalCode": "KT6 7BZ",
+      "postcode_sector": "KT6 7",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Residential homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-9656286095",
+      "name": "Emezzions Care",
+      "postalCode": "KT6 7LD",
+      "postcode_sector": "KT6 7",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies",
+        "Supported living"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-4730683507",
+      "name": "Oakley House Ltd",
+      "postalCode": "KT7 0LP",
+      "postcode_sector": "KT7 0",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Residential homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-658226873",
+      "name": "The Summers",
+      "postalCode": "KT8 2NY",
+      "postcode_sector": "KT8 2",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Nursing homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-4858684793",
+      "name": "Willowmead",
+      "postalCode": "KT8 9LR",
+      "postcode_sector": "KT8 9",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Supported living"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-5796585852",
+      "name": "Royal Cambridge Home",
+      "postalCode": "KT8 9AH",
+      "postcode_sector": "KT8 9",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Residential homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-6948756020",
+      "name": "Foxbridge Healthcare Solutions",
+      "postalCode": "KT9 1BD",
+      "postcode_sector": "KT9 1",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies",
+        "Supported living"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-785264652",
+      "name": "Deer Park View Care Centre",
+      "postalCode": "TW11 0DX",
+      "postcode_sector": "TW11 0",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Nursing homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-3837014544",
+      "name": "Optima Care Shine London Limited",
+      "postalCode": "TW11 8LZ",
+      "postcode_sector": "TW11 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Supported living"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-27990008429",
+      "name": "Laurel Dene",
+      "postalCode": "TW12 1JQ",
+      "postcode_sector": "TW12 1",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Nursing homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-5089632910",
+      "name": "United Response - The Swallows 183 -189 Hanworth Road",
+      "postalCode": "TW12 3ED",
+      "postcode_sector": "TW12 3",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Residential homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-3997000739",
+      "name": "Elysium Care Partnerships Limited - 187 Nursery Road",
+      "postalCode": "TW16 6LX",
+      "postcode_sector": "TW16 6",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Residential homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-6166330440",
+      "name": "The Burlington",
+      "postalCode": "TW17 9EE",
+      "postcode_sector": "TW17 9",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Residential homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-5438337696",
+      "name": "Whitegates Care Centre Limited",
+      "postalCode": "TW18 1UG",
+      "postcode_sector": "TW18 1",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Nursing homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-8365680230",
+      "name": "Glebe House Care Home",
+      "postalCode": "TW18 1SB",
+      "postcode_sector": "TW18 1",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Nursing homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "RXXZ5",
+      "name": "Kingscroft",
+      "postalCode": "TW18 1ED",
+      "postcode_sector": "TW18 1",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Residential homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-5013604773",
+      "name": "Amber Home Carers Surrey",
+      "postalCode": "TW18 3HF",
+      "postcode_sector": "TW18 3",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies",
+        "Supported living"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-8530575855",
+      "name": "INNOVATIVE SUPPORT LTD",
+      "postalCode": "TW18 3BA",
+      "postcode_sector": "TW18 3",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Supported living"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-3626380476",
+      "name": "Reedsfield Care Ltd",
+      "postalCode": "TW20 9HE",
+      "postcode_sector": "TW20 9",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies",
+        "Supported living"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-7580341768",
+      "name": "Rivermede Court",
+      "postalCode": "TW20 9AD",
+      "postcode_sector": "TW20 9",
+      "registrationStatus": "Registered",
+      "careHome": "Y",
+      "services": [
+        "Residential homes"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    }
+  ],
+  "broader_matches_enriched": [
+    {
+      "locationId": "1-9621912615",
+      "name": "Remote Trauma",
+      "postalCode": "KT1 2JW",
+      "postcode_sector": "KT1 2",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Urgent care centres"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-552661885",
+      "name": "O'Flynn - Hampton Wick",
+      "postalCode": "KT1 4DY",
+      "postcode_sector": "KT1 4",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-2950587808",
+      "name": "Summerfield Dental Practice",
+      "postalCode": "KT10 0PF",
+      "postcode_sector": "KT10 0",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-5464493529",
+      "name": "The Groves Hinchley Wood",
+      "postalCode": "KT10 0SP",
+      "postcode_sector": "KT10 0",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-547170679",
+      "name": "Capelfield Surgery",
+      "postalCode": "KT10 0EH",
+      "postcode_sector": "KT10 0",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-6247455968",
+      "name": "Lumino Dental",
+      "postalCode": "KT10 0PD",
+      "postcode_sector": "KT10 0",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-6824681303",
+      "name": "Summerfield Dental Practice",
+      "postalCode": "KT10 0PF",
+      "postcode_sector": "KT10 0",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-7546273632",
+      "name": "Hinchley Wood Practice",
+      "postalCode": "KT10 0SR",
+      "postcode_sector": "KT10 0",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-26949299533",
+      "name": "The Gentell Wound Care Clinic",
+      "postalCode": "KT10 8QS",
+      "postcode_sector": "KT10 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Community services - Healthcare"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-543536620",
+      "name": "Esher Green Surgery",
+      "postalCode": "KT10 8BX",
+      "postcode_sector": "KT10 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-547268606",
+      "name": "Littleton Surgery",
+      "postalCode": "KT10 9NY",
+      "postcode_sector": "KT10 9",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-6870835010",
+      "name": "The Neem Tree - Esher",
+      "postalCode": "KT10 9QJ",
+      "postcode_sector": "KT10 9",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-973758021",
+      "name": "Meads Dental Practice",
+      "postalCode": "KT10 9PH",
+      "postcode_sector": "KT10 9",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-3806451194",
+      "name": "Solace Centre SARC",
+      "postalCode": "KT11 1HT",
+      "postcode_sector": "KT11 1",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Community services - Healthcare",
+        "Doctors/Gps",
+        "Mobile doctors"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-568142593",
+      "name": "Cobham Health Centre",
+      "postalCode": "KT11 1HT",
+      "postcode_sector": "KT11 1",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-6150914231",
+      "name": "Cobham Dental",
+      "postalCode": "KT11 3BN",
+      "postcode_sector": "KT11 3",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-5931228307",
+      "name": "Walton Dental Surgery",
+      "postalCode": "KT12 1LL",
+      "postcode_sector": "KT12 1",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-792968514",
+      "name": "Ashley Dental Limited",
+      "postalCode": "KT12 1JB",
+      "postcode_sector": "KT12 1",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-8385551575",
+      "name": "BBC CARE SERVICE LIMITED- Walton on Thames branch (New)",
+      "postalCode": "KT12 1RZ",
+      "postcode_sector": "KT12 1",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-3233033200",
+      "name": "Alina Homecare Walton on Thames",
+      "postalCode": "KT12 2SD",
+      "postcode_sector": "KT12 2",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-359892738",
+      "name": "Alpenbest South",
+      "postalCode": "KT12 2TT",
+      "postcode_sector": "KT12 2",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-493967725",
+      "name": "Dr Layth Delaimy",
+      "postalCode": "KT12 2QY",
+      "postcode_sector": "KT12 2",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-5503122192",
+      "name": "EgoDent",
+      "postalCode": "KT12 2QS",
+      "postcode_sector": "KT12 2",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-7905406673",
+      "name": "Yourlife (Walton-on-Thames)",
+      "postalCode": "KT12 2FR",
+      "postcode_sector": "KT12 2",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-3658116958",
+      "name": "Walton Community Hospital",
+      "postalCode": "KT12 3LD",
+      "postcode_sector": "KT12 3",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Diagnosis/screening",
+        "Rehabilitation (illness/injury)"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-4222019658",
+      "name": "Health First Medical Staffing Ltd",
+      "postalCode": "KT12 3PD",
+      "postcode_sector": "KT12 3",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-5350568122",
+      "name": "Yellow Practice",
+      "postalCode": "KT12 3LB",
+      "postcode_sector": "KT12 3",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-538922194",
+      "name": "Dr Samy Morcos",
+      "postalCode": "KT12 3LB",
+      "postcode_sector": "KT12 3",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-565316678",
+      "name": "The Red Practice",
+      "postalCode": "KT12 3LB",
+      "postcode_sector": "KT12 3",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-8298019145",
+      "name": "Caremark Elmbridge",
+      "postalCode": "KT12 3PD",
+      "postcode_sector": "KT12 3",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-8604995903",
+      "name": "Supremacy Care Services Limited (Surrey)",
+      "postalCode": "KT12 3PD",
+      "postcode_sector": "KT12 3",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-4853939980",
+      "name": "Expert Care UK Services Ltd",
+      "postalCode": "KT12 4RZ",
+      "postcode_sector": "KT12 4",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-570122242",
+      "name": "Hersham Surgery",
+      "postalCode": "KT12 4HT",
+      "postcode_sector": "KT12 4",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-27763814020",
+      "name": "One Heart Clinic Weybridge",
+      "postalCode": "KT13 0TJ",
+      "postcode_sector": "KT13 0",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps",
+        "Diagnosis/screening"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-3054830287",
+      "name": "Dr Shruthi Guruswamy (Prime Health)",
+      "postalCode": "KT13 0TJ",
+      "postcode_sector": "KT13 0",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-435583843",
+      "name": "Prime Health Diagnostics",
+      "postalCode": "KT13 0TJ",
+      "postcode_sector": "KT13 0",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Diagnosis/screening"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-2776362722",
+      "name": "The Specialist Dental Practice",
+      "postalCode": "KT13 8QW",
+      "postcode_sector": "KT13 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-429863089",
+      "name": "Ridgemount Dental Practice",
+      "postalCode": "KT13 8HQ",
+      "postcode_sector": "KT13 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-566605800",
+      "name": "Church Street Practice",
+      "postalCode": "KT13 8DW",
+      "postcode_sector": "KT13 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-6377184517",
+      "name": "Hartwig Care (Weybridge)",
+      "postalCode": "KT13 8RN",
+      "postcode_sector": "KT13 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-6670930014",
+      "name": "Weybridge Orthodontics",
+      "postalCode": "KT13 8RN",
+      "postcode_sector": "KT13 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-4773193313",
+      "name": "Mulberry Home Care Services Limited",
+      "postalCode": "KT13 9PX",
+      "postcode_sector": "KT13 9",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-6905985427",
+      "name": "Dentalessence Weybridge",
+      "postalCode": "KT13 9PT",
+      "postcode_sector": "KT13 9",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-8536626775",
+      "name": "Domicare Limited",
+      "postalCode": "KT13 9UT",
+      "postcode_sector": "KT13 9",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-27949242875",
+      "name": "MSEA Care Ltd",
+      "postalCode": "KT14 7PW",
+      "postcode_sector": "KT14 7",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-28411967919",
+      "name": "PacePro Ltd",
+      "postalCode": "KT14 7HN",
+      "postcode_sector": "KT14 7",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Phone/online advice"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-3602658136",
+      "name": "Byfleet Dental Boutique",
+      "postalCode": "KT14 7QH",
+      "postcode_sector": "KT14 7",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-7601308624",
+      "name": "Surrey Periodontics",
+      "postalCode": "KT14 7RG",
+      "postcode_sector": "KT14 7",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-4247624467",
+      "name": "Winsor Care Services",
+      "postalCode": "KT15 1QJ",
+      "postcode_sector": "KT15 1",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-4914144820",
+      "name": "Sync Dental Addlestone",
+      "postalCode": "KT15 1TN",
+      "postcode_sector": "KT15 1",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-5103712145",
+      "name": "Gatehouse Dental Practice",
+      "postalCode": "KT15 2BQ",
+      "postcode_sector": "KT15 2",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-5103712433",
+      "name": "Gatehouse Dental Practice",
+      "postalCode": "KT15 2BQ",
+      "postcode_sector": "KT15 2",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-552217902",
+      "name": "Crouch Oak Family Practice",
+      "postalCode": "KT15 2BH",
+      "postcode_sector": "KT15 2",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-3304554472",
+      "name": "Amazed Care Services",
+      "postalCode": "KT16 8RE",
+      "postcode_sector": "KT16 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-5107717440",
+      "name": "Chertsey Health Centre",
+      "postalCode": "KT16 8HZ",
+      "postcode_sector": "KT16 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-677427256",
+      "name": "Estetica Dental Chertsey",
+      "postalCode": "KT16 8AP",
+      "postcode_sector": "KT16 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-26725261842",
+      "name": "The Health Lab",
+      "postalCode": "KT16 9PW",
+      "postcode_sector": "KT16 9",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Community services - Healthcare"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-318494704",
+      "name": "Home Instead Senior Care",
+      "postalCode": "KT16 9AP",
+      "postcode_sector": "KT16 9",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-445992554",
+      "name": "Sync Dental Chertsey",
+      "postalCode": "KT16 9JU",
+      "postcode_sector": "KT16 9",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-5613933002",
+      "name": "Passion Recruitment Agency",
+      "postalCode": "KT16 9BE",
+      "postcode_sector": "KT16 9",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-27854713838",
+      "name": "The Epsom Clinic",
+      "postalCode": "KT17 4RJ",
+      "postcode_sector": "KT17 4",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-584765205",
+      "name": "The Integrated Care Partnership",
+      "postalCode": "KT17 4BL",
+      "postcode_sector": "KT17 4",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-7084878471",
+      "name": "Quadrant Dental Practice",
+      "postalCode": "KT17 4QY",
+      "postcode_sector": "KT17 4",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-589473845",
+      "name": "Tattenham Health Centre",
+      "postalCode": "KT18 5NU",
+      "postcode_sector": "KT18 5",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-6240115434",
+      "name": "Skyline Home Care Services",
+      "postalCode": "KT18 5AD",
+      "postcode_sector": "KT18 5",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-9562256875",
+      "name": "Violet Home Care Limited",
+      "postalCode": "KT18 5AD",
+      "postcode_sector": "KT18 5",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-340691748",
+      "name": "CESP (Surrey) @ Epsom and St Helier Trust",
+      "postalCode": "KT18 7LX",
+      "postcode_sector": "KT18 7",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Clinic"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-6604659879",
+      "name": "Sk:n Epsom",
+      "postalCode": "KT18 7EG",
+      "postcode_sector": "KT18 7",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "RVR50",
+      "name": "Epsom General Hospital",
+      "postalCode": "KT18 7EG",
+      "postcode_sector": "KT18 7",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Hospital",
+        "Diagnosis/screening",
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "RV351",
+      "name": "Horton Haven",
+      "postalCode": "KT19 7HA",
+      "postcode_sector": "KT19 7",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Hospitals - Mental health/capacity",
+        "Rehabilitation (illness/injury)"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-2729219065",
+      "name": "Epsom Dental Centre",
+      "postalCode": "KT19 8EX",
+      "postcode_sector": "KT19 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-3125588376",
+      "name": "GP Health Partners at The Derby Medical Centre",
+      "postalCode": "KT19 8AG",
+      "postcode_sector": "KT19 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps",
+        "Urgent care centres"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-363620521",
+      "name": "Epsom Dental centre",
+      "postalCode": "KT19 8EX",
+      "postcode_sector": "KT19 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-3646413784",
+      "name": "Surrey Dental surgery",
+      "postalCode": "KT19 8RA",
+      "postcode_sector": "KT19 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-549386295",
+      "name": "Derby Medical Centre",
+      "postalCode": "KT19 8AG",
+      "postcode_sector": "KT19 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-6672267945",
+      "name": "Alan Wilson Dentistry",
+      "postalCode": "KT19 8DH",
+      "postcode_sector": "KT19 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "RXX2T",
+      "name": "West Park Epsom",
+      "postalCode": "KT19 8PB",
+      "postcode_sector": "KT19 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Hospitals - Mental health/capacity"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "RXXZ3",
+      "name": "Deacon Unit",
+      "postalCode": "KT19 8QJ",
+      "postcode_sector": "KT19 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Hospitals - Mental health/capacity"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-3117327014",
+      "name": "Horton Dental Practice",
+      "postalCode": "KT19 9EX",
+      "postcode_sector": "KT19 9",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-369537027",
+      "name": "Bluebird Care (Epsom, Kingston & Sutton)",
+      "postalCode": "KT19 9AP",
+      "postcode_sector": "KT19 9",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-543870924",
+      "name": "Canbury Medical Centre",
+      "postalCode": "KT2 6HR",
+      "postcode_sector": "KT2 6",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-584680858",
+      "name": "Churchill Medical Centre",
+      "postalCode": "KT2 6PG",
+      "postcode_sector": "KT2 6",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-7187402734",
+      "name": "Tudor House Dental Practice",
+      "postalCode": "KT21 1AW",
+      "postcode_sector": "KT21 1",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-7928218326",
+      "name": "Forever Dental and Skin",
+      "postalCode": "KT21 1AW",
+      "postcode_sector": "KT21 1",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-543687531",
+      "name": "St Stephens House Surgery",
+      "postalCode": "KT21 2DP",
+      "postcode_sector": "KT21 2",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-583754009",
+      "name": "Oxshott Medical Practice",
+      "postalCode": "KT22 0QJ",
+      "postcode_sector": "KT22 0",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-743690299",
+      "name": "Centre for Sight Oxshott",
+      "postalCode": "KT22 0JR",
+      "postcode_sector": "KT22 0",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Diagnosis/screening"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-3850713229",
+      "name": "Aims Homecare Limited - Leatherhead",
+      "postalCode": "KT22 7SL",
+      "postcode_sector": "KT22 7",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-4516860887",
+      "name": "Steady Care Services",
+      "postalCode": "KT22 7NA",
+      "postcode_sector": "KT22 7",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-542423707",
+      "name": "Ashlea Medical Practice",
+      "postalCode": "KT22 7HH",
+      "postcode_sector": "KT22 7",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-986489582",
+      "name": "Rainbow Trust Children's Charity 6",
+      "postalCode": "KT22 7TW",
+      "postcode_sector": "KT22 7",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-28320715012",
+      "name": "Surrey",
+      "postalCode": "KT22 8ED",
+      "postcode_sector": "KT22 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-2837303131",
+      "name": "Caremark (Mid Surrey)",
+      "postalCode": "KT22 8BL",
+      "postcode_sector": "KT22 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-294911480",
+      "name": "Crescent Dental Practice",
+      "postalCode": "KT22 8EE",
+      "postcode_sector": "KT22 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-3125620676",
+      "name": "GP Health Partners at Leatherhead Community Hospital",
+      "postalCode": "KT22 8SD",
+      "postcode_sector": "KT22 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-3605570138",
+      "name": "Loyalcare Group Services Ltd",
+      "postalCode": "KT22 8DH",
+      "postcode_sector": "KT22 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "RVR90",
+      "name": "Leatherhead",
+      "postalCode": "KT22 8SD",
+      "postcode_sector": "KT22 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Hospital",
+        "Diagnosis/screening",
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-4177087661",
+      "name": "Medukcare",
+      "postalCode": "KT23 3JH",
+      "postcode_sector": "KT23 3",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-542373167",
+      "name": "Eastwick Park Medical Practice",
+      "postalCode": "KT23 3ND",
+      "postcode_sector": "KT23 3",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-5845973029",
+      "name": "Excellence in Dentistry",
+      "postalCode": "KT23 3PW",
+      "postcode_sector": "KT23 3",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-562750037",
+      "name": "Fairfield Medical Centre",
+      "postalCode": "KT23 4DH",
+      "postcode_sector": "KT23 4",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-8802547286",
+      "name": "Mortiboys Dental Spa",
+      "postalCode": "KT24 5HE",
+      "postcode_sector": "KT24 5",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-3154018328",
+      "name": "West Horsley Dental",
+      "postalCode": "KT24 6AX",
+      "postcode_sector": "KT24 6",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-544154008",
+      "name": "East Horsley Medical Centre",
+      "postalCode": "KT24 6QT",
+      "postcode_sector": "KT24 6",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-306456602",
+      "name": "Surbiton Smile Centre",
+      "postalCode": "KT6 6HE",
+      "postcode_sector": "KT6 6",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-547244115",
+      "name": "Claremont Medical Centre",
+      "postalCode": "KT6 6BS",
+      "postcode_sector": "KT6 6",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-727899272",
+      "name": "Surbiton Health Centre",
+      "postalCode": "KT6 6EZ",
+      "postcode_sector": "KT6 6",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Community services - Healthcare",
+        "Diagnosis/screening"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-421310974",
+      "name": "CHDP Limited",
+      "postalCode": "KT6 7DG",
+      "postcode_sector": "KT6 7",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-4836005662",
+      "name": "SureCare Richmond and Kingston",
+      "postalCode": "KT6 7HT",
+      "postcode_sector": "KT6 7",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-514268665",
+      "name": "Red Lion Road Surgery",
+      "postalCode": "KT6 7QG",
+      "postcode_sector": "KT6 7",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-536901004",
+      "name": "Confidental Clinic",
+      "postalCode": "KT6 7BZ",
+      "postcode_sector": "KT6 7",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-6415173802",
+      "name": "Mydentist - Ewell Road - Surbiton",
+      "postalCode": "KT6 7DG",
+      "postcode_sector": "KT6 7",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-7705689058",
+      "name": "The Fabulous Smile Company Kingston",
+      "postalCode": "KT6 7DJ",
+      "postcode_sector": "KT6 7",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "RQY08",
+      "name": "Tolworth Hospital",
+      "postalCode": "KT6 7QU",
+      "postcode_sector": "KT6 7",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Long-term conditions",
+        "Hospitals - Mental health/capacity"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-2912680551",
+      "name": "Thames Dental Care",
+      "postalCode": "KT7 0XX",
+      "postcode_sector": "KT7 0",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-3018260197",
+      "name": "Surrey Homecare Limited",
+      "postalCode": "KT7 0JP",
+      "postcode_sector": "KT7 0",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-545198403",
+      "name": "Thorkhill Surgery",
+      "postalCode": "KT7 0UP",
+      "postcode_sector": "KT7 0",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-5710375972",
+      "name": "Weston Cottage Dental Practice",
+      "postalCode": "KT7 0XA",
+      "postcode_sector": "KT7 0",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-4700716775",
+      "name": "The Molesey Dental Practice",
+      "postalCode": "KT8 0HP",
+      "postcode_sector": "KT8 0",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-4746321485",
+      "name": "The Molesey Dental Practice",
+      "postalCode": "KT8 0HP",
+      "postcode_sector": "KT8 0",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-561985756",
+      "name": "Glenlyn Medical Centre",
+      "postalCode": "KT8 0JX",
+      "postcode_sector": "KT8 0",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "RVRL4",
+      "name": "Molesey Community Hospital",
+      "postalCode": "KT8 2LU",
+      "postcode_sector": "KT8 2",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Hospital",
+        "Community services - Healthcare",
+        "Rehabilitation (illness/injury)"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-543128312",
+      "name": "Vine Medical Centre",
+      "postalCode": "KT8 9LJ",
+      "postcode_sector": "KT8 9",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-27482963595",
+      "name": "SereneCare Group",
+      "postalCode": "KT9 1BD",
+      "postcode_sector": "KT9 1",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-5488863196",
+      "name": "Comfort Care At Home",
+      "postalCode": "KT9 1BD",
+      "postcode_sector": "KT9 1",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-584681094",
+      "name": "The Orchard Practice",
+      "postalCode": "KT9 1AG",
+      "postcode_sector": "KT9 1",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-8659533411",
+      "name": "Vigilant Health Care Ltd",
+      "postalCode": "KT9 1BD",
+      "postcode_sector": "KT9 1",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-8890751442",
+      "name": "Visiting Angels North Surrey",
+      "postalCode": "KT9 1BD",
+      "postcode_sector": "KT9 1",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-4056905157",
+      "name": "Surrey",
+      "postalCode": "KT9 2BP",
+      "postcode_sector": "KT9 2",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-548397240",
+      "name": "Dr P Kumar & Partners",
+      "postalCode": "KT9 2GY",
+      "postcode_sector": "KT9 2",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-569312512",
+      "name": "Hook Surgery",
+      "postalCode": "KT9 2GY",
+      "postcode_sector": "KT9 2",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-9893960489",
+      "name": "Family Dental Care",
+      "postalCode": "KT9 2AE",
+      "postcode_sector": "KT9 2",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-5061507099",
+      "name": "Park Road Dental Centre",
+      "postalCode": "TW11 0AB",
+      "postcode_sector": "TW11 0",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-5212445921",
+      "name": "Cedars at Grace Anderson",
+      "postalCode": "TW11 0JL",
+      "postcode_sector": "TW11 0",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Community services - Healthcare",
+        "Rehabilitation (illness/injury)"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-558041794",
+      "name": "Park Road Surgery",
+      "postalCode": "TW11 0AU",
+      "postcode_sector": "TW11 0",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-6441681947",
+      "name": "Teddington Dental",
+      "postalCode": "TW11 0NU",
+      "postcode_sector": "TW11 0",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "RAX05",
+      "name": "Teddington Memorial Hospital",
+      "postalCode": "TW11 0JL",
+      "postcode_sector": "TW11 0",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Clinic",
+        "Community services - Healthcare",
+        "Rehabilitation (illness/injury)",
+        "Urgent care centres"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-2827253526",
+      "name": "Kirby Dental Practice",
+      "postalCode": "TW11 8HD",
+      "postcode_sector": "TW11 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-549102823",
+      "name": "Thameside Medical Practice - Childs & Partners",
+      "postalCode": "TW11 8HU",
+      "postcode_sector": "TW11 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-8972622915",
+      "name": "Teddington Orthodontics",
+      "postalCode": "TW11 8HD",
+      "postcode_sector": "TW11 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "RAX32",
+      "name": "Thames House",
+      "postalCode": "TW11 8HU",
+      "postcode_sector": "TW11 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Community services - Healthcare"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-7888181333",
+      "name": "Hampton Hill Medical Centre",
+      "postalCode": "TW12 1NY",
+      "postcode_sector": "TW12 1",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-582124351",
+      "name": "Hampton Medical Centre",
+      "postalCode": "TW12 2PB",
+      "postcode_sector": "TW12 2",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-2680281273",
+      "name": "Broad Lane Surgery",
+      "postalCode": "TW12 3AX",
+      "postcode_sector": "TW12 3",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-28440528839",
+      "name": "Sunbury Homecare Limited",
+      "postalCode": "TW16 6QA",
+      "postcode_sector": "TW16 6",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-543837896",
+      "name": "Sunbury Health Centre Group Practice",
+      "postalCode": "TW16 6RH",
+      "postcode_sector": "TW16 6",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-5710376269",
+      "name": "Dental House",
+      "postalCode": "TW16 7BH",
+      "postcode_sector": "TW16 7",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-2949971025",
+      "name": "Dial House",
+      "postalCode": "TW17 8AG",
+      "postcode_sector": "TW17 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-489265146",
+      "name": "Dr George Kamil",
+      "postalCode": "TW17 8SY",
+      "postcode_sector": "TW17 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-548958945",
+      "name": "Shepperton Medical Practice",
+      "postalCode": "TW17 8EJ",
+      "postcode_sector": "TW17 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-6411395873",
+      "name": "Guardian Angel Carers Spelthorne, Elmbridge and Runnymede",
+      "postalCode": "TW17 9AR",
+      "postcode_sector": "TW17 9",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-568366995",
+      "name": "Staines Health Group",
+      "postalCode": "TW18 1XD",
+      "postcode_sector": "TW18 1",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-582626310",
+      "name": "Knowle Green Medical",
+      "postalCode": "TW18 1XD",
+      "postcode_sector": "TW18 1",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-6276648560",
+      "name": "Rothley Lodge Dental Practice",
+      "postalCode": "TW18 2DE",
+      "postcode_sector": "TW18 2",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-11287415769",
+      "name": "OFH Care",
+      "postalCode": "TW18 3BA",
+      "postcode_sector": "TW18 3",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-815111118",
+      "name": "Thorpe Lea Dental Practice",
+      "postalCode": "TW18 3EQ",
+      "postcode_sector": "TW18 3",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-553246300",
+      "name": "The Green Surgery",
+      "postalCode": "TW2 5TU",
+      "postcode_sector": "TW2 5",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-4245573767",
+      "name": "NHES Care",
+      "postalCode": "TW20 0LR",
+      "postcode_sector": "TW20 0",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-545225022",
+      "name": "The Health Centre",
+      "postalCode": "TW20 0PF",
+      "postcode_sector": "TW20 0",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-8678733856",
+      "name": "Coopers Hill",
+      "postalCode": "TW20 0JY",
+      "postcode_sector": "TW20 0",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-9779356039",
+      "name": "Elixir Treatments Limited",
+      "postalCode": "TW20 0DZ",
+      "postcode_sector": "TW20 0",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-4358615789",
+      "name": "Proxy Care Personnel",
+      "postalCode": "TW20 8RX",
+      "postcode_sector": "TW20 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-5295049928",
+      "name": "Delore Care Woking",
+      "postalCode": "TW20 8RX",
+      "postcode_sector": "TW20 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-6179037533",
+      "name": "Rock of Ages Care",
+      "postalCode": "TW20 8HE",
+      "postcode_sector": "TW20 8",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-3127290204",
+      "name": "The Dental Practice",
+      "postalCode": "TW20 9QR",
+      "postcode_sector": "TW20 9",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-547392170",
+      "name": "Grove Medical Centre",
+      "postalCode": "TW20 9QJ",
+      "postcode_sector": "TW20 9",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Doctors/Gps"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-5932532689",
+      "name": "Stoneylands Dental Practice",
+      "postalCode": "TW20 9QR",
+      "postcode_sector": "TW20 9",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-6430801450",
+      "name": "Mydentist - Station Road - Surrey",
+      "postalCode": "TW20 9LF",
+      "postcode_sector": "TW20 9",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-7746905488",
+      "name": "Senacare Services LTD",
+      "postalCode": "TW20 9ED",
+      "postcode_sector": "TW20 9",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Homecare agencies"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    },
+    {
+      "locationId": "1-904298407",
+      "name": "Mydentist - Station Road - Surrey",
+      "postalCode": "TW20 9LF",
+      "postcode_sector": "TW20 9",
+      "registrationStatus": "Registered",
+      "careHome": "N",
+      "services": [
+        "Dentist"
+      ],
+      "in_her_spreadsheet_proxy": null,
+      "matched_manual_name": null
+    }
+  ]
+}
