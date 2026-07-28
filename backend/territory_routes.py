@@ -972,6 +972,43 @@ def build_territory_router(db, require_role):  # noqa: D401
             )
         except Exception:  # noqa: BLE001
             pass
+        # Neighbouring franchisee overlay — scrubbed atlas payload
+        # showing the OUTLINE + FILL of every live franchisee territory
+        # so a prospect can see how the proposed patch sits alongside
+        # existing ones. PII stripped: no owner names, no HQ pin
+        # coordinates. Postcode-sector geometry inside these areas is
+        # NOT shipped (only the dissolved outline), so the prospect
+        # only sees per-sector detail for their own proposed patch.
+        overlay_payload = None
+        try:
+            atlas = await _compute_territory_atlas(db)
+            outline_features = atlas.get("outlines", {}).get("features") or []
+            fill_features = atlas.get("geojson", {}).get("features") or []
+            # Strip owner_name from every feature's properties.
+            def _scrub(feat):
+                p = dict(feat.get("properties") or {})
+                p.pop("owner_name", None)
+                return {**feat, "properties": p}
+            overlay_payload = {
+                "geojson": {
+                    "type": "FeatureCollection",
+                    "features": [_scrub(f) for f in fill_features],
+                },
+                "outlines": {
+                    "type": "FeatureCollection",
+                    "features": [_scrub(f) for f in outline_features],
+                },
+                # No franchisees array on the public payload — we don't
+                # want to render HQ pins (they carry postcode + owner
+                # popups). The polygons alone deliver the "how do I fit
+                # next to my neighbours" message.
+                "franchisees": [],
+                "count": atlas.get("count", 0),
+            }
+        except Exception:  # noqa: BLE001
+            # Overlay is a nice-to-have — if it fails, the share still
+            # renders with just the proposed sectors.
+            overlay_payload = None
         return {
             "name": plan.get("name") or "Proposed territory",
             "sectors": [
@@ -996,6 +1033,7 @@ def build_territory_router(db, require_role):  # noqa: D401
             ),
             "show_removal_overlay": bool(plan.get("show_removal_overlay")),
             "show_counties": bool(plan.get("show_counties")),
+            "franchisee_overlay": overlay_payload,
         }
 
     @router.post("/franchisees/{franchisee_id}/territory/parse")

@@ -116,6 +116,12 @@ export default function TerritoryMap({
                             //   toggle from Territory Builder
                             //   ("TERRITORY NAME"). Off by default —
                             //   labels are only useful when planning.
+  territoryLabelMode = "franchise+owner", // controls the text shown by the
+                            //   franchisee-name-label symbol layer.
+                            //   "franchise+owner" — organisation name +
+                            //   owner name (admin default).
+                            //   "franchise" — organisation name only
+                            //   (public share views — no PII).
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -580,8 +586,31 @@ export default function TerritoryMap({
     if (!ready || !mapRef.current) return;
     const map = mapRef.current;
     const layerId = "franchisee-name-label";
+    // Text expression — differs per label mode. Admin sees the
+    // franchise organisation + owner name; public share sees the
+    // organisation only (owner_name is stripped server-side).
+    const textField = territoryLabelMode === "franchise"
+      ? [
+          "case",
+          ["all", ["has", "name"], ["!=", ["get", "name"], ""]],
+          ["get", "name"],
+          ["has", "franchise_number"], ["concat", "#", ["get", "franchise_number"]],
+          "",
+        ]
+      : [
+          "case",
+          ["all", ["has", "name"], ["has", "owner_name"],
+            ["!=", ["get", "name"], ""], ["!=", ["get", "owner_name"], ""]],
+          ["concat", ["get", "name"], " · ", ["get", "owner_name"]],
+          ["all", ["has", "name"], ["!=", ["get", "name"], ""]],
+          ["get", "name"],
+          ["has", "franchise_number"], ["concat", "#", ["get", "franchise_number"]],
+          "",
+        ];
     // Ensure the layer exists — Mapbox drops all layers on style swaps,
     // so we may need to re-register after the counties/basemap toggle.
+    // If the layer already exists but with a stale text-field (e.g.
+    // label mode was flipped), refresh the layout.
     if (!map.getLayer(layerId) && map.getSource("franchisee-outlines")) {
       try {
         map.addLayer({
@@ -590,18 +619,7 @@ export default function TerritoryMap({
           source: "franchisee-outlines",
           minzoom: 6,
           layout: {
-            // "#0123 · Jane Farrelly" — fall back gracefully when
-            // either property is missing so we never show a bare "·".
-            "text-field": [
-              "case",
-              ["all", ["has", "franchise_number"], ["has", "owner_name"],
-                ["!=", ["get", "franchise_number"], ""],
-                ["!=", ["get", "owner_name"], ""]],
-              ["concat", "#", ["get", "franchise_number"], " · ", ["get", "owner_name"]],
-              ["has", "owner_name"], ["get", "owner_name"],
-              ["has", "franchise_number"], ["concat", "#", ["get", "franchise_number"]],
-              ["get", "name"],
-            ],
+            "text-field": textField,
             "text-size": 13,
             "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
             "text-anchor": "center",
@@ -618,13 +636,17 @@ export default function TerritoryMap({
           },
         });
       } catch { /* layer may already be being registered */ }
+    } else if (map.getLayer(layerId)) {
+      try {
+        map.setLayoutProperty(layerId, "text-field", textField);
+      } catch { /* ignore */ }
     }
     try {
       if (map.getLayer(layerId)) {
         map.setLayoutProperty(layerId, "visibility", showTerritoryNames ? "visible" : "none");
       }
     } catch { /* ignore */ }
-  }, [showTerritoryNames, ready, styleVersion]);
+  }, [showTerritoryNames, territoryLabelMode, ready, styleVersion]);
 
   // ----------------- pin overlay (Recent Lookups / Contacts) -----------------
   // A GeoJSON point source painted with a data-driven circle layer.
