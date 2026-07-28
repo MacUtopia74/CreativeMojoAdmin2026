@@ -106,6 +106,16 @@ export default function TerritoryMap({
                             //   clicks up so callers can implement
                             //   e.g. click-to-place-a-radius. Fires
                             //   even in read-only mode.
+  showSectorLabels = true,  // when false, hides the "SW15 5 · N homes"
+                            //   labels on top of each postcode sector.
+                            //   Admin-facing toggle from the Territory
+                            //   Builder ("POSTCODE OVERLAY").
+  showTerritoryNames = false, // when true, overlays one bold label per
+                            //   franchisee territory in the atlas
+                            //   ("#123 · Jane Farrelly"). Admin-facing
+                            //   toggle from Territory Builder
+                            //   ("TERRITORY NAME"). Off by default —
+                            //   labels are only useful when planning.
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -546,6 +556,75 @@ export default function TerritoryMap({
       } catch { /* ignore — layer might not be ready yet on very first paint */ }
     }
   }, [showCounties, ready, styleVersion]);
+
+  // ----------------- postcode-sector label visibility (POSTCODE OVERLAY) -----
+  // Toggles the "SW15 5 · N homes" labels sitting on every sector.
+  // Admin toggle only — franchisee share views pass the default
+  // (labels visible).
+  useEffect(() => {
+    if (!ready || !mapRef.current) return;
+    const vis = showSectorLabels ? "visible" : "none";
+    try {
+      if (mapRef.current.getLayer("sectors-label")) {
+        mapRef.current.setLayoutProperty("sectors-label", "visibility", vis);
+      }
+    } catch { /* ignore */ }
+  }, [showSectorLabels, ready, styleVersion]);
+
+  // ----------------- franchisee territory-name label layer (TERRITORY NAME) -
+  // Adds a bold symbol label per franchisee outline showing
+  // "#{franchise_number} · {owner_name}". Registered lazily on first
+  // unhide so the layer sits above sector labels + fills. Off by
+  // default (visibility flipped by the effect below).
+  useEffect(() => {
+    if (!ready || !mapRef.current) return;
+    const map = mapRef.current;
+    const layerId = "franchisee-name-label";
+    // Ensure the layer exists — Mapbox drops all layers on style swaps,
+    // so we may need to re-register after the counties/basemap toggle.
+    if (!map.getLayer(layerId) && map.getSource("franchisee-outlines")) {
+      try {
+        map.addLayer({
+          id: layerId,
+          type: "symbol",
+          source: "franchisee-outlines",
+          minzoom: 6,
+          layout: {
+            // "#0123 · Jane Farrelly" — fall back gracefully when
+            // either property is missing so we never show a bare "·".
+            "text-field": [
+              "case",
+              ["all", ["has", "franchise_number"], ["has", "owner_name"],
+                ["!=", ["get", "franchise_number"], ""],
+                ["!=", ["get", "owner_name"], ""]],
+              ["concat", "#", ["get", "franchise_number"], " · ", ["get", "owner_name"]],
+              ["has", "owner_name"], ["get", "owner_name"],
+              ["has", "franchise_number"], ["concat", "#", ["get", "franchise_number"]],
+              ["get", "name"],
+            ],
+            "text-size": 13,
+            "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+            "text-anchor": "center",
+            "text-allow-overlap": false,
+            "text-ignore-placement": false,
+            "symbol-placement": "point",
+            "visibility": showTerritoryNames ? "visible" : "none",
+          },
+          paint: {
+            "text-color": "#0c0a09",
+            "text-halo-color": "#ffffff",
+            "text-halo-width": 2.2,
+            "text-halo-blur": 0.4,
+          },
+        });
+      } catch { /* layer may already be being registered */ }
+    }
+    try {
+      if (map.getLayer(layerId)) {
+        map.setLayoutProperty(layerId, "visibility", showTerritoryNames ? "visible" : "none");
+      }
+    } catch { /* ignore */ }
+  }, [showTerritoryNames, ready, styleVersion]);
 
   // ----------------- pin overlay (Recent Lookups / Contacts) -----------------
   // A GeoJSON point source painted with a data-driven circle layer.

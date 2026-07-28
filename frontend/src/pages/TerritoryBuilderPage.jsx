@@ -609,6 +609,14 @@ export default function TerritoryBuilderPage() {
   // overlay state the admin last saved. Local before-save toggling
   // still works — the prop flip is instant.
   const [showCounties, setShowCounties] = useState(false);
+  // Postcode-sector label toggle — ON by default because that's the
+  // current behaviour. Admin can hide the label overlay when they need
+  // a cleaner atlas view. Not persisted per-plan (session-only).
+  const [showSectorLabels, setShowSectorLabels] = useState(true);
+  // Franchisee "territory name" label overlay — OFF by default so the
+  // atlas stays uncluttered. Prints "#{franchise_number} · {owner_name}"
+  // on top of every franchisee polygon.
+  const [showTerritoryNames, setShowTerritoryNames] = useState(false);
   const toggleRemoval = useCallback((sec) => {
     setSuggestedRemovals((cur) => (
       cur.includes(sec) ? cur.filter((s) => s !== sec) : [...cur, sec]
@@ -1092,6 +1100,8 @@ export default function TerritoryBuilderPage() {
               overlayMode={showRemovalOverlay}
               onToggleRemoval={toggleRemoval}
               showCounties={showCounties}
+              showSectorLabels={showSectorLabels}
+              showTerritoryNames={showTerritoryNames}
             />
             {/* Floating search box — sits over the top-right corner of
                 the map. Purpose: lets the admin drop a temporary blue
@@ -1146,27 +1156,68 @@ export default function TerritoryBuilderPage() {
                 <span className="flex-1">{searchErr}</span>
               </div>
             )}
-            {/* County boundaries overlay toggle — floats bottom-right of
-                the map, above the Mapbox scale control. State is stored
-                on the plan (server side) so the same toggle applies to
-                the public share link. */}
-            <button
-              type="button"
-              onClick={() => setShowCounties((v) => !v)}
-              data-testid="toggle-counties"
-              title={showCounties ? "Hide UK county boundaries" : "Show UK county boundaries"}
-              className={`absolute bottom-3 right-3 z-10 px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider shadow-lg border transition-colors flex items-center gap-1.5 ${
-                showCounties
-                  ? "bg-indigo-600 text-white border-indigo-700 hover:bg-indigo-700"
-                  : "bg-white/95 backdrop-blur text-stone-800 border-stone-300 hover:bg-stone-50"
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5" />
-              Counties
-              <span className={`px-1.5 py-0.5 rounded-md text-[9px] tabular-nums ${showCounties ? "bg-white/25 text-white" : "bg-stone-100 text-stone-500"}`}>
-                {showCounties ? "ON" : "OFF"}
-              </span>
-            </button>
+            {/* Overlay toggles cluster — bottom-right of the map,
+                admin-only. Postcode overlay hides the "SW15 5 · N homes"
+                labels; Territory Name overlays "#123 · Franchisee" on
+                each franchisee territory; Counties adds UK ceremonial
+                borders. All three float above the Mapbox scale ctrl. */}
+            <div className="absolute bottom-3 right-3 z-10 flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setShowSectorLabels((v) => !v)}
+                data-testid="toggle-sector-labels"
+                title={showSectorLabels ? "Hide postcode-sector labels" : "Show postcode-sector labels"}
+                className={`px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider shadow-lg border transition-colors flex items-center gap-1.5 ${
+                  showSectorLabels
+                    ? "bg-teal-600 text-white border-teal-700 hover:bg-teal-700"
+                    : "bg-white/95 backdrop-blur text-stone-800 border-stone-300 hover:bg-stone-50"
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                Postcode Overlay
+                <span className={`px-1.5 py-0.5 rounded-md text-[9px] tabular-nums ${showSectorLabels ? "bg-white/25 text-white" : "bg-stone-100 text-stone-500"}`}>
+                  {showSectorLabels ? "ON" : "OFF"}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowTerritoryNames((v) => !v)}
+                data-testid="toggle-territory-names"
+                title={showTerritoryNames ? "Hide franchisee territory names" : "Show franchisee territory names"}
+                className={`px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider shadow-lg border transition-colors flex items-center gap-1.5 ${
+                  showTerritoryNames
+                    ? "bg-fuchsia-700 text-white border-fuchsia-800 hover:bg-fuchsia-800"
+                    : "bg-white/95 backdrop-blur text-stone-800 border-stone-300 hover:bg-stone-50"
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                Territory Name
+                <span className={`px-1.5 py-0.5 rounded-md text-[9px] tabular-nums ${showTerritoryNames ? "bg-white/25 text-white" : "bg-stone-100 text-stone-500"}`}>
+                  {showTerritoryNames ? "ON" : "OFF"}
+                </span>
+              </button>
+              {/* County boundaries overlay toggle — floats bottom-right of
+                  the map, above the Mapbox scale control. State is stored
+                  on the plan (server side) so the same toggle applies to
+                  the public share link. */}
+              <button
+                type="button"
+                onClick={() => setShowCounties((v) => !v)}
+                data-testid="toggle-counties"
+                title={showCounties ? "Hide UK county boundaries" : "Show UK county boundaries"}
+                className={`px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider shadow-lg border transition-colors flex items-center gap-1.5 ${
+                  showCounties
+                    ? "bg-indigo-600 text-white border-indigo-700 hover:bg-indigo-700"
+                    : "bg-white/95 backdrop-blur text-stone-800 border-stone-300 hover:bg-stone-50"
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                Counties
+                <span className={`px-1.5 py-0.5 rounded-md text-[9px] tabular-nums ${showCounties ? "bg-white/25 text-white" : "bg-stone-100 text-stone-500"}`}>
+                  {showCounties ? "ON" : "OFF"}
+                </span>
+              </button>
+            </div>
           </div>
           {/* Live homes-count bar — sits directly below the map so the
               number is in the user's eyeline as they click sectors. Sticky

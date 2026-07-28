@@ -1568,6 +1568,8 @@ def build_territory_router(db, require_role):  # noqa: D401
                 "properties": {
                     "franchisee_id": f["id"],
                     "name": name,
+                    "owner_name": owner_name,
+                    "franchise_number": f.get("franchise_number") or "",
                     "color": color,
                 },
             })
