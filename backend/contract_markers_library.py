@@ -262,7 +262,7 @@ SEED_MARKERS: List[Dict[str, Any]] = [
         "eligible_contract_types": CONTRACT_TYPES,
     },
     {
-        "code": "INITIAL_FRANCHISE_FEE",
+        "code": "INITIAL_FEE",
         "label": "Initial franchise fee",
         "description": (
             "One-off GBP fee payable at signing of a new franchise "

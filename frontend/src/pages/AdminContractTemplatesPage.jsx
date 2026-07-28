@@ -266,7 +266,10 @@ function TemplateRow({ t, onChanged, navigate }) {
 // ---------------------------------------------------------------------------
 function UploadModal({ onClose, onCreated, onRefresh }) {
   const [name, setName] = useState("");
-  const [type, setType] = useState("franchise_renewal");
+  // Force a conscious pick — no silent default to "franchise_renewal".
+  // The previous default silently flipped every uploaded PDF into the
+  // renewal bucket, so admins had to manually re-categorise afterwards.
+  const [type, setType] = useState("");
   const [file, setFile] = useState(null);
   const [err, setErr] = useState("");
   const [job, setJob] = useState(null);
@@ -279,6 +282,7 @@ function UploadModal({ onClose, onCreated, onRefresh }) {
     if (!file) { setErr("Please choose a PDF file."); return; }
     if (!file.name.toLowerCase().endsWith(".pdf")) { setErr("Only PDF files are supported."); return; }
     if (!name.trim()) { setErr("Please give the template a name."); return; }
+    if (!type) { setErr("Please pick a contract type."); return; }
     const fd = new FormData();
     fd.append("pdf", file);
     fd.append("name", name.trim());
@@ -353,8 +357,12 @@ function UploadModal({ onClose, onCreated, onRefresh }) {
               <label className="text-xs font-bold uppercase tracking-widest text-stone-600">Contract type</label>
               <select value={type} onChange={(e) => setType(e.target.value)} data-testid="upload-type"
                       className="mt-1 w-full px-3 py-2 border border-stone-300 rounded text-sm">
+                <option value="">— Please choose —</option>
                 {CONTRACT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
+              <p className="text-[11px] text-stone-500 mt-1">
+                Choose <strong>New franchise</strong> for the initial franchise agreement or <strong>Franchise renewal</strong> for the renewal template. This drives which markers (e.g. <code className="bg-stone-100 rounded px-1">[[INITIAL_FEE]]</code>) are recognised.
+              </p>
             </div>
             <div>
               <label className="text-xs font-bold uppercase tracking-widest text-stone-600">PDF file</label>

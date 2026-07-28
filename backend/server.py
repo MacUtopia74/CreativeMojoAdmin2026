@@ -6924,6 +6924,34 @@ hq_home_notes_routes.attach(app, db, require_role)
 @app.on_event("startup")
 async def _seed_marker_library_on_startup():
     try:
+        # One-shot rename — an earlier draft named the initial-franchise
+        # marker "INITIAL_FRANCHISE_FEE". The templates HQ actually
+        # embed use ``[[INITIAL_FEE]]`` (shorter, standard across the
+        # Word originals). Reconcile the library so the correct code
+        # survives on the row that's already been enriched with
+        # presentation defaults — and drop the duplicate if both exist.
+        # Safe to re-run: no-op once cleanup has landed.
+        try:
+            old_doc = await db.contract_markers_library.find_one({"code": "INITIAL_FRANCHISE_FEE"})
+            new_doc = await db.contract_markers_library.find_one({"code": "INITIAL_FEE"})
+            if old_doc and not new_doc:
+                # Straight rename — no conflict.
+                await db.contract_markers_library.update_one(
+                    {"code": "INITIAL_FRANCHISE_FEE"},
+                    {"$set": {
+                        "code": "INITIAL_FEE",
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                        "updated_by": "system:rename-INITIAL_FEE",
+                    }},
+                )
+            elif old_doc and new_doc:
+                # Both rows exist (the seeder inserted the new code
+                # before this migration ran). Drop the legacy row; the
+                # new one is the source of truth.
+                await db.contract_markers_library.delete_one({"code": "INITIAL_FRANCHISE_FEE"})
+        except Exception:  # noqa: BLE001
+            logger.exception("[markers] rename INITIAL_FRANCHISE_FEE→INITIAL_FEE failed")
+
         result = await contract_markers_library.seed_library(db)
         logger.info("Marker library seed on startup: %s", result)
     except Exception:  # noqa: BLE001

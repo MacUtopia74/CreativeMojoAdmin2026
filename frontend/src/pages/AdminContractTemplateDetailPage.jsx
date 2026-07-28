@@ -10,6 +10,16 @@ import {
 } from "lucide-react";
 import MarkerReviewModal from "./MarkerReviewModal";
 
+const CONTRACT_TYPES = [
+  { value: "new_franchise",       label: "New franchise" },
+  { value: "franchise_renewal",   label: "Franchise renewal" },
+  { value: "licence",             label: "Licence" },
+  { value: "licence_renewal",     label: "Licence renewal" },
+  { value: "territory_amendment", label: "Territory amendment" },
+  { value: "other",               label: "Other" },
+];
+const CONTRACT_TYPE_LABEL = Object.fromEntries(CONTRACT_TYPES.map((t) => [t.value, t.label]));
+
 const STATUS_STYLES = {
   draft:    "bg-stone-100 text-stone-700 border-stone-300",
   current:  "bg-emerald-50 text-emerald-800 border-emerald-300",
@@ -26,6 +36,22 @@ export default function AdminContractTemplateDetailPage() {
   const [integrity, setIntegrity] = useState(null);
   const [busy, setBusy] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [typeSaving, setTypeSaving] = useState(false);
+
+  // Contract-type inline editor — draft templates only. Once a template
+  // is ``current`` / ``archived`` the type is baked in (issued contracts
+  // reference it) so we hide the picker. Fixes the migration path for
+  // templates uploaded before the pre-flight picker was tightened.
+  const changeContractType = async (nextType) => {
+    if (!tpl || nextType === tpl.contract_type) return;
+    setTypeSaving(true);
+    try {
+      await api.patch(`/admin/contract-templates/${tpl.id}`, { contract_type: nextType });
+      await load();
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Failed to update contract type.");
+    } finally { setTypeSaving(false); }
+  };
 
   const load = useCallback(async () => {
     setLoading(true); setErr("");
@@ -113,7 +139,28 @@ export default function AdminContractTemplateDetailPage() {
             <div className="text-xs text-stone-500 flex items-center gap-2 flex-wrap mt-1">
               <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest border ${STATUS_STYLES[tpl.status]}`}>{tpl.status}</span>
               <span>v{tpl.current_version}</span>
-              <span>· {tpl.contract_type}</span>
+              {tpl.status === "draft" ? (
+                <label className="inline-flex items-center gap-1.5" title="Contract type — editable on drafts only. Once a template is Current, the type is locked because issued contracts reference it.">
+                  <span className="text-stone-400">·</span>
+                  <select
+                    value={tpl.contract_type || ""}
+                    onChange={(e) => changeContractType(e.target.value)}
+                    disabled={typeSaving}
+                    data-testid="edit-contract-type"
+                    className="text-[11px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded border border-stone-300 bg-white hover:border-stone-400 disabled:opacity-50"
+                  >
+                    {CONTRACT_TYPES.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                  {typeSaving && <Loader2 className="w-3 h-3 animate-spin text-stone-400" />}
+                </label>
+              ) : (
+                <span title="Contract type is locked once the template is published — issued contracts reference this value.">
+                  · {CONTRACT_TYPE_LABEL[tpl.contract_type] || tpl.contract_type}
+                  <Shield className="inline-block w-3 h-3 ml-0.5 text-stone-400" />
+                </span>
+              )}
               <span>· {summary.pdf_page_count} pages</span>
             </div>
           </div>
