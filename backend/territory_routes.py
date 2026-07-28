@@ -1369,6 +1369,13 @@ def build_territory_router(db, require_role):  # noqa: D401
             "tags": "Franchisee",
             "lifecycle_status": {"$ne": "ex_franchisee"},
             "territory_sectors": {"$exists": True, "$ne": []},
+            # Defensive filter — automated test suites create franchisees
+            # with ``first_name = "TEST"`` and organisations like
+            # "TEST Tag Org conv". Excluding them here means a stray
+            # test record can never leak into the public share overlay
+            # or the admin atlas, even if the cleanup script hasn't
+            # been run yet. Real HQ never uses "TEST" as a first name.
+            "first_name": {"$ne": "TEST"},
         }
         franchisees = await db.franchisees.find(
             q,
