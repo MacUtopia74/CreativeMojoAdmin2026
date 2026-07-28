@@ -431,4 +431,34 @@ def build_cqc_router(db, require_role):  # noqa: D401
         live_count = await db.cqc_locations_live.count_documents({})
         return {**_SyncState.snapshot(), "live_count": live_count, "last_full_sync": last}
 
+    # ── Phase 4C staging sync — READ-ONLY / NON-DESTRUCTIVE ──────────
+    # Writes only into cqc_locations_staging, cqc_staging_jobs and
+    # cqc_staging_errors. Never touches _live, franchisee_clients, or
+    # any franchisee-owned data. See cqc_staging_sync.py for detail.
+    @router.post("/cqc/sync/staging/start")
+    async def start_staging_sync(job_id: Optional[str] = Query(None),
+                                 _user: dict = Depends(require_role("admin"))):
+        import cqc_staging_sync as staging
+        job_id = job_id or f"staging-{int(datetime.now(timezone.utc).timestamp())}"
+        asyncio.create_task(staging.run_staging_sync(db, job_id))
+        return {"started": True, "job_id": job_id}
+
+    @router.get("/cqc/sync/staging/status")
+    async def staging_status(job_id: Optional[str] = Query(None),
+                             _user: dict = Depends(require_role("admin"))):
+        query = {"job_id": job_id} if job_id else {}
+        job = await db["cqc_staging_jobs"].find_one(query, {"_id": 0},
+                                                    sort=[("started_at", -1)])
+        staging_count = await db["cqc_locations_staging"].count_documents({})
+        errors_count = 0
+        if job:
+            errors_count = await db["cqc_staging_errors"].count_documents({"job_id": job.get("job_id")})
+        return {"job": job, "staging_count": staging_count, "errors_count": errors_count}
+
+    @router.get("/cqc/sync/staging/diff-report")
+    async def staging_diff_report(job_id: Optional[str] = Query(None),
+                                  _user: dict = Depends(require_role("admin"))):
+        import cqc_staging_sync as staging
+        return await staging.diff_report(db, job_id)
+
     return router

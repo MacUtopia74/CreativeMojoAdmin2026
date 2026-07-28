@@ -1,0 +1,29 @@
+{
+  "summary": "Backend-only tests for Phase 4C CQC staging sync (POST /api/cqc/sync/staging/start, GET /api/cqc/sync/staging/status, GET /api/cqc/sync/staging/diff-report). 13/13 pytest assertions pass. Endpoints return 200 with the full schema E1 specified, admin auth is enforced (anon 401/403, franchisee 403), non-destructive guarantees are all zero, unique index on cqc_locations_staging.locationId and cqc_staging_jobs.job_id are present, and job document has job_id/status/started_at/completed_pages. Live snapshot at test time: staging_count=9,496 (mid-sync of ~122k), live_count=73,703, in_both=9,495, only_in_staging_missing_from_live=1, unresolved_ids=0, errors_count=0, sentinel_rivermede_present=false (expected mid-sync). The background job staging-1785257450 was already running and was NOT disturbed — the test suite issued only a schema-echo POST plus a POST with a custom job_id that only echoes the id, both idempotent per contract.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/cqc/sync/staging/status", "issue": "listing_total_reported and listing_ids_enumerated are None until page-1 enumeration finishes (~few minutes into a fresh run). Not a bug — just note that the fields are declared in the E1 contract but populated lazily. Consumers should tolerate null."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_cqc_staging_sync.py",
+    "/app/test_reports/pytest/cqc_staging_sync.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "cqc_staging_sync.diff_report iterates every cqc_locations_live locationId into a Python set (~73k+ once live is repaired, ~122k). At current sizes this is fine (<200MB RSS), but call it out if the collection ever grows to >1M documents — switch to $lookup or aggregation-based diff.",
+    "In cqc_staging_sync.diff_report the manual-record loop scans ALL franchisee_clients with source=cqc once per report call and does substring matching in Python. Consider caching the report result (e.g. store the last diff report in cqc_staging_jobs under `last_diff_report`) so refresh from the admin UI doesn't repeat this scan.",
+    "Non-destructive guarantees are declared as constants (all zeroes) in the response payload rather than derived from a real audit counter. This is fine for the current contract (the module genuinely writes nothing to live), but flag it: a future change to run_staging_sync that inadvertently writes to live would NOT be caught by the report. Consider hashing key live counts (count_documents, checksum of a random sample) at report start and end to prove no live mutation happened during the report itself.",
+    "cqc_routes._SyncState is a mutable class-level singleton (module-global). The staging module correctly avoided this pattern by using cqc_staging_jobs; consider migrating _run_full_sync to the same model in a follow-up so the legacy live sync also survives container restarts.",
+    "cqc_staging_sync.run_staging_sync creates one background task per ID inside 500-wide waves but never bounds unresolved errors — if the CQC API throws a sustained 5xx storm, cqc_staging_errors could balloon. Consider a hard cap on `errors_count` before aborting the job."
+  ],
+  "updated_files": ["/app/backend/tests/test_cqc_staging_sync.py"],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "not tested (out of scope)"},
+  "test_credentials": "admin@creativemojo.co.uk / CreativeMojo2026! (used for admin auth); franchisee.tester@creativemojo.co.uk / FranchiseeTest2026! (used to assert 403 on non-admin)",
+  "seed_data_creation": "None. Test only issues a no-op POST with a custom job_id ('test-staging-noop-echo') which is echoed back; the corresponding job doc is written by the module and is harmless (running-status placeholder).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "The staging sync is a 1-2 hour long-running background job. Do NOT kick off unnecessarily. Reuse test_cqc_staging_sync.py which is idempotent. When the running job (currently staging-1785257450) completes, re-run this test file plus a one-off ad-hoc check: sentinel_rivermede_present_in_staging must flip to true, staging_count should be ~121-122k, and the diff report's `only_in_staging_missing_from_live` should jump from 1 (current mid-sync value) to ~48k, giving E1 the numbers needed for the non-destructive append decision."
+}
