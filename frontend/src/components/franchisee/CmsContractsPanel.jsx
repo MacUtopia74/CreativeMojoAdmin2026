@@ -17,7 +17,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import api from "@/lib/api";
 import {
-  Loader2, FileText, Download, Upload, CheckCircle2, AlertTriangle,
+  Loader2, FileText, Download, Upload, CheckCircle2, AlertTriangle, Trash2,
 } from "lucide-react";
 import { NewContractModal, StatusPill } from "@/pages/AdminContractsPage";
 
@@ -118,10 +118,33 @@ export default function CmsContractsPanel({
       const url = window.URL.createObjectURL(
         new Blob([resp.data], { type: "application/pdf" }),
       );
-      window.open(url, "_blank", "noopener");
+      // Popup blockers routinely reject ``window.open`` after ``await``
+      // — the click event context is lost. Use a hidden <a download>
+      // anchor so the browser treats it as a same-tick download / navigation
+      // and never silently ignores it.
+      const a = document.createElement("a");
+      a.href = url;
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.download = `contract-${cid.slice(0, 8)}-preview.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
       setTimeout(() => window.URL.revokeObjectURL(url), 30_000);
     } catch (e) {
       alert(`Preview failed: ${e?.response?.data?.detail || e.message}`);
+    }
+  }
+
+  async function deleteContract(cid) {
+    if (!window.confirm(
+      "Delete this draft contract?\n\nThis removes the draft, its preview PDFs and its audit trail. Only available for drafts — issued or signed contracts cannot be deleted.",
+    )) return;
+    try {
+      await api.delete(`/admin/contracts/${cid}`);
+      await load();
+    } catch (e) {
+      alert(`Delete failed: ${e?.response?.data?.detail || e.message}`);
     }
   }
 
@@ -247,6 +270,16 @@ export default function CmsContractsPanel({
                             data-testid={`cms-contract-issue-btn-${c.id}`}>
                             {isBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
                             Issue
+                          </button>
+                        )}
+                        {c.status === "draft" && (
+                          <button
+                            onClick={() => deleteContract(c.id)}
+                            disabled={isBusy}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-[11px] border border-red-300 rounded bg-white text-red-700 hover:bg-red-50 disabled:opacity-50"
+                            data-testid={`cms-contract-delete-btn-${c.id}`}
+                            title="Delete this draft contract (irreversible).">
+                            <Trash2 className="h-3 w-3" /> Delete
                           </button>
                         )}
                         {(c.status === "issued" || c.status === "signed" || c.status === "superseded") && c.personalised_pdf_r2_key && (

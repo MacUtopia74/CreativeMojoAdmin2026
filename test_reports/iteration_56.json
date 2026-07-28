@@ -1,0 +1,23 @@
+{
+  "summary": "Verified CmsContractsPanel Preview + Delete bugfixes end-to-end. Backend pytest (4/4) + Playwright UI test all pass. Preview button now correctly fires POST /api/admin/contracts/{id}/preview-pdf and receives an application/pdf blob (previously silently failed). Delete button appears only on draft rows, triggers window.confirm, calls DELETE /api/admin/contracts/{id}, and the row disappears after reload. Backend guard confirmed: DELETE on issued/signed/superseded returns 400 with 'only drafts can be deleted' detail; 404 for unknown ids.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_contracts_draft_delete.py",
+    "/app/test_reports/pytest/iter56_contracts_delete.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "downloadDraftPreview uses a hidden <a download target=_blank> — good fix for the popup-blocker-after-await bug. URL.revokeObjectURL is deferred 30s which is sufficient.",
+    "deleteContract relies on window.confirm — acceptable for now, but a shadcn AlertDialog would give a more consistent admin UX and would be testable without page.dialog handlers.",
+    "Row action buttons don't disable Preview/Delete while a delete/preview is in-flight (only Issue/Upload guard on busyRow). Rapid double-clicks on Delete would fire two DELETE requests; low impact because backend 404s the second call, but worth adding isBusy guards."
+  ],
+  "updated_files": ["/app/backend/tests/test_contracts_draft_delete.py"],
+  "success_rate": {"backend": "100% (4/4)", "frontend": "100% (all UI assertions passed)"},
+  "test_credentials": "admin@creativemojo.co.uk / CreativeMojo2026! (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Created 3 temporary draft contracts (monthly_fee=123) during Playwright test iterations against franchisee b59dc5b6-6a34-43ce-82e3-044f6326f4a9; all cleaned up via DELETE at end of run. No lingering test data.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "CmsContractsPanel is inside a collapsed 'Contracts (N)' accordion on the franchisee detail page (/franchisees/:id). Must click the header before data-testid=cms-contracts-panel becomes visible. Admin franchisee detail route is /franchisees/:id (NOT /admin/franchisees/:id).",
+  "rca of the issue": "Original preview bug: window.open(blobUrl) was invoked after `await api.post(...)` — Chrome/Firefox popup blockers reject window.open when it's no longer inside the synchronous click handler stack, so the PDF silently never opened. Fix uses a transient <a href=blobUrl download target=_blank> anchor appended to DOM, .click()'ed synchronously, then removed — browsers treat the programmatic anchor click as a same-tick download/navigation and honour it. Verified in browser: POST /preview-pdf → 200 application/pdf → anchor click succeeds. Delete gap: no delete affordance existed for aborted drafts — added a red Delete button gated on c.status==='draft' with a window.confirm and DELETE /api/admin/contracts/{id}, backend already enforces draft-only via 400."
+}
