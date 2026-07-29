@@ -104,11 +104,9 @@ async def compute_dry_run(db) -> dict:
         )
     projected_count = eng_count + scot_count
 
-    # Confirmation token — binds to Clementina's ID + current sector count
-    # AND environment fingerprint (so a preview token cannot match on prod).
     identity = _environment_signature()
     token = hashlib.sha256(
-        f"{CLEMENTINA_ID}|{len(sectors)}|{clem.get('territory_home_count')}|{projected_count}|{identity['fingerprint']}".encode()
+        f"{CLEMENTINA_ID}|{len(sectors)}|{clem.get('territory_home_count')}|{projected_count}|{identity['deployment_fingerprint']}|{identity['datastore_fingerprint']}".encode()
     ).hexdigest()
 
     return {
@@ -146,7 +144,7 @@ async def compute_dry_run(db) -> dict:
 
 
 async def commit(db, actor_email: str, client_token: str,
-                 expected_environment: str, expected_fingerprint: str) -> dict:
+                 expected_environment: str, expected_deployment_fingerprint: str) -> dict:
     identity = _environment_signature()
     if identity["environment_name"] == "unset":
         raise HTTPException(500, detail={
@@ -160,11 +158,11 @@ async def commit(db, actor_email: str, client_token: str,
             "you_are_actually_on": identity["environment_name"],
             "identity": identity,
         })
-    if expected_fingerprint != identity["fingerprint"]:
+    if expected_deployment_fingerprint != identity["deployment_fingerprint"]:
         raise HTTPException(403, detail={
-            "error": "expected_fingerprint_mismatch",
-            "you_asked_to_run_on_fingerprint": expected_fingerprint,
-            "you_are_actually_on_fingerprint": identity["fingerprint"],
+            "error": "expected_deployment_fingerprint_mismatch",
+            "you_asked_to_run_on_fingerprint": expected_deployment_fingerprint,
+            "you_are_actually_on_fingerprint": identity["deployment_fingerprint"],
             "identity": identity,
         })
     dr = await compute_dry_run(db)
@@ -264,11 +262,12 @@ def build_tw11_9_router(db, require_role):
         if not token:
             raise HTTPException(400, detail="confirmation_token required")
         expected_env = (body or {}).get("expected_environment")
-        expected_fp = (body or {}).get("expected_fingerprint")
+        expected_fp = (body or {}).get("expected_deployment_fingerprint")
         if not expected_env or not expected_fp:
             raise HTTPException(400, detail=(
-                "expected_environment and expected_fingerprint are required — "
-                "capture them from /cqc/tw11-9/dry-run and pass them back."
+                "expected_environment and expected_deployment_fingerprint "
+                "are required — capture them from /cqc/tw11-9/dry-run and "
+                "pass them back."
             ))
         return await commit(db, user.get("email", "unknown"), token,
                             expected_env, expected_fp)

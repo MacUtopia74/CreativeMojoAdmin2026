@@ -77,6 +77,29 @@ def _resolve_env_name() -> str:
 
 
 def environment_identity() -> dict:
+    """Return the non-secret environment identity block.
+
+    Fingerprint semantics
+    ---------------------
+    * ``deployment_fingerprint`` = SHA-256 of
+      ``env_name|deployment_id|backend_url``.
+      Uniquely identifies the *pod* (which release, which URL). Changes
+      when the code redeploys but stays stable across credential rotations.
+
+    * ``datastore_fingerprint`` = SHA-256 of
+      ``mongo_host|mongo_db_name``.
+      Uniquely identifies the *database* the app is reading. Purely a
+      claim by the application about what it can see — the operator
+      must independently confirm database isolation between preview and
+      production (Emergent Support does this).
+
+    Neither fingerprint contains credentials.
+
+    The confirmation token used by the commit endpoints binds to BOTH
+    fingerprints plus the actual data state (id-list + count digest).
+    A token generated on preview will therefore never validate on
+    production, because at minimum the ``env_name`` differs.
+    """
     env_name = _resolve_env_name()
     deployment_id = os.environ.get("DEPLOYMENT_ID") or "unset"
     mongo_host = _strip_credentials(os.environ.get("MONGO_URL", ""))
@@ -86,16 +109,31 @@ def environment_identity() -> dict:
         or os.environ.get("FRONTEND_URL")
         or "unset"
     )
-    fingerprint_input = f"{env_name}|{deployment_id}|{mongo_host}|{mongo_db_name}"
-    fingerprint = hashlib.sha256(fingerprint_input.encode()).hexdigest()
+    deployment_fp = hashlib.sha256(
+        f"{env_name}|{deployment_id}|{backend_url}".encode()
+    ).hexdigest()
+    datastore_fp = hashlib.sha256(
+        f"{mongo_host}|{mongo_db_name}".encode()
+    ).hexdigest()
     return {
         "environment_name": env_name,
         "deployment_id": deployment_id,
         "backend_url": backend_url,
         "mongo_host": mongo_host,
         "mongo_db_name": mongo_db_name,
-        "fingerprint": fingerprint,
-        "fingerprint_input_shape": "sha256(env_name|deployment_id|mongo_host|mongo_db_name)",
+        "deployment_fingerprint": deployment_fp,
+        "datastore_fingerprint": datastore_fp,
+        "deployment_fingerprint_input_shape":
+            "sha256(env_name|deployment_id|backend_url)",
+        "datastore_fingerprint_input_shape":
+            "sha256(mongo_host|mongo_db_name)",
+        "note_on_isolation": (
+            "datastore_fingerprint is a self-report by the application. "
+            "Where mongo_host is a shared value like 'localhost:27017' it "
+            "cannot alone prove that preview and production use different "
+            "physical databases. Independent operator confirmation is "
+            "required for that guarantee."
+        ),
     }
 
 

@@ -1,25 +1,28 @@
-"""Environment identity + fingerprint safety tests.
+"""Environment identity + two-fingerprint safety tests.
 
 Verifies:
-  * `environment_identity()` strips Mongo credentials.
-  * `environment_identity()` never leaks secrets.
-  * A confirmation_token generated with fingerprint F1 does NOT match
-    an environment with fingerprint F2.
-  * Setting ENVIRONMENT_NAME to something outside {preview, production}
-    is reported as `unset`.
+  * Credentials never leaked.
+  * `deployment_fingerprint` = f(env_name, deployment_id, backend_url).
+  * `datastore_fingerprint` = f(mongo_host, mongo_db_name).
+  * The two fingerprints are independent of each other:
+      - changing env_name changes deployment_fp only, not datastore_fp
+      - changing mongo_host changes datastore_fp only, not deployment_fp
+  * A shared localhost mongo_host on two pods yields the same
+    `datastore_fingerprint`, so on its own it does NOT prove isolation.
+    The environment_name gate + operator confirmation are what carry
+    the isolation guarantee.
+  * `ENVIRONMENT_NAME` outside {preview, production} → `unset`.
 """
 from __future__ import annotations
 
-import os
-import sys
 import hashlib
-
-import pytest
+import importlib
+import sys
 
 sys.path.insert(0, "/app/backend")
 
 
-def test_strip_credentials_removes_user_pass(monkeypatch):
+def test_strip_credentials_removes_user_pass():
     from environment_identity import _strip_credentials
     assert _strip_credentials("mongodb://user:p%40ss@cluster0.mongodb.net/db") == "cluster0.mongodb.net"
     assert _strip_credentials("mongodb+srv://a:b@cluster0.abc.mongodb.net/db") == "cluster0.abc.mongodb.net"
@@ -27,74 +30,104 @@ def test_strip_credentials_removes_user_pass(monkeypatch):
     assert _strip_credentials("mongodb://a:b@host1:27017,host2:27017/db?replicaSet=rs0") == "host1:27017,host2:27017"
 
 
-def test_environment_identity_leaks_no_secrets(monkeypatch):
-    monkeypatch.setenv("MONGO_URL", "mongodb://admin:supersecret@cluster0.mongodb.net/db")
-    monkeypatch.setenv("DB_NAME", "creative_mojo_admin")
-    monkeypatch.setenv("ENVIRONMENT_NAME", "preview")
-    monkeypatch.setenv("DEPLOYMENT_ID", "test-123")
-    # Force reload of module so it picks up new env
-    import importlib
+def _reload(monkeypatch, **env):
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
     import environment_identity as mod
     importlib.reload(mod)
-    identity = mod.environment_identity()
-    text = repr(identity)
+    return mod
+
+
+def test_no_credentials_leak_in_output(monkeypatch):
+    mod = _reload(monkeypatch,
+                  MONGO_URL="mongodb://admin:supersecret@cluster0.mongodb.net/db",
+                  DB_NAME="creative_mojo_admin",
+                  ENVIRONMENT_NAME="preview",
+                  DEPLOYMENT_ID="test-123")
+    text = repr(mod.environment_identity())
     for secret in ("supersecret", "mongodb://"):
         assert secret not in text, f"secret leaked: {secret}"
-    assert identity["environment_name"] == "preview"
-    assert identity["deployment_id"] == "test-123"
-    assert identity["mongo_host"] == "cluster0.mongodb.net"
-    assert identity["mongo_db_name"] == "creative_mojo_admin"
-    # Fingerprint deterministic
+
+
+def test_deployment_fingerprint_shape(monkeypatch):
+    mod = _reload(monkeypatch,
+                  DB_NAME="d", MONGO_URL="mongodb://x:y@h/db",
+                  ENVIRONMENT_NAME="production",
+                  DEPLOYMENT_ID="deploy-42",
+                  PUBLIC_URL="https://hub.creativemojo.co.uk")
+    idn = mod.environment_identity()
     expected = hashlib.sha256(
-        "preview|test-123|cluster0.mongodb.net|creative_mojo_admin".encode()
+        "production|deploy-42|https://hub.creativemojo.co.uk".encode()
     ).hexdigest()
-    assert identity["fingerprint"] == expected
+    assert idn["deployment_fingerprint"] == expected
+
+
+def test_datastore_fingerprint_shape(monkeypatch):
+    mod = _reload(monkeypatch,
+                  MONGO_URL="mongodb://x:y@host-a:27017/db",
+                  DB_NAME="creative_mojo_admin",
+                  ENVIRONMENT_NAME="production",
+                  DEPLOYMENT_ID="d1")
+    idn = mod.environment_identity()
+    expected = hashlib.sha256(
+        "host-a:27017|creative_mojo_admin".encode()
+    ).hexdigest()
+    assert idn["datastore_fingerprint"] == expected
+
+
+def test_two_fingerprints_are_independent(monkeypatch):
+    # A) baseline
+    mod = _reload(monkeypatch, MONGO_URL="mongodb://x:y@h1/db",
+                  DB_NAME="d", ENVIRONMENT_NAME="preview",
+                  DEPLOYMENT_ID="d1", PUBLIC_URL="https://a.example")
+    base = mod.environment_identity()
+
+    # B) change ENV / deploy only — deployment_fp changes, datastore_fp same
+    mod = _reload(monkeypatch, MONGO_URL="mongodb://x:y@h1/db",
+                  DB_NAME="d", ENVIRONMENT_NAME="production",
+                  DEPLOYMENT_ID="d2", PUBLIC_URL="https://b.example")
+    b = mod.environment_identity()
+    assert b["deployment_fingerprint"] != base["deployment_fingerprint"]
+    assert b["datastore_fingerprint"] == base["datastore_fingerprint"]
+
+    # C) change datastore only — datastore_fp changes, deployment_fp same
+    mod = _reload(monkeypatch, MONGO_URL="mongodb://x:y@h2/db",
+                  DB_NAME="d2", ENVIRONMENT_NAME="preview",
+                  DEPLOYMENT_ID="d1", PUBLIC_URL="https://a.example")
+    c = mod.environment_identity()
+    assert c["deployment_fingerprint"] == base["deployment_fingerprint"]
+    assert c["datastore_fingerprint"] != base["datastore_fingerprint"]
+
+
+def test_shared_localhost_yields_same_datastore_fp(monkeypatch):
+    """Documents the intentional limitation: two pods that both use
+    'localhost:27017' as their MongoDB will report the same
+    datastore_fingerprint. This is why operator confirmation of database
+    isolation is required — the fingerprint alone cannot prove it.
+    """
+    mod = _reload(monkeypatch, MONGO_URL="mongodb://x:y@localhost:27017/db",
+                  DB_NAME="creative_mojo_admin",
+                  ENVIRONMENT_NAME="preview", DEPLOYMENT_ID="d1")
+    fp_preview = mod.environment_identity()["datastore_fingerprint"]
+    mod = _reload(monkeypatch, MONGO_URL="mongodb://x:y@localhost:27017/db",
+                  DB_NAME="creative_mojo_admin",
+                  ENVIRONMENT_NAME="production", DEPLOYMENT_ID="d2")
+    fp_prod = mod.environment_identity()["datastore_fingerprint"]
+    assert fp_preview == fp_prod  # documented limitation
+
+
+def test_credential_rotation_does_not_change_datastore_fp(monkeypatch):
+    mod = _reload(monkeypatch, MONGO_URL="mongodb://u1:p1@h/db",
+                  DB_NAME="d", ENVIRONMENT_NAME="production",
+                  DEPLOYMENT_ID="d1")
+    fp1 = mod.environment_identity()["datastore_fingerprint"]
+    mod = _reload(monkeypatch, MONGO_URL="mongodb://u2:p2@h/db",
+                  DB_NAME="d", ENVIRONMENT_NAME="production",
+                  DEPLOYMENT_ID="d1")
+    fp2 = mod.environment_identity()["datastore_fingerprint"]
+    assert fp1 == fp2
 
 
 def test_environment_name_invalid_reported_as_unset(monkeypatch):
-    monkeypatch.setenv("ENVIRONMENT_NAME", "staging")   # not in allowlist
-    import importlib
-    import environment_identity as mod
-    importlib.reload(mod)
+    mod = _reload(monkeypatch, ENVIRONMENT_NAME="staging")
     assert mod.environment_identity()["environment_name"] == "unset"
-
-
-def test_fingerprint_differs_across_environments(monkeypatch):
-    import importlib, environment_identity as mod
-
-    monkeypatch.setenv("MONGO_URL", "mongodb://a:b@preview-cluster.mongodb.net/db")
-    monkeypatch.setenv("DB_NAME", "creative_mojo_admin")
-    monkeypatch.setenv("ENVIRONMENT_NAME", "preview")
-    monkeypatch.setenv("DEPLOYMENT_ID", "d1")
-    importlib.reload(mod)
-    preview_fp = mod.environment_identity()["fingerprint"]
-
-    monkeypatch.setenv("MONGO_URL", "mongodb://a:b@prod-cluster.mongodb.net/db")
-    monkeypatch.setenv("ENVIRONMENT_NAME", "production")
-    monkeypatch.setenv("DEPLOYMENT_ID", "d2")
-    importlib.reload(mod)
-    production_fp = mod.environment_identity()["fingerprint"]
-
-    assert preview_fp != production_fp
-    # Even same db_name — different fingerprint. This is the key property.
-
-
-def test_fingerprint_stable_when_only_credentials_change(monkeypatch):
-    import importlib, environment_identity as mod
-
-    monkeypatch.setenv("DB_NAME", "creative_mojo_admin")
-    monkeypatch.setenv("ENVIRONMENT_NAME", "production")
-    monkeypatch.setenv("DEPLOYMENT_ID", "d1")
-
-    monkeypatch.setenv("MONGO_URL", "mongodb://user1:passwordA@prod.mongodb.net/db")
-    importlib.reload(mod)
-    fp1 = mod.environment_identity()["fingerprint"]
-
-    monkeypatch.setenv("MONGO_URL", "mongodb://user2:passwordB@prod.mongodb.net/db")
-    importlib.reload(mod)
-    fp2 = mod.environment_identity()["fingerprint"]
-
-    # Same host + db + env + deploy → same fingerprint even though
-    # credentials rotated. Credential rotation is intentional and must
-    # not change the environment identity.
-    assert fp1 == fp2

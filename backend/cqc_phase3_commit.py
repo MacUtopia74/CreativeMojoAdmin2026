@@ -141,17 +141,18 @@ async def compute_dry_run(db) -> dict:
         "reclassified_records_left_untouched": len(reclassified),
         "reclassified_intersect_to_insert_MUST_BE_ZERO": reclassified_intersect_to_insert,
     }
-    # Confirmation token binds to the exact counts + ID hash + environment
-    # fingerprint. This means a token generated on preview mathematically
-    # cannot match a production run — the fingerprint changes with the
-    # cluster host, DB name, environment name, and deployment id.
+    # Confirmation token binds to (counts + ID hash + deployment_fingerprint
+    # + datastore_fingerprint). A token generated on any other pod OR
+    # against any other database mathematically cannot match.
     id_digest = hashlib.sha256("\n".join(to_insert_sorted).encode()).hexdigest()
     counts_digest = hashlib.sha256(
         json.dumps(counts, sort_keys=True).encode()
     ).hexdigest()
     identity = _environment_signature()
     confirmation_token = hashlib.sha256(
-        (id_digest + counts_digest + identity["fingerprint"]).encode()
+        (id_digest + counts_digest
+         + identity["deployment_fingerprint"]
+         + identity["datastore_fingerprint"]).encode()
     ).hexdigest()
 
     return {
@@ -405,14 +406,14 @@ def build_phase3_router(db, require_role):
                 "identity": identity,
                 "hint": "The client must explicitly opt into the target environment_name.",
             })
-        expected_fp = (body or {}).get("expected_fingerprint")
-        if expected_fp != identity["fingerprint"]:
+        expected_fp = (body or {}).get("expected_deployment_fingerprint")
+        if expected_fp != identity["deployment_fingerprint"]:
             raise HTTPException(403, detail={
-                "error": "expected_fingerprint_mismatch",
+                "error": "expected_deployment_fingerprint_mismatch",
                 "you_asked_to_run_on_fingerprint": expected_fp,
-                "you_are_actually_on_fingerprint": identity["fingerprint"],
+                "you_are_actually_on_fingerprint": identity["deployment_fingerprint"],
                 "identity": identity,
-                "hint": "Re-run /cqc/phase3/dry-run to capture the current fingerprint.",
+                "hint": "Re-run /cqc/phase3/dry-run to capture the current deployment_fingerprint.",
             })
         # Fresh dry-run to bind the caller's confirmation to current data
         dr = await compute_dry_run(db)
