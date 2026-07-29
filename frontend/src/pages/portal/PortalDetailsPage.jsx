@@ -17,6 +17,7 @@ import {
 import api from "@/lib/api";
 import FranchiseeFilesPanel from "@/components/files/FranchiseeFilesPanel";
 import PortalPageHeading from "@/components/portal/PortalPageHeading";
+import { PortalContractsSection } from "@/pages/portal/PortalContractsPage";
 
 function yearsBetween(iso) {
   if (!iso) return null;
@@ -273,6 +274,12 @@ export default function PortalDetailsPage() {
           )}
         </div>
       </section>
+
+      {/* Section: My Contracts — merged in from the old separate
+          /portal/contracts tab per Paul's spec. Shows all issued /
+          signed / superseded contracts and lets the franchisee accept
+          any that are awaiting their acceptance. */}
+      <PortalContractsSection />
 
       {/* Section: Your Mojo page profile — the fields shown on the
           creativemojo.co.uk map popup. Franchisee-controlled, opt-in

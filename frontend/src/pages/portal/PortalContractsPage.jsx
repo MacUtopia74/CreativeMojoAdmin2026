@@ -1,9 +1,21 @@
-// Franchisee Portal — Contracts (accept flow)
-// One page: list issued contracts + an "Open" button that shows the
-// PDF preview + acceptance form. No wizard, no drawn signature.
+// Franchisee-facing contracts list + acceptance flow.
+//
+// Two exports:
+//   * PortalContractsPage — the full standalone page (kept for deep
+//     links from HQ emails: /portal/contracts and
+//     /portal/contracts?open=<id>). Also honours the existing route.
+//   * PortalContractsSection — the same list + accept flow but wrapped
+//     to slot inline as a "My Contracts" section on the My Franchise
+//     page (per Paul's spec: no separate tab, live alongside the
+//     current-contract mini row).
+//
+// Both share the same list/detail internals. Only the outer chrome
+// differs (page heading + centred container vs. section card).
 import { useCallback, useEffect, useState } from "react";
 import api from "@/lib/api";
-import { Loader2, FileText, Download, AlertTriangle, CheckCircle2, ExternalLink } from "lucide-react";
+import {
+  Loader2, FileText, Download, AlertTriangle, CheckCircle2, ExternalLink, FileSignature,
+} from "lucide-react";
 
 const ACCEPTANCE_WORDING =
   "I confirm that I have read and agree to the terms of this franchise agreement.";
@@ -23,7 +35,9 @@ function StatusPill({ status }) {
   );
 }
 
-export default function PortalContractsPage() {
+// Shared body: list of contracts + accept modal. Rendered without any
+// outer heading/container — the caller wraps it however it likes.
+function ContractsBody() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -41,52 +55,56 @@ export default function PortalContractsPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  if (err) {
+    return (
+      <div className="p-3 bg-red-50 border border-red-200 text-red-800 text-sm rounded flex items-center gap-2"
+           data-testid="portal-contracts-error">
+        <AlertTriangle className="h-4 w-4" /> {err}
+      </div>
+    );
+  }
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 text-stone-500 py-10 justify-center">
+        <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+      </div>
+    );
+  }
+  if (rows.length === 0) {
+    return (
+      <div className="p-6 text-center text-stone-500 border border-dashed rounded-md text-sm"
+           data-testid="portal-contracts-empty">
+        You don&apos;t have any contracts yet.
+      </div>
+    );
+  }
   return (
-    <div className="p-6 max-w-5xl mx-auto" data-testid="portal-contracts-page">
-      <h1 className="text-2xl font-semibold mb-4" data-testid="portal-contracts-heading">My Contracts</h1>
-
-      {err && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-800 text-sm rounded flex items-center gap-2">
-          <AlertTriangle className="h-4 w-4" /> {err}
-        </div>
-      )}
-
-      {loading ? (
-        <div className="flex items-center gap-2 text-stone-500 py-16 justify-center">
-          <Loader2 className="h-4 w-4 animate-spin" /> Loading…
-        </div>
-      ) : rows.length === 0 ? (
-        <div className="p-8 text-center text-stone-500 border border-dashed rounded-md" data-testid="portal-contracts-empty">
-          You don&apos;t have any contracts yet.
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {rows.map((c) => (
-            <div key={c.id} className="border rounded-lg bg-white p-4 flex items-center justify-between gap-4"
-                 data-testid={`portal-contract-row-${c.id}`}>
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <StatusPill status={c.status} />
-                  <span className="text-xs text-stone-500">{c.contract_reference || c.id.slice(0, 12)}</span>
-                </div>
-                <div className="text-sm text-stone-700 mt-1">
-                  Issued: {c.issued_at ? new Date(c.issued_at).toLocaleString("en-GB") : "—"}
-                  {c.signed_at && (
-                    <span className="ml-3">Signed: {new Date(c.signed_at).toLocaleString("en-GB")}</span>
-                  )}
-                </div>
+    <>
+      <div className="space-y-3">
+        {rows.map((c) => (
+          <div key={c.id} className="border rounded-lg bg-white p-4 flex items-center justify-between gap-4"
+               data-testid={`portal-contract-row-${c.id}`}>
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <StatusPill status={c.status} />
+                <span className="text-xs text-stone-500">{c.contract_reference || c.id.slice(0, 12)}</span>
               </div>
-              <button
-                onClick={() => setActive(c)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700"
-                data-testid={`portal-contract-open-${c.id}`}>
-                <ExternalLink className="h-3.5 w-3.5" /> Open
-              </button>
+              <div className="text-sm text-stone-700 mt-1">
+                Issued: {c.issued_at ? new Date(c.issued_at).toLocaleString("en-GB") : "—"}
+                {c.signed_at && (
+                  <span className="ml-3">Signed: {new Date(c.signed_at).toLocaleString("en-GB")}</span>
+                )}
+              </div>
             </div>
-          ))}
-        </div>
-      )}
-
+            <button
+              onClick={() => setActive(c)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700"
+              data-testid={`portal-contract-open-${c.id}`}>
+              <ExternalLink className="h-3.5 w-3.5" /> Open
+            </button>
+          </div>
+        ))}
+      </div>
       {active && (
         <ContractDetail
           contract={active}
@@ -94,7 +112,35 @@ export default function PortalContractsPage() {
           onSigned={async () => { setActive(null); await load(); }}
         />
       )}
+    </>
+  );
+}
+
+// Standalone page (kept for HQ email deep-links).
+export default function PortalContractsPage() {
+  return (
+    <div className="p-6 max-w-5xl mx-auto" data-testid="portal-contracts-page">
+      <h1 className="text-2xl font-semibold mb-4" data-testid="portal-contracts-heading">My Contracts</h1>
+      <ContractsBody />
     </div>
+  );
+}
+
+// Inline section (used on the My Franchise page).
+export function PortalContractsSection() {
+  return (
+    <section
+      className="bg-white border border-stone-200 rounded-2xl px-4 sm:px-6 py-5 sm:py-6"
+      data-testid="portal-my-contracts-section"
+    >
+      <div className="flex items-center gap-3 mb-5 pb-4 border-b border-stone-200">
+        <FileSignature className="w-6 h-6 text-stone-700 shrink-0" />
+        <h1 className="font-display text-2xl sm:text-3xl font-black text-stone-950 tracking-tight">
+          My Contracts
+        </h1>
+      </div>
+      <ContractsBody />
+    </section>
   );
 }
 
@@ -157,7 +203,6 @@ function ContractDetail({ contract, onClose, onSigned }) {
           </div>
         </div>
         <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-3">
-          {/* PDF viewer */}
           <div className="md:col-span-2 border-r bg-stone-100">
             {pdfUrl ? (
               <iframe title="contract" src={pdfUrl} className="w-full h-full min-h-[560px]" data-testid="portal-contract-pdf-iframe" />
@@ -165,7 +210,6 @@ function ContractDetail({ contract, onClose, onSigned }) {
               <div className="p-8 text-stone-500 text-sm">Loading PDF…</div>
             )}
           </div>
-          {/* Acceptance form */}
           <div className="p-5">
             {contract.status === "signed" ? (
               <div className="text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-md p-3 text-sm flex items-start gap-2"

@@ -21,7 +21,7 @@ import {
   User as UserIcon, MapPin, CalendarDays, FolderOpen, Receipt,
   LogOut, Type, Loader2, AlertCircle, Megaphone, GraduationCap,
   CalendarClock, KeyRound, Sparkles, UserCog, ChevronDown, ShoppingBag,
-  Menu, X, Facebook, LifeBuoy, FileSignature,
+  Menu, X, Facebook, LifeBuoy,
 } from "lucide-react";
 import PortalHelpModal from "@/components/portal/PortalHelpModal";
 import PortalNewVersionBanner from "@/components/portal/PortalNewVersionBanner";
@@ -114,10 +114,12 @@ function buildTabs({ modules, isDemo, demoShowPlus }) {
   s2.push({ to: "/portal/training", label: "Video Hub", icon: GraduationCap, testid: "portal-nav-training" });
   s2.push({ to: "/portal/updates", label: "HQ Updates", icon: Megaphone, testid: "portal-nav-updates" });
   sections.push(s2);
-  // ---- Section 3: documents (File Vault + Contracts) ----
+  // ---- Section 3: documents (File Vault) ----
+  // (Contracts is now an inline section on the My Franchise page — no
+  // separate sidebar tab. The /portal/contracts route still exists for
+  // HQ email deep-links, but is not linked in nav.)
   const s3 = [];
   if (modules.files !== false) s3.push({ to: "/portal/files", label: "File Vault", icon: FolderOpen, testid: "portal-nav-files" });
-  s3.push({ to: "/portal/contracts", label: "Contracts", icon: FileSignature, testid: "portal-nav-contracts" });
   sections.push(s3);
   // ---- Section 4: HQ shop (Shape Orders) — sits in its own band
   // between File Vault and Account so it visually reads as a
