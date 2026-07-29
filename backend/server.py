@@ -7103,6 +7103,11 @@ api.include_router(build_portal_router(
 ))
 api.include_router(build_territory_router(db, require_role))
 api.include_router(build_cqc_router(db, require_role))
+# Phase 3 CQC canonical-source repair (INSERT-ONLY) + TW11 9 additive migration
+from cqc_phase3_commit import build_phase3_router  # noqa: E402
+from cqc_phase3_tw11_9 import build_tw11_9_router  # noqa: E402
+api.include_router(build_phase3_router(db, require_role))
+api.include_router(build_tw11_9_router(db, require_role))
 api.include_router(build_scotland_router(db, require_role))
 api.include_router(build_ni_router(db, require_role))
 api.include_router(build_wales_router(db, require_role))

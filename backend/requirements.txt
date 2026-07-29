@@ -108,6 +108,7 @@ pyphen==0.17.2
 pyproj==3.7.2
 pyshp==3.0.3
 pytest==9.0.3
+pytest-asyncio==1.4.0
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.2
 python-jose==3.5.0
