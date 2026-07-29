@@ -47,6 +47,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pymongo.errors import DuplicateKeyError
 
 from cqc_definition import CqcDefinition, definition_to_mongo_filter
+from environment_identity import environment_identity, refuse_if_not
 
 logger = logging.getLogger("creative-mojo-admin.cqc-phase3")
 
@@ -61,19 +62,11 @@ def _now() -> datetime:
 
 
 def _environment_signature() -> dict:
-    """Every response echoes the exact database + host so callers can be
-    100% certain they're hitting the environment they think they are.
-    A production run should show DB_NAME='creative_mojo_prod' (or your
-    live name) and a *.creativemojo.co.uk BACKEND URL; a preview run
-    shows DB_NAME containing 'preview' / 'test' / a UUID slug.
+    """Full environment identity. Delegates to `environment_identity`
+    (which strips Mongo credentials, exposes a fingerprint hash, and
+    surfaces environment_name/deployment_id).
     """
-    return {
-        "db_name": os.environ.get("DB_NAME"),
-        "backend_url": os.environ.get("REACT_APP_BACKEND_URL")
-                       or os.environ.get("PUBLIC_URL")
-                       or "unknown",
-        "pod_hostname": os.environ.get("HOSTNAME", "unknown"),
-    }
+    return environment_identity()
 
 
 async def compute_dry_run(db) -> dict:
@@ -148,17 +141,21 @@ async def compute_dry_run(db) -> dict:
         "reclassified_records_left_untouched": len(reclassified),
         "reclassified_intersect_to_insert_MUST_BE_ZERO": reclassified_intersect_to_insert,
     }
-    # Confirmation token binds to the exact counts + ID hash
+    # Confirmation token binds to the exact counts + ID hash + environment
+    # fingerprint. This means a token generated on preview mathematically
+    # cannot match a production run — the fingerprint changes with the
+    # cluster host, DB name, environment name, and deployment id.
     id_digest = hashlib.sha256("\n".join(to_insert_sorted).encode()).hexdigest()
     counts_digest = hashlib.sha256(
         json.dumps(counts, sort_keys=True).encode()
     ).hexdigest()
+    identity = _environment_signature()
     confirmation_token = hashlib.sha256(
-        (id_digest + counts_digest).encode()
+        (id_digest + counts_digest + identity["fingerprint"]).encode()
     ).hexdigest()
 
     return {
-        "environment": _environment_signature(),
+        "environment": identity,
         "counts": counts,
         "to_insert_ids_hash_sha256": id_digest,
         "confirmation_token": confirmation_token,
@@ -379,7 +376,44 @@ def build_phase3_router(db, require_role):
         body: dict = Body(...),
         user: dict = Depends(require_role("admin")),
     ):
-        """INSERT-ONLY. No mode argument. No upsert switch."""
+        """INSERT-ONLY. No mode argument. No upsert switch.
+
+        Refuses to run unless:
+          * ENVIRONMENT_NAME env var is set to 'preview' or 'production';
+          * caller's body includes `expected_environment` matching the
+            pod's ENVIRONMENT_NAME (belt-and-braces against wrong-cluster
+            connection strings);
+          * caller's body includes `expected_fingerprint` matching the
+            current environment identity fingerprint;
+          * confirmation_token binds to the exact (counts + IDs +
+            fingerprint) triple — a token generated on preview cannot
+            match on production because the fingerprint differs.
+        """
+        identity = _environment_signature()
+        if identity["environment_name"] == "unset":
+            raise HTTPException(500, detail={
+                "error": "environment_name_unset",
+                "hint": "Set ENVIRONMENT_NAME=preview|production on the pod",
+                "identity": identity,
+            })
+        expected_env = (body or {}).get("expected_environment")
+        if expected_env != identity["environment_name"]:
+            raise HTTPException(403, detail={
+                "error": "expected_environment_mismatch",
+                "you_asked_to_run_on": expected_env,
+                "you_are_actually_on": identity["environment_name"],
+                "identity": identity,
+                "hint": "The client must explicitly opt into the target environment_name.",
+            })
+        expected_fp = (body or {}).get("expected_fingerprint")
+        if expected_fp != identity["fingerprint"]:
+            raise HTTPException(403, detail={
+                "error": "expected_fingerprint_mismatch",
+                "you_asked_to_run_on_fingerprint": expected_fp,
+                "you_are_actually_on_fingerprint": identity["fingerprint"],
+                "identity": identity,
+                "hint": "Re-run /cqc/phase3/dry-run to capture the current fingerprint.",
+            })
         # Fresh dry-run to bind the caller's confirmation to current data
         dr = await compute_dry_run(db)
         client_token = (body or {}).get("confirmation_token")
@@ -394,12 +428,13 @@ def build_phase3_router(db, require_role):
                         "the new confirmation_token."
                     ),
                     "current_confirmation_token": dr["confirmation_token"],
+                    "environment": identity,
                 },
             )
         # Refuse to run if empty
         if dr["counts"]["to_insert_total"] == 0:
             return {"status": "no_op", "reason": "nothing to insert",
-                    "counts": dr["counts"]}
+                    "counts": dr["counts"], "environment": identity}
         # Enumerate the exact ID list once so we're immune to staging changes mid-run
         live_ids: set[str] = set()
         async for d in db[LIVE_COLL].find({}, {"_id": 0, "locationId": 1}):
@@ -418,7 +453,7 @@ def build_phase3_router(db, require_role):
                                              user.get("email", "unknown")))
         return {"status": "started", "job_id": job_id,
                 "expected_id_count": len(expected_ids),
-                "environment": _environment_signature()}
+                "environment": identity}
 
     @router.get("/cqc/phase3/status")
     async def status(job_id: Optional[str] = Query(None),

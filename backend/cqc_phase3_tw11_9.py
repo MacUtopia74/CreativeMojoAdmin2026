@@ -28,6 +28,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Body, Depends, HTTPException
 
 from cqc_definition import CqcDefinition, definition_to_mongo_filter
+from environment_identity import environment_identity
 from scotland_definition import (
     ScotlandDefinition,
     DEFAULT_DEFINITION_ID as SCOTLAND_DEFAULT_DEFINITION_ID,
@@ -46,14 +47,7 @@ def _now() -> datetime:
 
 
 def _environment_signature() -> dict:
-    import os
-    return {
-        "db_name": os.environ.get("DB_NAME"),
-        "backend_url": os.environ.get("REACT_APP_BACKEND_URL")
-                       or os.environ.get("PUBLIC_URL")
-                       or "unknown",
-        "pod_hostname": os.environ.get("HOSTNAME", "unknown"),
-    }
+    return environment_identity()
 
 
 async def compute_dry_run(db) -> dict:
@@ -111,8 +105,10 @@ async def compute_dry_run(db) -> dict:
     projected_count = eng_count + scot_count
 
     # Confirmation token — binds to Clementina's ID + current sector count
+    # AND environment fingerprint (so a preview token cannot match on prod).
+    identity = _environment_signature()
     token = hashlib.sha256(
-        f"{CLEMENTINA_ID}|{len(sectors)}|{clem.get('territory_home_count')}|{projected_count}".encode()
+        f"{CLEMENTINA_ID}|{len(sectors)}|{clem.get('territory_home_count')}|{projected_count}|{identity['fingerprint']}".encode()
     ).hexdigest()
 
     return {
@@ -149,7 +145,28 @@ async def compute_dry_run(db) -> dict:
     }
 
 
-async def commit(db, actor_email: str, client_token: str) -> dict:
+async def commit(db, actor_email: str, client_token: str,
+                 expected_environment: str, expected_fingerprint: str) -> dict:
+    identity = _environment_signature()
+    if identity["environment_name"] == "unset":
+        raise HTTPException(500, detail={
+            "error": "environment_name_unset",
+            "identity": identity,
+        })
+    if expected_environment != identity["environment_name"]:
+        raise HTTPException(403, detail={
+            "error": "expected_environment_mismatch",
+            "you_asked_to_run_on": expected_environment,
+            "you_are_actually_on": identity["environment_name"],
+            "identity": identity,
+        })
+    if expected_fingerprint != identity["fingerprint"]:
+        raise HTTPException(403, detail={
+            "error": "expected_fingerprint_mismatch",
+            "you_asked_to_run_on_fingerprint": expected_fingerprint,
+            "you_are_actually_on_fingerprint": identity["fingerprint"],
+            "identity": identity,
+        })
     dr = await compute_dry_run(db)
     if client_token != dr["confirmation_token"]:
         raise HTTPException(
@@ -157,6 +174,7 @@ async def commit(db, actor_email: str, client_token: str) -> dict:
             detail={
                 "error": "confirmation_token_mismatch",
                 "current_confirmation_token": dr["confirmation_token"],
+                "environment": identity,
             },
         )
     if dr["already_present_in_her_territory"]:
@@ -245,6 +263,14 @@ def build_tw11_9_router(db, require_role):
         token = (body or {}).get("confirmation_token")
         if not token:
             raise HTTPException(400, detail="confirmation_token required")
-        return await commit(db, user.get("email", "unknown"), token)
+        expected_env = (body or {}).get("expected_environment")
+        expected_fp = (body or {}).get("expected_fingerprint")
+        if not expected_env or not expected_fp:
+            raise HTTPException(400, detail=(
+                "expected_environment and expected_fingerprint are required — "
+                "capture them from /cqc/tw11-9/dry-run and pass them back."
+            ))
+        return await commit(db, user.get("email", "unknown"), token,
+                            expected_env, expected_fp)
 
     return router
