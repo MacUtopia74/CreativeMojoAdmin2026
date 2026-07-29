@@ -1,0 +1,4997 @@
+[
+  {
+    "loc_id": "1-10591315840",
+    "name": "Firs Court",
+    "address": "370 Hook Road,Chessington",
+    "postcode": "KT9 1NA",
+    "service_types": "Residential homes|Homecare agencies|Supported living",
+    "sector": "KT9 1",
+    "provider_id": "1-10399797173"
+  },
+  {
+    "loc_id": "1-10598120420",
+    "name": "Queen Elizabeth Care Centre",
+    "address": "Torin Court,Englefield Green,Egham",
+    "postcode": "TW20 0PJ",
+    "service_types": "Nursing homes",
+    "sector": "TW20 0",
+    "provider_id": "1-9905486739"
+  },
+  {
+    "loc_id": "1-10609926752",
+    "name": "Rosebery Manor Care Home",
+    "address": "458 Reigate Road,Epsom",
+    "postcode": "KT18 5XA",
+    "service_types": "Nursing homes",
+    "sector": "KT18 5",
+    "provider_id": "1-3595184458"
+  },
+  {
+    "loc_id": "1-10615519904",
+    "name": "Silverjen Limited",
+    "address": "Office 125 - 126, Dorset House,Regent Park, Kingston Road,Leatherhead",
+    "postcode": "KT22 7PL",
+    "service_types": "Homecare agencies",
+    "sector": "KT22 7",
+    "provider_id": "1-2243906954"
+  },
+  {
+    "loc_id": "1-10024242782",
+    "name": "You & I Care - Surrey",
+    "address": "Dorset House,Regent Park, Kingston Road,Leatherhead",
+    "postcode": "KT22 7PL",
+    "service_types": "Homecare agencies",
+    "sector": "KT22 7",
+    "provider_id": "1-3753807860"
+  },
+  {
+    "loc_id": "1-10205034625",
+    "name": "Bushy Park Dental Practice",
+    "address": "25 High Street,Hampton Hill,Hampton",
+    "postcode": "TW12 1NB",
+    "service_types": "Dentist",
+    "sector": "TW12 1",
+    "provider_id": "1-10177269884"
+  },
+  {
+    "loc_id": "1-10205034750",
+    "name": "Sparkles Healthcare Ltd",
+    "address": "Riverbridge House,Guildford Road, Fetcham,Leatherhead",
+    "postcode": "KT22 9AD",
+    "service_types": "Homecare agencies",
+    "sector": "KT22 9",
+    "provider_id": "1-9565639268"
+  },
+  {
+    "loc_id": "1-10232896835",
+    "name": "Beech House Dental Surgery",
+    "address": "12 Church Street,Cobham",
+    "postcode": "KT11 3EG",
+    "service_types": "Dentist",
+    "sector": "KT11 3",
+    "provider_id": "1-10012548611"
+  },
+  {
+    "loc_id": "1-10275916313",
+    "name": "Maple Dental Practice",
+    "address": "71 Maple Road,Surbiton",
+    "postcode": "KT6 4AG",
+    "service_types": "Dentist",
+    "sector": "KT6 4",
+    "provider_id": "1-9828194488"
+  },
+  {
+    "loc_id": "1-106926337",
+    "name": "Abbey Chase Nursing Home",
+    "address": "Bridge Road,Chertsey",
+    "postcode": "KT16 8JW",
+    "service_types": "Nursing homes",
+    "sector": "KT16 8",
+    "provider_id": "1-101610128"
+  },
+  {
+    "loc_id": "1-107129620",
+    "name": "Aurem Care (The Red House)",
+    "address": "43 Skinners Lane,Ashtead",
+    "postcode": "KT21 2NN",
+    "service_types": "Nursing homes",
+    "sector": "KT21 2",
+    "provider_id": "1-101609354"
+  },
+  {
+    "loc_id": "1-10736609993",
+    "name": "Walfinch Kingston & Weybridge",
+    "address": "67a High Street,Walton-on-thames",
+    "postcode": "KT12 1DJ",
+    "service_types": "Homecare agencies",
+    "sector": "KT12 1",
+    "provider_id": "1-9717578116"
+  },
+  {
+    "loc_id": "1-10736723438",
+    "name": "Gibralter Crescent",
+    "address": "36a Gibraltar Crescent,Epsom",
+    "postcode": "KT19 9BT",
+    "service_types": "Residential homes",
+    "sector": "KT19 9",
+    "provider_id": "1-116992858"
+  },
+  {
+    "loc_id": "1-1013271908",
+    "name": "Walton Park Dental Practice",
+    "address": "2A Walton Park,Walton On Thames",
+    "postcode": "KT12 3ET",
+    "service_types": "Dentist",
+    "sector": "KT12 3",
+    "provider_id": "1-954683766"
+  },
+  {
+    "loc_id": "1-10813643367",
+    "name": "Faith's Walk Healthcare Services Ltd",
+    "address": "Rourke House, Waterman's Business Park,The Causeway,Staines-upon-thames",
+    "postcode": "TW18 3BA",
+    "service_types": "Homecare agencies",
+    "sector": "TW18 3",
+    "provider_id": "1-9522346247"
+  },
+  {
+    "loc_id": "1-106389880",
+    "name": "Epsom Day Surgery",
+    "address": "Old Cottage Hospital,Alexandra Road,Epsom",
+    "postcode": "KT17 4BL",
+    "service_types": "Clinic",
+    "sector": "KT17 4",
+    "provider_id": "1-101635161"
+  },
+  {
+    "loc_id": "1-106389976",
+    "name": "Cobham Day Surgery",
+    "address": "Cobham Cottage Hospital,168 Portsmouth Road,Cobham",
+    "postcode": "KT11 1HS",
+    "service_types": "Clinic",
+    "sector": "KT11 1",
+    "provider_id": "1-101635161"
+  },
+  {
+    "loc_id": "1-10676811028",
+    "name": "Alina Homecare - Leatherhead",
+    "address": "Manor House,19 Church Street,Leatherhead",
+    "postcode": "KT22 8DN",
+    "service_types": "Homecare agencies",
+    "sector": "KT22 8",
+    "provider_id": "1-1156577315"
+  },
+  {
+    "loc_id": "1-10682896264",
+    "name": "Heartsure",
+    "address": "1 Brunswick Road,Kingston Upon Thames",
+    "postcode": "KT2 6SB",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT2 6",
+    "provider_id": "1-9630501596"
+  },
+  {
+    "loc_id": "1-105155035",
+    "name": "Mr & Mrs A H Akbarally",
+    "address": "24 Northcroft Road,West Ewell,Epsom",
+    "postcode": "KT19 9TA",
+    "service_types": "Residential homes",
+    "sector": "KT19 9",
+    "provider_id": "1-101626133"
+  },
+  {
+    "loc_id": "1-10771295299",
+    "name": "Apex Prime Care - North West Surrey",
+    "address": "Mitchison Court,Downside,Sunbury-on-Thames",
+    "postcode": "TW16 6RX",
+    "service_types": "Homecare agencies|Supported housing",
+    "sector": "TW16 6",
+    "provider_id": "1-101644687"
+  },
+  {
+    "loc_id": "1-10771502246",
+    "name": "Smile Rooms Kingston",
+    "address": "10 High Street,Hampton Wick,Kingston Upon Thames",
+    "postcode": "KT1 4DB",
+    "service_types": "Dentist",
+    "sector": "KT1 4",
+    "provider_id": "1-479920863"
+  },
+  {
+    "loc_id": "1-11594715988",
+    "name": "Nightingales Homecare",
+    "address": "Paramount House,1 Delta Way,Egham",
+    "postcode": "TW20 8RX",
+    "service_types": "Homecare agencies",
+    "sector": "TW20 8",
+    "provider_id": "1-10274669150"
+  },
+  {
+    "loc_id": "1-117125728",
+    "name": "The Chestnuts",
+    "address": "42-44 Chertsey Road,West Byfleet",
+    "postcode": "KT14 7AN",
+    "service_types": "Residential homes",
+    "sector": "KT14 7",
+    "provider_id": "1-101688390"
+  },
+  {
+    "loc_id": "1-11729908185",
+    "name": "Westlake Carers Ltd",
+    "address": "1 Meadlake Place,Thorpe Lea Road,Egham",
+    "postcode": "TW20 8HE",
+    "service_types": "Homecare agencies|Supported living",
+    "sector": "TW20 8",
+    "provider_id": "1-10941407588"
+  },
+  {
+    "loc_id": "1-116791068",
+    "name": "Charlton Grange Care Home",
+    "address": "Charlton Lane,Upper Halliford Village,Near Shepperton",
+    "postcode": "TW17 8QN",
+    "service_types": "Nursing homes",
+    "sector": "TW17 8",
+    "provider_id": "1-101658223"
+  },
+  {
+    "loc_id": "1-11762194078",
+    "name": "Charlotte's Compassionate Care Services Ltd",
+    "address": "33 Hanworth Road,Sunbury-on-thames",
+    "postcode": "TW16 5AD",
+    "service_types": "Homecare agencies",
+    "sector": "TW16 5",
+    "provider_id": "1-10860452613"
+  },
+  {
+    "loc_id": "1-11541818135",
+    "name": "Esher Manor Care Home",
+    "address": "42 Copsem Lane,Esher",
+    "postcode": "KT10 9HJ",
+    "service_types": "Residential homes",
+    "sector": "KT10 9",
+    "provider_id": "1-116995093"
+  },
+  {
+    "loc_id": "1-11552131295",
+    "name": "Dental and facial Aesthetics Addlestone",
+    "address": "Unit B,Market Street,Addlestone",
+    "postcode": "KT15 2GL",
+    "service_types": "Dentist",
+    "sector": "KT15 2",
+    "provider_id": "1-152961351"
+  },
+  {
+    "loc_id": "1-11638688077",
+    "name": "Church Road Dental Care Centre",
+    "address": "1 Church Road,Teddington",
+    "postcode": "TW11 8PF",
+    "service_types": "Dentist",
+    "sector": "TW11 8",
+    "provider_id": "1-11558696313"
+  },
+  {
+    "loc_id": "1-10352934708",
+    "name": "Westlake Pharmacy Clinic Rooms",
+    "address": "63 Wheatsheaf Lane,Staines-upon-thames",
+    "postcode": "TW18 2PG",
+    "service_types": "Doctors/GPs|Doctors/GPs|Mobile doctors",
+    "sector": "TW18 2",
+    "provider_id": "1-9692861141"
+  },
+  {
+    "loc_id": "1-10864558185",
+    "name": "Trustful Hands",
+    "address": "9 Bridle Close,Kingston Upon Thames",
+    "postcode": "KT1 2JW",
+    "service_types": "Homecare agencies",
+    "sector": "KT1 2",
+    "provider_id": "1-10172623713"
+  },
+  {
+    "loc_id": "1-10882277316",
+    "name": "My House",
+    "address": "46 Robinsway,Hersham,Walton-on-thames",
+    "postcode": "KT12 5QN",
+    "service_types": "Community services - Healthcare",
+    "sector": "KT12 5",
+    "provider_id": "1-10392636305"
+  },
+  {
+    "loc_id": "1-108828074",
+    "name": "Bellsgrove Care Home",
+    "address": "250 Cobham Road,Fetcham,Leatherhead",
+    "postcode": "KT22 9JF",
+    "service_types": "Residential homes",
+    "sector": "KT22 9",
+    "provider_id": "1-101625953"
+  },
+  {
+    "loc_id": "1-108950835",
+    "name": "The Pines",
+    "address": "6 Windsor Walk,Weybridge",
+    "postcode": "KT13 9AP",
+    "service_types": "Residential homes",
+    "sector": "KT13 9",
+    "provider_id": "1-101626097"
+  },
+  {
+    "loc_id": "1-108969366",
+    "name": "St Mary's House",
+    "address": "71 Ormond Avenue,Hampton",
+    "postcode": "TW12 2RT",
+    "service_types": "Residential homes",
+    "sector": "TW12 2",
+    "provider_id": "1-101623910"
+  },
+  {
+    "loc_id": "1-10923675772",
+    "name": "Link House",
+    "address": "140 The Broadway,Tolworth, Surrey,Surbiton",
+    "postcode": "KT6 7HT",
+    "service_types": "Homecare agencies|Supported living",
+    "sector": "KT6 7",
+    "provider_id": "1-6610309656"
+  },
+  {
+    "loc_id": "1-110182417",
+    "name": "Howards Residential Home",
+    "address": "24 Rowtown,Addlestone",
+    "postcode": "KT15 1EY",
+    "service_types": "Residential homes",
+    "sector": "KT15 1",
+    "provider_id": "1-101610254"
+  },
+  {
+    "loc_id": "1-11129683981",
+    "name": "Ashley Centre Surgery",
+    "address": "9A,Windsor Court, Ashley Road,Epsom",
+    "postcode": "KT18 5AQ",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT18 5",
+    "provider_id": "1-199744210"
+  },
+  {
+    "loc_id": "1-11093656970",
+    "name": "WeLoveTeeth",
+    "address": "Elmgrove House,Elmgrove Road,Weybridge",
+    "postcode": "KT13 8NZ",
+    "service_types": "Dentist",
+    "sector": "KT13 8",
+    "provider_id": "1-10887578675"
+  },
+  {
+    "loc_id": "1-11205822616",
+    "name": "Sedation Solutions LLP",
+    "address": "46 Trident Court,1 Oakcroft Road, Surbiton,Chessington",
+    "postcode": "KT9 1BD",
+    "service_types": "Dentist",
+    "sector": "KT9 1",
+    "provider_id": "1-787282046"
+  },
+  {
+    "loc_id": "1-11245790386",
+    "name": "Courtyard Dental Practice",
+    "address": "Rear of 70 Station Road,Hampton",
+    "postcode": "TW12 2AX",
+    "service_types": "Dentist",
+    "sector": "TW12 2",
+    "provider_id": "1-9946440934"
+  },
+  {
+    "loc_id": "1-11313108866",
+    "name": "Deer Lodge",
+    "address": "22 Sandy Lane,Teddington",
+    "postcode": "TW11 0DR",
+    "service_types": "Residential homes",
+    "sector": "TW11 0",
+    "provider_id": "1-11246730125"
+  },
+  {
+    "loc_id": "1-113906935",
+    "name": "Tyrwhitt House",
+    "address": "Oaklawn Road,Leatherhead",
+    "postcode": "KT22 0BX",
+    "service_types": "Rehabilitation (illness/injury)",
+    "sector": "KT22 0",
+    "provider_id": "1-101609372"
+  },
+  {
+    "loc_id": "1-114985163",
+    "name": "Tendacare",
+    "address": "41 The Street,Ashtead",
+    "postcode": "KT21 1AA",
+    "service_types": "Homecare agencies",
+    "sector": "KT21 1",
+    "provider_id": "1-101720155"
+  },
+  {
+    "loc_id": "1-1126352622",
+    "name": "Surbiton Health Centre",
+    "address": "Ewell Road,Surbiton",
+    "postcode": "KT6 6EZ",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT6 6",
+    "provider_id": "1-199747048"
+  },
+  {
+    "loc_id": "1-112825855",
+    "name": "Sunbury Nursing Homes",
+    "address": "Thames Street,Sunbury On Thames",
+    "postcode": "TW16 6AJ",
+    "service_types": "Nursing homes",
+    "sector": "TW16 6",
+    "provider_id": "1-101652256"
+  },
+  {
+    "loc_id": "1-11414788357",
+    "name": "St Mark's Orthodontic's Teddington",
+    "address": "47 St. Marks Road,Teddington",
+    "postcode": "TW11 9DE",
+    "service_types": "Dentist",
+    "sector": "TW11 9",
+    "provider_id": "1-5029951391"
+  },
+  {
+    "loc_id": "1-11440672598",
+    "name": "Community Care Experts Home Care Service",
+    "address": "Suite 7 St. James' House,St. James' Road,Surbiton",
+    "postcode": "KT6 4QH",
+    "service_types": "Homecare agencies",
+    "sector": "KT6 4",
+    "provider_id": "1-10198739655"
+  },
+  {
+    "loc_id": "1-11456400183",
+    "name": "Signature at Weybridge",
+    "address": "Ellesmere Road,Weybridge",
+    "postcode": "KT13 0HY",
+    "service_types": "Residential homes",
+    "sector": "KT13 0",
+    "provider_id": "1-7332922385"
+  },
+  {
+    "loc_id": "1-119295331",
+    "name": "Milverton Nursing Home",
+    "address": "99 Ditton Road,Surbiton",
+    "postcode": "KT6 6RJ",
+    "service_types": "Nursing homes",
+    "sector": "KT6 6",
+    "provider_id": "1-101645941"
+  },
+  {
+    "loc_id": "1-1181787071",
+    "name": "Alpenbest",
+    "address": "First Floor, Unit 8,Princeton Mews, 167 London Road,Kingston Upon Thames",
+    "postcode": "KT2 6PT",
+    "service_types": "Homecare agencies",
+    "sector": "KT2 6",
+    "provider_id": "1-101653865"
+  },
+  {
+    "loc_id": "1-118681535",
+    "name": "Hampton Care Home",
+    "address": "Upper Sunbury Road,Hampton",
+    "postcode": "TW12 2DW",
+    "service_types": "Nursing homes",
+    "sector": "TW12 2",
+    "provider_id": "1-101620227"
+  },
+  {
+    "loc_id": "1-11860716767",
+    "name": "Mayormedical LLP",
+    "address": "21 Ince Road,Hersham,Walton-on-thames",
+    "postcode": "KT12 5BJ",
+    "service_types": "Doctors/GPs|Doctors/GPs|Mobile doctors",
+    "sector": "KT12 5",
+    "provider_id": "1-10859749265"
+  },
+  {
+    "loc_id": "1-11866392542",
+    "name": "Atelier - The Art of Aesthetics",
+    "address": "76 High Street,Egham",
+    "postcode": "TW20 9HE",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "TW20 9",
+    "provider_id": "1-10639262235"
+  },
+  {
+    "loc_id": "1-118516539",
+    "name": "Oaklawn",
+    "address": "400 Chessington Road,Epsom",
+    "postcode": "KT19 9EG",
+    "service_types": "Residential homes",
+    "sector": "KT19 9",
+    "provider_id": "1-101652452"
+  },
+  {
+    "loc_id": "1-118516553",
+    "name": "Firlawn",
+    "address": "402 Chessington Road,Epsom",
+    "postcode": "KT19 9EG",
+    "service_types": "Residential homes",
+    "sector": "KT19 9",
+    "provider_id": "1-101652452"
+  },
+  {
+    "loc_id": "1-12108867571",
+    "name": "Kisimul Supported Living Surrey",
+    "address": "Unit D Blenheim House,Longmead Business Park,Epsom",
+    "postcode": "KT19 9AP",
+    "service_types": "Supported living",
+    "sector": "KT19 9",
+    "provider_id": "1-101668127"
+  },
+  {
+    "loc_id": "1-12114320425",
+    "name": "Kingston Rehabilitation Centre",
+    "address": "36 Beaufort Road,Kingston Upon Thames",
+    "postcode": "KT1 2TQ",
+    "service_types": "Nursing homes",
+    "sector": "KT1 2",
+    "provider_id": "1-6301922693"
+  },
+  {
+    "loc_id": "1-12117690892",
+    "name": "Epsom Dental Care",
+    "address": "39 Dorking Road,Epsom",
+    "postcode": "KT18 7JR",
+    "service_types": "Dentist",
+    "sector": "KT18 7",
+    "provider_id": "1-427404450"
+  },
+  {
+    "loc_id": "1-12118316079",
+    "name": "The Facebible Clinic",
+    "address": "Fairmont Windsor Park Hotel,Bishopsgate Road, Englefield Green,Egham",
+    "postcode": "TW20 0YL",
+    "service_types": "Doctors/GPs",
+    "sector": "TW20 0",
+    "provider_id": "1-10918376881"
+  },
+  {
+    "loc_id": "1-119740523",
+    "name": "Langley Court Rest Home",
+    "address": "9 Langley Avenue,Surbiton",
+    "postcode": "KT6 6QH",
+    "service_types": "Residential homes",
+    "sector": "KT6 6",
+    "provider_id": "1-169235907"
+  },
+  {
+    "loc_id": "1-12063636140",
+    "name": "Church Road Dental Care Centre",
+    "address": "1 Church Road,Teddington",
+    "postcode": "TW11 8PF",
+    "service_types": "Dentist",
+    "sector": "TW11 8",
+    "provider_id": "1-11946414582"
+  },
+  {
+    "loc_id": "1-120030741",
+    "name": "15 Manor Crescent",
+    "address": "15 Manor Crescent,Byfleet,West Byfleet",
+    "postcode": "KT14 7EN",
+    "service_types": "Residential homes",
+    "sector": "KT14 7",
+    "provider_id": "1-101656785"
+  },
+  {
+    "loc_id": "1-120030758",
+    "name": "13 Manor Crescent",
+    "address": "13 Manor Crescent,Byfleet",
+    "postcode": "KT14 7EN",
+    "service_types": "Residential homes",
+    "sector": "KT14 7",
+    "provider_id": "1-101656785"
+  },
+  {
+    "loc_id": "1-12033644028",
+    "name": "Beauchamp Court",
+    "address": "18 Beauchamp Road,East Molesey",
+    "postcode": "KT8 0PA",
+    "service_types": "Residential homes",
+    "sector": "KT8 0",
+    "provider_id": "1-11982780648"
+  },
+  {
+    "loc_id": "1-12192172135",
+    "name": "The Norup Clinic",
+    "address": "Williamson House,Claremont Lane,Esher",
+    "postcode": "KT10 9DA",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT10 9",
+    "provider_id": "1-11500818686"
+  },
+  {
+    "loc_id": "1-12200054983",
+    "name": "Surbiton Smiles",
+    "address": "68 Victoria Road,Surbiton",
+    "postcode": "KT6 4NR",
+    "service_types": "Dentist",
+    "sector": "KT6 4",
+    "provider_id": "1-10096369185"
+  },
+  {
+    "loc_id": "1-122497565",
+    "name": "Brinsworth House",
+    "address": "72 Staines Road,Twickenham",
+    "postcode": "TW2 5AL",
+    "service_types": "Nursing homes",
+    "sector": "TW2 5",
+    "provider_id": "1-101652810"
+  },
+  {
+    "loc_id": "1-12250332114",
+    "name": "Sutton & Epsom Cosmetic Clinic",
+    "address": "31 South Street,Epsom",
+    "postcode": "KT18 7PJ",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT18 7",
+    "provider_id": "1-11181932213"
+  },
+  {
+    "loc_id": "1-122477533",
+    "name": "Homemead",
+    "address": "28 Park Road,Teddington",
+    "postcode": "TW11 0AQ",
+    "service_types": "Residential homes",
+    "sector": "TW11 0",
+    "provider_id": "1-101652080"
+  },
+  {
+    "loc_id": "1-121838908",
+    "name": "The Grange - Residential Care",
+    "address": "Rectory Lane,Bookham,Leatherhead",
+    "postcode": "KT23 4DZ",
+    "service_types": "Residential homes",
+    "sector": "KT23 4",
+    "provider_id": "1-101667631"
+  },
+  {
+    "loc_id": "1-12213416978",
+    "name": "Absolute Care Services",
+    "address": "4 Latimer Road,Teddington",
+    "postcode": "TW11 8QA",
+    "service_types": "Homecare agencies",
+    "sector": "TW11 8",
+    "provider_id": "1-101721089"
+  },
+  {
+    "loc_id": "1-12218643261",
+    "name": "Light Touch Clinic",
+    "address": "50 Church Street,Weybridge",
+    "postcode": "KT13 8DP",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT13 8",
+    "provider_id": "1-11462318226"
+  },
+  {
+    "loc_id": "1-12376894563",
+    "name": "The Meyer Clinic",
+    "address": "Locke King House,2 Balfour Road,Weybridge",
+    "postcode": "KT13 8HD",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT13 8",
+    "provider_id": "1-11416647698"
+  },
+  {
+    "loc_id": "1-124251244",
+    "name": "Atkins Care Services Limited",
+    "address": "2nd Floor, St. Georges House,25 Bridge Street,Walton-on-thames",
+    "postcode": "KT12 1AF",
+    "service_types": "Homecare agencies",
+    "sector": "KT12 1",
+    "provider_id": "1-117003228"
+  },
+  {
+    "loc_id": "1-124419826",
+    "name": "Richmond Upon Thames Crossroads Caring for Carers",
+    "address": "1 Beverley Court,26 Elmtree Road,Teddington",
+    "postcode": "TW11 8ST",
+    "service_types": "Homecare agencies",
+    "sector": "TW11 8",
+    "provider_id": "1-119227596"
+  },
+  {
+    "loc_id": "1-123644581",
+    "name": "Burgh Heath Lodge",
+    "address": "33 Burgh Heath Road,Epsom",
+    "postcode": "KT17 4LP",
+    "service_types": "Residential homes",
+    "sector": "KT17 4",
+    "provider_id": "1-101703765"
+  },
+  {
+    "loc_id": "1-12364881355",
+    "name": "Guardian Angel Carers Wimbledon & Kingston",
+    "address": "444 Ewell Road,Surbiton",
+    "postcode": "KT6 7EL",
+    "service_types": "Homecare agencies",
+    "sector": "KT6 7",
+    "provider_id": "1-11811028919"
+  },
+  {
+    "loc_id": "1-124610945",
+    "name": "Wingham Court Care Home",
+    "address": "Oaken Lane,Claygate",
+    "postcode": "KT10 0RQ",
+    "service_types": "Nursing homes",
+    "sector": "KT10 0",
+    "provider_id": "1-116865263"
+  },
+  {
+    "loc_id": "1-12528837343",
+    "name": "Della Services-Main Office",
+    "address": "01 Meadlake Place,Thorpe Lea Road,Egham",
+    "postcode": "TW20 8HE",
+    "service_types": "Homecare agencies",
+    "sector": "TW20 8",
+    "provider_id": "1-11995163958"
+  },
+  {
+    "loc_id": "1-125855917",
+    "name": "The Epsom Beaumont",
+    "address": "20-22 Church Street,Epsom",
+    "postcode": "KT17 4QB",
+    "service_types": "Nursing homes",
+    "sector": "KT17 4",
+    "provider_id": "1-102642955"
+  },
+  {
+    "loc_id": "1-126958408",
+    "name": "The Grange Retirement Home",
+    "address": "Ruxbury Road,St Ann's Hill,Chertsey",
+    "postcode": "KT16 9EP",
+    "service_types": "Nursing homes",
+    "sector": "KT16 9",
+    "provider_id": "1-101646227"
+  },
+  {
+    "loc_id": "1-12636584799",
+    "name": "Windsor House Dental Limited",
+    "address": "Windsor House, 20 Queens Road,Hersham,Walton-on-thames",
+    "postcode": "KT12 5LR",
+    "service_types": "Dentist",
+    "sector": "KT12 5",
+    "provider_id": "1-12553080756"
+  },
+  {
+    "loc_id": "1-126417987",
+    "name": "Arbrook House Care Home",
+    "address": "36 Copsem Lane,Esher",
+    "postcode": "KT10 9HE",
+    "service_types": "Nursing homes",
+    "sector": "KT10 9",
+    "provider_id": "1-116865223"
+  },
+  {
+    "loc_id": "1-12604269745",
+    "name": "Endior Online via teleconferencing",
+    "address": "43a,Cox Lane,Epsom",
+    "postcode": "KT19 9LZ",
+    "service_types": "Community services - Mental Health",
+    "sector": "KT19 9",
+    "provider_id": "1-11169935554"
+  },
+  {
+    "loc_id": "1-126434500",
+    "name": "St George's Care Home",
+    "address": "5 Byfleet Road,Cobham",
+    "postcode": "KT11 1DS",
+    "service_types": "Nursing homes",
+    "sector": "KT11 1",
+    "provider_id": "1-116865223"
+  },
+  {
+    "loc_id": "1-126434531",
+    "name": "Sutton Lodge Care Home",
+    "address": "87 Oatlands Drive,Weybridge",
+    "postcode": "KT13 9LN",
+    "service_types": "Nursing homes",
+    "sector": "KT13 9",
+    "provider_id": "1-116865223"
+  },
+  {
+    "loc_id": "1-12656086480",
+    "name": "McNaha Care",
+    "address": "Delta House,Delta Way, Thorpe Industrial Estate,Egham",
+    "postcode": "TW20 8RX",
+    "service_types": "Homecare agencies|Supported living",
+    "sector": "TW20 8",
+    "provider_id": "1-12019537227"
+  },
+  {
+    "loc_id": "1-126240515",
+    "name": "Glendale",
+    "address": "Ambleside Avenue,Walton On Thames",
+    "postcode": "KT12 3LW",
+    "service_types": "Residential homes",
+    "sector": "KT12 3",
+    "provider_id": "1-102642895"
+  },
+  {
+    "loc_id": "1-126240769",
+    "name": "Limegrove",
+    "address": "St Martin's Close,East Horsley",
+    "postcode": "KT24 6SU",
+    "service_types": "Residential homes",
+    "sector": "KT24 6",
+    "provider_id": "1-102642895"
+  },
+  {
+    "loc_id": "1-126240784",
+    "name": "Linwood",
+    "address": "9 Mercer Close,Thames Ditton",
+    "postcode": "KT7 0BS",
+    "service_types": "Residential homes",
+    "sector": "KT7 0",
+    "provider_id": "1-102642895"
+  },
+  {
+    "loc_id": "1-126242214",
+    "name": "Thameside",
+    "address": "Beldham Gardens,West Molesey",
+    "postcode": "KT8 1TF",
+    "service_types": "Residential homes",
+    "sector": "KT8 1",
+    "provider_id": "1-102642895"
+  },
+  {
+    "loc_id": "1-126242229",
+    "name": "The Beeches",
+    "address": "Forty Foot Road,Leatherhead",
+    "postcode": "KT22 8RZ",
+    "service_types": "Residential homes",
+    "sector": "KT22 8",
+    "provider_id": "1-102642895"
+  },
+  {
+    "loc_id": "1-13050880987",
+    "name": "Right at Home Weybridge & Richmond",
+    "address": "95 Green Street,Sunbury-on-thames",
+    "postcode": "TW16 6RD",
+    "service_types": "Homecare agencies",
+    "sector": "TW16 6",
+    "provider_id": "1-431782576"
+  },
+  {
+    "loc_id": "1-13057637344",
+    "name": "Excellence Healthcare Services Ltd",
+    "address": "Trident Court,1 Oakcroft Road,Chessington",
+    "postcode": "KT9 1BD",
+    "service_types": "Homecare agencies|Supported living",
+    "sector": "KT9 1",
+    "provider_id": "1-11342456299"
+  },
+  {
+    "loc_id": "1-13219372696",
+    "name": "Ashley Dental Centre",
+    "address": "27 Ashley Road,Hampton",
+    "postcode": "TW12 2JA",
+    "service_types": "Dentist",
+    "sector": "TW12 2",
+    "provider_id": "1-10971240037"
+  },
+  {
+    "loc_id": "1-13082283842",
+    "name": "Yourlife (Weybridge)",
+    "address": "Campbell House,24 Queens Road,Weybridge",
+    "postcode": "KT13 9UX",
+    "service_types": "Homecare agencies",
+    "sector": "KT13 9",
+    "provider_id": "1-172521302"
+  },
+  {
+    "loc_id": "1-13839551169",
+    "name": "Oatlands Dental Lounge",
+    "address": "Napier House, 62-64 Bridge Street,Walton-on-thames",
+    "postcode": "KT12 1AT",
+    "service_types": "Dentist",
+    "sector": "KT12 1",
+    "provider_id": "1-271696352"
+  },
+  {
+    "loc_id": "1-137471875",
+    "name": "Rowland House Care Home",
+    "address": "1a Lime Tree Avenue,Thames Ditton",
+    "postcode": "KT7 0NY",
+    "service_types": "Residential homes|Rehabilitation (illness/injury)",
+    "sector": "KT7 0",
+    "provider_id": "1-101683225"
+  },
+  {
+    "loc_id": "1-13774886305",
+    "name": "Lambert Sports Clinic",
+    "address": "380 Ewell Road,Tolworth,Surbiton",
+    "postcode": "KT6 7BE",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT6 7",
+    "provider_id": "1-13393460005"
+  },
+  {
+    "loc_id": "1-13574372645",
+    "name": "Fort House Surgery",
+    "address": "Walton Community Hospital,Rodney Road,Walton-on-thames",
+    "postcode": "KT12 3LD",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT12 3",
+    "provider_id": "1-199743735"
+  },
+  {
+    "loc_id": "1-13586876271",
+    "name": "Weybridge Dental Practice",
+    "address": "91 Heath Road,Weybridge",
+    "postcode": "KT13 8TS",
+    "service_types": "Dentist",
+    "sector": "KT13 8",
+    "provider_id": "1-1190471906"
+  },
+  {
+    "loc_id": "1-13547244852",
+    "name": "Health First Surrey",
+    "address": "30 Anyards Road,Cobham",
+    "postcode": "KT11 2LA",
+    "service_types": "Diagnosis/screening",
+    "sector": "KT11 2",
+    "provider_id": "1-13095408220"
+  },
+  {
+    "loc_id": "1-13646067013",
+    "name": "Windsor House Dental Ltd",
+    "address": "20 Queens Road,Hersham,Walton-on-thames",
+    "postcode": "KT12 5LR",
+    "service_types": "Dentist",
+    "sector": "KT12 5",
+    "provider_id": "1-13631048182"
+  },
+  {
+    "loc_id": "1-13653226035",
+    "name": "Caremix Ltd",
+    "address": "Paramount House,Delta Way,Egham",
+    "postcode": "TW20 8RX",
+    "service_types": "Homecare agencies",
+    "sector": "TW20 8",
+    "provider_id": "1-12854073961"
+  },
+  {
+    "loc_id": "1-136731141",
+    "name": "Rodwell House",
+    "address": "Brox Lane,Rowtown,Addlestone",
+    "postcode": "KT15 1HH",
+    "service_types": "Nursing homes|Homecare agencies|Supported housing|Supported living",
+    "sector": "KT15 1",
+    "provider_id": "1-120630251"
+  },
+  {
+    "loc_id": "1-128718687",
+    "name": "Ashtead Hospital",
+    "address": "The Warren,Ashtead",
+    "postcode": "KT21 2SB",
+    "service_types": "Hospital",
+    "sector": "KT21 2",
+    "provider_id": "1-102643458"
+  },
+  {
+    "loc_id": "1-12789926351",
+    "name": "Weybridge Dental Practice",
+    "address": "91 Heath Road,Weybridge",
+    "postcode": "KT13 8TS",
+    "service_types": "Dentist",
+    "sector": "KT13 8",
+    "provider_id": "1-12303392126"
+  },
+  {
+    "loc_id": "1-12910405316",
+    "name": "Love Teeth Hook",
+    "address": "401 Hook Road,Hook Parade,Chessington",
+    "postcode": "KT9 1EW",
+    "service_types": "Dentist",
+    "sector": "KT9 1",
+    "provider_id": "1-1776662942"
+  },
+  {
+    "loc_id": "1-12912136939",
+    "name": "ALD Support Limted",
+    "address": "The White House, 53 High Street,Suites 3a & 3b,Egham",
+    "postcode": "TW20 9EX",
+    "service_types": "Homecare agencies",
+    "sector": "TW20 9",
+    "provider_id": "1-9298726901"
+  },
+  {
+    "loc_id": "1-12952149722",
+    "name": "ABC Dental Surgery",
+    "address": "13 High Street,Cobham",
+    "postcode": "KT11 3DF",
+    "service_types": "Dentist",
+    "sector": "KT11 3",
+    "provider_id": "1-326410505"
+  },
+  {
+    "loc_id": "1-129459409",
+    "name": "60 Cobham Road",
+    "address": "Fetcham,Leatherhead",
+    "postcode": "KT22 9JS",
+    "service_types": "Residential homes",
+    "sector": "KT22 9",
+    "provider_id": "1-102643122"
+  },
+  {
+    "loc_id": "1-13466332902",
+    "name": "Dean Road Extra Care Scheme",
+    "address": "19 Dean Road,Hampton",
+    "postcode": "TW12 1BF",
+    "service_types": "Supported housing",
+    "sector": "TW12 1",
+    "provider_id": "1-101679773"
+  },
+  {
+    "loc_id": "1-134768372",
+    "name": "Ashton Lodge of Sunbury-on-Thames",
+    "address": "Spelthorne Grove,Sunbury On Thames",
+    "postcode": "TW16 7DA",
+    "service_types": "Nursing homes",
+    "sector": "TW16 7",
+    "provider_id": "1-113480522"
+  },
+  {
+    "loc_id": "1-13507392432",
+    "name": "Abbeymead Dental Centre",
+    "address": "73 Guildford Street,Chertsey",
+    "postcode": "KT16 9AS",
+    "service_types": "Dentist",
+    "sector": "KT16 9",
+    "provider_id": "1-6657789927"
+  },
+  {
+    "loc_id": "1-1337832357",
+    "name": "Weybridge Dental Practice",
+    "address": "29 Dorchester Road,Weybridge",
+    "postcode": "KT13 8PE",
+    "service_types": "Dentist",
+    "sector": "KT13 8",
+    "provider_id": "1-1190471906"
+  },
+  {
+    "loc_id": "1-133359858",
+    "name": "Huntley House Extra Care",
+    "address": "Octagon Road,Whiteley Village,Walton On Thames",
+    "postcode": "KT12 4EH",
+    "service_types": "Supported housing",
+    "sector": "KT12 4",
+    "provider_id": "1-101652274"
+  },
+  {
+    "loc_id": "1-135296593",
+    "name": "Birdscroft Nursing Home",
+    "address": "16 Highfields,Ashtead",
+    "postcode": "KT21 2NL",
+    "service_types": "Nursing homes",
+    "sector": "KT21 2",
+    "provider_id": "1-122683629"
+  },
+  {
+    "loc_id": "1-14248708936",
+    "name": "St Augustine's Care Home",
+    "address": "Firfield House,Simplemarsh Road,Addlestone",
+    "postcode": "KT15 1QR",
+    "service_types": "Residential homes",
+    "sector": "KT15 1",
+    "provider_id": "1-13943645249"
+  },
+  {
+    "loc_id": "1-13950938238",
+    "name": "Hinchley Wood Practice",
+    "address": "Woodside House,Station Approach, Hinchley Wood,Esher",
+    "postcode": "KT10 0SR",
+    "service_types": "Doctors/GPs|Mobile doctors",
+    "sector": "KT10 0",
+    "provider_id": "1-13468131806"
+  },
+  {
+    "loc_id": "1-140997668",
+    "name": "The Pantiles Care Home Limited",
+    "address": "67 Harriotts Lane,Ashtead",
+    "postcode": "KT21 2QE",
+    "service_types": "Residential homes",
+    "sector": "KT21 2",
+    "provider_id": "1-101619283"
+  },
+  {
+    "loc_id": "1-139180935",
+    "name": "Riverswey",
+    "address": "Newark Lane,Ripley,Guildford",
+    "postcode": "GU23 6DL",
+    "service_types": "Residential homes",
+    "sector": "GU23 6",
+    "provider_id": "1-116865303"
+  },
+  {
+    "loc_id": "1-1395949026",
+    "name": "Walton Park Dental Practice",
+    "address": "2A Walton Park,Walton On Thames",
+    "postcode": "KT12 3ET",
+    "service_types": "Dentist",
+    "sector": "KT12 3",
+    "provider_id": "1-1332641223"
+  },
+  {
+    "loc_id": "1-139666053",
+    "name": "SeeAbility - Surrey Views",
+    "address": "2 Wesley Road,Leatherhead",
+    "postcode": "KT22 8ET",
+    "service_types": "Residential homes",
+    "sector": "KT22 8",
+    "provider_id": "1-102643252"
+  },
+  {
+    "loc_id": "1-139666069",
+    "name": "SeeAbility - The Willows",
+    "address": "1 Wesley Road,Leatherhead",
+    "postcode": "KT22 8ET",
+    "service_types": "Residential homes",
+    "sector": "KT22 8",
+    "provider_id": "1-102643252"
+  },
+  {
+    "loc_id": "1-139851545",
+    "name": "Appleby House",
+    "address": "Longmead Road,Epsom",
+    "postcode": "KT19 9RX",
+    "service_types": "Residential homes",
+    "sector": "KT19 9",
+    "provider_id": "1-116865825"
+  },
+  {
+    "loc_id": "1-139851978",
+    "name": "Laurel Dene",
+    "address": "117 Hampton Road,Hampton Hill,Hampton",
+    "postcode": "TW12 1JQ",
+    "service_types": "Nursing homes",
+    "sector": "TW12 1",
+    "provider_id": "1-116865825"
+  },
+  {
+    "loc_id": "1-139859248",
+    "name": "Tiltwood",
+    "address": "Hogshill Lane,Cobham",
+    "postcode": "KT11 2AQ",
+    "service_types": "Residential homes",
+    "sector": "KT11 2",
+    "provider_id": "1-116865825"
+  },
+  {
+    "loc_id": "1-14013883004",
+    "name": "MyoDental & MyoKids Dental",
+    "address": "40 High Street,Weybridge",
+    "postcode": "KT13 8AB",
+    "service_types": "Dentist",
+    "sector": "KT13 8",
+    "provider_id": "1-12827883451"
+  },
+  {
+    "loc_id": "1-1461719322",
+    "name": "Rothley Lodge Dental Surgery",
+    "address": "15 Cherry Orchard,Staines Upon Thames",
+    "postcode": "TW18 2DE",
+    "service_types": "Dentist",
+    "sector": "TW18 2",
+    "provider_id": "1-1247056319"
+  },
+  {
+    "loc_id": "1-14636614954",
+    "name": "Radfield Home Care Epsom & Leatherhead",
+    "address": "Leatherhead Institute,67 High Street,Leatherhead",
+    "postcode": "KT22 8AH",
+    "service_types": "Homecare agencies",
+    "sector": "KT22 8",
+    "provider_id": "1-14215001958"
+  },
+  {
+    "loc_id": "1-14683922071",
+    "name": "Freedom Care 24/7 Ltd",
+    "address": "67 The Crescent,Epsom",
+    "postcode": "KT18 7LJ",
+    "service_types": "Homecare agencies",
+    "sector": "KT18 7",
+    "provider_id": "1-14191646103"
+  },
+  {
+    "loc_id": "1-14498114118",
+    "name": "Olivian Homes Ltd Head Office",
+    "address": "Office 124, Global House,1 Ashley Avenue,Epsom",
+    "postcode": "KT18 5AD",
+    "service_types": "Supported living",
+    "sector": "KT18 5",
+    "provider_id": "1-11511508905"
+  },
+  {
+    "loc_id": "1-143826921",
+    "name": "Princess Alice Hospice",
+    "address": "West End Lane,Esher",
+    "postcode": "KT10 8NA",
+    "service_types": "Hospice",
+    "sector": "KT10 8",
+    "provider_id": "1-101728227"
+  },
+  {
+    "loc_id": "1-142954338",
+    "name": "EnhanceAble Living",
+    "address": "13 Geneva Road,Kingston Upon Thames",
+    "postcode": "KT1 2TW",
+    "service_types": "Homecare agencies",
+    "sector": "KT1 2",
+    "provider_id": "1-131468480"
+  },
+  {
+    "loc_id": "1-142965888",
+    "name": "Home Instead",
+    "address": "Ground Floor, Finachem House,2 Ashley Road,Epsom",
+    "postcode": "KT18 5AX",
+    "service_types": "Homecare agencies",
+    "sector": "KT18 5",
+    "provider_id": "1-131469275"
+  },
+  {
+    "loc_id": "1-142658864",
+    "name": "Home Instead",
+    "address": "Ground Floor, Finachem House,2 Ashley Road,Epsom",
+    "postcode": "KT18 5AX",
+    "service_types": "Homecare agencies",
+    "sector": "KT18 5",
+    "provider_id": "1-131467348"
+  },
+  {
+    "loc_id": "1-142769724",
+    "name": "Clarendon Home Care",
+    "address": "185 Elm Road,Kingston Upon Thames",
+    "postcode": "KT2 6HY",
+    "service_types": "Homecare agencies",
+    "sector": "KT2 6",
+    "provider_id": "1-101670676"
+  },
+  {
+    "loc_id": "1-14443047364",
+    "name": "Elite Careplus Ltd - Surrey",
+    "address": "35 Bridge Street,Leatherhead",
+    "postcode": "KT22 8BN",
+    "service_types": "Homecare agencies",
+    "sector": "KT22 8",
+    "provider_id": "1-2113233983"
+  },
+  {
+    "loc_id": "1-14956175605",
+    "name": "Kingston Dental Office",
+    "address": "116,Canbury Park Road,Kingston Upon Thames",
+    "postcode": "KT2 6JZ",
+    "service_types": "Dentist",
+    "sector": "KT2 6",
+    "provider_id": "1-13722609796"
+  },
+  {
+    "loc_id": "1-15027862021",
+    "name": "Blue Arrow Care Limited",
+    "address": "The Smith,145 London Road,Kingston Upon Thames",
+    "postcode": "KT2 6SR",
+    "service_types": "Homecare agencies",
+    "sector": "KT2 6",
+    "provider_id": "1-2977681746"
+  },
+  {
+    "loc_id": "1-14821945244",
+    "name": "Hollyhedge Dental",
+    "address": "8 Hollyhedge Road,Cobham",
+    "postcode": "KT11 3DG",
+    "service_types": "Dentist",
+    "sector": "KT11 3",
+    "provider_id": "1-153007353"
+  },
+  {
+    "loc_id": "1-14864692710",
+    "name": "Acorn Lodge - Surbiton",
+    "address": "361 Ewell Road,Surbiton",
+    "postcode": "KT6 7BZ",
+    "service_types": "Residential homes",
+    "sector": "KT6 7",
+    "provider_id": "1-14191946345"
+  },
+  {
+    "loc_id": "1-14865007868",
+    "name": "Beech Lodge - Thames Ditton",
+    "address": "95 Thorkhill Road,Thames Ditton",
+    "postcode": "KT7 0UW",
+    "service_types": "Residential homes",
+    "sector": "KT7 0",
+    "provider_id": "1-14191946345"
+  },
+  {
+    "loc_id": "1-14716933748",
+    "name": "Marielle 24/7 Healthcare Services Ltd",
+    "address": "17 Tolworth Park Road,Surbiton",
+    "postcode": "KT6 7RN",
+    "service_types": "Homecare agencies|Supported living",
+    "sector": "KT6 7",
+    "provider_id": "1-14306868795"
+  },
+  {
+    "loc_id": "1-1474713274",
+    "name": "The Sunbury Dental Practice",
+    "address": "145 Green Street,Sunbury On Thames",
+    "postcode": "TW16 6QL",
+    "service_types": "Dentist",
+    "sector": "TW16 6",
+    "provider_id": "1-1387595628"
+  },
+  {
+    "loc_id": "1-14757135910",
+    "name": "Synergy Roseneath",
+    "address": "14 Oyster Lane,Byfleet,West Byfleet",
+    "postcode": "KT14 7HP",
+    "service_types": "Dentist",
+    "sector": "KT14 7",
+    "provider_id": "1-14730835108"
+  },
+  {
+    "loc_id": "1-14758230685",
+    "name": "Sync Dental Roseneath Limited",
+    "address": "14 Oyster Lane,Byfleet,West Byfleet",
+    "postcode": "KT14 7HP",
+    "service_types": "Dentist",
+    "sector": "KT14 7",
+    "provider_id": "1-14718437965"
+  },
+  {
+    "loc_id": "1-154473298",
+    "name": "Elysium Care Partnerships Limited - 78 Park Road",
+    "address": "78 Park Road,Hampton",
+    "postcode": "TW12 1HR",
+    "service_types": "Residential homes",
+    "sector": "TW12 1",
+    "provider_id": "1-131468887"
+  },
+  {
+    "loc_id": "1-154473332",
+    "name": "Elysium Care Partnerships Limited - 21b Upper Brighton Road",
+    "address": "21b Upper Brighton Road,Surbiton",
+    "postcode": "KT6 6QX",
+    "service_types": "Residential homes",
+    "sector": "KT6 6",
+    "provider_id": "1-131468887"
+  },
+  {
+    "loc_id": "1-15673161265",
+    "name": "Harrington Homecare Headquarters",
+    "address": "1st Floor Blenheim House,1 Blenheim Road,Epsom",
+    "postcode": "KT19 9AP",
+    "service_types": "Homecare agencies",
+    "sector": "KT19 9",
+    "provider_id": "1-14878630695"
+  },
+  {
+    "loc_id": "1-1568682810",
+    "name": "Elysium Care Partnerships Limited - School House",
+    "address": "School Walk,Sunbury On Thames",
+    "postcode": "TW16 6RB",
+    "service_types": "Residential homes",
+    "sector": "TW16 6",
+    "provider_id": "1-131468887"
+  },
+  {
+    "loc_id": "1-158134790",
+    "name": "The Epsom Skin Clinic",
+    "address": "11 Depot Road,Epsom",
+    "postcode": "KT17 4RJ",
+    "service_types": "Clinic|Doctors/GPs|Doctors/GPs",
+    "sector": "KT17 4",
+    "provider_id": "1-136109111"
+  },
+  {
+    "loc_id": "1-15819967601",
+    "name": "Deecays Health Care Limited",
+    "address": "44 Bridge Road,Chertsey",
+    "postcode": "KT16 8LA",
+    "service_types": "Homecare agencies",
+    "sector": "KT16 8",
+    "provider_id": "1-14522364778"
+  },
+  {
+    "loc_id": "1-15872041721",
+    "name": "PremiumLine Healthcare Solutions",
+    "address": "Dorset House, Regent Park,297-299, Kingston Road,Leatherhead",
+    "postcode": "KT22 7PL",
+    "service_types": "Homecare agencies",
+    "sector": "KT22 7",
+    "provider_id": "1-15125184715"
+  },
+  {
+    "loc_id": "1-2912680551",
+    "name": "Thames Dental Care",
+    "address": "6 Cholmley Terrace,Portsmouth Road,Thames Ditton",
+    "postcode": "KT7 0XX",
+    "service_types": "Dentist",
+    "sector": "KT7 0",
+    "provider_id": "1-458440921"
+  },
+  {
+    "loc_id": "1-2680281273",
+    "name": "Broad Lane Surgery",
+    "address": "71 Broad Lane,Hampton",
+    "postcode": "TW12 3AX",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "TW12 3",
+    "provider_id": "1-2480599324"
+  },
+  {
+    "loc_id": "1-2776362722",
+    "name": "The Specialist Dental Practice",
+    "address": "25 Monument Green,Weybridge",
+    "postcode": "KT13 8QW",
+    "service_types": "Dentist",
+    "sector": "KT13 8",
+    "provider_id": "1-2458490474"
+  },
+  {
+    "loc_id": "1-2729219065",
+    "name": "Epsom Dental Centre",
+    "address": "37 Waterloo Road,Epsom",
+    "postcode": "KT19 8EX",
+    "service_types": "Dentist",
+    "sector": "KT19 8",
+    "provider_id": "1-2621976424"
+  },
+  {
+    "loc_id": "1-2827253526",
+    "name": "Kirby Dental Practice",
+    "address": "53-55 High Street,Teddington",
+    "postcode": "TW11 8HD",
+    "service_types": "Dentist",
+    "sector": "TW11 8",
+    "provider_id": "1-2446563066"
+  },
+  {
+    "loc_id": "1-2837303131",
+    "name": "Caremark (Mid Surrey)",
+    "address": "17 Bridge Street,Leatherhead",
+    "postcode": "KT22 8BL",
+    "service_types": "Homecare agencies",
+    "sector": "KT22 8",
+    "provider_id": "1-410394061"
+  },
+  {
+    "loc_id": "1-24062625785",
+    "name": "Diversity4Care Limited",
+    "address": "Flat 1,Garnet House, 6 Balaclava Road,Surbiton",
+    "postcode": "KT6 5PN",
+    "service_types": "Homecare agencies",
+    "sector": "KT6 5",
+    "provider_id": "1-21091684801"
+  },
+  {
+    "loc_id": "1-2337994229",
+    "name": "Golden Home Care Domiciliary Limited",
+    "address": "2nd (top) floor Springfield House,23 Oatlands Drive,Weybridge",
+    "postcode": "KT13 9LZ",
+    "service_types": "Homecare agencies",
+    "sector": "KT13 9",
+    "provider_id": "1-2101586678"
+  },
+  {
+    "loc_id": "1-2532336963",
+    "name": "Thames View",
+    "address": "58 High Street,Thames Ditton",
+    "postcode": "KT7 0TT",
+    "service_types": "Nursing homes",
+    "sector": "KT7 0",
+    "provider_id": "1-747230526"
+  },
+  {
+    "loc_id": "1-25061209766",
+    "name": "Helping Hands Esher",
+    "address": "Trident Court Offices 64 & 65,1 Oakcroft Road,Chessington",
+    "postcode": "KT9 1BD",
+    "service_types": "Homecare agencies",
+    "sector": "KT9 1",
+    "provider_id": "1-101671690"
+  },
+  {
+    "loc_id": "1-2450169150",
+    "name": "Tudor Avenue Residential Care Home",
+    "address": "3 Tudor Avenue,Hampton,Richmond",
+    "postcode": "TW12 2ND",
+    "service_types": "Residential homes",
+    "sector": "TW12 2",
+    "provider_id": "1-101648408"
+  },
+  {
+    "loc_id": "1-2450169285",
+    "name": "Cross Street Residential Care Home",
+    "address": "26 Cross Street,Hampton",
+    "postcode": "TW12 1RT",
+    "service_types": "Residential homes",
+    "sector": "TW12 1",
+    "provider_id": "1-101648408"
+  },
+  {
+    "loc_id": "1-260892900",
+    "name": "Great Bookham Dental Practice",
+    "address": "1 The Garstons,Great Bookham,Leatherhead",
+    "postcode": "KT23 3DT",
+    "service_types": "Dentist",
+    "sector": "KT23 3",
+    "provider_id": "1-231477724"
+  },
+  {
+    "loc_id": "1-26115514845",
+    "name": "MeiLustre Ltd",
+    "address": "4 Pemberton Terrace,149 Walton Road,East Molesey",
+    "postcode": "KT8 0AF",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT8 0",
+    "provider_id": "1-23860643543"
+  },
+  {
+    "loc_id": "1-2371843285",
+    "name": "Rosewood Clinic",
+    "address": "26 Newark Lane,Ripley,Woking",
+    "postcode": "GU23 6BZ",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "GU23 6",
+    "provider_id": "1-2170943337"
+  },
+  {
+    "loc_id": "1-2590576570",
+    "name": "Window to the Womb",
+    "address": "399 Hook Road,Chessington",
+    "postcode": "KT9 1EL",
+    "service_types": "Diagnosis/screening",
+    "sector": "KT9 1",
+    "provider_id": "1-2446845849"
+  },
+  {
+    "loc_id": "1-25979380786",
+    "name": "TLC Homecare Ltd",
+    "address": "34 Shawley Crescent,Epsom",
+    "postcode": "KT18 5PH",
+    "service_types": "Homecare agencies",
+    "sector": "KT18 5",
+    "provider_id": "1-24076928154"
+  },
+  {
+    "loc_id": "1-25610016098",
+    "name": "A La Clinic",
+    "address": "Unit 2,48-50 Hampton Road,Twickenham",
+    "postcode": "TW2 5QB",
+    "service_types": "Dentist",
+    "sector": "TW2 5",
+    "provider_id": "1-23668597436"
+  },
+  {
+    "loc_id": "1-25730185951",
+    "name": "Amy Woodgate",
+    "address": "Nigel Fisher Way,Chessington",
+    "postcode": "KT9 2SN",
+    "service_types": "Residential homes",
+    "sector": "KT9 2",
+    "provider_id": "1-25367797712"
+  },
+  {
+    "loc_id": "1-24450217305",
+    "name": "Esher Groves",
+    "address": "13 - 17 Church Street,Esher",
+    "postcode": "KT10 8QS",
+    "service_types": "Doctors/GPs",
+    "sector": "KT10 8",
+    "provider_id": "1-10155041248"
+  },
+  {
+    "loc_id": "1-23676648835",
+    "name": "Berkshire Private GP Limited",
+    "address": "1 Boshers Gardens,Egham",
+    "postcode": "TW20 9NZ",
+    "service_types": "Doctors/GPs|Doctors/GPs|Mobile doctors",
+    "sector": "TW20 9",
+    "provider_id": "1-22163888330"
+  },
+  {
+    "loc_id": "1-23693977050",
+    "name": "Indigo Medical Clinic",
+    "address": "Phoenix Court,126-130, Ewell Road,Surbiton",
+    "postcode": "KT6 6HA",
+    "service_types": "Dentist",
+    "sector": "KT6 6",
+    "provider_id": "1-2139579490"
+  },
+  {
+    "loc_id": "1-23504390795",
+    "name": "Shilpa Dave Health",
+    "address": "59b High Street,Teddington",
+    "postcode": "TW11 8HA",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "TW11 8",
+    "provider_id": "1-4826967202"
+  },
+  {
+    "loc_id": "1-23583492345",
+    "name": "Central Surgery, Surbiton",
+    "address": "Surbiton Health Centre,Ewell Road,Surbiton",
+    "postcode": "KT6 6EZ",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT6 6",
+    "provider_id": "1-22152304934"
+  },
+  {
+    "loc_id": "1-24212323036",
+    "name": "Prestige Nursing & Care Epsom",
+    "address": "The Kirkgate,19-31 Church Street,Epsom",
+    "postcode": "KT17 4PF",
+    "service_types": "Homecare agencies",
+    "sector": "KT17 4",
+    "provider_id": "1-118165907"
+  },
+  {
+    "loc_id": "1-23875105760",
+    "name": "Molebridge Practice",
+    "address": "148-154 Kingston Road,Leatherhead",
+    "postcode": "KT22 7PZ",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT22 7",
+    "provider_id": "1-23814117295"
+  },
+  {
+    "loc_id": "1-238816928",
+    "name": "Nuffield Health Surbiton Fitness and Wellbeing Centre",
+    "address": "Simpson Way,Off Portsmouth Road,Surbiton",
+    "postcode": "KT6 4ER",
+    "service_types": "Doctors/GPs",
+    "sector": "KT6 4",
+    "provider_id": "1-102643516"
+  },
+  {
+    "loc_id": "1-23934982604",
+    "name": "Ashtead Dental Clinic",
+    "address": "206 Barnett Wood Lane,Ashtead",
+    "postcode": "KT21 2DB",
+    "service_types": "Dentist",
+    "sector": "KT21 2",
+    "provider_id": "1-22159969609"
+  },
+  {
+    "loc_id": "1-2325711270",
+    "name": "Home Counties Carers",
+    "address": "5-7 Webb House,Portsmouth Road, Ripley,Woking",
+    "postcode": "GU23 6ER",
+    "service_types": "Homecare agencies",
+    "sector": "GU23 6",
+    "provider_id": "1-287947384"
+  },
+  {
+    "loc_id": "1-22823662436",
+    "name": "Well Life Clinic",
+    "address": "5 Between Streets,Cobham",
+    "postcode": "KT11 1AA",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT11 1",
+    "provider_id": "1-19879350245"
+  },
+  {
+    "loc_id": "1-2285457122",
+    "name": "Crossroads Care Surrey",
+    "address": "121 Kingston Road,Leatherhead",
+    "postcode": "KT22 7SU",
+    "service_types": "Homecare agencies|Community services - Learning disabilities|Community services - Mental Health",
+    "sector": "KT22 7",
+    "provider_id": "1-101693609"
+  },
+  {
+    "loc_id": "1-294911480",
+    "name": "Crescent Dental Practice",
+    "address": "2 The Crescent,Leatherhead",
+    "postcode": "KT22 8EE",
+    "service_types": "Dentist",
+    "sector": "KT22 8",
+    "provider_id": "1-282542414"
+  },
+  {
+    "loc_id": "1-2949971025",
+    "name": "Bluebird Care (Elmbridge & Runnymede)",
+    "address": "Heritage House,52-54 Hamm Moor Lane,Addlestone",
+    "postcode": "KT15 2SF",
+    "service_types": "Homecare agencies",
+    "sector": "KT15 2",
+    "provider_id": "1-119231517"
+  },
+  {
+    "loc_id": "1-2950587808",
+    "name": "Summerfield Dental Practice",
+    "address": "11 Albany Crescent,Claygate,Esher",
+    "postcode": "KT10 0PF",
+    "service_types": "Dentist",
+    "sector": "KT10 0",
+    "provider_id": "1-2634816406"
+  },
+  {
+    "loc_id": "1-429863089",
+    "name": "Ridgemount Dental Practice",
+    "address": "Portmore Park Road,Weybridge",
+    "postcode": "KT13 8HQ",
+    "service_types": "Dentist",
+    "sector": "KT13 8",
+    "provider_id": "1-152996104"
+  },
+  {
+    "loc_id": "1-4309669977",
+    "name": "Elysium Care Partnerships Limited - 1a Upper Brighton Road",
+    "address": "1A Upper Brighton Road,Surbiton",
+    "postcode": "KT6 6LQ",
+    "service_types": "Residential homes",
+    "sector": "KT6 6",
+    "provider_id": "1-131468887"
+  },
+  {
+    "loc_id": "1-435583843",
+    "name": "Prime Health Diagnostics",
+    "address": "Unit 10 and 11 Horizon Business Village,1 Brooklands Road,Weybridge",
+    "postcode": "KT13 0TJ",
+    "service_types": "Diagnosis/screening",
+    "sector": "KT13 0",
+    "provider_id": "1-397904889"
+  },
+  {
+    "loc_id": "1-4358615789",
+    "name": "Proxy Care Personnel",
+    "address": "101 Paramount House,Delta Way,Egham",
+    "postcode": "TW20 8RX",
+    "service_types": "Homecare agencies",
+    "sector": "TW20 8",
+    "provider_id": "1-4025180645"
+  },
+  {
+    "loc_id": "1-3806451194",
+    "name": "Solace Centre SARC",
+    "address": "Cobham Community Hospital,168 Portsmouth Road,Cobham",
+    "postcode": "KT11 1HT",
+    "service_types": "Community services - Healthcare|Doctors/GPs|Doctors/GPs|Mobile doctors",
+    "sector": "KT11 1",
+    "provider_id": "1-1501026800"
+  },
+  {
+    "loc_id": "1-4177087661",
+    "name": "Medukcare",
+    "address": "11 Elmswood,Great Bookham,Leatherhead",
+    "postcode": "KT23 3JH",
+    "service_types": "Homecare agencies",
+    "sector": "KT23 3",
+    "provider_id": "1-4163204167"
+  },
+  {
+    "loc_id": "1-4126012893",
+    "name": "Springfield House Nursing Home",
+    "address": "6 Stoke Road,Cobham",
+    "postcode": "KT11 3AS",
+    "service_types": "Nursing homes",
+    "sector": "KT11 3",
+    "provider_id": "1-3893018339"
+  },
+  {
+    "loc_id": "1-4245573767",
+    "name": "NHES Care",
+    "address": "Suite C, Haleworth House,Tite Hill,Egham",
+    "postcode": "TW20 0LR",
+    "service_types": "Homecare agencies",
+    "sector": "TW20 0",
+    "provider_id": "1-3928512841"
+  },
+  {
+    "loc_id": "1-4247624467",
+    "name": "Winsor Care Services",
+    "address": "68 Simplemarsh Road,Addlestone",
+    "postcode": "KT15 1QJ",
+    "service_types": "Homecare agencies",
+    "sector": "KT15 1",
+    "provider_id": "1-4147760893"
+  },
+  {
+    "loc_id": "1-421310974",
+    "name": "CHDP Limited",
+    "address": "The Corner House Dental Practice,395 Ewell Road,Surbiton",
+    "postcode": "KT6 7DG",
+    "service_types": "Dentist",
+    "sector": "KT6 7",
+    "provider_id": "1-399891502"
+  },
+  {
+    "loc_id": "1-4222019658",
+    "name": "Health First Medical Staffing Ltd",
+    "address": "Unit 23, Image House,326 Molesey Road,Walton-on-thames",
+    "postcode": "KT12 3PD",
+    "service_types": "Homecare agencies",
+    "sector": "KT12 3",
+    "provider_id": "1-2226143038"
+  },
+  {
+    "loc_id": "1-443534401",
+    "name": "Tigh Grianan",
+    "address": "Chesterfield Road,Epsom",
+    "postcode": "KT19 9QP",
+    "service_types": "Residential homes",
+    "sector": "KT19 9",
+    "provider_id": "1-101668127"
+  },
+  {
+    "loc_id": "1-561985756",
+    "name": "Glenlyn Medical Centre",
+    "address": "The Glenlyn Medical Centre,115 Molesey Park Road,East Molesey",
+    "postcode": "KT8 0JX",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT8 0",
+    "provider_id": "1-199744278"
+  },
+  {
+    "loc_id": "1-562750037",
+    "name": "Fairfield Medical Centre",
+    "address": "Lower Road,Great Bookham,Leatherhead",
+    "postcode": "KT23 4DH",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT23 4",
+    "provider_id": "1-199743705"
+  },
+  {
+    "loc_id": "1-5613933002",
+    "name": "Passion Recruitment Agency",
+    "address": "Brook House,56 Guildford Street,Chertsey",
+    "postcode": "KT16 9BE",
+    "service_types": "Homecare agencies",
+    "sector": "KT16 9",
+    "provider_id": "1-5223089410"
+  },
+  {
+    "loc_id": "1-570122242",
+    "name": "Hersham Surgery",
+    "address": "The Surgery,Pleasant Place, Hersham,Walton On Thames",
+    "postcode": "KT12 4HT",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT12 4",
+    "provider_id": "1-199744150"
+  },
+  {
+    "loc_id": "1-5710375972",
+    "name": "Weston Cottage Dental Practice",
+    "address": "Lower Deck,Admirals Quarters, Portsmouth Road,Thames Ditton",
+    "postcode": "KT7 0XA",
+    "service_types": "Dentist",
+    "sector": "KT7 0",
+    "provider_id": "1-5774696740"
+  },
+  {
+    "loc_id": "1-5710376269",
+    "name": "Dental House",
+    "address": "239 Staines Road West,Sunbury-on-thames",
+    "postcode": "TW16 7BH",
+    "service_types": "Dentist",
+    "sector": "TW16 7",
+    "provider_id": "1-5349871950"
+  },
+  {
+    "loc_id": "1-566605800",
+    "name": "Church Street Practice",
+    "address": "Weybridge Primary Care Centre,22 Church Street,Weybridge",
+    "postcode": "KT13 8DW",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT13 8",
+    "provider_id": "1-199744229"
+  },
+  {
+    "loc_id": "1-565316678",
+    "name": "The Red Practice",
+    "address": "The Health Centre,Rodney Road,Walton On Thames",
+    "postcode": "KT12 3LB",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT12 3",
+    "provider_id": "1-199744428"
+  },
+  {
+    "loc_id": "1-568142593",
+    "name": "Cobham Health Centre",
+    "address": "168 Portsmouth Road,Cobham",
+    "postcode": "KT11 1HT",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT11 1",
+    "provider_id": "1-199744170"
+  },
+  {
+    "loc_id": "1-568366995",
+    "name": "Staines Health Group",
+    "address": "Staines Health Centre,Knowle Green,Staines",
+    "postcode": "TW18 1XD",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "TW18 1",
+    "provider_id": "1-199744692"
+  },
+  {
+    "loc_id": "1-569312512",
+    "name": "Hook Surgery",
+    "address": "Merritt Medical Centre,Merritt Gardens,Chessington",
+    "postcode": "KT9 2GY",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT9 2",
+    "provider_id": "1-199746791"
+  },
+  {
+    "loc_id": "1-4773193313",
+    "name": "Mulberry Home Care Services Limited",
+    "address": "Unit 4,51 St. Marys Road,Weybridge",
+    "postcode": "KT13 9PX",
+    "service_types": "Homecare agencies",
+    "sector": "KT13 9",
+    "provider_id": "1-4352300345"
+  },
+  {
+    "loc_id": "1-4516860887",
+    "name": "Steady Care Services",
+    "address": "5 Blenheim Court,Brook Way,Leatherhead",
+    "postcode": "KT22 7NA",
+    "service_types": "Homecare agencies",
+    "sector": "KT22 7",
+    "provider_id": "1-4499133593"
+  },
+  {
+    "loc_id": "1-4518081348",
+    "name": "Liberham Lodge",
+    "address": "Rectory Lane,Little Bookham,Leatherhead",
+    "postcode": "KT23 4DY",
+    "service_types": "Nursing homes",
+    "sector": "KT23 4",
+    "provider_id": "1-4422193466"
+  },
+  {
+    "loc_id": "1-4730683507",
+    "name": "Oakley House Ltd",
+    "address": "Hampton Court Way,Thames Ditton",
+    "postcode": "KT7 0LP",
+    "service_types": "Residential homes",
+    "sector": "KT7 0",
+    "provider_id": "1-4152380802"
+  },
+  {
+    "loc_id": "1-4734428714",
+    "name": "Chertsey Parklands Manor Care Home",
+    "address": "Parklands Drive,Chertsey",
+    "postcode": "KT16 9FS",
+    "service_types": "Nursing homes",
+    "sector": "KT16 9",
+    "provider_id": "1-4418205182"
+  },
+  {
+    "loc_id": "1-4746321485",
+    "name": "The Molesey Dental Practice",
+    "address": "152-154 Walton Road,East Molesey",
+    "postcode": "KT8 0HP",
+    "service_types": "Dentist",
+    "sector": "KT8 0",
+    "provider_id": "1-3849819249"
+  },
+  {
+    "loc_id": "1-4700716775",
+    "name": "The Molesey Dental Practice",
+    "address": "152-154 Walton Road,East Molesey",
+    "postcode": "KT8 0HP",
+    "service_types": "Dentist",
+    "sector": "KT8 0",
+    "provider_id": "1-152974977"
+  },
+  {
+    "loc_id": "1-445992554",
+    "name": "Sync Dental Chertsey",
+    "address": "Two Bridges,Riversdell Close,Chertsey",
+    "postcode": "KT16 9JU",
+    "service_types": "Dentist",
+    "sector": "KT16 9",
+    "provider_id": "1-440492031"
+  },
+  {
+    "loc_id": "1-553246300",
+    "name": "The Green Surgery",
+    "address": "1b The Green,Twickenham",
+    "postcode": "TW2 5TU",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "TW2 5",
+    "provider_id": "1-199746920"
+  },
+  {
+    "loc_id": "1-552131547",
+    "name": "Silvermere Care Home",
+    "address": "Redhill Road,Cobham",
+    "postcode": "KT11 1EF",
+    "service_types": "Residential homes",
+    "sector": "KT11 1",
+    "provider_id": "1-509729680"
+  },
+  {
+    "loc_id": "1-552217902",
+    "name": "Crouch Oak Family Practice",
+    "address": "45 Station Road,Addlestone",
+    "postcode": "KT15 2BH",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT15 2",
+    "provider_id": "1-199743952"
+  },
+  {
+    "loc_id": "1-552661885",
+    "name": "O'Flynn - Hampton Wick",
+    "address": "Tudor House,26 Upper Teddington Road,Kingston Upon Thames",
+    "postcode": "KT1 4DY",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT1 4",
+    "provider_id": "1-199746830"
+  },
+  {
+    "loc_id": "1-558041794",
+    "name": "Park Road Surgery",
+    "address": "37 Park Road,Teddington",
+    "postcode": "TW11 0AU",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "TW11 0",
+    "provider_id": "1-199746652"
+  },
+  {
+    "loc_id": "1-5503122192",
+    "name": "EgoDent",
+    "address": "6 Church Street,Walton-on-thames",
+    "postcode": "KT12 2QS",
+    "service_types": "Dentist",
+    "sector": "KT12 2",
+    "provider_id": "1-5203239975"
+  },
+  {
+    "loc_id": "1-549102823",
+    "name": "Thameside Medical Practice - Childs & Partners",
+    "address": "Thames House,180-194 High Street,Teddington",
+    "postcode": "TW11 8HU",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "TW11 8",
+    "provider_id": "1-199747018"
+  },
+  {
+    "loc_id": "1-549386295",
+    "name": "Derby Medical Centre",
+    "address": "The Derby Medical Centre,8 The Derby Square,Epsom",
+    "postcode": "KT19 8AG",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT19 8",
+    "provider_id": "1-199744030"
+  },
+  {
+    "loc_id": "1-548397240",
+    "name": "Dr P Kumar & Partners",
+    "address": "Merritt Medical Centre,Merritt Gardens,Chessington",
+    "postcode": "KT9 2GY",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT9 2",
+    "provider_id": "1-199746950"
+  },
+  {
+    "loc_id": "1-5488863196",
+    "name": "Comfort Care At Home",
+    "address": "Trident Court,1 Oakcroft Road,Chessington",
+    "postcode": "KT9 1BD",
+    "service_types": "Homecare agencies",
+    "sector": "KT9 1",
+    "provider_id": "1-5063769412"
+  },
+  {
+    "loc_id": "1-548958945",
+    "name": "Shepperton Medical Practice",
+    "address": "Laleham Road,Shepperton",
+    "postcode": "TW17 8EJ",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "TW17 8",
+    "provider_id": "1-199743615"
+  },
+  {
+    "loc_id": "1-547392170",
+    "name": "Grove Medical Centre",
+    "address": "The Grove Medical Centre,The Grove, Church Road,Egham",
+    "postcode": "TW20 9QJ",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "TW20 9",
+    "provider_id": "1-199744160"
+  },
+  {
+    "loc_id": "1-3626380476",
+    "name": "Reedsfield Care Ltd",
+    "address": "Unit 1,80 High Street,Egham",
+    "postcode": "TW20 9HE",
+    "service_types": "Homecare agencies|Supported living",
+    "sector": "TW20 9",
+    "provider_id": "1-2981158348"
+  },
+  {
+    "loc_id": "1-363620521",
+    "name": "Epsom Dental centre",
+    "address": "37 Waterloo Road,Epsom",
+    "postcode": "KT19 8EX",
+    "service_types": "Dentist",
+    "sector": "KT19 8",
+    "provider_id": "1-152970186"
+  },
+  {
+    "loc_id": "1-3646413784",
+    "name": "Surrey Dental surgery",
+    "address": "21 Manor Green Road,Epsom",
+    "postcode": "KT19 8RA",
+    "service_types": "Dentist",
+    "sector": "KT19 8",
+    "provider_id": "1-3573592640"
+  },
+  {
+    "loc_id": "1-359892738",
+    "name": "Alpenbest South",
+    "address": "Buckingham House,7 Churchfield Road,Walton on Thames",
+    "postcode": "KT12 2TT",
+    "service_types": "Homecare agencies",
+    "sector": "KT12 2",
+    "provider_id": "1-101653865"
+  },
+  {
+    "loc_id": "1-359898714",
+    "name": "Rosclare Residential Home Limited",
+    "address": "335 Ewell Road,Surbiton",
+    "postcode": "KT6 7BZ",
+    "service_types": "Residential homes",
+    "sector": "KT6 7",
+    "provider_id": "1-349712704"
+  },
+  {
+    "loc_id": "1-3602658136",
+    "name": "Byfleet Dental Boutique",
+    "address": "29 High Road,Byfleet,West Byfleet",
+    "postcode": "KT14 7QH",
+    "service_types": "Dentist",
+    "sector": "KT14 7",
+    "provider_id": "1-2883701231"
+  },
+  {
+    "loc_id": "1-3605570138",
+    "name": "Loyalcare Group Services Ltd",
+    "address": "Suite 1 , Manor House Business Centre,,19 Church Street,,Leatherhead,",
+    "postcode": "KT22 8DH",
+    "service_types": "Homecare agencies",
+    "sector": "KT22 8",
+    "provider_id": "1-131465145"
+  },
+  {
+    "loc_id": "1-3837014544",
+    "name": "Optima Care Shine London Limited",
+    "address": "First Floor, Block A, Marvan Court,1 Waldegrave Road,Teddington",
+    "postcode": "TW11 8LZ",
+    "service_types": "Supported living",
+    "sector": "TW11 8",
+    "provider_id": "1-3616849559"
+  },
+  {
+    "loc_id": "1-3850713229",
+    "name": "Aims Homecare Limited - Leatherhead",
+    "address": "59 Kingston Road,Leatherhead",
+    "postcode": "KT22 7SL",
+    "service_types": "Homecare agencies",
+    "sector": "KT22 7",
+    "provider_id": "1-3243744748"
+  },
+  {
+    "loc_id": "1-3857230256",
+    "name": "Walton Park Care Home",
+    "address": "40 Severn Drive,Walton On Thames",
+    "postcode": "KT12 3BH",
+    "service_types": "Nursing homes|Residential homes",
+    "sector": "KT12 3",
+    "provider_id": "1-1371750685"
+  },
+  {
+    "loc_id": "1-410293045",
+    "name": "Linden House",
+    "address": "9 College Road,Epsom",
+    "postcode": "KT17 4HF",
+    "service_types": "Residential homes",
+    "sector": "KT17 4",
+    "provider_id": "1-345929121"
+  },
+  {
+    "loc_id": "1-3997000739",
+    "name": "Elysium Care Partnerships Limited - 187 Nursery Road",
+    "address": "187 Nursery Road,Sunbury-on-thames",
+    "postcode": "TW16 6LX",
+    "service_types": "Residential homes",
+    "sector": "TW16 6",
+    "provider_id": "1-131468887"
+  },
+  {
+    "loc_id": "1-4056905157",
+    "name": "Surrey",
+    "address": "34 Angus Close,Chessington",
+    "postcode": "KT9 2BP",
+    "service_types": "Homecare agencies",
+    "sector": "KT9 2",
+    "provider_id": "1-2840035229"
+  },
+  {
+    "loc_id": "1-5295049928",
+    "name": "Delore Care Woking",
+    "address": "Paramount House,1 Delta Way,Egham",
+    "postcode": "TW20 8RX",
+    "service_types": "Homecare agencies",
+    "sector": "TW20 8",
+    "provider_id": "1-4978683618"
+  },
+  {
+    "loc_id": "1-5089632910",
+    "name": "United Response - The Swallows 183 -189 Hanworth Road",
+    "address": "183 -189 Hanworth Road,Hampton",
+    "postcode": "TW12 3ED",
+    "service_types": "Residential homes",
+    "sector": "TW12 3",
+    "provider_id": "1-102642990"
+  },
+  {
+    "loc_id": "1-5103712145",
+    "name": "Gatehouse Dental Practice",
+    "address": "128 Station Road,Addlestone",
+    "postcode": "KT15 2BQ",
+    "service_types": "Dentist",
+    "sector": "KT15 2",
+    "provider_id": "1-4825645187"
+  },
+  {
+    "loc_id": "1-5103712433",
+    "name": "Gatehouse Dental Practice",
+    "address": "128 Station Road,Addlestone",
+    "postcode": "KT15 2BQ",
+    "service_types": "Dentist",
+    "sector": "KT15 2",
+    "provider_id": "1-4825645160"
+  },
+  {
+    "loc_id": "1-5107717440",
+    "name": "Chertsey Health Centre",
+    "address": "Stepgates,Chertsey",
+    "postcode": "KT16 8HZ",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT16 8",
+    "provider_id": "1-4867604580"
+  },
+  {
+    "loc_id": "1-5311490326",
+    "name": "Guarantee Care Services Ltd",
+    "address": "Global House,1 Ashley Avenue,Epsom",
+    "postcode": "KT18 5AD",
+    "service_types": "Homecare agencies|Supported living",
+    "sector": "KT18 5",
+    "provider_id": "1-5242935251"
+  },
+  {
+    "loc_id": "1-5212445921",
+    "name": "Cedars at Grace Anderson",
+    "address": "Hampton Road,Teddington",
+    "postcode": "TW11 0JL",
+    "service_types": "Community services - Healthcare|Rehabilitation (illness/injury)",
+    "sector": "TW11 0",
+    "provider_id": "1-328569033"
+  },
+  {
+    "loc_id": "1-514268665",
+    "name": "Red Lion Road Surgery",
+    "address": "1a Red Lion Road,Tolworth,Surbiton",
+    "postcode": "KT6 7QG",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT6 7",
+    "provider_id": "1-199746979"
+  },
+  {
+    "loc_id": "1-538922194",
+    "name": "Dr Samy Morcos",
+    "address": "The Health Centre,Rodney Road,Walton On Thames",
+    "postcode": "KT12 3LB",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT12 3",
+    "provider_id": "1-199744664"
+  },
+  {
+    "loc_id": "1-5350568122",
+    "name": "Yellow Practice",
+    "address": "The Health Centre,Rodney Road,Walton-on-thames",
+    "postcode": "KT12 3LB",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT12 3",
+    "provider_id": "1-5113972270"
+  },
+  {
+    "loc_id": "1-536901004",
+    "name": "Confidental Clinic",
+    "address": "359 Ewell Road,Surbiton",
+    "postcode": "KT6 7BZ",
+    "service_types": "Dentist",
+    "sector": "KT6 7",
+    "provider_id": "1-454835735"
+  },
+  {
+    "loc_id": "1-5374801987",
+    "name": "Thames Orthodontics - Thames Ditton",
+    "address": "15 St. Leonards Road,Thames Ditton",
+    "postcode": "KT7 0RJ",
+    "service_types": "Dentist",
+    "sector": "KT7 0",
+    "provider_id": "1-153006863"
+  },
+  {
+    "loc_id": "1-3658116958",
+    "name": "Walton Community Hospital",
+    "address": "Rodney Road,Walton On Thames",
+    "postcode": "KT12 3LD",
+    "service_types": "Diagnosis/screening|Rehabilitation (illness/injury)",
+    "sector": "KT12 3",
+    "provider_id": "1-199797673"
+  },
+  {
+    "loc_id": "1-369537027",
+    "name": "Bluebird Care (Epsom, Kingston & Sutton)",
+    "address": "Unit E, Blenheim House,1 Blenheim Road,Epsom",
+    "postcode": "KT19 9AP",
+    "service_types": "Homecare agencies",
+    "sector": "KT19 9",
+    "provider_id": "1-119231783"
+  },
+  {
+    "loc_id": "1-3233033200",
+    "name": "Alina Homecare Walton on Thames",
+    "address": "Unit 15,Enterprise House, 44-46 Terrace Road,Walton On Thames",
+    "postcode": "KT12 2SD",
+    "service_types": "Homecare agencies",
+    "sector": "KT12 2",
+    "provider_id": "1-1156577315"
+  },
+  {
+    "loc_id": "1-3154018328",
+    "name": "West Horsley Dental",
+    "address": "14 The Street,West Horsley,Leatherhead",
+    "postcode": "KT24 6AX",
+    "service_types": "Dentist",
+    "sector": "KT24 6",
+    "provider_id": "1-3057478693"
+  },
+  {
+    "loc_id": "1-3304554472",
+    "name": "Amazed Care Services",
+    "address": "24 Edinburgh Drive,Staines Upon Thames",
+    "postcode": "TW18 1PH",
+    "service_types": "Homecare agencies",
+    "sector": "TW18 1",
+    "provider_id": "1-2971584175"
+  },
+  {
+    "loc_id": "1-3534741180",
+    "name": "Swallowfields Care Centre",
+    "address": "45 Alexandra Road,Epsom",
+    "postcode": "KT17 4DB",
+    "service_types": "Residential homes",
+    "sector": "KT17 4",
+    "provider_id": "1-3240228415"
+  },
+  {
+    "loc_id": "1-5464493529",
+    "name": "The Groves Hinchley Wood",
+    "address": "3 - 4 Station Approach,Hinchley Wood,Esher",
+    "postcode": "KT10 0SP",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT10 0",
+    "provider_id": "1-199746742"
+  },
+  {
+    "loc_id": "1-547170679",
+    "name": "Capelfield Surgery",
+    "address": "Elm Road,Claygate,Esher",
+    "postcode": "KT10 0EH",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT10 0",
+    "provider_id": "1-199744526"
+  },
+  {
+    "loc_id": "1-547244115",
+    "name": "Claremont Medical Centre",
+    "address": "2a Glenbuck Road,Surbiton",
+    "postcode": "KT6 6BS",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT6 6",
+    "provider_id": "1-199747107"
+  },
+  {
+    "loc_id": "1-5438337696",
+    "name": "Whitegates Care Centre Limited",
+    "address": "1 Condor Road,Laleham,Staines-upon-thames",
+    "postcode": "TW18 1UG",
+    "service_types": "Nursing homes",
+    "sector": "TW18 1",
+    "provider_id": "1-5153235650"
+  },
+  {
+    "loc_id": "1-543837896",
+    "name": "Sunbury Health Centre Group Practice",
+    "address": "Green Street,Sunbury-on-thames",
+    "postcode": "TW16 6RH",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "TW16 6",
+    "provider_id": "1-199743605"
+  },
+  {
+    "loc_id": "1-543870924",
+    "name": "Canbury Medical Centre",
+    "address": "1 Elm Road,Kingston Upon Thames",
+    "postcode": "KT2 6HR",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT2 6",
+    "provider_id": "1-199746702"
+  },
+  {
+    "loc_id": "1-544154008",
+    "name": "East Horsley Medical Centre",
+    "address": "Kingston Avenue,East Horsley,Leatherhead",
+    "postcode": "KT24 6QT",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT24 6",
+    "provider_id": "1-199744338"
+  },
+  {
+    "loc_id": "1-545198403",
+    "name": "Thorkhill Surgery",
+    "address": "Thorkhill Gardens,Thames Ditton",
+    "postcode": "KT7 0UP",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT7 0",
+    "provider_id": "1-199744358"
+  },
+  {
+    "loc_id": "1-545225022",
+    "name": "The Health Centre",
+    "address": "Bond Street,Englefield Green,Egham",
+    "postcode": "TW20 0PF",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "TW20 0",
+    "provider_id": "1-199744001"
+  },
+  {
+    "loc_id": "1-543128312",
+    "name": "Vine Medical Centre",
+    "address": "69 Pemberton Road,East Molesey",
+    "postcode": "KT8 9LJ",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT8 9",
+    "provider_id": "1-199744634"
+  },
+  {
+    "loc_id": "1-543536620",
+    "name": "Esher Green Surgery",
+    "address": "Esher Green Drive,Esher",
+    "postcode": "KT10 8BX",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT10 8",
+    "provider_id": "1-199744456"
+  },
+  {
+    "loc_id": "1-543687531",
+    "name": "St Stephens House Surgery",
+    "address": "St Stephens House,102 Woodfield Lane,Ashtead",
+    "postcode": "KT21 2DP",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT21 2",
+    "provider_id": "1-199744239"
+  },
+  {
+    "loc_id": "1-542373167",
+    "name": "Eastwick Park Medical Practice",
+    "address": "Eastwick Park Avenue,Great Bookham,Leatherhead",
+    "postcode": "KT23 3ND",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT23 3",
+    "provider_id": "1-199744486"
+  },
+  {
+    "loc_id": "1-542423707",
+    "name": "Ashlea Medical Practice",
+    "address": "30 Upper Fairfield Road,Leatherhead",
+    "postcode": "KT22 7HH",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT22 7",
+    "provider_id": "1-199743715"
+  },
+  {
+    "loc_id": "1-336365615",
+    "name": "31 King Edwards Grove",
+    "address": "31 King Edwards Grove,Teddington",
+    "postcode": "TW11 9LY",
+    "service_types": "Residential homes",
+    "sector": "TW11 9",
+    "provider_id": "1-119235696"
+  },
+  {
+    "loc_id": "1-3018260197",
+    "name": "Surrey Homecare Limited",
+    "address": "Mabel House,1 Weston Green,Thames Ditton",
+    "postcode": "KT7 0JP",
+    "service_types": "Homecare agencies",
+    "sector": "KT7 0",
+    "provider_id": "1-136724127"
+  },
+  {
+    "loc_id": "1-3117327014",
+    "name": "Horton Dental Practice",
+    "address": "165 Ruxley Lane,Ewell,Epsom",
+    "postcode": "KT19 9EX",
+    "service_types": "Dentist",
+    "sector": "KT19 9",
+    "provider_id": "1-2969892702"
+  },
+  {
+    "loc_id": "1-3125588376",
+    "name": "GP Health Partners at The Derby Medical Centre",
+    "address": "8 The Derby Square,Epsom",
+    "postcode": "KT19 8AG",
+    "service_types": "Doctors/GPs|Doctors/GPs|Urgent care centres",
+    "sector": "KT19 8",
+    "provider_id": "1-2682779938"
+  },
+  {
+    "loc_id": "1-3125620676",
+    "name": "GP Health Partners at Leatherhead Community Hospital",
+    "address": "Poplar Road,Leatherhead",
+    "postcode": "KT22 8SD",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT22 8",
+    "provider_id": "1-2682779938"
+  },
+  {
+    "loc_id": "1-3127290204",
+    "name": "The Dental Practice",
+    "address": "9 Stoneylands Road,Egham",
+    "postcode": "TW20 9QR",
+    "service_types": "Dentist",
+    "sector": "TW20 9",
+    "provider_id": "1-3094767416"
+  },
+  {
+    "loc_id": "1-318494704",
+    "name": "Home Instead Senior Care",
+    "address": "Cambridge House,Gogmore Lane,Chertsey",
+    "postcode": "KT16 9AP",
+    "service_types": "Homecare agencies",
+    "sector": "KT16 9",
+    "provider_id": "1-303646495"
+  },
+  {
+    "loc_id": "1-3054389810",
+    "name": "Adelaide House Care Home",
+    "address": "36 Hersham Road,Walton On Thames",
+    "postcode": "KT12 1JJ",
+    "service_types": "Nursing homes",
+    "sector": "KT12 1",
+    "provider_id": "1-2953247678"
+  },
+  {
+    "loc_id": "1-3054830287",
+    "name": "Dr Shruthi Guruswamy (Prime Health)",
+    "address": "Unit 10-11,Horizon Business Village, 1 Brooklands Road,Weybridge",
+    "postcode": "KT13 0TJ",
+    "service_types": "Doctors/GPs",
+    "sector": "KT13 0",
+    "provider_id": "1-3006382825"
+  },
+  {
+    "loc_id": "1-310870757",
+    "name": "The Grange Supported Living Service",
+    "address": "The Grange, Rectory Lane,Bookham,Leatherhead",
+    "postcode": "KT23 4DZ",
+    "service_types": "Homecare agencies|Supported living",
+    "sector": "KT23 4",
+    "provider_id": "1-101667631"
+  },
+  {
+    "loc_id": "1-340691748",
+    "name": "CESP (Surrey) @ Epsom and St Helier Trust",
+    "address": "Epsom and St Helier Trust,Dorking Road,Epsom",
+    "postcode": "KT18 7LX",
+    "service_types": "Clinic",
+    "sector": "KT18 7",
+    "provider_id": "1-309682659"
+  },
+  {
+    "loc_id": "1-306456602",
+    "name": "Surbiton Smile Centre",
+    "address": "148 Ewell Road,Surbiton",
+    "postcode": "KT6 6HE",
+    "service_types": "Dentist",
+    "sector": "KT6 6",
+    "provider_id": "1-171562083"
+  },
+  {
+    "loc_id": "1-489265146",
+    "name": "Dr George Kamil",
+    "address": "The Surgery,270 Upper Halliford Road,Shepperton",
+    "postcode": "TW17 8SY",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "TW17 8",
+    "provider_id": "1-199744799"
+  },
+  {
+    "loc_id": "1-4910332958",
+    "name": "Oakfield Nursing Home",
+    "address": "30 Oakfield Road,Ashtead",
+    "postcode": "KT21 2RD",
+    "service_types": "Nursing homes",
+    "sector": "KT21 2",
+    "provider_id": "1-4418185574"
+  },
+  {
+    "loc_id": "1-4914144820",
+    "name": "Sync Dental Addlestone",
+    "address": "Synergy House,24C High Street,Addlestone",
+    "postcode": "KT15 1TN",
+    "service_types": "Dentist",
+    "sector": "KT15 1",
+    "provider_id": "1-4576895710"
+  },
+  {
+    "loc_id": "1-4853939980",
+    "name": "Expert Care UK Services Ltd",
+    "address": "Hersham Place Technology Park,Molesey Road,Walton-on-Thames",
+    "postcode": "KT12 4RZ",
+    "service_types": "Homecare agencies",
+    "sector": "KT12 4",
+    "provider_id": "1-4521210421"
+  },
+  {
+    "loc_id": "1-4858684793",
+    "name": "Willowmead",
+    "address": "1 Willowmead,Summer Road,East Molesey",
+    "postcode": "KT8 9LR",
+    "service_types": "Supported living",
+    "sector": "KT8 9",
+    "provider_id": "1-101656554"
+  },
+  {
+    "loc_id": "1-493967725",
+    "name": "Dr Layth Delaimy",
+    "address": "1a Crutchfield Lane,Walton On Thames",
+    "postcode": "KT12 2QY",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT12 2",
+    "provider_id": "1-199744898"
+  },
+  {
+    "loc_id": "1-5061507099",
+    "name": "Park Road Dental Centre",
+    "address": "35 Park Road,Teddington",
+    "postcode": "TW11 0AB",
+    "service_types": "Dentist",
+    "sector": "TW11 0",
+    "provider_id": "1-1446828817"
+  },
+  {
+    "loc_id": "1-5013604773",
+    "name": "Amber Home Carers Surrey",
+    "address": "2 The Parade, Thorpe Road,Staines-upon-thames",
+    "postcode": "TW18 3HF",
+    "service_types": "Homecare agencies|Supported living",
+    "sector": "TW18 3",
+    "provider_id": "1-2267537438"
+  },
+  {
+    "loc_id": "1-4836005662",
+    "name": "SureCare Richmond and Kingston",
+    "address": "Suite 7, Link House,,140 Tolworth Broadway,Surbiton",
+    "postcode": "KT6 7HT",
+    "service_types": "Homecare agencies",
+    "sector": "KT6 7",
+    "provider_id": "1-4287401557"
+  },
+  {
+    "loc_id": "1-589473845",
+    "name": "Tattenham Health Centre",
+    "address": "Tattenham Crescent,Epsom",
+    "postcode": "KT18 5NU",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT18 5",
+    "provider_id": "1-199744624"
+  },
+  {
+    "loc_id": "1-5751133710",
+    "name": "Hartfield House Care Home",
+    "address": "4 Hartfield Road,Leatherhead",
+    "postcode": "KT22 7GQ",
+    "service_types": "Nursing homes",
+    "sector": "KT22 7",
+    "provider_id": "1-5458053592"
+  },
+  {
+    "loc_id": "1-5845973029",
+    "name": "Excellence in Dentistry",
+    "address": "26a Church Road,Bookham,Leatherhead",
+    "postcode": "KT23 3PW",
+    "service_types": "Dentist",
+    "sector": "KT23 3",
+    "provider_id": "1-5467309250"
+  },
+  {
+    "loc_id": "1-584680858",
+    "name": "Churchill Medical Centre",
+    "address": "Clifton Road,Kingston Upon Thames",
+    "postcode": "KT2 6PG",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT2 6",
+    "provider_id": "1-199746801"
+  },
+  {
+    "loc_id": "1-584681094",
+    "name": "The Orchard Practice",
+    "address": "Orchard Gardens,Chessington",
+    "postcode": "KT9 1AG",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT9 1",
+    "provider_id": "1-199746801"
+  },
+  {
+    "loc_id": "1-584765205",
+    "name": "The Integrated Care Partnership",
+    "address": "The Old Cottage Hospital Surgery,Alexandra Road,Epsom",
+    "postcode": "KT17 4BL",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT17 4",
+    "provider_id": "1-199744682"
+  },
+  {
+    "loc_id": "1-15320701037",
+    "name": "Audley Care Limited - Cobham",
+    "address": "131 Fairmile Lane,Cobham",
+    "postcode": "KT11 2BU",
+    "service_types": "Homecare agencies",
+    "sector": "KT11 2",
+    "provider_id": "1-174576986"
+  },
+  {
+    "loc_id": "1-16430985521",
+    "name": "Premium Homecare Ltd - Leatherhead",
+    "address": "Dorset House, Regent Park,297-299 Kingston Road,Leatherhead",
+    "postcode": "KT22 7PL",
+    "service_types": "Homecare agencies",
+    "sector": "KT22 7",
+    "provider_id": "1-6649032333"
+  },
+  {
+    "loc_id": "1-15981777661",
+    "name": "Abbeymead Dental Centre",
+    "address": "73 Guildford Street,Chertsey",
+    "postcode": "KT16 9AS",
+    "service_types": "Dentist",
+    "sector": "KT16 9",
+    "provider_id": "1-9236006579"
+  },
+  {
+    "loc_id": "1-17190435855",
+    "name": "Horsley Consulting Room",
+    "address": "10 Station Parade, Ockham Road South,East Horsley,Leatherhead",
+    "postcode": "KT24 6QN",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT24 6",
+    "provider_id": "1-14382183544"
+  },
+  {
+    "loc_id": "1-17190654622",
+    "name": "Master One Care",
+    "address": "Trident Court,1 Oakcroft Road,Chessington",
+    "postcode": "KT9 1BD",
+    "service_types": "Homecare agencies",
+    "sector": "KT9 1",
+    "provider_id": "1-139903305"
+  },
+  {
+    "loc_id": "1-1688882234",
+    "name": "Premier Dental Care",
+    "address": "65 Station Road,Addlestone",
+    "postcode": "KT15 2AR",
+    "service_types": "Dentist",
+    "sector": "KT15 2",
+    "provider_id": "1-1523752539"
+  },
+  {
+    "loc_id": "1-16893320572",
+    "name": "The Fabulous Smile Company - Kingston",
+    "address": "31 Tolworth Broadway,Tolworth,Surbiton",
+    "postcode": "KT6 7DJ",
+    "service_types": "Dentist",
+    "sector": "KT6 7",
+    "provider_id": "1-153032466"
+  },
+  {
+    "loc_id": "1-16969114361",
+    "name": "Damira Addlestone",
+    "address": "172 Station Road,Addlestone",
+    "postcode": "KT15 2BD",
+    "service_types": "Dentist",
+    "sector": "KT15 2",
+    "provider_id": "1-2242474321"
+  },
+  {
+    "loc_id": "1-15350226720",
+    "name": "Aston Way",
+    "address": "Office E, Highview House,Tattenham Crescent,Epsom",
+    "postcode": "KT18 5QJ",
+    "service_types": "Supported living",
+    "sector": "KT18 5",
+    "provider_id": "1-12324262646"
+  },
+  {
+    "loc_id": "1-15519796337",
+    "name": "Esher Manor Care Home",
+    "address": "42 Copsem Lane,Esher",
+    "postcode": "KT10 9HJ",
+    "service_types": "Residential homes",
+    "sector": "KT10 9",
+    "provider_id": "1-3105856072"
+  },
+  {
+    "loc_id": "1-15519796475",
+    "name": "Rosebery Manor Care Home",
+    "address": "458 Reigate Road,Epsom",
+    "postcode": "KT18 5XA",
+    "service_types": "Nursing homes",
+    "sector": "KT18 5",
+    "provider_id": "1-3105856072"
+  },
+  {
+    "loc_id": "1-15520134023",
+    "name": "Chertsey Parklands Manor Care Home",
+    "address": "Parklands Drive,Chertsey",
+    "postcode": "KT16 9FS",
+    "service_types": "Nursing homes",
+    "sector": "KT16 9",
+    "provider_id": "1-3105856072"
+  },
+  {
+    "loc_id": "1-221074578",
+    "name": "Location Medical Services - Shepperton Studios Medical Centre",
+    "address": "Shepperton Studios,Studio Road,Shepperton",
+    "postcode": "TW17 0QD",
+    "service_types": "Ambulances",
+    "sector": "TW17 0",
+    "provider_id": "1-153024585"
+  },
+  {
+    "loc_id": "1-221103171",
+    "name": "Simply Dental",
+    "address": "1 Oriel Court,106 The Green,Twickenham",
+    "postcode": "TW2 5AG",
+    "service_types": "Dentist",
+    "sector": "TW2 5",
+    "provider_id": "1-171560059"
+  },
+  {
+    "loc_id": "1-2262124439",
+    "name": "Bridge Road Dental",
+    "address": "14 Bridge Road,Chessington",
+    "postcode": "KT9 2EP",
+    "service_types": "Dentist",
+    "sector": "KT9 2",
+    "provider_id": "1-2096188019"
+  },
+  {
+    "loc_id": "1-22728144204",
+    "name": "The Skin Surgery",
+    "address": "99B Ewell Road,Surbiton",
+    "postcode": "KT6 6AH",
+    "service_types": "Doctors/GPs|Doctors/GPs|Mobile doctors",
+    "sector": "KT6 6",
+    "provider_id": "1-20709565232"
+  },
+  {
+    "loc_id": "1-22153247912",
+    "name": "Walfinch Hampton Twickenham & Virginia Water",
+    "address": "Walfinch Hampton Twickenham & Virginia Water, Office 18, Terminal House,Station Approach,Shepperton",
+    "postcode": "TW17 8AP",
+    "service_types": "Homecare agencies",
+    "sector": "TW17 8",
+    "provider_id": "1-18039189799"
+  },
+  {
+    "loc_id": "1-22155025236",
+    "name": "Private Child Psychiatrist",
+    "address": "Health Village Esher,13 Church Street,Esher",
+    "postcode": "KT10 8QS",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT10 8",
+    "provider_id": "1-21703720045"
+  },
+  {
+    "loc_id": "1-2253467842",
+    "name": "AURA Centre of Dental Excellence & Facial Aesthetics Ltd",
+    "address": "1 Penrhyn Road,Kingston Upon Thames",
+    "postcode": "KT1 2BT",
+    "service_types": "Dentist",
+    "sector": "KT1 2",
+    "provider_id": "1-1909763068"
+  },
+  {
+    "loc_id": "1-22096094165",
+    "name": "Epsom Smiles",
+    "address": "1 High Street,Epsom",
+    "postcode": "KT19 8DA",
+    "service_types": "Dentist",
+    "sector": "KT19 8",
+    "provider_id": "1-21738733995"
+  },
+  {
+    "loc_id": "1-224687913",
+    "name": "Invisibrace",
+    "address": "8 Central Parade,St Marks Hill,Surbiton",
+    "postcode": "KT6 4PJ",
+    "service_types": "Dentist",
+    "sector": "KT6 4",
+    "provider_id": "1-153022921"
+  },
+  {
+    "loc_id": "1-22165565135",
+    "name": "Connected Stars Ltd",
+    "address": "Rourke House, Watermans Business Park,The Causeway Kingsbury Crescent,Staines-upon-thames",
+    "postcode": "TW18 3BA",
+    "service_types": "Supported living",
+    "sector": "TW18 3",
+    "provider_id": "1-21241941718"
+  },
+  {
+    "loc_id": "1-221855984",
+    "name": "Capital Dental",
+    "address": "62 Tudor Road,Hampton",
+    "postcode": "TW12 2NF",
+    "service_types": "Dentist",
+    "sector": "TW12 2",
+    "provider_id": "1-153020960"
+  },
+  {
+    "loc_id": "1-221863519",
+    "name": "The Hampton Wick Dental Centre",
+    "address": "8 Upper Teddington Road,Hampton Wick,Kingston Upon Thames",
+    "postcode": "KT1 4DY",
+    "service_types": "Dentist",
+    "sector": "KT1 4",
+    "provider_id": "1-153019550"
+  },
+  {
+    "loc_id": "1-17078447177",
+    "name": "Simplified Staffing Carlton House",
+    "address": "Carlton House,19 West Street,Epsom",
+    "postcode": "KT18 7RL",
+    "service_types": "Homecare agencies",
+    "sector": "KT18 7",
+    "provider_id": "1-5750475533"
+  },
+  {
+    "loc_id": "1-1709468299",
+    "name": "Marling Court",
+    "address": "2 Bramble Lane,Hampton",
+    "postcode": "TW12 3XB",
+    "service_types": "Residential homes",
+    "sector": "TW12 3",
+    "provider_id": "1-1481156943"
+  },
+  {
+    "loc_id": "1-17124260367",
+    "name": "Apex Ultrasound Limited",
+    "address": "Health Village Esher,13-17 Church Street,Esher",
+    "postcode": "KT10 8QS",
+    "service_types": "Diagnosis/screening|Doctors/GPs",
+    "sector": "KT10 8",
+    "provider_id": "1-15344225065"
+  },
+  {
+    "loc_id": "1-1936074160",
+    "name": "Merritt Medical Centre",
+    "address": "Merritt Gardens,Chessington",
+    "postcode": "KT9 2GY",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT9 2",
+    "provider_id": "1-1732829412"
+  },
+  {
+    "loc_id": "1-1936089635",
+    "name": "Surbiton Health Centre",
+    "address": "Ewell Road,Surbiton",
+    "postcode": "KT6 6EZ",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT6 6",
+    "provider_id": "1-1732829412"
+  },
+  {
+    "loc_id": "1-196046659",
+    "name": "Brightsmile Dental Care Limited - Kingston",
+    "address": "17 Penrhyn Road,Kingston Upon Thames",
+    "postcode": "KT1 2BZ",
+    "service_types": "Dentist",
+    "sector": "KT1 2",
+    "provider_id": "1-152974777"
+  },
+  {
+    "loc_id": "1-196100025",
+    "name": "Crown House Dental Practice",
+    "address": "4 Grange Road,Egham",
+    "postcode": "TW20 9QW",
+    "service_types": "Dentist",
+    "sector": "TW20 9",
+    "provider_id": "1-153007133"
+  },
+  {
+    "loc_id": "1-195293468",
+    "name": "River Mole Dental",
+    "address": "Cobham Health Centre,168 Portsmouth Road,Cobham",
+    "postcode": "KT11 1HT",
+    "service_types": "Dentist",
+    "sector": "KT11 1",
+    "provider_id": "1-152974439"
+  },
+  {
+    "loc_id": "1-19383513881",
+    "name": "Eliza Palmer Hub",
+    "address": "Whiteley Village,Hersham,Walton-on-thames",
+    "postcode": "KT12 4ES",
+    "service_types": "Nursing homes",
+    "sector": "KT12 4",
+    "provider_id": "1-101620039"
+  },
+  {
+    "loc_id": "1-194040730",
+    "name": "Sidney Urdang Dental Surgery",
+    "address": "198 The Avenue,Sunbury On Thames",
+    "postcode": "TW16 5DX",
+    "service_types": "Dentist",
+    "sector": "TW16 5",
+    "provider_id": "1-153007023"
+  },
+  {
+    "loc_id": "1-1947606886",
+    "name": "Moore Place",
+    "address": "Portsmouth Road,Esher",
+    "postcode": "KT10 9LH",
+    "service_types": "Residential homes",
+    "sector": "KT10 9",
+    "provider_id": "1-102642895"
+  },
+  {
+    "loc_id": "1-19417822037",
+    "name": "Hythe Medical Centre",
+    "address": "Rochester Road,Staines-upon-thames",
+    "postcode": "TW18 3HN",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "TW18 3",
+    "provider_id": "1-19416579322"
+  },
+  {
+    "loc_id": "1-194424015",
+    "name": "The White House Dental Clinic",
+    "address": "18 Terrace Road,Walton On Thames",
+    "postcode": "KT12 2SB",
+    "service_types": "Dentist",
+    "sector": "KT12 2",
+    "provider_id": "1-152974488"
+  },
+  {
+    "loc_id": "1-19443929424",
+    "name": "UK Vein Care Esher",
+    "address": "17 Church Street,Esher",
+    "postcode": "KT10 8QS",
+    "service_types": "Clinic",
+    "sector": "KT10 8",
+    "provider_id": "1-17858259868"
+  },
+  {
+    "loc_id": "1-195063180",
+    "name": "Mount Road Dental Surgery",
+    "address": "4A Mount Road,Chessington",
+    "postcode": "KT9 1JG",
+    "service_types": "Dentist",
+    "sector": "KT9 1",
+    "provider_id": "1-156964922"
+  },
+  {
+    "loc_id": "1-2177453406",
+    "name": "Right at Home Sutton & Mid-Surrey",
+    "address": "Renaissance House,32 Upper High Street,Epsom",
+    "postcode": "KT17 4QJ",
+    "service_types": "Homecare agencies",
+    "sector": "KT17 4",
+    "provider_id": "1-296418626"
+  },
+  {
+    "loc_id": "1-217854413",
+    "name": "Aromaden Teddington",
+    "address": "24 High Street,Teddington",
+    "postcode": "TW11 8EW",
+    "service_types": "Dentist",
+    "sector": "TW11 8",
+    "provider_id": "1-191590456"
+  },
+  {
+    "loc_id": "1-21815757271",
+    "name": "Dene Place Care Home",
+    "address": "Ripley Lane,West Horsley,Leatherhead",
+    "postcode": "KT24 6JW",
+    "service_types": "Nursing homes",
+    "sector": "KT24 6",
+    "provider_id": "1-122683629"
+  },
+  {
+    "loc_id": "1-218242840",
+    "name": "The Dental Connection",
+    "address": "63-65 Fleece Road,Long Ditton,Surbiton",
+    "postcode": "KT6 5JR",
+    "service_types": "Dentist",
+    "sector": "KT6 5",
+    "provider_id": "1-171566608"
+  },
+  {
+    "loc_id": "1-21670181843",
+    "name": "Seon Vision",
+    "address": "140 London Road,Kingston Upon Thames",
+    "postcode": "KT2 6QL",
+    "service_types": "Clinic|Doctors/GPs|Doctors/GPs",
+    "sector": "KT2 6",
+    "provider_id": "1-21252167306"
+  },
+  {
+    "loc_id": "1-216926368",
+    "name": "Weybridge Dental Care Limited",
+    "address": "33 Monument Green,Weybridge",
+    "postcode": "KT13 8QJ",
+    "service_types": "Dentist",
+    "sector": "KT13 8",
+    "provider_id": "1-156972957"
+  },
+  {
+    "loc_id": "1-21533595058",
+    "name": "Hampton Care Home",
+    "address": "Upper Sunbury Road,Hampton",
+    "postcode": "TW12 2DW",
+    "service_types": "Nursing homes",
+    "sector": "TW12 2",
+    "provider_id": "1-21251661417"
+  },
+  {
+    "loc_id": "1-21537700717",
+    "name": "Thames Orthodontics",
+    "address": "Walpole House,15 St. Leonards Road,Thames Ditton",
+    "postcode": "KT7 0RJ",
+    "service_types": "Dentist",
+    "sector": "KT7 0",
+    "provider_id": "1-20633368709"
+  },
+  {
+    "loc_id": "1-215520509",
+    "name": "The Courtyard Chertsey Limited",
+    "address": "30 London Street,Chertsey",
+    "postcode": "KT16 8AA",
+    "service_types": "Dentist",
+    "sector": "KT16 8",
+    "provider_id": "1-156969193"
+  },
+  {
+    "loc_id": "1-2156920693",
+    "name": "Head Office - Court Lodge Limited",
+    "address": "2a The Crescent,Wells Estate,Epsom",
+    "postcode": "KT18 7LL",
+    "service_types": "Homecare agencies|Supported living",
+    "sector": "KT18 7",
+    "provider_id": "1-850728588"
+  },
+  {
+    "loc_id": "1-22019157619",
+    "name": "Loveday Esher",
+    "address": "Love day Esher Upper Court,Portsmouth Road,Esher",
+    "postcode": "KT10 9JH",
+    "service_types": "Nursing homes|Rehabilitation (illness/injury)",
+    "sector": "KT10 9",
+    "provider_id": "1-5437613441"
+  },
+  {
+    "loc_id": "1-220371166",
+    "name": "The Ivy Clinic",
+    "address": "190 Kingston Road,Teddington",
+    "postcode": "TW11 9JD",
+    "service_types": "Dentist",
+    "sector": "TW11 9",
+    "provider_id": "1-153020373"
+  },
+  {
+    "loc_id": "1-22057670153",
+    "name": "Heypi Care Service",
+    "address": "No. 307 Third Floor,13 The Causeway,Teddington",
+    "postcode": "TW11 0JR",
+    "service_types": "Homecare agencies",
+    "sector": "TW11 0",
+    "provider_id": "1-21090284895"
+  },
+  {
+    "loc_id": "1-2184552039",
+    "name": "Astek Dental Centre",
+    "address": "19 Cannon Grove,Fetcham,Leatherhead",
+    "postcode": "KT22 9LG",
+    "service_types": "Dentist",
+    "sector": "KT22 9",
+    "provider_id": "1-2031859630"
+  },
+  {
+    "loc_id": "1-218515088",
+    "name": "Elmfield House Dental Practice",
+    "address": "Elmfield House,5 High Street,Teddington",
+    "postcode": "TW11 8EW",
+    "service_types": "Dentist",
+    "sector": "TW11 8",
+    "provider_id": "1-153015525"
+  },
+  {
+    "loc_id": "1-21860816753",
+    "name": "Emberbrook Care Home",
+    "address": "16 Raphael Drive,Thames Ditton",
+    "postcode": "KT7 0BL",
+    "service_types": "Nursing homes",
+    "sector": "KT7 0",
+    "provider_id": "1-21559707654"
+  },
+  {
+    "loc_id": "1-2192691575",
+    "name": "Berrylands Surgery, Surbiton Health Centre",
+    "address": "Ewell Road,Surbiton",
+    "postcode": "KT6 6EZ",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT6 6",
+    "provider_id": "1-199746702"
+  },
+  {
+    "loc_id": "1-219292074",
+    "name": "Dr Bhargavi Bhatt",
+    "address": "25 Ottways Lane,Ashtead",
+    "postcode": "KT21 2PL",
+    "service_types": "Dentist",
+    "sector": "KT21 2",
+    "provider_id": "1-205034511"
+  },
+  {
+    "loc_id": "1-219446267",
+    "name": "Bupa Dental Care Kingston - Woodbines Avenue",
+    "address": "Woodbines Avenue,Portsmouth Road,Kingston Upon Thames",
+    "postcode": "KT1 2LY",
+    "service_types": "Dentist",
+    "sector": "KT1 2",
+    "provider_id": "1-152953759"
+  },
+  {
+    "loc_id": "1-1782864305",
+    "name": "The Surbiton Dental Office",
+    "address": "111 Brighton Road,Surbiton",
+    "postcode": "KT6 5NF",
+    "service_types": "Dentist",
+    "sector": "KT6 5",
+    "provider_id": "1-1655211741"
+  },
+  {
+    "loc_id": "1-17882543835",
+    "name": "Hollyhedge Dental",
+    "address": "8 Hollyhedge Road,Cobham",
+    "postcode": "KT11 3DG",
+    "service_types": "Dentist",
+    "sector": "KT11 3",
+    "provider_id": "1-17128967672"
+  },
+  {
+    "loc_id": "1-18445074883",
+    "name": "The Cosmetic Doctors Company",
+    "address": "6 Esher Park Avenue,Esher",
+    "postcode": "KT10 9NP",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT10 9",
+    "provider_id": "1-16323537135"
+  },
+  {
+    "loc_id": "1-18617355035",
+    "name": "Lura Care",
+    "address": "Unit 2 Hill Business Park,High Street, Hampton Hill,Hampton",
+    "postcode": "TW12 1NP",
+    "service_types": "Dentist",
+    "sector": "TW12 1",
+    "provider_id": "1-18253876646"
+  },
+  {
+    "loc_id": "1-1867908950",
+    "name": "Caremark (Spelthorne and Runnymede)",
+    "address": "29A The Precinct,High Street,Egham",
+    "postcode": "TW20 9HN",
+    "service_types": "Homecare agencies",
+    "sector": "TW20 9",
+    "provider_id": "1-1763863030"
+  },
+  {
+    "loc_id": "1-18484154655",
+    "name": "CareYourWay Weybridge, Egham & Cobham",
+    "address": "Office 107, Meadlake Place,Thorpe Lea Road,Egham",
+    "postcode": "TW20 8HE",
+    "service_types": "Homecare agencies",
+    "sector": "TW20 8",
+    "provider_id": "1-16975086644"
+  },
+  {
+    "loc_id": "1-18587559499",
+    "name": "SDL Kingston",
+    "address": "Trident Court, Suite 086,1 Oakcroft Road,Chessington",
+    "postcode": "KT9 1BD",
+    "service_types": "Homecare agencies",
+    "sector": "KT9 1",
+    "provider_id": "1-791279047"
+  },
+  {
+    "loc_id": "1-1833417255",
+    "name": "Chessington Dental Practice",
+    "address": "1 Elm Road,Chessington",
+    "postcode": "KT9 1AF",
+    "service_types": "Dentist",
+    "sector": "KT9 1",
+    "provider_id": "1-1728712073"
+  },
+  {
+    "loc_id": "1-18386074825",
+    "name": "Via - Kingston",
+    "address": "Kingston Wellbeing Service, Surbiton Health Centre, Ewell Road,Surbiton",
+    "postcode": "KT6 6EZ",
+    "service_types": "Community services - Substance abuse",
+    "sector": "KT6 6",
+    "provider_id": "1-126775066"
+  },
+  {
+    "loc_id": "1-18387682875",
+    "name": "Stedham House Dental Surgery",
+    "address": "34 Ewell Road,Surbiton",
+    "postcode": "KT6 6HX",
+    "service_types": "Dentist",
+    "sector": "KT6 6",
+    "provider_id": "1-17130422215"
+  },
+  {
+    "loc_id": "1-18738302904",
+    "name": "Infinite Care Network - Main Office",
+    "address": "Image Court 328-334,Molesey Road,Walton-on-thames",
+    "postcode": "KT12 3LT",
+    "service_types": "Homecare agencies",
+    "sector": "KT12 3",
+    "provider_id": "1-16836871110"
+  },
+  {
+    "loc_id": "1-18743878845",
+    "name": "SeeAbility Surrey Support Service",
+    "address": "3 Wesley Road,Leatherhead",
+    "postcode": "KT22 8ET",
+    "service_types": "Homecare agencies|Supported living",
+    "sector": "KT22 8",
+    "provider_id": "1-102643252"
+  },
+  {
+    "loc_id": "1-18096411579",
+    "name": "Sandown Court (Care Outlook)",
+    "address": "Sandown Court,176 Hampton Road,Twickenham",
+    "postcode": "TW2 5NE",
+    "service_types": "Supported housing",
+    "sector": "TW2 5",
+    "provider_id": "1-101679773"
+  },
+  {
+    "loc_id": "1-2078170071",
+    "name": "Caremaid Services Limited",
+    "address": "Mill House,58 Hamm Moor Lane,Addlestone",
+    "postcode": "KT15 2SF",
+    "service_types": "Homecare agencies",
+    "sector": "KT15 2",
+    "provider_id": "1-1996239930"
+  },
+  {
+    "loc_id": "1-2083017371",
+    "name": "The Centre for Reproductive Immunology and Pregnancy",
+    "address": "137-139 High Street,Bramshot House,Epsom",
+    "postcode": "KT19 8EH",
+    "service_types": "Clinic",
+    "sector": "KT19 8",
+    "provider_id": "1-2028907839"
+  },
+  {
+    "loc_id": "1-214252316",
+    "name": "Simply Dental",
+    "address": "1 Oriel Court,106 The Green,Twickenham",
+    "postcode": "TW2 5AG",
+    "service_types": "Dentist",
+    "sector": "TW2 5",
+    "provider_id": "1-171565279"
+  },
+  {
+    "loc_id": "1-21499218229",
+    "name": "Bourne House Nursing Home",
+    "address": "45 Langley Avenue,Surbiton",
+    "postcode": "KT6 6QR",
+    "service_types": "Nursing homes",
+    "sector": "KT6 6",
+    "provider_id": "1-20399393850"
+  },
+  {
+    "loc_id": "1-21499218343",
+    "name": "Hamilton Nursing Home",
+    "address": "24 Langley Avenue,Surbiton",
+    "postcode": "KT6 6QW",
+    "service_types": "Nursing homes",
+    "sector": "KT6 6",
+    "provider_id": "1-20399393850"
+  },
+  {
+    "loc_id": "1-21503031401",
+    "name": "Southborough Nursing Home",
+    "address": "12-14 Langley Avenue,Surbiton",
+    "postcode": "KT6 6QL",
+    "service_types": "Nursing homes",
+    "sector": "KT6 6",
+    "provider_id": "1-20399393850"
+  },
+  {
+    "loc_id": "1-212605828",
+    "name": "Mulberry Dental",
+    "address": "18 Ashley Road,Walton On Thames",
+    "postcode": "KT12 1HS",
+    "service_types": "Dentist",
+    "sector": "KT12 1",
+    "provider_id": "1-153022733"
+  },
+  {
+    "loc_id": "1-213011118",
+    "name": "Fairoak Dental Practice",
+    "address": "Portsmouth Road,Esher",
+    "postcode": "KT10 9PJ",
+    "service_types": "Dentist",
+    "sector": "KT10 9",
+    "provider_id": "1-153035584"
+  },
+  {
+    "loc_id": "1-2130656207",
+    "name": "Salters & Salters Dental",
+    "address": "23 Monument Green,Weybridge",
+    "postcode": "KT13 8QW",
+    "service_types": "Dentist",
+    "sector": "KT13 8",
+    "provider_id": "1-2008510143"
+  },
+  {
+    "loc_id": "1-211581520",
+    "name": "St John's Dental Practice",
+    "address": "St Johns Villa,St Johns Road,Leatherhead",
+    "postcode": "KT22 8SE",
+    "service_types": "Dentist",
+    "sector": "KT22 8",
+    "provider_id": "1-161845263"
+  },
+  {
+    "loc_id": "1-210404188",
+    "name": "Smilessence",
+    "address": "83 - 85 Bridge Road,East Molesey",
+    "postcode": "KT8 9HH",
+    "service_types": "Dentist",
+    "sector": "KT8 9",
+    "provider_id": "1-153016952"
+  },
+  {
+    "loc_id": "1-210617517",
+    "name": "Cromwell Dental Practice",
+    "address": "1 Cromwell Road,Walton On Thames",
+    "postcode": "KT12 3NL",
+    "service_types": "Dentist",
+    "sector": "KT12 3",
+    "provider_id": "1-153038579"
+  },
+  {
+    "loc_id": "1-210929994",
+    "name": "Clocktower Dental Clinic",
+    "address": "88 High Street,Epsom",
+    "postcode": "KT19 8BJ",
+    "service_types": "Dentist",
+    "sector": "KT19 8",
+    "provider_id": "1-153019351"
+  },
+  {
+    "loc_id": "1-2112646035",
+    "name": "Acacia Homecare Limited",
+    "address": "Pod Business Centre,Harris Way,Sunbury-on-thames",
+    "postcode": "TW16 7EL",
+    "service_types": "Homecare agencies",
+    "sector": "TW16 7",
+    "provider_id": "1-387851309"
+  },
+  {
+    "loc_id": "1-16128428124",
+    "name": "Farley House Dental Care",
+    "address": "Farley House Dental Practice, 7 Pound Road,Chertsey",
+    "postcode": "KT16 8EH",
+    "service_types": "Dentist",
+    "sector": "KT16 8",
+    "provider_id": "1-15982035059"
+  },
+  {
+    "loc_id": "1-1614801526",
+    "name": "The Causeway Dental Practice",
+    "address": "26-28 The Causeway,Teddington",
+    "postcode": "TW11 0HE",
+    "service_types": "Dentist",
+    "sector": "TW11 0",
+    "provider_id": "1-1488611829"
+  },
+  {
+    "loc_id": "1-19259047435",
+    "name": "Bridge of Care Limited",
+    "address": "Flat 6,35 Cedars Road, Hampton Wick,Kingston Upon Thames",
+    "postcode": "KT1 4BG",
+    "service_types": "Homecare agencies",
+    "sector": "KT1 4",
+    "provider_id": "1-17987500975"
+  },
+  {
+    "loc_id": "1-19281328090",
+    "name": "Care Quality Services Sutton",
+    "address": "Ground floor, Unit 8 Princeton Mews,Princeton Mews, 167 - 169 London Road,Kingston Upon Thames",
+    "postcode": "KT2 6PT",
+    "service_types": "Homecare agencies",
+    "sector": "KT2 6",
+    "provider_id": "1-6129891850"
+  },
+  {
+    "loc_id": "1-19104096505",
+    "name": "Great Bookham Dental Practice Limited",
+    "address": "1 The Garstons,Great Bookham,Leatherhead",
+    "postcode": "KT23 3DT",
+    "service_types": "Dentist",
+    "sector": "KT23 3",
+    "provider_id": "1-18963853726"
+  },
+  {
+    "loc_id": "1-19018954083",
+    "name": "Hersham Dental Practice",
+    "address": "5 The Green,Hersham,Walton-on-thames",
+    "postcode": "KT12 4HW",
+    "service_types": "Dentist",
+    "sector": "KT12 4",
+    "provider_id": "1-18341434621"
+  },
+  {
+    "loc_id": "1-19056304855",
+    "name": "Dental Elements",
+    "address": "18a,North Street,Leatherhead",
+    "postcode": "KT22 7AW",
+    "service_types": "Dentist",
+    "sector": "KT22 7",
+    "provider_id": "1-2317338107"
+  },
+  {
+    "loc_id": "1-190092300",
+    "name": "Orthodontic Clinic",
+    "address": "24 Lower Road,Fetcham,Leatherhead",
+    "postcode": "KT22 9EW",
+    "service_types": "Dentist",
+    "sector": "KT22 9",
+    "provider_id": "1-152974827"
+  },
+  {
+    "loc_id": "1-1901180758",
+    "name": "Aesthetika Dental Studio",
+    "address": "13 Penrhyn Road,Kingston Upon Thames",
+    "postcode": "KT1 2BZ",
+    "service_types": "Dentist",
+    "sector": "KT1 2",
+    "provider_id": "1-1868185842"
+  },
+  {
+    "loc_id": "1-18951562045",
+    "name": "IMG-Surrey",
+    "address": "5 Copper Gate Mews,Brighton Road,Surbiton",
+    "postcode": "KT6 5NE",
+    "service_types": "Homecare agencies",
+    "sector": "KT6 5",
+    "provider_id": "1-8424822050"
+  },
+  {
+    "loc_id": "1-18970406115",
+    "name": "Upper High Street",
+    "address": "T2 - 10 Upper High Street,Epsom",
+    "postcode": "KT17 4QJ",
+    "service_types": "Supported living",
+    "sector": "KT17 4",
+    "provider_id": "1-17027646361"
+  },
+  {
+    "loc_id": "1-189232596",
+    "name": "Alexandra Dental Practice",
+    "address": "43 Alexandra Road,Epsom",
+    "postcode": "KT17 4DB",
+    "service_types": "Dentist",
+    "sector": "KT17 4",
+    "provider_id": "1-152974648"
+  },
+  {
+    "loc_id": "1-189248604",
+    "name": "Epsom Orthodontics",
+    "address": "1 Church Street,Epsom",
+    "postcode": "KT17 4PF",
+    "service_types": "Dentist",
+    "sector": "KT17 4",
+    "provider_id": "1-152969867"
+  },
+  {
+    "loc_id": "1-189052091",
+    "name": "Stedham House Dental Surgery",
+    "address": "34 Ewell Road,Surbiton",
+    "postcode": "KT6 6HX",
+    "service_types": "Dentist",
+    "sector": "KT6 6",
+    "provider_id": "1-152974937"
+  },
+  {
+    "loc_id": "1-20393505474",
+    "name": "THMG | sk:n Epsom Clinic (Epsom General Hospital)",
+    "address": "Epsom General Hospital,Dorking Road,Epsom",
+    "postcode": "KT18 7EG",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT18 7",
+    "provider_id": "1-19884858455"
+  },
+  {
+    "loc_id": "1-20294335392",
+    "name": "Vivid Passionate Care",
+    "address": "Rourke House,The Causeway,Staines-upon-thames",
+    "postcode": "TW18 3BA",
+    "service_types": "Homecare agencies",
+    "sector": "TW18 3",
+    "provider_id": "1-18239872528"
+  },
+  {
+    "loc_id": "1-2048347176",
+    "name": "Horsley Dental Surgery",
+    "address": "11 Bishopsmead Parade,East Horsley,Leatherhead",
+    "postcode": "KT24 6RT",
+    "service_types": "Dentist",
+    "sector": "KT24 6",
+    "provider_id": "1-1894506352"
+  },
+  {
+    "loc_id": "1-20632938311",
+    "name": "Wema Health Care and Support Services \u201a\u00c4\u00ec London Office",
+    "address": "Riverbridge House,Guildford Road, Fetcham,Leatherhead",
+    "postcode": "KT22 9AD",
+    "service_types": "Homecare agencies",
+    "sector": "KT22 9",
+    "provider_id": "1-16515780774"
+  },
+  {
+    "loc_id": "1-2067367106",
+    "name": "Moor Lane Centre",
+    "address": "Achieving for Children The Moor Lane Centre,Moor Lane,Chessington",
+    "postcode": "KT9 2AA",
+    "service_types": "Homecare agencies|Community services - Learning disabilities",
+    "sector": "KT9 2",
+    "provider_id": "1-1864199043"
+  },
+  {
+    "loc_id": "1-2067803639",
+    "name": "Bedelsford School",
+    "address": "Grange Road,Kingston Upon Thames",
+    "postcode": "KT1 2QZ",
+    "service_types": "Community services - Learning disabilities",
+    "sector": "KT1 2",
+    "provider_id": "1-1864199043"
+  },
+  {
+    "loc_id": "1-2067804010",
+    "name": "Dysart School",
+    "address": "190 Ewell Road,Surbiton",
+    "postcode": "KT6 6HL",
+    "service_types": "Community services - Learning disabilities",
+    "sector": "KT6 6",
+    "provider_id": "1-1864199043"
+  },
+  {
+    "loc_id": "1-20626639862",
+    "name": "Dental Beauty Teddington",
+    "address": "2 Gloucester Road,Teddington",
+    "postcode": "TW11 0NU",
+    "service_types": "Dentist",
+    "sector": "TW11 0",
+    "provider_id": "1-20626639825"
+  },
+  {
+    "loc_id": "1-1753121812",
+    "name": "Oxshott Dental",
+    "address": "Steels Lane,Oxshott,Leatherhead",
+    "postcode": "KT22 0RD",
+    "service_types": "Dentist",
+    "sector": "KT22 0",
+    "provider_id": "1-1667243410"
+  },
+  {
+    "loc_id": "1-1757589113",
+    "name": "Crown House Dental Practice",
+    "address": "4 Grange Road,Egham",
+    "postcode": "TW20 9QW",
+    "service_types": "Dentist",
+    "sector": "TW20 9",
+    "provider_id": "1-1679719571"
+  },
+  {
+    "loc_id": "1-17594546351",
+    "name": "Becoming Care Services Limited",
+    "address": "Image Court Unit IC122,328 Molesey Road,Walton-on-thames",
+    "postcode": "KT12 3LT",
+    "service_types": "Homecare agencies",
+    "sector": "KT12 3",
+    "provider_id": "1-15750668578"
+  },
+  {
+    "loc_id": "1-15918284720",
+    "name": "Keko Personnel Limited",
+    "address": "37 Petersfield Road,Staines-upon-thames",
+    "postcode": "TW18 1DF",
+    "service_types": "Homecare agencies",
+    "sector": "TW18 1",
+    "provider_id": "1-14906907149"
+  },
+  {
+    "loc_id": "1-1593040471",
+    "name": "Mydentist - High Street - Leatherhead",
+    "address": "28 High Street,Leatherhead",
+    "postcode": "KT22 8AW",
+    "service_types": "Dentist",
+    "sector": "KT22 8",
+    "provider_id": "1-171553721"
+  },
+  {
+    "loc_id": "1-15975298295",
+    "name": "Munro Hall Clinic",
+    "address": "Suite 3 The Monument,45-47 Monument Hill,Weybridge",
+    "postcode": "KT13 8RN",
+    "service_types": "Dentist",
+    "sector": "KT13 8",
+    "provider_id": "1-15891774698"
+  },
+  {
+    "loc_id": "1-17711651276",
+    "name": "GoodOaks Homecare - Epsom and Reigate",
+    "address": "64 South Street,Epsom,Surrey",
+    "postcode": "KT18 7PH",
+    "service_types": "Homecare agencies",
+    "sector": "KT18 7",
+    "provider_id": "1-16422342480"
+  },
+  {
+    "loc_id": "1-17712446492",
+    "name": "The Dentgist",
+    "address": "116,Ewell Road,Surbiton",
+    "postcode": "KT6 6HA",
+    "service_types": "Dentist",
+    "sector": "KT6 6",
+    "provider_id": "1-16574029778"
+  },
+  {
+    "loc_id": "1-17713907487",
+    "name": "Shepperton Dental care",
+    "address": "19 Thurlestone Parade,High Street,Shepperton",
+    "postcode": "TW17 9AR",
+    "service_types": "Dentist",
+    "sector": "TW17 9",
+    "provider_id": "1-17076460123"
+  },
+  {
+    "loc_id": "1-17716746745",
+    "name": "Ripley Dental Practice",
+    "address": "The Olde Post,High Street, Ripley,Woking",
+    "postcode": "GU23 6AQ",
+    "service_types": "Dentist",
+    "sector": "GU23 6",
+    "provider_id": "1-17077603342"
+  },
+  {
+    "loc_id": "1-17716846425",
+    "name": "One Orthodontics",
+    "address": "Fox House,44 High Street,Cobham",
+    "postcode": "KT11 3EB",
+    "service_types": "Dentist",
+    "sector": "KT11 3",
+    "provider_id": "1-16413928891"
+  },
+  {
+    "loc_id": "1-17940621786",
+    "name": "Refresh Dental Hampton",
+    "address": "139-141 Station Road,Hampton",
+    "postcode": "TW12 2AL",
+    "service_types": "Dentist",
+    "sector": "TW12 2",
+    "provider_id": "1-3116524730"
+  },
+  {
+    "loc_id": "1-17994562328",
+    "name": "Danielle and Daisy Care Ltd",
+    "address": "69 Burleigh Park,Cobham",
+    "postcode": "KT11 2DU",
+    "service_types": "Homecare agencies|Supported living",
+    "sector": "KT11 2",
+    "provider_id": "1-8901159175"
+  },
+  {
+    "loc_id": "1-1722738584",
+    "name": "Bupa Dental Care Weybridge",
+    "address": "129 Queens Road,Weybridge",
+    "postcode": "KT13 9UN",
+    "service_types": "Dentist",
+    "sector": "KT13 9",
+    "provider_id": "1-1116540169"
+  },
+  {
+    "loc_id": "1-17430304255",
+    "name": "Portmore Dental",
+    "address": "Roadway House,35 Monument Hill,Weybridge",
+    "postcode": "KT13 8RN",
+    "service_types": "Dentist",
+    "sector": "KT13 8",
+    "provider_id": "1-17362529133"
+  },
+  {
+    "loc_id": "1-17430845399",
+    "name": "Gentle Dental Implant & Cosmetic Centre",
+    "address": "Norfolk House,1 Spencer Road,East Molesey",
+    "postcode": "KT8 0SP",
+    "service_types": "Dentist",
+    "sector": "KT8 0",
+    "provider_id": "1-17362529133"
+  },
+  {
+    "loc_id": "1-1745256288",
+    "name": "Sunbury",
+    "address": "26 Green Street,Sunbury-on-thames",
+    "postcode": "TW16 6RN",
+    "service_types": "Homecare agencies|Supported living",
+    "sector": "TW16 6",
+    "provider_id": "1-101644983"
+  },
+  {
+    "loc_id": "1-20102466421",
+    "name": "Conscience Care Limited",
+    "address": "297 Kingston Road, Dorset House,Regent Park, Regus,Leatherhead",
+    "postcode": "KT22 7PL",
+    "service_types": "Homecare agencies|Supported living",
+    "sector": "KT22 7",
+    "provider_id": "1-8780561220"
+  },
+  {
+    "loc_id": "1-2010595891",
+    "name": "Surrey Choices Shared Lives Scheme",
+    "address": "Fernleigh Activity Centre, Fernleigh Day Service,,Fernleigh Close,Walton-on-thames",
+    "postcode": "KT12 1RD",
+    "service_types": "Shared lives",
+    "sector": "KT12 1",
+    "provider_id": "1-1458945818"
+  },
+  {
+    "loc_id": "1-199296289",
+    "name": "Bupa Dental Care Hampton Hill",
+    "address": "127-129 High Street,Hampton Hill,Hampton",
+    "postcode": "TW12 1NJ",
+    "service_types": "Dentist",
+    "sector": "TW12 1",
+    "provider_id": "1-152953768"
+  },
+  {
+    "loc_id": "1-19896881815",
+    "name": "Laurel Dene",
+    "address": "117 Hampton Road,Hampton Hill,Hampton",
+    "postcode": "TW12 1JQ",
+    "service_types": "Nursing homes",
+    "sector": "TW12 1",
+    "provider_id": "1-118164369"
+  },
+  {
+    "loc_id": "1-19897040535",
+    "name": "Appleby House",
+    "address": "Longmead Road,Epsom",
+    "postcode": "KT19 9RX",
+    "service_types": "Residential homes",
+    "sector": "KT19 9",
+    "provider_id": "1-118164369"
+  },
+  {
+    "loc_id": "1-19897102803",
+    "name": "Tiltwood",
+    "address": "Hogshill Lane,Cobham",
+    "postcode": "KT11 2AQ",
+    "service_types": "Residential homes",
+    "sector": "KT11 2",
+    "provider_id": "1-118164369"
+  },
+  {
+    "loc_id": "1-19897447163",
+    "name": "Liberham Lodge",
+    "address": "Rectory Lane,Little Bookham,Leatherhead",
+    "postcode": "KT23 4DY",
+    "service_types": "Nursing homes",
+    "sector": "KT23 4",
+    "provider_id": "1-118164369"
+  },
+  {
+    "loc_id": "1-19898079435",
+    "name": "Weybridge Private GP",
+    "address": "8 Chaucer Avenue,Weybridge",
+    "postcode": "KT13 0SS",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT13 0",
+    "provider_id": "1-18443609539"
+  },
+  {
+    "loc_id": "1-199357513",
+    "name": "Mydentist - Ashley Road - Epsom",
+    "address": "38b Ashley Road,Epsom",
+    "postcode": "KT18 5BH",
+    "service_types": "Dentist",
+    "sector": "KT18 5",
+    "provider_id": "1-171553721"
+  },
+  {
+    "loc_id": "1-199367764",
+    "name": "Mydentist - Walton Road - West Molesey",
+    "address": "502 Walton Road,West Molesey",
+    "postcode": "KT8 2QF",
+    "service_types": "Dentist",
+    "sector": "KT8 2",
+    "provider_id": "1-171553721"
+  },
+  {
+    "loc_id": "1-16666829611",
+    "name": "Signature at Weybridge",
+    "address": "Ellesmere Road,Weybridge",
+    "postcode": "KT13 0HY",
+    "service_types": "Residential homes",
+    "sector": "KT13 0",
+    "provider_id": "1-16435814558"
+  },
+  {
+    "loc_id": "1-188639994",
+    "name": "S3 Dental Hinchley Wood",
+    "address": "3 Manor Road North,Hinchley Wood,Esher",
+    "postcode": "KT10 0AA",
+    "service_types": "Dentist",
+    "sector": "KT10 0",
+    "provider_id": "1-152974400"
+  },
+  {
+    "loc_id": "1-18878087045",
+    "name": "Brunswick Rooms",
+    "address": "15 Park Road,Kingston Upon Thames",
+    "postcode": "KT2 6BX",
+    "service_types": "Dentist",
+    "sector": "KT2 6",
+    "provider_id": "1-18828981494"
+  },
+  {
+    "loc_id": "1-18830664955",
+    "name": "Burwood Grange Care Home",
+    "address": "Burwood Grange,Seven Hills Road,Walton-on-thames",
+    "postcode": "KT12 4DD",
+    "service_types": "Residential homes",
+    "sector": "KT12 4",
+    "provider_id": "1-102642955"
+  },
+  {
+    "loc_id": "1-1881377402",
+    "name": "Amily Homecare",
+    "address": "Unit 37, Enterprise House,44-46, Terrace Road,Walton-on-thames",
+    "postcode": "KT12 2SD",
+    "service_types": "Homecare agencies",
+    "sector": "KT12 2",
+    "provider_id": "1-1834123854"
+  },
+  {
+    "loc_id": "1-198375825",
+    "name": "Confident Smile Dental Practice",
+    "address": "56a High Street,Shepperton",
+    "postcode": "TW17 9AU",
+    "service_types": "Dentist",
+    "sector": "TW17 9",
+    "provider_id": "1-171566764"
+  },
+  {
+    "loc_id": "1-19888341997",
+    "name": "Milner House",
+    "address": "Ermyn Way,Leatherhead",
+    "postcode": "KT22 8TX",
+    "service_types": "Nursing homes",
+    "sector": "KT22 8",
+    "provider_id": "1-118164369"
+  },
+  {
+    "loc_id": "1-19888342024",
+    "name": "Norfolk House",
+    "address": "39 Portmore Park Road,Weybridge",
+    "postcode": "KT13 8HQ",
+    "service_types": "Nursing homes",
+    "sector": "KT13 8",
+    "provider_id": "1-118164369"
+  },
+  {
+    "loc_id": "1-1966650901",
+    "name": "Englands House Dental Practice",
+    "address": "30 High Street,Bookham,Leatherhead",
+    "postcode": "KT23 4AG",
+    "service_types": "Dentist",
+    "sector": "KT23 4",
+    "provider_id": "1-1947127048"
+  },
+  {
+    "loc_id": "1-19680488036",
+    "name": "Fast Track Cardiac Care",
+    "address": "Orange Tree Clinic,23a Broad Street Broad Street,Teddington",
+    "postcode": "TW11 8QZ",
+    "service_types": "Diagnosis/screening",
+    "sector": "TW11 8",
+    "provider_id": "1-12823885491"
+  },
+  {
+    "loc_id": "1-19680726655",
+    "name": "Staines Road Surgery",
+    "address": "323-325 Staines Road,Twickenham",
+    "postcode": "TW2 5AU",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "TW2 5",
+    "provider_id": "1-19258292313"
+  },
+  {
+    "loc_id": "1-197952149",
+    "name": "Orchard Cottage Dental Surgery - Fetcham",
+    "address": "135 Cobham Road,Fetcham,Leatherhead",
+    "postcode": "KT22 9HX",
+    "service_types": "Dentist",
+    "sector": "KT22 9",
+    "provider_id": "1-153032396"
+  },
+  {
+    "loc_id": "1-1979704035",
+    "name": "Pattom Limited",
+    "address": "Office Suite 206, Alfa House,Molesey Road,Walton-on-thames",
+    "postcode": "KT12 3PD",
+    "service_types": "Homecare agencies",
+    "sector": "KT12 3",
+    "provider_id": "1-119232801"
+  },
+  {
+    "loc_id": "1-19862446895",
+    "name": "Walsingham Support - Cedars Road",
+    "address": "5 Cedars Road,Hampton Wick,Kingston Upon Thames",
+    "postcode": "KT1 4BG",
+    "service_types": "Residential homes",
+    "sector": "KT1 4",
+    "provider_id": "1-102643017"
+  },
+  {
+    "loc_id": "1-19862447043",
+    "name": "Walsingham Support - Langdon Park",
+    "address": "18 Langdon Park,Teddington",
+    "postcode": "TW11 9PS",
+    "service_types": "Residential homes",
+    "sector": "TW11 9",
+    "provider_id": "1-102643017"
+  },
+  {
+    "loc_id": "1-197183219",
+    "name": "Bupa Dental Care Epsom",
+    "address": "12 Church Street,Epsom",
+    "postcode": "KT17 4PP",
+    "service_types": "Dentist",
+    "sector": "KT17 4",
+    "provider_id": "1-152955249"
+  },
+  {
+    "loc_id": "1-23313812653",
+    "name": "Leighton House Private Nursing Home",
+    "address": "Burgh Heath Road,Epsom",
+    "postcode": "KT17 4NB",
+    "service_types": "Nursing homes",
+    "sector": "KT17 4",
+    "provider_id": "1-22830234112"
+  },
+  {
+    "loc_id": "1-2277415566",
+    "name": "Austin Place",
+    "address": "72 Oatlands Drive,Weybridge",
+    "postcode": "KT13 9JA",
+    "service_types": "Homecare agencies",
+    "sector": "KT13 9",
+    "provider_id": "1-102642895"
+  },
+  {
+    "loc_id": "1-657642041",
+    "name": "Creating Lifestyles Surbiton Limited",
+    "address": "75-77 Effingham Road,Long Ditton",
+    "postcode": "KT6 5LA",
+    "service_types": "Supported living",
+    "sector": "KT6 5",
+    "provider_id": "1-627950067"
+  },
+  {
+    "loc_id": "1-658226873",
+    "name": "The Summers",
+    "address": "Yeend Close,West Molesey",
+    "postcode": "KT8 2NY",
+    "service_types": "Nursing homes",
+    "sector": "KT8 2",
+    "provider_id": "1-101697128"
+  },
+  {
+    "loc_id": "1-9562256875",
+    "name": "Violet Home Care Limited",
+    "address": "Office 103, Global House,Ashley Avenue,Epsom",
+    "postcode": "KT18 5AD",
+    "service_types": "Homecare agencies",
+    "sector": "KT18 5",
+    "provider_id": "1-9012120269"
+  },
+  {
+    "loc_id": "1-973758021",
+    "name": "Meads Dental Practice",
+    "address": "Portsmouth Road,Esher",
+    "postcode": "KT10 9PH",
+    "service_types": "Dentist",
+    "sector": "KT10 9",
+    "provider_id": "1-821497177"
+  },
+  {
+    "loc_id": "1-9779356039",
+    "name": "Elixir Treatments Limited",
+    "address": "4 Northcroft Villas,Englefield Green,Egham",
+    "postcode": "TW20 0DZ",
+    "service_types": "Doctors/GPs",
+    "sector": "TW20 0",
+    "provider_id": "1-7975314056"
+  },
+  {
+    "loc_id": "1-9656286095",
+    "name": "Emezzions Care",
+    "address": "EMEZZIONS CARE Argent House,175 Hook Rise South,Surbiton",
+    "postcode": "KT6 7LD",
+    "service_types": "Homecare agencies|Supported living",
+    "sector": "KT6 7",
+    "provider_id": "1-2649657866"
+  },
+  {
+    "loc_id": "1-9660381734",
+    "name": "Chandon",
+    "address": "Stag Leys,Ashtead",
+    "postcode": "KT21 2TQ",
+    "service_types": "Supported living",
+    "sector": "KT21 2",
+    "provider_id": "1-116992858"
+  },
+  {
+    "loc_id": "1-9668348941",
+    "name": "Mill Road",
+    "address": "18 Mill Road,Epsom",
+    "postcode": "KT17 4AR",
+    "service_types": "Supported living",
+    "sector": "KT17 4",
+    "provider_id": "1-116992858"
+  },
+  {
+    "loc_id": "1-9621912615",
+    "name": "Remote Trauma",
+    "address": "2 Bridle Close,Kingston Upon Thames",
+    "postcode": "KT1 2JW",
+    "service_types": "Urgent care centres",
+    "sector": "KT1 2",
+    "provider_id": "1-9048561051"
+  },
+  {
+    "loc_id": "1-9654506648",
+    "name": "17 Heathcote Road",
+    "address": "17 Heathcote Road,Epsom",
+    "postcode": "KT18 5DX",
+    "service_types": "Supported living",
+    "sector": "KT18 5",
+    "provider_id": "1-116992858"
+  },
+  {
+    "loc_id": "1-986489582",
+    "name": "Rainbow Trust Children's Charity 6",
+    "address": "Cassini Court Randalls Research Park,Randalls Way,Leatherhead",
+    "postcode": "KT22 7TW",
+    "service_types": "Homecare agencies",
+    "sector": "KT22 7",
+    "provider_id": "1-101676855"
+  },
+  {
+    "loc_id": "1-9893960489",
+    "name": "Family Dental Care",
+    "address": "95 Gilders Road,Chessington",
+    "postcode": "KT9 2AE",
+    "service_types": "Dentist",
+    "sector": "KT9 2",
+    "provider_id": "1-502813206"
+  },
+  {
+    "loc_id": "RAX05",
+    "name": "Teddington Memorial Hospital",
+    "address": "Hampton Road,Teddington",
+    "postcode": "TW11 0JL",
+    "service_types": "Clinic|Community services - Healthcare|Rehabilitation (illness/injury)|Urgent care centres",
+    "sector": "TW11 0",
+    "provider_id": "RAX"
+  },
+  {
+    "loc_id": "RAX32",
+    "name": "Thames House",
+    "address": "180 High Street,Teddington",
+    "postcode": "TW11 8HU",
+    "service_types": "Community services - Healthcare",
+    "sector": "TW11 8",
+    "provider_id": "RAX"
+  },
+  {
+    "loc_id": "1-5931228307",
+    "name": "Walton Dental Surgery",
+    "address": "71a,Hersham Road,Walton-on-thames",
+    "postcode": "KT12 1LL",
+    "service_types": "Dentist",
+    "sector": "KT12 1",
+    "provider_id": "1-5237126862"
+  },
+  {
+    "loc_id": "1-5932532689",
+    "name": "Stoneylands Dental Practice",
+    "address": "DENTAL SURGERY,9 Stoneylands Road,Egham",
+    "postcode": "TW20 9QR",
+    "service_types": "Dentist",
+    "sector": "TW20 9",
+    "provider_id": "1-5710005449"
+  },
+  {
+    "loc_id": "1-595182006",
+    "name": "Redroof House Supported Living",
+    "address": "Room 8,40 Mill Road,Epsom",
+    "postcode": "KT17 4AR",
+    "service_types": "Homecare agencies|Supported living",
+    "sector": "KT17 4",
+    "provider_id": "1-529090221"
+  },
+  {
+    "loc_id": "1-582626310",
+    "name": "Knowle Green Medical",
+    "address": "Staines Health Centre,Knowle Green,Staines",
+    "postcode": "TW18 1XD",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "TW18 1",
+    "provider_id": "1-199743595"
+  },
+  {
+    "loc_id": "1-583754009",
+    "name": "Oxshott Medical Practice",
+    "address": "Holtwood Road,Oxshott,Leatherhead",
+    "postcode": "KT22 0QJ",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT22 0",
+    "provider_id": "1-199744516"
+  },
+  {
+    "loc_id": "1-6240115434",
+    "name": "Skyline Home Care Services",
+    "address": "Austen House,2 High Street, Great Bookham,Leatherhead",
+    "postcode": "KT23 4AG",
+    "service_types": "Homecare agencies",
+    "sector": "KT23 4",
+    "provider_id": "1-5059236170"
+  },
+  {
+    "loc_id": "1-6276648560",
+    "name": "Rothley Lodge Dental Practice",
+    "address": "15 Cherry Orchard,Staines-upon-thames",
+    "postcode": "TW18 2DE",
+    "service_types": "Dentist",
+    "sector": "TW18 2",
+    "provider_id": "1-6017106117"
+  },
+  {
+    "loc_id": "1-6411395873",
+    "name": "Guardian Angel Carers Spelthorne, Elmbridge and Runnymede",
+    "address": "3 Thurlestone Parade,High Street,Shepperton",
+    "postcode": "TW17 9AR",
+    "service_types": "Homecare agencies",
+    "sector": "TW17 9",
+    "provider_id": "1-5960258463"
+  },
+  {
+    "loc_id": "1-6415173802",
+    "name": "Mydentist - Ewell Road - Surbiton",
+    "address": "385 - 387 Ewell Road,Surbiton",
+    "postcode": "KT6 7DG",
+    "service_types": "Dentist",
+    "sector": "KT6 7",
+    "provider_id": "1-161851228"
+  },
+  {
+    "loc_id": "1-6430801450",
+    "name": "Mydentist - Station Road - Surrey",
+    "address": "64-66,Station Road,Egham",
+    "postcode": "TW20 9LF",
+    "service_types": "Dentist",
+    "sector": "TW20 9",
+    "provider_id": "1-161851228"
+  },
+  {
+    "loc_id": "1-6441681947",
+    "name": "Teddington Dental",
+    "address": "2 Gloucester Road,Teddington",
+    "postcode": "TW11 0NU",
+    "service_types": "Dentist",
+    "sector": "TW11 0",
+    "provider_id": "1-6052235470"
+  },
+  {
+    "loc_id": "1-6604659879",
+    "name": "Sk:n Epsom",
+    "address": "Epsom General Hospital,Langley Ward, Dorking Road,Epsom",
+    "postcode": "KT18 7EG",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT18 7",
+    "provider_id": "1-102643390"
+  },
+  {
+    "loc_id": "1-6150914231",
+    "name": "Cobham Dental",
+    "address": "52 Station Road,Stoke D'abernon,Cobham",
+    "postcode": "KT11 3BN",
+    "service_types": "Dentist",
+    "sector": "KT11 3",
+    "provider_id": "1-5865436134"
+  },
+  {
+    "loc_id": "1-6166330440",
+    "name": "The Burlington",
+    "address": "68 Manygate Lane,Shepperton",
+    "postcode": "TW17 9EE",
+    "service_types": "Residential homes",
+    "sector": "TW17 9",
+    "provider_id": "1-5898992570"
+  },
+  {
+    "loc_id": "1-6179037533",
+    "name": "Rock of Ages Care",
+    "address": "1 Mead Lake Place,Thorpe Lea Road,Egham",
+    "postcode": "TW20 8HE",
+    "service_types": "Homecare agencies",
+    "sector": "TW20 8",
+    "provider_id": "1-5629961251"
+  },
+  {
+    "loc_id": "1-6377184517",
+    "name": "Hartwig Care (Weybridge)",
+    "address": " Suite 1, The Monument,45-47 Monument Hill,Weybridge",
+    "postcode": "KT13 8RN",
+    "service_types": "Homecare agencies",
+    "sector": "KT13 8",
+    "provider_id": "1-101673188"
+  },
+  {
+    "loc_id": "1-6387510152",
+    "name": "FitzRoy - Teddington",
+    "address": "7 Haydon Close,Teddington,Surrey",
+    "postcode": "TW11 9FN",
+    "service_types": "Residential homes|Supported living",
+    "sector": "TW11 9",
+    "provider_id": "1-102642772"
+  },
+  {
+    "loc_id": "RQY08",
+    "name": "Tolworth Hospital",
+    "address": "Red Lion Road,Surbiton",
+    "postcode": "KT6 7QU",
+    "service_types": "Long-term conditions|Hospitals - Mental health/capacity",
+    "sector": "KT6 7",
+    "provider_id": "RQY"
+  },
+  {
+    "loc_id": "RV351",
+    "name": "Horton Haven",
+    "address": "5 Horton Drive,Epsom",
+    "postcode": "KT19 7HA",
+    "service_types": "Hospitals - Mental health/capacity|Rehabilitation (illness/injury)",
+    "sector": "KT19 7",
+    "provider_id": "RV3"
+  },
+  {
+    "loc_id": "RVR50",
+    "name": "Epsom General Hospital",
+    "address": "Dorking Road,Epsom",
+    "postcode": "KT18 7EG",
+    "service_types": "Hospital|Doctors/GPs|Diagnosis/screening|Doctors/GPs",
+    "sector": "KT18 7",
+    "provider_id": "RVR"
+  },
+  {
+    "loc_id": "RVR90",
+    "name": "Leatherhead",
+    "address": "Leatherhead Hospital,Poplar Road,Leatherhead",
+    "postcode": "KT22 8SD",
+    "service_types": "Hospital|Doctors/GPs|Diagnosis/screening|Doctors/GPs",
+    "sector": "KT22 8",
+    "provider_id": "RVR"
+  },
+  {
+    "loc_id": "RVRL4",
+    "name": "Molesey Community Hospital",
+    "address": "High Street,West Molesey",
+    "postcode": "KT8 2LU",
+    "service_types": "Hospital|Community services - Healthcare|Rehabilitation (illness/injury)",
+    "sector": "KT8 2",
+    "provider_id": "RVR"
+  },
+  {
+    "loc_id": "1-743690299",
+    "name": "Centre for Sight Oxshott",
+    "address": "48 High Street,Oxshott,Leatherhead",
+    "postcode": "KT22 0JR",
+    "service_types": "Diagnosis/screening",
+    "sector": "KT22 0",
+    "provider_id": "1-101634596"
+  },
+  {
+    "loc_id": "1-744717194",
+    "name": "The Royal Star & Garter Homes - Surbiton",
+    "address": "Upper Brighton Road,Surbiton",
+    "postcode": "KT6 6JY",
+    "service_types": "Nursing homes",
+    "sector": "KT6 6",
+    "provider_id": "1-101643093"
+  },
+  {
+    "loc_id": "1-7546273632",
+    "name": "Hinchley Wood Practice",
+    "address": "Woodside House,Station Approach, Hinchley Wood,Esher",
+    "postcode": "KT10 0SR",
+    "service_types": "Dentist",
+    "sector": "KT10 0",
+    "provider_id": "1-7194749370"
+  },
+  {
+    "loc_id": "1-7580341768",
+    "name": "Rivermede Court",
+    "address": "The Avenue,Egham",
+    "postcode": "TW20 9AD",
+    "service_types": "Residential homes",
+    "sector": "TW20 9",
+    "provider_id": "1-7166879241"
+  },
+  {
+    "loc_id": "1-7601308624",
+    "name": "Surrey Periodontics",
+    "address": "152 High Road,Byfleet,West Byfleet",
+    "postcode": "KT14 7RG",
+    "service_types": "Dentist",
+    "sector": "KT14 7",
+    "provider_id": "1-6791737471"
+  },
+  {
+    "loc_id": "1-7928218326",
+    "name": "Forever Dental and Skin",
+    "address": "68 The Street,Ashtead",
+    "postcode": "KT21 1AW",
+    "service_types": "Dentist",
+    "sector": "KT21 1",
+    "provider_id": "1-7231796675"
+  },
+  {
+    "loc_id": "1-792968514",
+    "name": "Ashley Dental Limited",
+    "address": "19 Ashley Road,Walton On Thames",
+    "postcode": "KT12 1JB",
+    "service_types": "Dentist",
+    "sector": "KT12 1",
+    "provider_id": "1-720925478"
+  },
+  {
+    "loc_id": "1-7970021241",
+    "name": "Heartview Care Services",
+    "address": "15 High Road,Byfleet,West Byfleet",
+    "postcode": "KT14 7QH",
+    "service_types": "Homecare agencies|Supported living",
+    "sector": "KT14 7",
+    "provider_id": "1-7522773820"
+  },
+  {
+    "loc_id": "1-7699543356",
+    "name": "Accordia Supported Living Services",
+    "address": "Dorset House,Regent Park 297-299, Kingston Road,Leatherhead",
+    "postcode": "KT22 7PL",
+    "service_types": "Supported living",
+    "sector": "KT22 7",
+    "provider_id": "1-6743380156"
+  },
+  {
+    "loc_id": "1-7705689058",
+    "name": "The Fabulous Smile Company Kingston",
+    "address": "31 Tolworth Broadway,Tolworth,Surbiton",
+    "postcode": "KT6 7DJ",
+    "service_types": "Dentist",
+    "sector": "KT6 7",
+    "provider_id": "1-7188090705"
+  },
+  {
+    "loc_id": "1-785264652",
+    "name": "Deer Park View Care Centre",
+    "address": "Bushy Park Road,Teddington",
+    "postcode": "TW11 0DX",
+    "service_types": "Nursing homes",
+    "sector": "TW11 0",
+    "provider_id": "1-747230526"
+  },
+  {
+    "loc_id": "1-7888181333",
+    "name": "Hampton Hill Medical Centre",
+    "address": "94-102,High Street, Hampton Hill,Hampton",
+    "postcode": "TW12 1NY",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "TW12 1",
+    "provider_id": "1-7275141460"
+  },
+  {
+    "loc_id": "1-7905406673",
+    "name": "Yourlife (Walton-on-Thames)",
+    "address": "Edward Place,14 Churchfield Road,Walton-on-thames",
+    "postcode": "KT12 2FR",
+    "service_types": "Homecare agencies",
+    "sector": "KT12 2",
+    "provider_id": "1-172521302"
+  },
+  {
+    "loc_id": "1-8043166315",
+    "name": "Richmond and Kingston DCA",
+    "address": "Rowan House,Field Lane,Teddington",
+    "postcode": "TW11 9BP",
+    "service_types": "Homecare agencies|Supported living",
+    "sector": "TW11 9",
+    "provider_id": "1-102642990"
+  },
+  {
+    "loc_id": "1-815111118",
+    "name": "Thorpe Lea Dental Practice",
+    "address": "Thorpe Road,Staines Upon Thames",
+    "postcode": "TW18 3EQ",
+    "service_types": "Dentist",
+    "sector": "TW18 3",
+    "provider_id": "1-754580057"
+  },
+  {
+    "loc_id": "RXX17",
+    "name": "Hillcroft",
+    "address": "St Ebbas,Hook Road,Epsom",
+    "postcode": "KT19 8QJ",
+    "service_types": "Residential homes",
+    "sector": "KT19 8",
+    "provider_id": "RXX"
+  },
+  {
+    "loc_id": "RXX18",
+    "name": "The Shieling",
+    "address": "St Ebbas,Hook Road,Epsom",
+    "postcode": "KT19 8QJ",
+    "service_types": "Residential homes",
+    "sector": "KT19 8",
+    "provider_id": "RXX"
+  },
+  {
+    "loc_id": "RXX2T",
+    "name": "West Park Epsom",
+    "address": "Ramsay House,West Park Hospital, Horton Lane,Epsom",
+    "postcode": "KT19 8PB",
+    "service_types": "Hospitals - Mental health/capacity",
+    "sector": "KT19 8",
+    "provider_id": "RXX"
+  },
+  {
+    "loc_id": "RXXFR",
+    "name": "Ashmount",
+    "address": "Hook Road,Epsom",
+    "postcode": "KT19 8QJ",
+    "service_types": "Nursing homes",
+    "sector": "KT19 8",
+    "provider_id": "RXX"
+  },
+  {
+    "loc_id": "RXXFT",
+    "name": "Derby House",
+    "address": "Hook Road,Epsom",
+    "postcode": "KT19 8QJ",
+    "service_types": "Residential homes",
+    "sector": "KT19 8",
+    "provider_id": "RXX"
+  },
+  {
+    "loc_id": "RXXHQ",
+    "name": "Trust Headquarters",
+    "address": "18 Mole Business Park,Randalls Road,Leatherhead",
+    "postcode": "KT22 7AD",
+    "service_types": "Community services - Learning disabilities|Community services - Mental Health|Prison healthcare|Supported living|Community services - Substance abuse",
+    "sector": "KT22 7",
+    "provider_id": "RXX"
+  },
+  {
+    "loc_id": "RXXZ2",
+    "name": "Jasmine at Primrose",
+    "address": "Primrose 2, The Meadows,Horton Lane,Epsom",
+    "postcode": "KT19 8PB",
+    "service_types": "Residential homes",
+    "sector": "KT19 8",
+    "provider_id": "RXX"
+  },
+  {
+    "loc_id": "RXXZ3",
+    "name": "Deacon Unit",
+    "address": "St Ebbas Hospital,Hook Road,Epsom",
+    "postcode": "KT19 8QJ",
+    "service_types": "Hospitals - Mental health/capacity",
+    "sector": "KT19 8",
+    "provider_id": "RXX"
+  },
+  {
+    "loc_id": "RXXZ5",
+    "name": "Kingscroft",
+    "address": "Worple Road,Staines Upon Thames",
+    "postcode": "TW18 1ED",
+    "service_types": "Residential homes",
+    "sector": "TW18 1",
+    "provider_id": "RXX"
+  },
+  {
+    "loc_id": "1-677427256",
+    "name": "Estetica Dental Chertsey",
+    "address": "23-25 London Street,Chertsey",
+    "postcode": "KT16 8AP",
+    "service_types": "Dentist",
+    "sector": "KT16 8",
+    "provider_id": "1-153028448"
+  },
+  {
+    "loc_id": "1-6670930014",
+    "name": "Weybridge Orthodontics",
+    "address": "Roadway House,35 Monument Hill,Weybridge",
+    "postcode": "KT13 8RN",
+    "service_types": "Dentist",
+    "sector": "KT13 8",
+    "provider_id": "1-5997211104"
+  },
+  {
+    "loc_id": "1-6672267945",
+    "name": "Alan Wilson Dentistry",
+    "address": "3rd Floor,55 High Street,Epsom",
+    "postcode": "KT19 8DH",
+    "service_types": "Dentist",
+    "sector": "KT19 8",
+    "provider_id": "1-6409478852"
+  },
+  {
+    "loc_id": "1-7161991144",
+    "name": "Walsingham Support - St John's",
+    "address": "1 Ferry Road,Teddington",
+    "postcode": "TW11 9NN",
+    "service_types": "Residential homes",
+    "sector": "TW11 9",
+    "provider_id": "1-102643017"
+  },
+  {
+    "loc_id": "1-7187402734",
+    "name": "Tudor House Dental Practice",
+    "address": "64 The Street,Ashtead",
+    "postcode": "KT21 1AW",
+    "service_types": "Dentist",
+    "sector": "KT21 1",
+    "provider_id": "1-6551386455"
+  },
+  {
+    "loc_id": "1-5796585852",
+    "name": "Royal Cambridge Home",
+    "address": "84 Hurst Road,East Molesey",
+    "postcode": "KT8 9AH",
+    "service_types": "Residential homes",
+    "sector": "KT8 9",
+    "provider_id": "1-5428617014"
+  },
+  {
+    "loc_id": "1-582124351",
+    "name": "Hampton Medical Centre",
+    "address": "Lansdowne,Priory Road,Hampton",
+    "postcode": "TW12 2PB",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "TW12 2",
+    "provider_id": "1-199746880"
+  },
+  {
+    "loc_id": "1-727899272",
+    "name": "Surbiton Health Centre",
+    "address": "Ewell Road,Surbiton",
+    "postcode": "KT6 6EZ",
+    "service_types": "Community services - Healthcare|Diagnosis/screening",
+    "sector": "KT6 6",
+    "provider_id": "1-328569033"
+  },
+  {
+    "loc_id": "1-6097028949",
+    "name": "Burgh Heath Care Centre",
+    "address": "472 Reigate Road,Epsom",
+    "postcode": "KT18 5XA",
+    "service_types": "Residential homes",
+    "sector": "KT18 5",
+    "provider_id": "1-3240228415"
+  },
+  {
+    "loc_id": "1-7084878471",
+    "name": "Quadrant Dental Practice",
+    "address": "9 Upper High Street,Epsom",
+    "postcode": "KT17 4QY",
+    "service_types": "Dentist",
+    "sector": "KT17 4",
+    "provider_id": "1-6304463635"
+  },
+  {
+    "loc_id": "1-6824681303",
+    "name": "Summerfield Dental Practice",
+    "address": "11 Albany Crescent,Claygate,Esher",
+    "postcode": "KT10 0PF",
+    "service_types": "Dentist",
+    "sector": "KT10 0",
+    "provider_id": "1-6277954570"
+  },
+  {
+    "loc_id": "1-6844640707",
+    "name": "Kings Lodge Care Centre",
+    "address": "The Pavilions,Byfleet,West Byfleet",
+    "postcode": "KT14 7BQ",
+    "service_types": "Nursing homes",
+    "sector": "KT14 7",
+    "provider_id": "1-5163095061"
+  },
+  {
+    "loc_id": "1-6870835010",
+    "name": "The Neem Tree - Esher",
+    "address": "138 High Street,Esher",
+    "postcode": "KT10 9QJ",
+    "service_types": "Dentist",
+    "sector": "KT10 9",
+    "provider_id": "1-4798754043"
+  },
+  {
+    "loc_id": "1-6905985427",
+    "name": "Dentalessence Weybridge",
+    "address": "39 St. Marys Road,Weybridge",
+    "postcode": "KT13 9PT",
+    "service_types": "Dentist",
+    "sector": "KT13 9",
+    "provider_id": "1-1213986752"
+  },
+  {
+    "loc_id": "1-6948756020",
+    "name": "Foxbridge Healthcare Solutions",
+    "address": "Trident Court,1 Oakcroft Road,Chessington",
+    "postcode": "KT9 1BD",
+    "service_types": "Homecare agencies|Supported living",
+    "sector": "KT9 1",
+    "provider_id": "1-6891022553"
+  },
+  {
+    "loc_id": "1-8659533411",
+    "name": "Vigilant Health Care Ltd",
+    "address": "Trident Court,1 Oakcroft Road,Chessington",
+    "postcode": "KT9 1BD",
+    "service_types": "Homecare agencies",
+    "sector": "KT9 1",
+    "provider_id": "1-7805470648"
+  },
+  {
+    "loc_id": "1-8678733856",
+    "name": "Coopers Hill",
+    "address": "Coopers Hill Lane,Englefield,Egham",
+    "postcode": "TW20 0JY",
+    "service_types": "Homecare agencies",
+    "sector": "TW20 0",
+    "provider_id": "1-174576986"
+  },
+  {
+    "loc_id": "1-8680528358",
+    "name": "QEF Care and Rehabilitation Centre",
+    "address": "Leatherhead Court,Woodland Road,Leatherhead",
+    "postcode": "KT22 0BN",
+    "service_types": "Nursing homes",
+    "sector": "KT22 0",
+    "provider_id": "1-101677485"
+  },
+  {
+    "loc_id": "1-8972622915",
+    "name": "Teddington Orthodontics",
+    "address": "53 High Street,Teddington",
+    "postcode": "TW11 8HD",
+    "service_types": "Dentist",
+    "sector": "TW11 8",
+    "provider_id": "1-153006833"
+  },
+  {
+    "loc_id": "1-904298407",
+    "name": "Mydentist - Station Road - Surrey",
+    "address": "64-66 Station Road,Egham",
+    "postcode": "TW20 9LF",
+    "service_types": "Dentist",
+    "sector": "TW20 9",
+    "provider_id": "1-875818769"
+  },
+  {
+    "loc_id": "1-8298019145",
+    "name": "Caremark Elmbridge",
+    "address": "Unit 117, Image Court,328-334 Molesey Road,Walton-on-thames",
+    "postcode": "KT12 3PD",
+    "service_types": "Homecare agencies",
+    "sector": "KT12 3",
+    "provider_id": "1-7695994113"
+  },
+  {
+    "loc_id": "1-8365680230",
+    "name": "Glebe House Care Home",
+    "address": "Glebe House,The Broadway, Laleham,Staines-upon-thames",
+    "postcode": "TW18 1SB",
+    "service_types": "Nursing homes",
+    "sector": "TW18 1",
+    "provider_id": "1-7761779425"
+  },
+  {
+    "loc_id": "1-8385551575",
+    "name": "BBC CARE SERVICE LIMITED- Walton on Thames branch (New)",
+    "address": "Regus Ashley Park,42-50 Hersham Road,Walton-on-thames",
+    "postcode": "KT12 1RZ",
+    "service_types": "Homecare agencies",
+    "sector": "KT12 1",
+    "provider_id": "1-7778146971"
+  },
+  {
+    "loc_id": "1-8890751442",
+    "name": "Visiting Angels North Surrey",
+    "address": "Trident Court,1 Oakcroft Road,Chessington",
+    "postcode": "KT9 1BD",
+    "service_types": "Homecare agencies",
+    "sector": "KT9 1",
+    "provider_id": "1-8856015141"
+  },
+  {
+    "loc_id": "1-8802547286",
+    "name": "Mortiboys Dental Spa",
+    "address": "Phoenix House,Forest Road, Effingham Junction,Leatherhead",
+    "postcode": "KT24 5HE",
+    "service_types": "Dentist",
+    "sector": "KT24 5",
+    "provider_id": "1-6657789927"
+  },
+  {
+    "loc_id": "1-8604995903",
+    "name": "Supremacy Care Services Limited (Surrey)",
+    "address": "Alfa House,Molesey Road,Walton-on-thames",
+    "postcode": "KT12 3PD",
+    "service_types": "Homecare agencies",
+    "sector": "KT12 3",
+    "provider_id": "1-7150756106"
+  },
+  {
+    "loc_id": "1-8530575855",
+    "name": "INNOVATIVE SUPPORT LTD",
+    "address": "Rourke House,Watermans Business Park, The Causway,Staines-upon-thames",
+    "postcode": "TW18 3BA",
+    "service_types": "Supported living",
+    "sector": "TW18 3",
+    "provider_id": "1-7335900519"
+  },
+  {
+    "loc_id": "1-8531217650",
+    "name": "Cossins House Care Home",
+    "address": "1 Downside Road,Downside,Cobham",
+    "postcode": "KT11 3LZ",
+    "service_types": "Residential homes",
+    "sector": "KT11 3",
+    "provider_id": "1-8330673350"
+  },
+  {
+    "loc_id": "1-8536626775",
+    "name": "Domicare Limited",
+    "address": "Unit 7 Investment House,28 Queens Road,Weybridge",
+    "postcode": "KT13 9UT",
+    "service_types": "Homecare agencies",
+    "sector": "KT13 9",
+    "provider_id": "1-8027591312"
+  },
+  {
+    "loc_id": "1-840450080",
+    "name": "Elysium Care Partnerships Limited - 89 Ewell Road",
+    "address": "89 Ewell Road,Surbiton",
+    "postcode": "KT6 6AH",
+    "service_types": "Residential homes",
+    "sector": "KT6 6",
+    "provider_id": "1-131468887"
+  },
+  {
+    "loc_id": "1-24792909627",
+    "name": "Crome Dental Clinic",
+    "address": "44 Anyards Road,Cobham",
+    "postcode": "KT11 2LA",
+    "service_types": "Dentist",
+    "sector": "KT11 2",
+    "provider_id": "1-23981359605"
+  },
+  {
+    "loc_id": "1-547268606",
+    "name": "Littleton Surgery",
+    "address": "Buckland House,Esher Park Avenue,Esher",
+    "postcode": "KT10 9NY",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT10 9",
+    "provider_id": "1-199743913"
+  },
+  {
+    "loc_id": "1-25607737847",
+    "name": "Brunswick Surgery",
+    "address": "Surbiton Health Centre,Ewell Road,Surbiton",
+    "postcode": "KT6 6EZ",
+    "service_types": "Doctors/GPs|Doctors/GPs",
+    "sector": "KT6 6",
+    "provider_id": "1-25247547116"
+  },
+  {
+    "loc_id": "1-20633760577",
+    "name": "Prime Tends Ltd T/A SureCare Elmbridge",
+    "address": "Image Court 328-334,Molesey Road,Walton-on-thames",
+    "postcode": "KT12 3LT",
+    "service_types": "Homecare agencies",
+    "sector": "KT12 3",
+    "provider_id": "1-20629014685"
+  },
+  {
+    "loc_id": "1-23658883536",
+    "name": "Lumino Dental",
+    "address": "109A Hare Lane,Claygate,Esher",
+    "postcode": "KT10 0QY",
+    "service_types": "Dentist",
+    "sector": "KT10 0",
+    "provider_id": "1-4772617828"
+  },
+  {
+    "loc_id": "1-6247455968",
+    "name": "Lumino Dental",
+    "address": "33 The Parade,Claygate,Esher",
+    "postcode": "KT10 0PD",
+    "service_types": "Dentist",
+    "sector": "KT10 0",
+    "provider_id": "1-4772617828"
+  },
+  {
+    "loc_id": "1-26511675965",
+    "name": "Banning Dental Group \u201a\u00c4\u00ec Kingston",
+    "address": "7 Brook Street,Kingston Upon Thames",
+    "postcode": "KT1 2EY",
+    "service_types": "Dentist",
+    "sector": "KT1 2",
+    "provider_id": "1-6502820772"
+  },
+  {
+    "loc_id": "1-13043588391",
+    "name": "Mayfield House",
+    "address": "29 Mayfield Road,Hersham,Walton-on-thames",
+    "postcode": "KT12 5PL",
+    "service_types": "Residential homes",
+    "sector": "KT12 5",
+    "provider_id": "1-101633728"
+  }
+]

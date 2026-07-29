@@ -1,0 +1,838 @@
+[
+  {
+    "locationId": "1-28240862424",
+    "sector": "KT10 9",
+    "postcode": "KT10 9JH",
+    "name": "Hallmark Esher Residences Luxury Care Home",
+    "careHome": "Y",
+    "services": [
+      "Nursing homes"
+    ],
+    "jan2026_match_kind": "none",
+    "jan2026_loc_id": null,
+    "jan2026_name": null,
+    "jan2026_postcode": null,
+    "jan2026_service_types": null
+  },
+  {
+    "locationId": "1-552131547",
+    "sector": "KT11 1",
+    "postcode": "KT11 1EF",
+    "name": "Silvermere Care Home",
+    "careHome": "Y",
+    "services": [
+      "Residential homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-552131547",
+    "jan2026_name": "Silvermere Care Home",
+    "jan2026_postcode": "KT11 1EF",
+    "jan2026_service_types": "Residential homes"
+  },
+  {
+    "locationId": "1-4126012893",
+    "sector": "KT11 3",
+    "postcode": "KT11 3AS",
+    "name": "Springfield House Nursing Home",
+    "careHome": "Y",
+    "services": [
+      "Nursing homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-4126012893",
+    "jan2026_name": "Springfield House Nursing Home",
+    "jan2026_postcode": "KT11 3AS",
+    "jan2026_service_types": "Nursing homes"
+  },
+  {
+    "locationId": "1-8531217650",
+    "sector": "KT11 3",
+    "postcode": "KT11 3LZ",
+    "name": "Cossins House Care Home",
+    "careHome": "Y",
+    "services": [
+      "Residential homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-8531217650",
+    "jan2026_name": "Cossins House Care Home",
+    "jan2026_postcode": "KT11 3LZ",
+    "jan2026_service_types": "Residential homes"
+  },
+  {
+    "locationId": "1-27713065213",
+    "sector": "KT12 1",
+    "postcode": "KT12 1JJ",
+    "name": "Adelaide House Care Home",
+    "careHome": "Y",
+    "services": [
+      "Nursing homes"
+    ],
+    "jan2026_match_kind": "name+pc_match",
+    "jan2026_loc_id": "1-3054389810",
+    "jan2026_name": "Adelaide House Care Home",
+    "jan2026_postcode": "KT12 1JJ",
+    "jan2026_service_types": "Nursing homes"
+  },
+  {
+    "locationId": "1-27776403415",
+    "sector": "KT12 3",
+    "postcode": "KT12 3BH",
+    "name": "Walton Park Care Home",
+    "careHome": "Y",
+    "services": [
+      "Nursing homes"
+    ],
+    "jan2026_match_kind": "name+pc_match",
+    "jan2026_loc_id": "1-3857230256",
+    "jan2026_name": "Walton Park Care Home",
+    "jan2026_postcode": "KT12 3BH",
+    "jan2026_service_types": "Nursing homes|Residential homes"
+  },
+  {
+    "locationId": "1-3857230256",
+    "sector": "KT12 3",
+    "postcode": "KT12 3BH",
+    "name": "Walton Park Care Home",
+    "careHome": "Y",
+    "services": [
+      "Nursing homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-3857230256",
+    "jan2026_name": "Walton Park Care Home",
+    "jan2026_postcode": "KT12 3BH",
+    "jan2026_service_types": "Nursing homes|Residential homes"
+  },
+  {
+    "locationId": "1-6844640707",
+    "sector": "KT14 7",
+    "postcode": "KT14 7BQ",
+    "name": "Kings Lodge Care Centre",
+    "careHome": "Y",
+    "services": [
+      "Nursing homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-6844640707",
+    "jan2026_name": "Kings Lodge Care Centre",
+    "jan2026_postcode": "KT14 7BQ",
+    "jan2026_service_types": "Nursing homes"
+  },
+  {
+    "locationId": "1-4734428714",
+    "sector": "KT16 9",
+    "postcode": "KT16 9FS",
+    "name": "Chertsey Parklands Manor Care Home",
+    "careHome": "Y",
+    "services": [
+      "Nursing homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-4734428714",
+    "jan2026_name": "Chertsey Parklands Manor Care Home",
+    "jan2026_postcode": "KT16 9FS",
+    "jan2026_service_types": "Nursing homes"
+  },
+  {
+    "locationId": "1-3534741180",
+    "sector": "KT17 4",
+    "postcode": "KT17 4DB",
+    "name": "Swallowfields Care Centre",
+    "careHome": "Y",
+    "services": [
+      "Residential homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-3534741180",
+    "jan2026_name": "Swallowfields Care Centre",
+    "jan2026_postcode": "KT17 4DB",
+    "jan2026_service_types": "Residential homes"
+  },
+  {
+    "locationId": "1-410293045",
+    "sector": "KT17 4",
+    "postcode": "KT17 4HF",
+    "name": "Linden House",
+    "careHome": "Y",
+    "services": [
+      "Residential homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-410293045",
+    "jan2026_name": "Linden House",
+    "jan2026_postcode": "KT17 4HF",
+    "jan2026_service_types": "Residential homes"
+  },
+  {
+    "locationId": "1-595182006",
+    "sector": "KT17 4",
+    "postcode": "KT17 4AR",
+    "name": "Redroof House Supported Living",
+    "careHome": "N",
+    "services": [
+      "Homecare agencies",
+      "Supported living"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-595182006",
+    "jan2026_name": "Redroof House Supported Living",
+    "jan2026_postcode": "KT17 4AR",
+    "jan2026_service_types": "Homecare agencies|Supported living"
+  },
+  {
+    "locationId": "1-9668348941",
+    "sector": "KT17 4",
+    "postcode": "KT17 4AR",
+    "name": "Mill Road",
+    "careHome": "N",
+    "services": [
+      "Supported living"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-9668348941",
+    "jan2026_name": "Mill Road",
+    "jan2026_postcode": "KT17 4AR",
+    "jan2026_service_types": "Supported living"
+  },
+  {
+    "locationId": "1-5311490326",
+    "sector": "KT18 5",
+    "postcode": "KT18 5AD",
+    "name": "Guarantee Care Services Ltd",
+    "careHome": "N",
+    "services": [
+      "Homecare agencies",
+      "Supported living"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-5311490326",
+    "jan2026_name": "Guarantee Care Services Ltd",
+    "jan2026_postcode": "KT18 5AD",
+    "jan2026_service_types": "Homecare agencies|Supported living"
+  },
+  {
+    "locationId": "1-6097028949",
+    "sector": "KT18 5",
+    "postcode": "KT18 5XA",
+    "name": "Burgh Heath Care Centre",
+    "careHome": "Y",
+    "services": [
+      "Residential homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-6097028949",
+    "jan2026_name": "Burgh Heath Care Centre",
+    "jan2026_postcode": "KT18 5XA",
+    "jan2026_service_types": "Residential homes"
+  },
+  {
+    "locationId": "1-9654506648",
+    "sector": "KT18 5",
+    "postcode": "KT18 5DX",
+    "name": "17 Heathcote Road",
+    "careHome": "N",
+    "services": [
+      "Supported living"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-9654506648",
+    "jan2026_name": "17 Heathcote Road",
+    "jan2026_postcode": "KT18 5DX",
+    "jan2026_service_types": "Supported living"
+  },
+  {
+    "locationId": "RXX17",
+    "sector": "KT19 8",
+    "postcode": "KT19 8QJ",
+    "name": "Hillcroft",
+    "careHome": "Y",
+    "services": [
+      "Residential homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "RXX17",
+    "jan2026_name": "Hillcroft",
+    "jan2026_postcode": "KT19 8QJ",
+    "jan2026_service_types": "Residential homes"
+  },
+  {
+    "locationId": "RXX18",
+    "sector": "KT19 8",
+    "postcode": "KT19 8QJ",
+    "name": "The Shieling",
+    "careHome": "Y",
+    "services": [
+      "Residential homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "RXX18",
+    "jan2026_name": "The Shieling",
+    "jan2026_postcode": "KT19 8QJ",
+    "jan2026_service_types": "Residential homes"
+  },
+  {
+    "locationId": "RXXFR",
+    "sector": "KT19 8",
+    "postcode": "KT19 8QJ",
+    "name": "Ashmount",
+    "careHome": "Y",
+    "services": [
+      "Nursing homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "RXXFR",
+    "jan2026_name": "Ashmount",
+    "jan2026_postcode": "KT19 8QJ",
+    "jan2026_service_types": "Nursing homes"
+  },
+  {
+    "locationId": "RXXFT",
+    "sector": "KT19 8",
+    "postcode": "KT19 8QJ",
+    "name": "Derby House",
+    "careHome": "Y",
+    "services": [
+      "Residential homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "RXXFT",
+    "jan2026_name": "Derby House",
+    "jan2026_postcode": "KT19 8QJ",
+    "jan2026_service_types": "Residential homes"
+  },
+  {
+    "locationId": "RXXZ2",
+    "sector": "KT19 8",
+    "postcode": "KT19 8PB",
+    "name": "Jasmine at Primrose",
+    "careHome": "Y",
+    "services": [
+      "Residential homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "RXXZ2",
+    "jan2026_name": "Jasmine at Primrose",
+    "jan2026_postcode": "KT19 8PB",
+    "jan2026_service_types": "Residential homes"
+  },
+  {
+    "locationId": "1-443534401",
+    "sector": "KT19 9",
+    "postcode": "KT19 9QP",
+    "name": "Tigh Grianan",
+    "careHome": "Y",
+    "services": [
+      "Residential homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-443534401",
+    "jan2026_name": "Tigh Grianan",
+    "jan2026_postcode": "KT19 9QP",
+    "jan2026_service_types": "Residential homes"
+  },
+  {
+    "locationId": "1-4910332958",
+    "sector": "KT21 2",
+    "postcode": "KT21 2RD",
+    "name": "Oakfield Nursing Home",
+    "careHome": "Y",
+    "services": [
+      "Nursing homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-4910332958",
+    "jan2026_name": "Oakfield Nursing Home",
+    "jan2026_postcode": "KT21 2RD",
+    "jan2026_service_types": "Nursing homes"
+  },
+  {
+    "locationId": "1-9660381734",
+    "sector": "KT21 2",
+    "postcode": "KT21 2TQ",
+    "name": "Chandon",
+    "careHome": "N",
+    "services": [
+      "Supported living"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-9660381734",
+    "jan2026_name": "Chandon",
+    "jan2026_postcode": "KT21 2TQ",
+    "jan2026_service_types": "Supported living"
+  },
+  {
+    "locationId": "1-8680528358",
+    "sector": "KT22 0",
+    "postcode": "KT22 0BN",
+    "name": "QEF Care and Rehabilitation Centre",
+    "careHome": "Y",
+    "services": [
+      "Nursing homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-8680528358",
+    "jan2026_name": "QEF Care and Rehabilitation Centre",
+    "jan2026_postcode": "KT22 0BN",
+    "jan2026_service_types": "Nursing homes"
+  },
+  {
+    "locationId": "1-27951818739",
+    "sector": "KT22 7",
+    "postcode": "KT22 7AH",
+    "name": "SeeAbility Surrey North Support Service",
+    "careHome": "N",
+    "services": [
+      "Supported living"
+    ],
+    "jan2026_match_kind": "none",
+    "jan2026_loc_id": null,
+    "jan2026_name": null,
+    "jan2026_postcode": null,
+    "jan2026_service_types": null
+  },
+  {
+    "locationId": "1-5751133710",
+    "sector": "KT22 7",
+    "postcode": "KT22 7GQ",
+    "name": "Hartfield House Care Home",
+    "careHome": "Y",
+    "services": [
+      "Nursing homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-5751133710",
+    "jan2026_name": "Hartfield House Care Home",
+    "jan2026_postcode": "KT22 7GQ",
+    "jan2026_service_types": "Nursing homes"
+  },
+  {
+    "locationId": "1-7699543356",
+    "sector": "KT22 7",
+    "postcode": "KT22 7PL",
+    "name": "Accordia Supported Living Services",
+    "careHome": "N",
+    "services": [
+      "Supported living"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-7699543356",
+    "jan2026_name": "Accordia Supported Living Services",
+    "jan2026_postcode": "KT22 7PL",
+    "jan2026_service_types": "Supported living"
+  },
+  {
+    "locationId": "RXXHQ",
+    "sector": "KT22 7",
+    "postcode": "KT22 7AD",
+    "name": "Trust Headquarters",
+    "careHome": "N",
+    "services": [
+      "Community services - Learning disabilities",
+      "Community services - Mental Health",
+      "Prison healthcare",
+      "Supported living",
+      "Community services - Substance abuse"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "RXXHQ",
+    "jan2026_name": "Trust Headquarters",
+    "jan2026_postcode": "KT22 7AD",
+    "jan2026_service_types": "Community services - Learning disabilities|Community services - Mental Health|Prison healthcare|Supported living|Community services - Substance abuse"
+  },
+  {
+    "locationId": "1-310870757",
+    "sector": "KT23 4",
+    "postcode": "KT23 4DZ",
+    "name": "The Grange Supported Living Service",
+    "careHome": "N",
+    "services": [
+      "Homecare agencies",
+      "Supported living"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-310870757",
+    "jan2026_name": "The Grange Supported Living Service",
+    "jan2026_postcode": "KT23 4DZ",
+    "jan2026_service_types": "Homecare agencies|Supported living"
+  },
+  {
+    "locationId": "1-4518081348",
+    "sector": "KT23 4",
+    "postcode": "KT23 4DY",
+    "name": "Liberham Lodge",
+    "careHome": "Y",
+    "services": [
+      "Nursing homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-4518081348",
+    "jan2026_name": "Liberham Lodge",
+    "jan2026_postcode": "KT23 4DY",
+    "jan2026_service_types": "Nursing homes"
+  },
+  {
+    "locationId": "1-657642041",
+    "sector": "KT6 5",
+    "postcode": "KT6 5LA",
+    "name": "Creating Lifestyles Surbiton Limited",
+    "careHome": "N",
+    "services": [
+      "Supported living"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-657642041",
+    "jan2026_name": "Creating Lifestyles Surbiton Limited",
+    "jan2026_postcode": "KT6 5LA",
+    "jan2026_service_types": "Supported living"
+  },
+  {
+    "locationId": "1-4309669977",
+    "sector": "KT6 6",
+    "postcode": "KT6 6LQ",
+    "name": "Elysium Care Partnerships Limited - 1a Upper Brighton Road",
+    "careHome": "Y",
+    "services": [
+      "Residential homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-4309669977",
+    "jan2026_name": "Elysium Care Partnerships Limited - 1a Upper Brighton Road",
+    "jan2026_postcode": "KT6 6LQ",
+    "jan2026_service_types": "Residential homes"
+  },
+  {
+    "locationId": "1-744717194",
+    "sector": "KT6 6",
+    "postcode": "KT6 6JY",
+    "name": "The Royal Star & Garter Homes - Surbiton",
+    "careHome": "Y",
+    "services": [
+      "Nursing homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-744717194",
+    "jan2026_name": "The Royal Star & Garter Homes - Surbiton",
+    "jan2026_postcode": "KT6 6JY",
+    "jan2026_service_types": "Nursing homes"
+  },
+  {
+    "locationId": "1-840450080",
+    "sector": "KT6 6",
+    "postcode": "KT6 6AH",
+    "name": "Elysium Care Partnerships Limited - 89 Ewell Road",
+    "careHome": "Y",
+    "services": [
+      "Residential homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-840450080",
+    "jan2026_name": "Elysium Care Partnerships Limited - 89 Ewell Road",
+    "jan2026_postcode": "KT6 6AH",
+    "jan2026_service_types": "Residential homes"
+  },
+  {
+    "locationId": "1-359898714",
+    "sector": "KT6 7",
+    "postcode": "KT6 7BZ",
+    "name": "Rosclare Residential Home Limited",
+    "careHome": "Y",
+    "services": [
+      "Residential homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-359898714",
+    "jan2026_name": "Rosclare Residential Home Limited",
+    "jan2026_postcode": "KT6 7BZ",
+    "jan2026_service_types": "Residential homes"
+  },
+  {
+    "locationId": "1-9656286095",
+    "sector": "KT6 7",
+    "postcode": "KT6 7LD",
+    "name": "Emezzions Care",
+    "careHome": "N",
+    "services": [
+      "Homecare agencies",
+      "Supported living"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-9656286095",
+    "jan2026_name": "Emezzions Care",
+    "jan2026_postcode": "KT6 7LD",
+    "jan2026_service_types": "Homecare agencies|Supported living"
+  },
+  {
+    "locationId": "1-4730683507",
+    "sector": "KT7 0",
+    "postcode": "KT7 0LP",
+    "name": "Oakley House Ltd",
+    "careHome": "Y",
+    "services": [
+      "Residential homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-4730683507",
+    "jan2026_name": "Oakley House Ltd",
+    "jan2026_postcode": "KT7 0LP",
+    "jan2026_service_types": "Residential homes"
+  },
+  {
+    "locationId": "1-658226873",
+    "sector": "KT8 2",
+    "postcode": "KT8 2NY",
+    "name": "The Summers",
+    "careHome": "Y",
+    "services": [
+      "Nursing homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-658226873",
+    "jan2026_name": "The Summers",
+    "jan2026_postcode": "KT8 2NY",
+    "jan2026_service_types": "Nursing homes"
+  },
+  {
+    "locationId": "1-4858684793",
+    "sector": "KT8 9",
+    "postcode": "KT8 9LR",
+    "name": "Willowmead",
+    "careHome": "N",
+    "services": [
+      "Supported living"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-4858684793",
+    "jan2026_name": "Willowmead",
+    "jan2026_postcode": "KT8 9LR",
+    "jan2026_service_types": "Supported living"
+  },
+  {
+    "locationId": "1-5796585852",
+    "sector": "KT8 9",
+    "postcode": "KT8 9AH",
+    "name": "Royal Cambridge Home",
+    "careHome": "Y",
+    "services": [
+      "Residential homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-5796585852",
+    "jan2026_name": "Royal Cambridge Home",
+    "jan2026_postcode": "KT8 9AH",
+    "jan2026_service_types": "Residential homes"
+  },
+  {
+    "locationId": "1-6948756020",
+    "sector": "KT9 1",
+    "postcode": "KT9 1BD",
+    "name": "Foxbridge Healthcare Solutions",
+    "careHome": "N",
+    "services": [
+      "Homecare agencies",
+      "Supported living"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-6948756020",
+    "jan2026_name": "Foxbridge Healthcare Solutions",
+    "jan2026_postcode": "KT9 1BD",
+    "jan2026_service_types": "Homecare agencies|Supported living"
+  },
+  {
+    "locationId": "1-785264652",
+    "sector": "TW11 0",
+    "postcode": "TW11 0DX",
+    "name": "Deer Park View Care Centre",
+    "careHome": "Y",
+    "services": [
+      "Nursing homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-785264652",
+    "jan2026_name": "Deer Park View Care Centre",
+    "jan2026_postcode": "TW11 0DX",
+    "jan2026_service_types": "Nursing homes"
+  },
+  {
+    "locationId": "1-3837014544",
+    "sector": "TW11 8",
+    "postcode": "TW11 8LZ",
+    "name": "Optima Care Shine London Limited",
+    "careHome": "N",
+    "services": [
+      "Supported living"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-3837014544",
+    "jan2026_name": "Optima Care Shine London Limited",
+    "jan2026_postcode": "TW11 8LZ",
+    "jan2026_service_types": "Supported living"
+  },
+  {
+    "locationId": "1-27990008429",
+    "sector": "TW12 1",
+    "postcode": "TW12 1JQ",
+    "name": "Laurel Dene",
+    "careHome": "Y",
+    "services": [
+      "Nursing homes"
+    ],
+    "jan2026_match_kind": "name+pc_match",
+    "jan2026_loc_id": "1-139851978",
+    "jan2026_name": "Laurel Dene",
+    "jan2026_postcode": "TW12 1JQ",
+    "jan2026_service_types": "Nursing homes"
+  },
+  {
+    "locationId": "1-5089632910",
+    "sector": "TW12 3",
+    "postcode": "TW12 3ED",
+    "name": "United Response - The Swallows 183 -189 Hanworth Road",
+    "careHome": "Y",
+    "services": [
+      "Residential homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-5089632910",
+    "jan2026_name": "United Response - The Swallows 183 -189 Hanworth Road",
+    "jan2026_postcode": "TW12 3ED",
+    "jan2026_service_types": "Residential homes"
+  },
+  {
+    "locationId": "1-3997000739",
+    "sector": "TW16 6",
+    "postcode": "TW16 6LX",
+    "name": "Elysium Care Partnerships Limited - 187 Nursery Road",
+    "careHome": "Y",
+    "services": [
+      "Residential homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-3997000739",
+    "jan2026_name": "Elysium Care Partnerships Limited - 187 Nursery Road",
+    "jan2026_postcode": "TW16 6LX",
+    "jan2026_service_types": "Residential homes"
+  },
+  {
+    "locationId": "1-6166330440",
+    "sector": "TW17 9",
+    "postcode": "TW17 9EE",
+    "name": "The Burlington",
+    "careHome": "Y",
+    "services": [
+      "Residential homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-6166330440",
+    "jan2026_name": "The Burlington",
+    "jan2026_postcode": "TW17 9EE",
+    "jan2026_service_types": "Residential homes"
+  },
+  {
+    "locationId": "1-5438337696",
+    "sector": "TW18 1",
+    "postcode": "TW18 1UG",
+    "name": "Whitegates Care Centre Limited",
+    "careHome": "Y",
+    "services": [
+      "Nursing homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-5438337696",
+    "jan2026_name": "Whitegates Care Centre Limited",
+    "jan2026_postcode": "TW18 1UG",
+    "jan2026_service_types": "Nursing homes"
+  },
+  {
+    "locationId": "1-8365680230",
+    "sector": "TW18 1",
+    "postcode": "TW18 1SB",
+    "name": "Glebe House Care Home",
+    "careHome": "Y",
+    "services": [
+      "Nursing homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-8365680230",
+    "jan2026_name": "Glebe House Care Home",
+    "jan2026_postcode": "TW18 1SB",
+    "jan2026_service_types": "Nursing homes"
+  },
+  {
+    "locationId": "RXXZ5",
+    "sector": "TW18 1",
+    "postcode": "TW18 1ED",
+    "name": "Kingscroft",
+    "careHome": "Y",
+    "services": [
+      "Residential homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "RXXZ5",
+    "jan2026_name": "Kingscroft",
+    "jan2026_postcode": "TW18 1ED",
+    "jan2026_service_types": "Residential homes"
+  },
+  {
+    "locationId": "1-5013604773",
+    "sector": "TW18 3",
+    "postcode": "TW18 3HF",
+    "name": "Amber Home Carers Surrey",
+    "careHome": "N",
+    "services": [
+      "Homecare agencies",
+      "Supported living"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-5013604773",
+    "jan2026_name": "Amber Home Carers Surrey",
+    "jan2026_postcode": "TW18 3HF",
+    "jan2026_service_types": "Homecare agencies|Supported living"
+  },
+  {
+    "locationId": "1-8530575855",
+    "sector": "TW18 3",
+    "postcode": "TW18 3BA",
+    "name": "INNOVATIVE SUPPORT LTD",
+    "careHome": "N",
+    "services": [
+      "Supported living"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-8530575855",
+    "jan2026_name": "INNOVATIVE SUPPORT LTD",
+    "jan2026_postcode": "TW18 3BA",
+    "jan2026_service_types": "Supported living"
+  },
+  {
+    "locationId": "1-3626380476",
+    "sector": "TW20 9",
+    "postcode": "TW20 9HE",
+    "name": "Reedsfield Care Ltd",
+    "careHome": "N",
+    "services": [
+      "Homecare agencies",
+      "Supported living"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-3626380476",
+    "jan2026_name": "Reedsfield Care Ltd",
+    "jan2026_postcode": "TW20 9HE",
+    "jan2026_service_types": "Homecare agencies|Supported living"
+  },
+  {
+    "locationId": "1-7580341768",
+    "sector": "TW20 9",
+    "postcode": "TW20 9AD",
+    "name": "Rivermede Court",
+    "careHome": "Y",
+    "services": [
+      "Residential homes"
+    ],
+    "jan2026_match_kind": "id_match",
+    "jan2026_loc_id": "1-7580341768",
+    "jan2026_name": "Rivermede Court",
+    "jan2026_postcode": "TW20 9AD",
+    "jan2026_service_types": "Residential homes"
+  }
+]

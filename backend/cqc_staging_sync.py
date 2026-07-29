@@ -267,6 +267,44 @@ async def diff_report(db, job_id: Optional[str] = None) -> dict:
     cq = CqcDefinition(**defn_doc) if defn_doc else CqcDefinition()
     global_filter = definition_to_mongo_filter(cq)
 
+    # --- Records currently in LIVE (filter-matching) but reclassified in
+    # staging (e.g. Deregistered upstream, or service_types no longer match).
+    # Under an upsert-style commit these would flip out of the filtered view.
+    # Under an insert-only commit they would remain but be stale. Surfaced
+    # here so HQ can decide policy before Phase 3 runs.
+    reclassified_docs: list[dict] = []
+    live_filter_ids: set[str] = set()
+    async for d in db.cqc_locations_live.find(global_filter, {"_id": 0, "locationId": 1}):
+        if d.get("locationId"):
+            live_filter_ids.add(d["locationId"])
+    staging_filter_ids: set[str] = set()
+    async for d in db[STAGING_COLL].find(global_filter, {"_id": 0, "locationId": 1}):
+        if d.get("locationId"):
+            staging_filter_ids.add(d["locationId"])
+    reclassified_ids = live_filter_ids - staging_filter_ids
+    reclassified_ids = {lid for lid in reclassified_ids if lid in staging_ids}
+    if reclassified_ids:
+        cursor = db[STAGING_COLL].find(
+            {"locationId": {"$in": list(reclassified_ids)}},
+            {"_id": 0, "locationId": 1, "name": 1, "postalCode": 1, "postcode_sector": 1,
+             "registrationStatus": 1, "gacServiceTypes": 1, "careHome": 1},
+        )
+        async for d in cursor:
+            live_doc = await db.cqc_locations_live.find_one(
+                {"locationId": d["locationId"]},
+                {"_id": 0, "registrationStatus": 1, "gacServiceTypes": 1},
+            ) or {}
+            reclassified_docs.append({
+                "locationId": d["locationId"],
+                "name": d.get("name"),
+                "postalCode": d.get("postalCode"),
+                "postcode_sector": d.get("postcode_sector"),
+                "live_status": live_doc.get("registrationStatus"),
+                "live_services": [s.get("name") for s in (live_doc.get("gacServiceTypes") or [])],
+                "staging_status": d.get("registrationStatus"),
+                "staging_services": [s.get("name") for s in (d.get("gacServiceTypes") or [])],
+            })
+
     missing_registered = 0
     missing_eligible = 0
     missing_by_sector: dict[str, int] = {}
@@ -391,6 +429,16 @@ async def diff_report(db, job_id: Optional[str] = None) -> dict:
 
     return {
         "job": job,
+        "effective_filter": {
+            "definition": cq.model_dump(),
+            "mongo_filter": global_filter,
+            "note": (
+                "This is the SINGLE filter used everywhere in the app "
+                "(Territory Builder counts, MyTerritory+ counts, this "
+                "diff-report and any future append). Sourced from the "
+                "cqc_definition collection via definition_to_mongo_filter()."
+            ),
+        },
         "totals": {
             "listing_reported_total": (job or {}).get("listing_total_reported"),
             "staging_count": staging_total,
@@ -416,6 +464,18 @@ async def diff_report(db, job_id: Optional[str] = None) -> dict:
                 ],
                 key=lambda x: -x["add_count"],
             )[:20],
+        },
+        "reclassified_records": {
+            "count": len(reclassified_docs),
+            "note": (
+                "Records currently in live that MATCH the filter, but in "
+                "staging either flip to Deregistered or drop from the "
+                "filter's service types. Under upsert-style commit their "
+                "filtered visibility would flip off (accepted CQC upstream "
+                "signal). Under insert-only commit they would stay visible "
+                "but stale. HQ policy required."
+            ),
+            "records": reclassified_docs[:200],
         },
         "clementina_prediction": clementina_report,
         "sentinel_rivermede_present_in_staging": sentinel is not None,
