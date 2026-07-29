@@ -355,13 +355,19 @@ To swap from the legacy Airtable lookup to this:
     var facebookLine = f.facebook
       ? '<div class="cm-find__row"><a href="' + escapeHtml(f.facebook) + '" target="_blank" rel="noopener"><span style="color:#1877f2">f</span>&nbsp; Visit my page</a></div>'
       : "";
-    // Biography — teaser first, full text hidden. A single click on the
-    // "READ MORE…" link swaps the visible half over. Kept as inline
-    // data-* attributes so we don't need extra state or lookups —
-    // ``data-bio-full`` is base64-encoded to survive quotes/newlines.
+    // Biography — teaser first. When the franchisee has a WordPress
+    // biography page, "Read more…" becomes a direct link to that
+    // expanded page (Paul's spec Feb 2026: reader should be *taken to*
+    // the full profile, not toggled in-place). We keep the in-place
+    // toggle only as a fallback when no WP page URL is available.
     var bioBlock = "";
     if (f.bio_preview) {
-      if (f.bio_truncated && f.bio) {
+      if (f.bio_truncated && f.wp_page_url) {
+        bioBlock =
+          '<div class="cm-find__bio">' + escapeHtml(f.bio_preview) + '</div>' +
+          '<a class="cm-find__bio-toggle" href="' + escapeHtml(f.wp_page_url) + '">Read more…</a>';
+      } else if (f.bio_truncated && f.bio) {
+        // Fallback: no WP page URL — keep in-place toggle.
         var fullEncoded = "";
         try { fullEncoded = window.btoa(unescape(encodeURIComponent(f.bio))); } catch (e) { fullEncoded = ""; }
         bioBlock =
