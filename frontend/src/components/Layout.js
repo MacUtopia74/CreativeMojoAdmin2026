@@ -23,6 +23,7 @@ import {
   Receipt,
   Banknote,
   KeyRound,
+  ShieldAlert,
   ShoppingBag,
   Calculator,
   Wrench,
@@ -212,6 +213,7 @@ const SIDEBAR_V2 = [
         kind: "group", key: "settings", label: "Settings", icon: Cog, testid: "nav-settings-group",
         children: [
           { kind: "item", to: "/admin/users",           label: "Users",                     icon: KeyRound,    testid: "nav-admin-users",          permKey: "admin-users" },
+          { kind: "item", to: "/admin/website-profile-audit", label: "Public profile audit",  icon: ShieldAlert, testid: "nav-admin-website-profile-audit", permKey: "admin-users" },
           { kind: "item", to: "/admin/xero",            label: "Xero",                      icon: Calculator,  testid: "nav-admin-xero",           permKey: "admin-xero" },
           { kind: "item", to: "/form-intake",           label: "Form Intake",               icon: Inbox,       testid: "nav-form-intake",          permKey: "form-intake" },
           { kind: "item", to: "/admin/email-templates", label: "Email Templates",           icon: Mail,        testid: "nav-admin-email-templates", permKey: "admin-email-templates" },

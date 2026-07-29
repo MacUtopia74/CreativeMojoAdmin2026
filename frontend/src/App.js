@@ -27,6 +27,7 @@ import OrdersPage from "@/pages/OrdersPage";
 import OrderDetailPage from "@/pages/OrderDetailPage";
 import FindClassAdminPage from "@/pages/FindClassAdminPage";
 import AdminUsersPage from "@/pages/AdminUsersPage";
+import AdminWebsiteProfileAuditPage from "@/pages/admin/AdminWebsiteProfileAuditPage";
 import ChangePasswordPage from "@/pages/ChangePasswordPage";
 import XeroSettingsPage from "@/pages/XeroSettingsPage";
 import OrdersReconciliationPage from "@/pages/OrdersReconciliationPage";
@@ -195,6 +196,7 @@ export default function App() {
               <Route path="/orders/:orderId" element={<OrderDetailPage />} />
               <Route path="/find-class" element={<FindClassAdminPage />} />
               <Route path="/admin/users" element={<AdminUsersPage />} />
+              <Route path="/admin/website-profile-audit" element={<AdminWebsiteProfileAuditPage />} />
               <Route path="/admin/shape-orders" element={<AdminShapeOrdersPage />} />
               <Route path="/admin/contracts/templates" element={<AdminContractTemplatesPage />} />
               <Route path="/admin/contracts/templates/:id" element={<AdminContractTemplateDetailPage />} />
