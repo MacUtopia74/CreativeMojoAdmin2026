@@ -127,11 +127,25 @@ async def compute_dry_run(db) -> dict:
         "projected_new_territory_home_count": projected_count,
         "confirmation_token": token,
         "policy": "additive_only",
-        "actions_to_perform_on_commit": [
-            {"op": "$addToSet TW11 9 to franchisees.territory_sectors"},
-            {"op": "insert territories row {franchisee_id, postcode: 'TW11 9', new uuid}"},
-            {"op": "recompute franchisees.territory_home_count"},
-        ],
+        # When the target sector is already present, the endpoint is a
+        # strict no-op: no rows inserted, no sectors touched, no
+        # recompute triggered. Advertise this in the dry-run so callers
+        # do not mistake `projected_new_territory_home_count` for a
+        # pending action.
+        "would_be_noop": already_present,
+        "actions_to_perform_on_commit": (
+            [] if already_present else [
+                {"op": "$addToSet TW11 9 to franchisees.territory_sectors"},
+                {"op": "insert territories row {franchisee_id, postcode: 'TW11 9', new uuid}"},
+                {"op": "recompute franchisees.territory_home_count"},
+            ]
+        ),
+        "noop_reason": (
+            "TW11 9 already exists in franchisees.territory_sectors. "
+            "Apply will short-circuit with status=no_op. If her cached "
+            "home count looks stale, use "
+            "POST /api/franchisees/{id}/refresh-home-count instead."
+        ) if already_present else None,
         "explicit_no_ops": [
             "no changes to franchisee_clients",
             "no changes to hq_home_notes",
@@ -176,7 +190,21 @@ async def commit(db, actor_email: str, client_token: str,
             },
         )
     if dr["already_present_in_her_territory"]:
-        raise HTTPException(409, detail="TW11 9 already in her territory — nothing to do")
+        # Strict no-op: return 200 with a clear status. No rows inserted,
+        # no sectors touched, no recompute triggered.
+        return {
+            "status": "no_op",
+            "reason": "target_sector_already_present",
+            "environment": identity,
+            "franchisee_id": CLEMENTINA_ID,
+            "target_sector": TARGET_SECTOR,
+            "current_sector_count": dr["franchisee"]["current_sector_count"],
+            "hint": (
+                "If her cached territory_home_count looks stale, call "
+                "POST /api/franchisees/{id}/refresh-home-count "
+                "(read-only against CQC, writes only that one field)."
+            ),
+        }
     if dr["other_franchisee_owners"] or dr["conflicting_territory_rows"]:
         raise HTTPException(
             409,
