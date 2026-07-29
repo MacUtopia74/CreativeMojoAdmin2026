@@ -219,7 +219,17 @@ def _format_integer(v: Any, fmt: Optional[Dict[str, Any]]) -> str:
     fmt = fmt or {}
     thousand = bool(fmt.get("thousand_sep", False))
     n = int(v)
-    return f"{n:,}" if thousand else f"{n}"
+    base = f"{n:,}" if thousand else f"{n}"
+    # Optional unit suffix with singular/plural forms. `suffix_singular`
+    # applies when n == 1; `suffix_plural` (or `suffix`) applies otherwise.
+    # Both are appended verbatim (include the leading space if needed —
+    # `" year"` / `" years"`).
+    if n == 1 and fmt.get("suffix_singular"):
+        return base + str(fmt["suffix_singular"])
+    plural = fmt.get("suffix_plural") or fmt.get("suffix")
+    if plural:
+        return base + str(plural)
+    return base
 
 
 def _format_decimal(v: Any, fmt: Optional[Dict[str, Any]]) -> str:
@@ -762,7 +772,11 @@ def _format_typed(
             raw_value=int(raw),
             source=source,
             resolver=f"{resolver_prefix}:integer",
-            format_applied={"thousand_sep": bool(lib_format.get("thousand_sep", False))},
+            format_applied={
+                "thousand_sep": bool(lib_format.get("thousand_sep", False)),
+                "suffix_singular": lib_format.get("suffix_singular"),
+                "suffix_plural": lib_format.get("suffix_plural") or lib_format.get("suffix"),
+            },
         )
     if data_type == "decimal":
         return ResolvedValue(

@@ -231,8 +231,18 @@ class TestResolverContractSpecificMarkers:
             template, _make_contract(contract_term_years=10), _make_franchisee(),
             _library_for(["CONTRACT_TERM_YEARS"]),
         )
-        assert report.resolved["CONTRACT_TERM_YEARS"].value == "10"
+        # Library seed for CONTRACT_TERM_YEARS carries suffix_plural=" years".
+        assert report.resolved["CONTRACT_TERM_YEARS"].value == "10 years"
         assert report.resolved["CONTRACT_TERM_YEARS"].raw_value == 10
+
+    def test_integer_suffix_singular(self):
+        template = _make_template(["CONTRACT_TERM_YEARS"])
+        report = cvr.resolve_contract_variables(
+            template, _make_contract(contract_term_years=1), _make_franchisee(),
+            _library_for(["CONTRACT_TERM_YEARS"]),
+        )
+        assert report.resolved["CONTRACT_TERM_YEARS"].value == "1 year"
+        assert report.resolved["CONTRACT_TERM_YEARS"].raw_value == 1
 
     def test_multiline_special_terms(self):
         template = _make_template(["SPECIAL_TERMS"])

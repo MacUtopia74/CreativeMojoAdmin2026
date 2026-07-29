@@ -98,7 +98,7 @@ def synthetic_default_for(code: str, data_type: str):
     if code == "RENEWAL_FEE":
         return "£250.00"
     if code == "CONTRACT_TERM_YEARS":
-        return "5"
+        return "5 years"
     if code == "HQ_SIGNATORY_NAME":
         return "Sample HQ Director"
     if code == "HQ_SIGNATORY_TITLE":

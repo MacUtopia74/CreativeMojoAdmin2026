@@ -220,7 +220,11 @@ SEED_MARKERS: List[Dict[str, Any]] = [
         "value_source": "automatic",
         "data_field": "contracts.contract_term_years",
         "data_type": "integer",
-        "format": {"thousand_sep": False},
+        "format": {
+            "thousand_sep": False,
+            "suffix_singular": " year",
+            "suffix_plural": " years",
+        },
         "repeat_allowed": True,
         "fallback_on_missing": FALLBACK_MODE_ON_MISSING,
         "eligible_contract_types": CONTRACT_TYPES,
@@ -511,6 +515,26 @@ async def seed_library(db) -> Dict[str, int]:
                         "data_type": entry["data_type"],
                         "format": entry["format"],
                         "default_presentation": entry.get("default_presentation"),
+                        "updated_at": _now_iso(),
+                        "updated_by": "system:seed",
+                    }},
+                )
+                migrated += 1
+            # ---- Corrective migration for CONTRACT_TERM_YEARS ----
+            # Old shape had no suffix — value rendered as bare "3". New
+            # shape appends " year"/" years". Only upgrades system-seeded
+            # rows that HQ has not edited.
+            if (
+                entry["code"] == "CONTRACT_TERM_YEARS"
+                and existing.get("system_seeded") is True
+                and (existing.get("updated_by") in (None, "system:seed"))
+                and not (existing.get("format") or {}).get("suffix_plural")
+                and not (existing.get("format") or {}).get("suffix")
+            ):
+                await db[LIBRARY_COLLECTION].update_one(
+                    {"code": entry["code"]},
+                    {"$set": {
+                        "format": entry["format"],
                         "updated_at": _now_iso(),
                         "updated_by": "system:seed",
                     }},
