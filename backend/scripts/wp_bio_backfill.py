@@ -42,7 +42,7 @@ from wp_bio_dry_run import (  # noqa: E402
     normalise_email,
 )
 
-SCRIPT_VERSION = "wp_bio_backfill_2026_07_31_v1"
+SCRIPT_VERSION = "wp_bio_backfill_2026_07_29_v1"
 MIN_CHARS = 60
 APPROVED_OVERWRITE_FRANCHISE_NUMBERS = {"0030"}  # Anita Priest
 HOLD_BACK_FRANCHISE_NUMBERS = {"0006"}  # Helen Lyons — awaiting choice

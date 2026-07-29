@@ -12,14 +12,23 @@ overwrites the underlying `website_email` / `website_phone` value so a
 franchisee's own edit is preserved and HQ can inspect the raw data
 before deciding whether to clear it. Writes an audit record per
 franchisee touched.
+
+`GET  /api/admin/wp-bio-migration/dry-run.csv` — authenticated download
+of the WordPress → live-franchisee biography matching report used to
+approve the July-2026 backfill. Admin-only.
+
+`GET  /api/admin/wp-bio-migration/log` — read-only view of the durable
+per-franchisee audit log written by `scripts/wp_bio_backfill.py`.
 """
 from __future__ import annotations
 
 import logging
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi.responses import FileResponse
 
 logger = logging.getLogger("creative-mojo-admin.website-profile-audit")
 
@@ -304,6 +313,54 @@ def build_website_profile_audit_router(db, require_role):
                     "franchisee_clients", "hq_home_notes", "contacts", "email_sends",
                 ],
             },
+        }
+
+    # ---- WordPress → website_bio backfill: admin-only artefacts -----------
+    WP_BIO_LOG_COLL = "website_bio_migration_log"
+    WP_BIO_DRY_RUN_CSV = Path(__file__).parent / "static" / "wp_bio_dry_run_2026-07-29.csv"
+
+    @router.get("/admin/wp-bio-migration/dry-run.csv")
+    async def download_wp_bio_dry_run(
+        _user: dict = Depends(require_role("admin")),
+    ):
+        """Authenticated download of the WordPress-export → live
+        franchisee matching report. Deliberately NOT mounted on any
+        public static path — access requires an admin JWT."""
+        if not WP_BIO_DRY_RUN_CSV.exists():
+            raise HTTPException(
+                status_code=404,
+                detail="wp_bio_dry_run report not found on disk",
+            )
+        return FileResponse(
+            path=str(WP_BIO_DRY_RUN_CSV),
+            media_type="text/csv",
+            filename="wp_bio_dry_run_2026-07-29.csv",
+        )
+
+    @router.get("/admin/wp-bio-migration/log")
+    async def wp_bio_migration_log(
+        _user: dict = Depends(require_role("admin")),
+    ):
+        """Read-only view of the durable per-franchisee audit rows
+        written by `scripts/wp_bio_backfill.py`. Useful for the admin
+        UI to show what happened, when, and by which script version."""
+        rows: list[dict] = []
+        async for r in db[WP_BIO_LOG_COLL].find(
+            {}, {"_id": 0}
+        ).sort([("franchise_number", 1), ("migrated_at", 1)]):
+            # Normalise datetime → ISO for JSON.
+            if isinstance(r.get("migrated_at"), datetime):
+                r["migrated_at"] = r["migrated_at"].isoformat()
+            rows.append(r)
+        by_action: dict[str, int] = {}
+        for r in rows:
+            by_action[r.get("action", "unknown")] = (
+                by_action.get(r.get("action", "unknown"), 0) + 1
+            )
+        return {
+            "total_rows": len(rows),
+            "by_action": by_action,
+            "rows": rows,
         }
 
     return router
