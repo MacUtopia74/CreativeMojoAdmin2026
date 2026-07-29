@@ -1,7 +1,7 @@
 """Read-only audit endpoint that surfaces every franchisee whose
 `website_email` or `website_phone` matches ANOTHER franchisee's admin
-contact — the pattern that caused Monica's popup to display Bel's email
-on production (Feb 2026).
+contact — OR whose website_email local-part obviously belongs to
+another franchisee by name (the Feb-2026 Monica → Bel pattern).
 
 `GET  /api/admin/website-profile-audit` — list every leak, sorted by
 severity (published leaks first). Writes nothing.
@@ -34,11 +34,32 @@ def _digits(v) -> str:
     return "".join(ch for ch in str(v or "") if ch.isdigit())
 
 
+def _name_variants(first: str, last: str) -> set[str]:
+    first = (first or "").strip().lower()
+    last = (last or "").strip().lower()
+    out: set[str] = set()
+    if first:
+        out.update({first, first.replace(" ", "")})
+    if last:
+        out.update({last, last.replace(" ", "")})
+    if first and last:
+        out.update({f"{first}.{last}", f"{first}{last}",
+                    f"{first[0]}{last}", f"{first}.{last[0]}"})
+    return {v for v in out if v and len(v) >= 3}
+
+
 async def _scan(db) -> dict:
-    """Read every franchisee once, then cross-check emails/phones."""
-    # Build the admin-identity index
-    admin_email_owner: dict[str, dict] = {}  # lower email → franchisee summary
-    admin_phone_owner: dict[str, dict] = {}  # digits phone → franchisee summary
+    """Read every franchisee once. Cross-check emails/phones/names.
+
+    Strong matches (full-name local-parts) → high confidence, single owner.
+    Weak matches (first-name-only local-parts) → LOW confidence, may map
+    to multiple franchisees; the report lists every possible owner so
+    HQ can decide which one it really belongs to.
+    """
+    admin_email_owner: dict[str, dict] = {}
+    admin_phone_owner: dict[str, dict] = {}
+    strong_owner: dict[str, list[dict]] = {}   # local → list of owners
+    weak_owner: dict[str, list[dict]] = {}
     all_rows: list[dict] = []
     async for f in db.franchisees.find(
         {},
@@ -63,44 +84,136 @@ async def _scan(db) -> dict:
             d = _digits(v)
             if d:
                 admin_phone_owner.setdefault(d, summary)
+        first = str(f.get("first_name") or "").strip().lower()
+        last = str(f.get("last_name") or "").strip().lower()
+        strong_variants: set[str] = set()
+        weak_variants: set[str] = set()
+        if first and len(first) >= 3:
+            weak_variants.update({first, first.replace(" ", "")})
+        if last and len(last) >= 3:
+            weak_variants.update({last, last.replace(" ", "")})
+        if first and last:
+            for v in (f"{first}.{last}", f"{first}{last}",
+                      f"{first[0]}{last}", f"{first}.{last[0]}"):
+                if v and len(v) >= 4:
+                    strong_variants.add(v)
+        for v in strong_variants:
+            strong_owner.setdefault(v, []).append(summary)
+        for v in weak_variants:
+            if v not in strong_variants:
+                weak_owner.setdefault(v, []).append(summary)
+
+    try:
+        async for u in db.users.find({}, {"_id": 0, "email": 1, "franchisee_id": 1}):
+            if u.get("email") and u.get("franchisee_id"):
+                admin_email_owner.setdefault(
+                    str(u["email"]).strip().lower(),
+                    {"id": u["franchisee_id"], "name": "(from users collection)",
+                     "franchise_number": None},
+                )
+    except Exception:  # noqa: BLE001
+        pass
 
     leaks: list[dict] = []
     for f in all_rows:
         my_id = f.get("id")
-        # Website email leak?
-        we = str(f.get("website_email") or "").strip().lower()
+        # Franchisee's own name-variants — don't self-flag
+        first = str(f.get("first_name") or "").strip().lower()
+        last = str(f.get("last_name") or "").strip().lower()
+        own_locals: set[str] = set()
+        if first:
+            own_locals.update({first, first.replace(" ", "")})
+        if last:
+            own_locals.update({last, last.replace(" ", "")})
+        if first and last:
+            own_locals.update({f"{first}.{last}", f"{first}{last}",
+                               f"{first[0]}{last}", f"{first}.{last[0]}"})
+
+        summary_self = {
+            "id": my_id,
+            "name": f"{f.get('first_name') or ''} {f.get('last_name') or ''}".strip(),
+            "franchise_number": f.get("franchise_number"),
+            "lifecycle_status": f.get("lifecycle_status"),
+        }
+
+        we_raw = str(f.get("website_email") or "").strip()
+        we = we_raw.lower()
+        matched = False
+
+        # 1) Direct admin-email match — HIGH confidence
         if we and we in admin_email_owner and admin_email_owner[we]["id"] != my_id:
             leaks.append({
-                "franchisee": {
-                    "id": my_id,
-                    "name": f"{f.get('first_name') or ''} {f.get('last_name') or ''}".strip(),
-                    "franchise_number": f.get("franchise_number"),
-                    "lifecycle_status": f.get("lifecycle_status"),
-                },
+                "franchisee": summary_self,
                 "field": "website_email",
-                "leaked_value": we,
-                "belongs_to": admin_email_owner[we],
+                "leaked_value": we_raw,
+                "reason": "matches_other_admin_email",
+                "confidence": "high",
+                "candidate_owners": [admin_email_owner[we]],
                 "is_published": bool(f.get("show_website_email")),
             })
-        # Website phone leak?
+            matched = True
+        elif we:
+            local = we.split("@", 1)[0]
+            local_stripped = local.replace(".", "").replace("_", "").replace("-", "")
+            # 2) Strong name match — HIGH confidence
+            for probe in (local, local_stripped):
+                if probe in strong_owner and probe not in own_locals:
+                    owners = [o for o in strong_owner[probe] if o["id"] != my_id]
+                    if owners:
+                        leaks.append({
+                            "franchisee": summary_self,
+                            "field": "website_email",
+                            "leaked_value": we_raw,
+                            "reason": "email_local_part_matches_other_franchisee_full_name",
+                            "confidence": "high",
+                            "candidate_owners": owners,
+                            "is_published": bool(f.get("show_website_email")),
+                        })
+                        matched = True
+                        break
+            # 3) Weak (first-name-only) match — LOW confidence; list all candidates
+            if not matched:
+                for probe in (local, local_stripped):
+                    if probe in weak_owner and probe not in own_locals:
+                        owners = [o for o in weak_owner[probe] if o["id"] != my_id]
+                        if owners:
+                            leaks.append({
+                                "franchisee": summary_self,
+                                "field": "website_email",
+                                "leaked_value": we_raw,
+                                "reason": "email_local_part_matches_other_franchisee_first_or_last_name",
+                                "confidence": "low",
+                                "candidate_owners": owners,
+                                "is_published": bool(f.get("show_website_email")),
+                                "review_note": (
+                                    f"'{probe}' is a shared name; "
+                                    f"{len(owners)} franchisee(s) could match. HQ to review "
+                                    "before suppressing."
+                                ),
+                            })
+                            break
+
+        # 4) Phone match
         wp = f.get("website_phone")
         wpd = _digits(wp)
         if wpd and wpd in admin_phone_owner and admin_phone_owner[wpd]["id"] != my_id:
             leaks.append({
-                "franchisee": {
-                    "id": my_id,
-                    "name": f"{f.get('first_name') or ''} {f.get('last_name') or ''}".strip(),
-                    "franchise_number": f.get("franchise_number"),
-                    "lifecycle_status": f.get("lifecycle_status"),
-                },
+                "franchisee": summary_self,
                 "field": "website_phone",
                 "leaked_value": str(wp),
-                "belongs_to": admin_phone_owner[wpd],
+                "reason": "matches_other_admin_phone",
+                "confidence": "high",
+                "candidate_owners": [admin_phone_owner[wpd]],
                 "is_published": bool(f.get("show_website_phone")),
             })
 
-    # Sort: published leaks first (the ones actively exposed), then by field
-    leaks.sort(key=lambda l: (0 if l["is_published"] else 1, l["field"], l["franchisee"]["name"]))
+    # Sort: published first, then high-confidence, then by name
+    leaks.sort(key=lambda l: (
+        0 if l["is_published"] else 1,
+        0 if l.get("confidence") == "high" else 1,
+        l["field"],
+        l["franchisee"]["name"],
+    ))
 
     return {
         "generated_at": _now_iso(),
@@ -108,6 +221,8 @@ async def _scan(db) -> dict:
             "franchisees_scanned": len(all_rows),
             "leaks_total": len(leaks),
             "leaks_published_and_currently_visible": sum(1 for l in leaks if l["is_published"]),
+            "leaks_high_confidence": sum(1 for l in leaks if l.get("confidence") == "high"),
+            "leaks_low_confidence": sum(1 for l in leaks if l.get("confidence") == "low"),
             "leaks_email": sum(1 for l in leaks if l["field"] == "website_email"),
             "leaks_phone": sum(1 for l in leaks if l["field"] == "website_phone"),
         },
@@ -120,21 +235,11 @@ def build_website_profile_audit_router(db, require_role):
 
     @router.get("/admin/website-profile-audit")
     async def audit(_user: dict = Depends(require_role("admin"))):
-        """Read-only scan. Writes nothing."""
         return await _scan(db)
 
     @router.post("/admin/website-profile-audit/clear-leaks")
     async def clear(body: dict = Body(default={}),
                     user: dict = Depends(require_role("admin"))):
-        """Suppress every currently-published leak by setting the
-        matching `show_website_*` flag to False.
-
-        * NEVER overwrites `website_email` / `website_phone` — the raw
-          value is preserved so HQ can inspect what the franchisee had.
-        * NEVER touches any other field.
-        * Idempotent — re-running on a clean dataset is a no-op.
-        * Writes one audit row per franchisee touched.
-        """
         confirm = (body or {}).get("confirm")
         if confirm != "CLEAR-LEAKS":
             return {
@@ -144,14 +249,18 @@ def build_website_profile_audit_router(db, require_role):
             }
         report = await _scan(db)
         touched: list[dict] = []
+        skipped_low_confidence: list[dict] = []
         for leak in report["leaks"]:
             if not leak["is_published"]:
                 continue
+            if leak.get("confidence") == "low":
+                # Never bulk-clear a low-confidence (shared-name) leak.
+                # HQ must review these one-by-one via the audit table.
+                skipped_low_confidence.append(leak)
+                continue
             fid = leak["franchisee"]["id"]
             flag = "show_website_email" if leak["field"] == "website_email" else "show_website_phone"
-            await db.franchisees.update_one(
-                {"id": fid}, {"$set": {flag: False}}
-            )
+            await db.franchisees.update_one({"id": fid}, {"$set": {flag: False}})
             audit_row = {
                 "id": str(uuid.uuid4()),
                 "at": _now_iso(),
@@ -161,18 +270,26 @@ def build_website_profile_audit_router(db, require_role):
                 "franchise_number": leak["franchisee"]["franchise_number"],
                 "action": f"suppress_{flag}",
                 "field": leak["field"],
+                "reason": leak.get("reason"),
+                "confidence": leak.get("confidence"),
                 "leaked_value": leak["leaked_value"],
-                "leaked_belongs_to": leak["belongs_to"],
+                "leaked_belongs_to": leak.get("candidate_owners"),
             }
             await db[AUDIT_LOG_COLL].insert_one(audit_row)
             touched.append(audit_row)
             logger.warning(
-                "[website-profile-audit] suppressed %s on %s (leaked value belonged to %s)",
-                flag, leak["franchisee"]["name"], leak["belongs_to"]["name"],
+                "[website-profile-audit] suppressed %s on %s (reason=%s, belongs_to=%s)",
+                flag, leak["franchisee"]["name"],
+                leak.get("reason"), leak["belongs_to"]["name"],
             )
         return {
             "status": "ok",
             "cleared_count": len(touched),
+            "skipped_low_confidence_count": len(skipped_low_confidence),
+            "skipped_low_confidence": [
+                {"franchisee": l["franchisee"], "reason": l.get("review_note")}
+                for l in skipped_low_confidence
+            ],
             "touched": touched,
             "guarantees": {
                 "writes_only": [

@@ -51,13 +51,57 @@ def _digits(v) -> str:
 
 
 async def _load_other_admin_contacts(db, exclude_franchisee_id: Optional[str]):
-    """Build the (emails, phones) admin-identity index for every OTHER
-    franchisee. O(N) once per lookup; ~90 rows on production."""
+    """Return ``(emails, phones, strong_name_locals, weak_name_locals)``.
+
+    * ``strong_name_locals``: full-name variants — ``firstlast``,
+      ``first.last``, ``flast``, ``first.l``. These are high-confidence
+      because the combination is unique across ~90 franchisees.
+    * ``weak_name_locals``: first-name-only and last-name-only. Low
+      confidence — multiple franchisees may share these (Jane, Sam,
+      Chris etc.), so the guard still suppresses but the audit will
+      list every candidate owner for HQ to review.
+
+    Both indexes map local-part → LIST of owner summaries (not a single
+    owner) so ambiguity is visible rather than hidden.
+    """
     emails: set[str] = set()
     phones: set[str] = set()
+    strong: dict[str, list[dict]] = {}
+    weak: dict[str, list[dict]] = {}
+
+    def _register_name(f):
+        first = str(f.get("first_name") or "").strip().lower()
+        last = str(f.get("last_name") or "").strip().lower()
+        strong_variants: set[str] = set()
+        weak_variants: set[str] = set()
+        if first and len(first) >= 3:
+            weak_variants.add(first)
+            weak_variants.add(first.replace(" ", ""))
+        if last and len(last) >= 3:
+            weak_variants.add(last)
+            weak_variants.add(last.replace(" ", ""))
+        if first and last:
+            for v in (f"{first}.{last}", f"{first}{last}",
+                      f"{first[0]}{last}", f"{first}.{last[0]}"):
+                if v and len(v) >= 4:
+                    strong_variants.add(v)
+        summary = {
+            "id": f.get("id"),
+            "name": f"{f.get('first_name') or ''} {f.get('last_name') or ''}".strip(),
+            "franchise_number": f.get("franchise_number"),
+        }
+        for v in strong_variants:
+            strong.setdefault(v, []).append(summary)
+        for v in weak_variants:
+            # Only add to weak if not already a strong variant for this
+            # franchisee (avoids double-listing owners).
+            if v not in strong_variants:
+                weak.setdefault(v, []).append(summary)
+
     async for other in db.franchisees.find(
         {"id": {"$ne": exclude_franchisee_id}} if exclude_franchisee_id else {},
-        {"_id": 0, "email": 1, "phone": 1, "mobile": 1},
+        {"_id": 0, "id": 1, "first_name": 1, "last_name": 1,
+         "franchise_number": 1, "email": 1, "phone": 1, "mobile": 1},
     ):
         if other.get("email"):
             emails.add(str(other["email"]).strip().lower())
@@ -65,18 +109,46 @@ async def _load_other_admin_contacts(db, exclude_franchisee_id: Optional[str]):
             d = _digits(other.get(k))
             if d:
                 phones.add(d)
-    return emails, phones
+        _register_name(other)
+
+    try:
+        async for u in db.users.find(
+            {}, {"_id": 0, "email": 1, "franchisee_id": 1},
+        ):
+            if u.get("email") and u.get("franchisee_id") != exclude_franchisee_id:
+                emails.add(str(u["email"]).strip().lower())
+    except Exception:  # noqa: BLE001
+        pass
+
+    return emails, phones, strong, weak
 
 
-def _apply_cross_leak_guard(franchisee: dict, other_emails: set, other_phones: set):
-    """Return (phone_str, email_public) for the popup response, blocking
-    any value that matches another franchisee's admin contact. Logs an
-    error whenever a leak is suppressed so ops can audit."""
+def _apply_cross_leak_guard(franchisee: dict, other_emails: set, other_phones: set,
+                            strong_name_locals: dict | None = None,
+                            weak_name_locals: dict | None = None):
+    """Suppress `website_email` / `website_phone` when it matches
+    another franchisee's admin contact OR another franchisee's name
+    (strong OR weak). Weak matches (shared first names) still trigger
+    suppression at runtime because emitting the wrong email is far
+    worse than emitting no email — the audit will surface the
+    ambiguity for HQ review.
+    """
+    strong_name_locals = strong_name_locals or {}
+    weak_name_locals = weak_name_locals or {}
+    own_locals: set[str] = set()
+    fn = str(franchisee.get("first_name") or "").strip().lower()
+    ln = str(franchisee.get("last_name") or "").strip().lower()
+    if fn:
+        own_locals.update({fn, fn.replace(" ", "")})
+    if ln:
+        own_locals.update({ln, ln.replace(" ", "")})
+    if fn and ln:
+        own_locals.update({f"{fn}.{ln}", f"{fn}{ln}",
+                           f"{fn[0]}{ln}", f"{fn}.{ln[0]}"})
+
     phone_str = None
     if franchisee.get("show_website_phone") and franchisee.get("website_phone"):
         candidate = str(franchisee["website_phone"]).strip() or None
-        # Preserve the Airtable-migration fix — mobiles stored as ints
-        # stripped their leading zero.
         if candidate and not candidate.startswith("+") and not candidate.startswith("0"):
             candidate = "0" + candidate
         if candidate and _digits(candidate) in other_phones:
@@ -87,17 +159,41 @@ def _apply_cross_leak_guard(franchisee: dict, other_emails: set, other_phones: s
             )
         else:
             phone_str = candidate
+
     email_public = None
     if franchisee.get("show_website_email") and franchisee.get("website_email"):
         candidate = str(franchisee["website_email"]).strip() or None
-        if candidate and candidate.lower() in other_emails:
-            logger.error(
-                "[cross-leak] franchisee_id=%s website_email=%r suppressed — "
-                "matches another franchisee's admin email",
-                franchisee.get("id"), candidate,
-            )
-        else:
-            email_public = candidate
+        if candidate:
+            low = candidate.lower()
+            local = low.split("@", 1)[0]
+            local_stripped = local.replace(".", "").replace("_", "").replace("-", "")
+            if low in other_emails:
+                logger.error(
+                    "[cross-leak] franchisee_id=%s website_email=%r suppressed — "
+                    "matches another franchisee's admin email",
+                    franchisee.get("id"), candidate,
+                )
+            elif (local in strong_name_locals or local_stripped in strong_name_locals) \
+                    and local not in own_locals and local_stripped not in own_locals:
+                owners = strong_name_locals.get(local) or strong_name_locals.get(local_stripped)
+                logger.error(
+                    "[cross-leak-by-name/strong] franchisee_id=%s "
+                    "website_email=%r suppressed — full-name match to: %s",
+                    franchisee.get("id"), candidate,
+                    ", ".join(f"{o.get('name')} #{o.get('franchise_number')}" for o in owners),
+                )
+            elif (local in weak_name_locals or local_stripped in weak_name_locals) \
+                    and local not in own_locals and local_stripped not in own_locals:
+                owners = weak_name_locals.get(local) or weak_name_locals.get(local_stripped)
+                logger.error(
+                    "[cross-leak-by-name/weak] franchisee_id=%s "
+                    "website_email=%r suppressed — first-name match (%d candidate owner(s)): %s",
+                    franchisee.get("id"), candidate, len(owners),
+                    ", ".join(f"{o.get('name')} #{o.get('franchise_number')}" for o in owners),
+                )
+            else:
+                email_public = candidate
+
     return phone_str, email_public
 
 
@@ -381,12 +477,13 @@ def attach(api, db, require_role):
             # legacy data-import bugs that copied one franchisee's
             # contact details into another's `website_*` field. The
             # check is O(N) per lookup on ~90 franchisees — negligible.
-            other_admin_emails, other_admin_phones = await _load_other_admin_contacts(
+            other_admin_emails, other_admin_phones, strong_name_locals, weak_name_locals = await _load_other_admin_contacts(
                 db, franchisee.get("id")
             )
 
             phone_str, email_public = _apply_cross_leak_guard(
-                franchisee, other_admin_emails, other_admin_phones
+                franchisee, other_admin_emails, other_admin_phones,
+                strong_name_locals, weak_name_locals,
             )
             bio_public = None
             bio_preview = None

@@ -1,4 +1,36 @@
 # Creative Mojo — Admin & Franchisee Hub PRD
+- ✅ **Cross-franchisee contact-leak guard v2 — SHIPPED to preview (Feb 2026)**
+    * **Incident:** Monica's Mojo-map popup surfaced Bel McDonald's
+      email `bel@creativemojo.co.uk` on production. My v1 guard missed
+      it because `bel@…` was not in any franchisee's `.email` field —
+      it's a company-alias email that only ties to Bel by *name*.
+    * **v2 defence (test-locked, 14/14 audit tests):**
+        1. Existing admin-email + phone/mobile match (both franchisees
+           collection and users collection).
+        2. **Strong** name-derived local-part match — full-name
+           variants (`belmcdonald`, `bel.mcdonald`, `bmcdonald`,
+           `bel.m`). HIGH confidence, single owner.
+        3. **Weak** name-derived local-part match — first-name-only or
+           last-name-only. LOW confidence. Runtime guard still
+           suppresses (emitting the wrong email is worse than emitting
+           none), but the audit lists ALL possible owners so HQ can
+           decide.
+    * **Bulk clear-leaks now refuses to touch low-confidence leaks** —
+      admin has to review shared-name cases individually via the
+      audit table.
+    * **Admin page** (`/admin/website-profile-audit`) shows confidence
+      + candidate-owners columns + review-notes on low-confidence rows;
+      Suppress button ignores low-confidence entries entirely.
+    * **Files:** `backend/find_class_routes.py`,
+      `backend/website_profile_audit.py`,
+      `frontend/src/pages/admin/AdminWebsiteProfileAuditPage.jsx`,
+      `backend/tests/test_website_profile_audit.py` (14 tests).
+- ✅ **Public profile audit endpoint + admin UI (Feb 2026)** —
+  `GET/POST /api/admin/website-profile-audit` and companion page at
+  `/admin/website-profile-audit`. Read-only scan + one-click suppress
+  (with confirmation modal). Underlying `website_email` / `website_phone`
+  values are always preserved; only the `show_website_*` flag flips.
+
 - ✅ **CQC Phase 3 canonical-source repair — COMPLETE on production (Feb 2026)**
     * Insert-only append of missing Registered CQC locations from the
       staging sync into `cqc_locations_live`. Repairs the ~40% deficit

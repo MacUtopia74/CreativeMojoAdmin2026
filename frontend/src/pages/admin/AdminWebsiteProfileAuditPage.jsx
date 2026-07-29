@@ -51,7 +51,9 @@ export default function AdminWebsiteProfileAuditPage() {
 
   const totals = report?.totals || {};
   const leaks = report?.leaks || [];
-  const published = leaks.filter((l) => l.is_published);
+  const publishedHighConfidence = leaks.filter(
+    (l) => l.is_published && l.confidence !== "low"
+  );
 
   return (
     <div className="p-6 max-w-6xl mx-auto" data-testid="admin-website-profile-audit-page">
@@ -78,11 +80,12 @@ export default function AdminWebsiteProfileAuditPage() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
             <StatCard label="Franchisees scanned" value={totals.franchisees_scanned} />
             <StatCard label="Total leaks" value={totals.leaks_total} tone={totals.leaks_total > 0 ? "warn" : "ok"} />
-            <StatCard label="Currently visible on map" value={totals.leaks_published_and_currently_visible} tone={totals.leaks_published_and_currently_visible > 0 ? "danger" : "ok"} />
-            <StatCard label="Latent (not yet published)" value={totals.leaks_total - (totals.leaks_published_and_currently_visible || 0)} />
+            <StatCard label="Currently visible" value={totals.leaks_published_and_currently_visible} tone={totals.leaks_published_and_currently_visible > 0 ? "danger" : "ok"} />
+            <StatCard label="High-confidence" value={totals.leaks_high_confidence} tone={totals.leaks_high_confidence > 0 ? "danger" : "ok"} />
+            <StatCard label="Low-confidence (review)" value={totals.leaks_low_confidence} tone={totals.leaks_low_confidence > 0 ? "warn" : "ok"} />
           </div>
 
           <div className="flex items-center justify-between mb-4">
@@ -102,11 +105,11 @@ export default function AdminWebsiteProfileAuditPage() {
               </button>
               <button
                 onClick={() => setConfirmOpen(true)}
-                disabled={published.length === 0 || clearing}
+                disabled={publishedHighConfidence.length === 0 || clearing}
                 className="inline-flex items-center gap-2 px-4 py-1.5 text-sm border rounded-md bg-red-600 text-white border-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
                 data-testid="admin-website-profile-audit-clear-btn">
                 <ShieldAlert className="h-4 w-4" />
-                Suppress {published.length} published leak{published.length === 1 ? "" : "s"}
+                Suppress {publishedHighConfidence.length} published leak{publishedHighConfidence.length === 1 ? "" : "s"}
               </button>
             </div>
           </div>
@@ -138,22 +141,44 @@ export default function AdminWebsiteProfileAuditPage() {
                     <th className="text-left px-3 py-2 font-medium">Franchisee</th>
                     <th className="text-left px-3 py-2 font-medium">Field</th>
                     <th className="text-left px-3 py-2 font-medium">Leaked value</th>
-                    <th className="text-left px-3 py-2 font-medium">Actually belongs to</th>
+                    <th className="text-left px-3 py-2 font-medium">Reason</th>
+                    <th className="text-left px-3 py-2 font-medium">Candidate owner(s)</th>
+                    <th className="text-left px-3 py-2 font-medium">Confidence</th>
                     <th className="text-left px-3 py-2 font-medium">Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {leaks.map((l, i) => (
-                    <tr key={i} className="border-t border-stone-100" data-testid={`leak-row-${i}`}>
+                    <tr key={i} className="border-t border-stone-100 align-top" data-testid={`leak-row-${i}`}>
                       <td className="px-3 py-2">
                         <div className="font-medium text-stone-900">{l.franchisee.name}</div>
                         <div className="text-xs text-stone-500">#{l.franchisee.franchise_number}</div>
                       </td>
                       <td className="px-3 py-2 text-stone-700">{l.field}</td>
-                      <td className="px-3 py-2 font-mono text-xs">{l.leaked_value}</td>
+                      <td className="px-3 py-2 font-mono text-xs break-all">{l.leaked_value}</td>
+                      <td className="px-3 py-2 text-xs text-stone-600">
+                        {(l.reason || "").replace(/_/g, " ")}
+                        {l.review_note && (
+                          <div className="mt-1 text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                            ⚠ {l.review_note}
+                          </div>
+                        )}
+                      </td>
                       <td className="px-3 py-2">
-                        <div className="text-stone-800">{l.belongs_to.name}</div>
-                        <div className="text-xs text-stone-500">#{l.belongs_to.franchise_number}</div>
+                        {(l.candidate_owners || []).map((o, j) => (
+                          <div key={j} className="text-stone-800">
+                            {o.name} <span className="text-xs text-stone-500">#{o.franchise_number ?? "—"}</span>
+                          </div>
+                        ))}
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs border font-medium ${
+                          l.confidence === "high"
+                            ? "bg-red-50 text-red-800 border-red-300"
+                            : "bg-amber-50 text-amber-800 border-amber-300"
+                        }`}>
+                          {l.confidence || "high"}
+                        </span>
                       </td>
                       <td className="px-3 py-2">
                         {l.is_published ? (
@@ -199,7 +224,7 @@ export default function AdminWebsiteProfileAuditPage() {
             <div className="flex items-start gap-3">
               <ShieldAlert className="w-6 h-6 text-red-600 mt-0.5 shrink-0" />
               <div>
-                <h3 className="font-semibold text-lg mb-1">Suppress {published.length} published leak{published.length === 1 ? "" : "s"}?</h3>
+                <h3 className="font-semibold text-lg mb-1">Suppress {publishedHighConfidence.length} published leak{publishedHighConfidence.length === 1 ? "" : "s"}?</h3>
                 <p className="text-sm text-stone-600">
                   Each affected franchisee&apos;s <code>show_website_email</code> or <code>show_website_phone</code> flag will be set to false. The underlying values are preserved. This is fully reversible — franchisees can re-tick the flag from their <em>My Franchise</em> page once you&apos;ve confirmed the correct email/phone.
                 </p>
