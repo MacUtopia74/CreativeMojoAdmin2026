@@ -67,6 +67,10 @@ def wp_content_to_text(html_str: str) -> str:
         parts = [soup.get_text(" ", strip=True)]
     text = "\n\n".join(p for p in parts if p)
     text = html.unescape(text)
+    # Normalise Windows/Mac line endings so the popup + portal textarea
+    # render paragraph breaks identically across browsers.
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = text.replace("\u00a0", " ")  # NBSP → regular space
     text = re.sub(r"[ \t]+\n", "\n", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
