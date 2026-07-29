@@ -429,6 +429,13 @@ async def diff_report(db, job_id: Optional[str] = None) -> dict:
 
     return {
         "job": job,
+        "environment": {
+            "db_name": os.environ.get("DB_NAME"),
+            "backend_url": os.environ.get("REACT_APP_BACKEND_URL")
+                           or os.environ.get("PUBLIC_URL")
+                           or "unknown",
+            "pod_hostname": os.environ.get("HOSTNAME", "unknown"),
+        },
         "effective_filter": {
             "definition": cq.model_dump(),
             "mongo_filter": global_filter,

@@ -45,6 +45,17 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _environment_signature() -> dict:
+    import os
+    return {
+        "db_name": os.environ.get("DB_NAME"),
+        "backend_url": os.environ.get("REACT_APP_BACKEND_URL")
+                       or os.environ.get("PUBLIC_URL")
+                       or "unknown",
+        "pod_hostname": os.environ.get("HOSTNAME", "unknown"),
+    }
+
+
 async def compute_dry_run(db) -> dict:
     """Read-only preview. Never writes."""
     clem = await db.franchisees.find_one(
@@ -105,6 +116,7 @@ async def compute_dry_run(db) -> dict:
     ).hexdigest()
 
     return {
+        "environment": _environment_signature(),
         "franchisee": {
             "id": clem["id"],
             "name": f"{clem.get('first_name') or ''} {clem.get('last_name') or ''}".strip(),
@@ -213,6 +225,7 @@ async def commit(db, actor_email: str, client_token: str) -> dict:
     logger.info("[tw11-9] added to Clementina; new_home_count=%d", new_count)
     return {
         "status": "ok",
+        "environment": _environment_signature(),
         "new_sector_count": len(new_sectors),
         "new_territory_home_count": new_count,
         "new_territory_row_id": new_row["id"],

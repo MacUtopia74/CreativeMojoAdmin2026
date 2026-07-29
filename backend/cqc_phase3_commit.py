@@ -60,6 +60,22 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _environment_signature() -> dict:
+    """Every response echoes the exact database + host so callers can be
+    100% certain they're hitting the environment they think they are.
+    A production run should show DB_NAME='creative_mojo_prod' (or your
+    live name) and a *.creativemojo.co.uk BACKEND URL; a preview run
+    shows DB_NAME containing 'preview' / 'test' / a UUID slug.
+    """
+    return {
+        "db_name": os.environ.get("DB_NAME"),
+        "backend_url": os.environ.get("REACT_APP_BACKEND_URL")
+                       or os.environ.get("PUBLIC_URL")
+                       or "unknown",
+        "pod_hostname": os.environ.get("HOSTNAME", "unknown"),
+    }
+
+
 async def compute_dry_run(db) -> dict:
     """Compute exact numbers for an insert-only commit. Reads only. Writes nothing."""
     live_ids: set[str] = set()
@@ -142,6 +158,7 @@ async def compute_dry_run(db) -> dict:
     ).hexdigest()
 
     return {
+        "environment": _environment_signature(),
         "counts": counts,
         "to_insert_ids_hash_sha256": id_digest,
         "confirmation_token": confirmation_token,
@@ -400,7 +417,8 @@ def build_phase3_router(db, require_role):
         asyncio.create_task(_run_insert_only(db, job_id, expected_ids,
                                              user.get("email", "unknown")))
         return {"status": "started", "job_id": job_id,
-                "expected_id_count": len(expected_ids)}
+                "expected_id_count": len(expected_ids),
+                "environment": _environment_signature()}
 
     @router.get("/cqc/phase3/status")
     async def status(job_id: Optional[str] = Query(None),
@@ -408,7 +426,7 @@ def build_phase3_router(db, require_role):
         q = {"job_id": job_id} if job_id else {}
         job = await db[JOBS_COLL].find_one(q, {"_id": 0},
                                            sort=[("started_at", -1)])
-        return {"job": job}
+        return {"job": job, "environment": _environment_signature()}
 
     @router.post("/cqc/phase3/rollback")
     async def rollback(body: dict = Body(...),
@@ -416,6 +434,7 @@ def build_phase3_router(db, require_role):
         job_id = (body or {}).get("job_id")
         if not job_id:
             raise HTTPException(400, detail="job_id required")
-        return await _run_rollback(db, job_id, user.get("email", "unknown"))
+        result = await _run_rollback(db, job_id, user.get("email", "unknown"))
+        return {**result, "environment": _environment_signature()}
 
     return router
