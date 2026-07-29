@@ -1,4 +1,74 @@
 # Creative Mojo — Admin & Franchisee Hub PRD
+- ✅ **CQC Phase 3 canonical-source repair — COMPLETE on production (Feb 2026)**
+    * Insert-only append of missing Registered CQC locations from the
+      staging sync into `cqc_locations_live`. Repairs the ~40% deficit
+      from the initial May 2025 sync that caused Rivermede Court and
+      thousands of other homes to be invisible in franchisee territory
+      counts.
+    * **Production result:** 21,878 inserted · 0 duplicates · 0 failures
+      · 0 updates · 0 status changes · 0 service-type changes · 0
+      deletions. R2 backup + inserted-ID log written to
+      `admin/cqc-phase3-backups/<job_id>/`. Rollback endpoint remains
+      available via `POST /api/cqc/phase3/rollback { job_id }`.
+    * **Rivermede Court** (`1-7580341768`) now visible in Clementina's
+      territory. TW11 9 was already present in her sectors — no
+      territory migration required.
+    * **Safeguards shipped alongside the repair:**
+        - `environment_identity.py` — split into deployment_fingerprint
+          + datastore_fingerprint. Credentials never leaked. Preview
+          tokens cannot be replayed against production (fingerprint
+          binding).
+        - Confirmation token cryptographically binds to
+          `(id_digest ‖ counts_digest ‖ deployment_fp ‖ datastore_fp)`.
+        - Commit endpoint refuses unless `ENVIRONMENT_NAME` env var is
+          set to `"preview"` or `"production"`.
+        - `expected_environment` + `expected_deployment_fingerprint`
+          required on commit payload.
+        - 15/15 environment + insert-only tests locked at
+          `tests/test_environment_identity.py` and
+          `tests/test_cqc_phase3_insert_only.py`.
+    * **Diff-report improvements (kept):** `effective_filter` and
+      `reclassified_records` blocks now emitted by
+      `GET /api/cqc/sync/staging/diff-report`.
+    * **Endpoints (retained, in-app, all admin-only):**
+        - `POST /api/cqc/sync/staging/start`
+        - `GET  /api/cqc/sync/staging/status`
+        - `GET  /api/cqc/sync/staging/diff-report`
+        - `GET  /api/cqc/phase3/dry-run`
+        - `POST /api/cqc/phase3/commit-append` (idempotent — no-op if
+          nothing to insert)
+        - `GET  /api/cqc/phase3/status`
+        - `POST /api/cqc/phase3/rollback`
+        - `POST /api/franchisees/{id}/refresh-home-count` (available
+          but not run against production — HQ elected to skip)
+        - `GET/POST /api/cqc/tw11-9/*` (strict no-op if already present)
+    * **Backlog: harden the ongoing CQC sync (P1)** so this cannot
+      recur. Requirements captured for next iteration:
+        - No silent page skips — every listing page must be fetched or
+          the sync fails loudly.
+        - Completeness check against CQC-reported total after each run.
+        - Retry handling for failed pages and location IDs.
+        - Clear success / partial / failed sync status.
+        - Stale-sync warnings surfaced in admin settings.
+- ✅ **Contract template `[[CONTRACT_TERM_YEARS]]` renders as "3 years"
+  / "1 year" (Feb 2026)**
+    * `_format_integer` gains generic `suffix_singular` +
+      `suffix_plural` support in `contract_value_resolver.py`.
+    * `CONTRACT_TERM_YEARS` library entry updated to
+      `{ suffix_singular: " year", suffix_plural: " years" }`.
+    * Idempotent seed migration upgrades system-seeded rows on backend
+      startup without touching HQ-edited rows.
+    * Existing frozen contract drafts need a per-contract "Refresh
+      Variables" click to re-render — audit-logged. New contracts get
+      the correct suffix automatically.
+- ✅ **Franchisee portal — Contracts moved from separate sidebar tab
+  into a "My Contracts" section on the My Franchise page (Feb 2026)**
+    * `PortalContractsPage.jsx` refactored to export both the
+      standalone page (kept for HQ email deep-links to
+      `/portal/contracts?open=<id>`) and a `<PortalContractsSection />`
+      component embedded in `PortalDetailsPage.jsx`.
+    * Sidebar entry removed from `PortalShell.jsx`.
+
 - ✅ **Admin franchisee page — HQ notes on CQC entries + Care Groups panel (Feb 2026)**
     * **Care Groups panel** — `TerritoryCareGroupsCard` (previously
       portal-Plus only) now always renders on the admin franchisee
