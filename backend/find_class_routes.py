@@ -40,6 +40,67 @@ def _rate_check(ip: str) -> None:
     window[:] = [t for t in window if t > cutoff]
     if len(window) >= _RATE_LIMIT:
         raise HTTPException(429, detail="Too many lookups — please wait a minute.")
+
+
+# ---------- cross-franchisee contact-leak kill switch -------------------------
+# See tests/test_website_profile_audit.py for the leak scenario (Monica's
+# popup surfacing Bel's admin email on production, Feb 2026).
+
+def _digits(v) -> str:
+    return "".join(ch for ch in str(v or "") if ch.isdigit())
+
+
+async def _load_other_admin_contacts(db, exclude_franchisee_id: Optional[str]):
+    """Build the (emails, phones) admin-identity index for every OTHER
+    franchisee. O(N) once per lookup; ~90 rows on production."""
+    emails: set[str] = set()
+    phones: set[str] = set()
+    async for other in db.franchisees.find(
+        {"id": {"$ne": exclude_franchisee_id}} if exclude_franchisee_id else {},
+        {"_id": 0, "email": 1, "phone": 1, "mobile": 1},
+    ):
+        if other.get("email"):
+            emails.add(str(other["email"]).strip().lower())
+        for k in ("phone", "mobile"):
+            d = _digits(other.get(k))
+            if d:
+                phones.add(d)
+    return emails, phones
+
+
+def _apply_cross_leak_guard(franchisee: dict, other_emails: set, other_phones: set):
+    """Return (phone_str, email_public) for the popup response, blocking
+    any value that matches another franchisee's admin contact. Logs an
+    error whenever a leak is suppressed so ops can audit."""
+    phone_str = None
+    if franchisee.get("show_website_phone") and franchisee.get("website_phone"):
+        candidate = str(franchisee["website_phone"]).strip() or None
+        # Preserve the Airtable-migration fix — mobiles stored as ints
+        # stripped their leading zero.
+        if candidate and not candidate.startswith("+") and not candidate.startswith("0"):
+            candidate = "0" + candidate
+        if candidate and _digits(candidate) in other_phones:
+            logger.error(
+                "[cross-leak] franchisee_id=%s website_phone=%r suppressed — "
+                "matches another franchisee's admin phone",
+                franchisee.get("id"), candidate,
+            )
+        else:
+            phone_str = candidate
+    email_public = None
+    if franchisee.get("show_website_email") and franchisee.get("website_email"):
+        candidate = str(franchisee["website_email"]).strip() or None
+        if candidate and candidate.lower() in other_emails:
+            logger.error(
+                "[cross-leak] franchisee_id=%s website_email=%r suppressed — "
+                "matches another franchisee's admin email",
+                franchisee.get("id"), candidate,
+            )
+        else:
+            email_public = candidate
+    return phone_str, email_public
+
+
     window.append(now)
 
 
@@ -313,16 +374,20 @@ def attach(api, db, require_role):
             # "My Franchise" portal page. This fixed the Jul-2026 issue
             # where admin-record emails/phones (private) were leaking to
             # the public map popup for every franchisee.
-            phone_str = None
-            if franchisee.get("show_website_phone") and franchisee.get("website_phone"):
-                phone_str = str(franchisee["website_phone"]).strip() or None
-                # Preserve the Airtable-migration fix — mobiles stored as
-                # ints stripped their leading zero.
-                if phone_str and not phone_str.startswith("+") and not phone_str.startswith("0"):
-                    phone_str = "0" + phone_str
-            email_public = None
-            if franchisee.get("show_website_email") and franchisee.get("website_email"):
-                email_public = str(franchisee["website_email"]).strip() or None
+            #
+            # Feb-2026 additional safeguard: even when a franchisee has
+            # opted in, refuse to emit a value that matches ANOTHER
+            # franchisee's admin email or phone. This defends against
+            # legacy data-import bugs that copied one franchisee's
+            # contact details into another's `website_*` field. The
+            # check is O(N) per lookup on ~90 franchisees — negligible.
+            other_admin_emails, other_admin_phones = await _load_other_admin_contacts(
+                db, franchisee.get("id")
+            )
+
+            phone_str, email_public = _apply_cross_leak_guard(
+                franchisee, other_admin_emails, other_admin_phones
+            )
             bio_public = None
             bio_preview = None
             bio_truncated = False

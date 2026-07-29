@@ -7110,6 +7110,8 @@ api.include_router(build_phase3_router(db, require_role))
 api.include_router(build_tw11_9_router(db, require_role))
 from franchisee_home_count_refresh import build_home_count_refresh_router  # noqa: E402
 api.include_router(build_home_count_refresh_router(db, require_role))
+from website_profile_audit import build_website_profile_audit_router  # noqa: E402
+api.include_router(build_website_profile_audit_router(db, require_role))
 api.include_router(build_scotland_router(db, require_role))
 api.include_router(build_ni_router(db, require_role))
 api.include_router(build_wales_router(db, require_role))
