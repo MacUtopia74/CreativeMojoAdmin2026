@@ -17,6 +17,7 @@ import FormIntakePage from "@/pages/FormIntakePage";
 import PublicFolderSharePage from "@/pages/PublicFolderSharePage";
 import PublicDBSForm from "@/pages/PublicDBSForm";
 import PublicTerritorySharePage from "@/pages/PublicTerritorySharePage";
+import PublicAgreedTerritoryPage from "@/pages/PublicAgreedTerritoryPage";
 import PortalLoginPage from "@/pages/PortalLoginPage";
 import TerritoryBuilderPage from "@/pages/TerritoryBuilderPage";
 import CqcDefinitionsPage from "@/pages/CqcDefinitionsPage";
@@ -146,6 +147,9 @@ export default function App() {
             <Route path="/share/folder/:token" element={<PublicFolderSharePage />} />
             <Route path="/dbs/apply/:token" element={<PublicDBSForm />} />
             <Route path="/share/territory/:token" element={<PublicTerritorySharePage />} />
+            {/* Public agreed-territory viewer — the URL baked into every
+                issued contract PDF as [[TERRITORY_MAP_URL]]. */}
+            <Route path="/agreed-territory/:snapshotId/:token" element={<PublicAgreedTerritoryPage />} />
             {/* Public PDF landing pages — no auth required so recipients can
                 view from any inbox / forwarded email. */}
             <Route path="/info/:slug" element={<InfoLandingPage />} />

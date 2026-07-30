@@ -15,6 +15,7 @@ function isPublicPath(pathname) {
     || pathname.startsWith("/info/")
     || pathname.startsWith("/reset-password")
     || pathname.startsWith("/dbs/apply/")
+    || pathname.startsWith("/agreed-territory/")
   );
 }
 
