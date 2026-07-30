@@ -82,9 +82,18 @@ async def create_snapshot(
     franchisee_id: str,
     territory_ids: List[str],
     created_by: str,
+    territory_sectors: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Create an immutable snapshot of the franchisee's current
     territory tiles. Called by ``contracts_routes.freeze_territory``.
+
+    ``territory_ids`` refers to documents in the ``territories``
+    collection (Territory Builder tiles). ``territory_sectors`` is
+    the flat list of postcode-sector strings stored directly on the
+    franchisee record — used when the franchisee has an agreed
+    territory (via the sector-based flow) but no matching
+    Territory-Builder tile rows. Either is accepted; the caller is
+    responsible for guaranteeing at least one is non-empty.
 
     Returns the persisted snapshot document (public view).
     """
@@ -97,6 +106,20 @@ async def create_snapshot(
             t.pop("_id", None)
             territory_docs.append(t)
 
+    # Sectors are stored by value too — a copy of the strings, so a
+    # later edit to franchisee.territory_sectors cannot alter the
+    # snapshot. Deduplicate + preserve order for determinism.
+    sectors_snapshot: List[str] = []
+    seen: set = set()
+    for s in (territory_sectors or []):
+        if not s:
+            continue
+        s2 = str(s).strip()
+        if not s2 or s2 in seen:
+            continue
+        seen.add(s2)
+        sectors_snapshot.append(s2)
+
     snapshot_id = uuid.uuid4().hex
     secure_token = _new_secure_token()
     url = _build_snapshot_url(snapshot_id, secure_token)
@@ -108,8 +131,14 @@ async def create_snapshot(
         "contract_id": contract_id,
         "franchisee_id": franchisee_id,
         "source_territory_ids_at_snapshot": list(territory_ids),
+        "source_territory_sectors_at_snapshot": list(sectors_snapshot),
         "territory_docs": territory_docs,
-        "tile_count": len(territory_docs),
+        "territory_sectors": sectors_snapshot,
+        # ``tile_count`` is the operator-facing "how big is this
+        # territory" number. Prefer tile docs (they carry postcode +
+        # county metadata) but fall back to the sector count so
+        # sector-only snapshots still report a meaningful size.
+        "tile_count": len(territory_docs) or len(sectors_snapshot),
         "secure_token": secure_token,
         "url": url,
         "url_sha256": url_sha,
@@ -153,6 +182,11 @@ def attach(api, db, require_role):
                 }
                 for t in (doc.get("territory_docs") or [])
             ],
+            # Sector-only snapshots (agreed by postcode sector but with
+            # no Territory-Builder tile rows) surface here so the public
+            # /agreed-territory page can still render "your agreed
+            # territory covers EX15 1, EX15 2, ...".
+            "territory_sectors": list(doc.get("territory_sectors") or []),
             "created_at": doc.get("created_at"),
         }
 

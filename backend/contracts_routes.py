@@ -364,12 +364,25 @@ def attach(api, db, require_role):
         if not franchisee:
             raise HTTPException(400, detail="Franchisee referenced by this contract was not found.")
         territory_ids: List[str] = list(franchisee.get("territory_ids") or [])
-        if not territory_ids:
+        # Fall back to the postcode-sector list stored directly on the
+        # franchisee. Historically the freeze relied exclusively on
+        # ``territory_ids`` (Territory-Builder tile UUIDs), but many
+        # legacy / manually-managed franchisees have their agreed
+        # territory expressed only as ``territory_sectors`` (e.g.
+        # ["EX15 1", "EX15 2"]). Either representation is a valid
+        # "the franchisee has a territory" signal — only refuse when
+        # BOTH are empty.
+        territory_sectors: List[str] = [
+            str(s).strip() for s in (franchisee.get("territory_sectors") or [])
+            if s and str(s).strip()
+        ]
+        if not territory_ids and not territory_sectors:
             raise HTTPException(
                 400,
                 detail=(
-                    "Franchisee has no territory tiles assigned in the Hub. "
-                    "Assign at least one tile before freezing the territory."
+                    "Franchisee has no territory assigned in the Hub — "
+                    "no Territory-Builder tiles and no postcode sectors. "
+                    "Assign a territory before freezing the contract."
                 ),
             )
         snap = await snapshots.create_snapshot(
@@ -377,6 +390,7 @@ def attach(api, db, require_role):
             contract_id=contract_id,
             franchisee_id=franchisee["id"],
             territory_ids=territory_ids,
+            territory_sectors=territory_sectors,
             created_by=user.get("email"),
         )
         now = _now_iso()

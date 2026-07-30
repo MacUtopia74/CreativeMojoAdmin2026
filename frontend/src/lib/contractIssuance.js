@@ -50,16 +50,21 @@ export async function resolveAndIssueContract(contractId, { hasResolvedVariables
       const d = e?.response?.data?.detail;
       const raw = typeof d === "string" ? d : (d?.message || e.message || "");
       // Backend already speaks in plain English for the two common
-      // failure modes — franchisee has no tiles, or the contract
-      // isn't a draft anymore. Just surface those verbatim (they
-      // are the "friendly" copy this task asks for).
-      if (/no territory tiles/i.test(raw) || /Assign at least one tile/i.test(raw)) {
+      // failure modes — franchisee has no territory at all, or the
+      // contract isn't a draft anymore. Just surface those verbatim
+      // (they are the "friendly" copy this task asks for).
+      if (
+        /no territory tiles/i.test(raw) ||
+        /Assign at least one tile/i.test(raw) ||
+        /no territory assigned/i.test(raw) ||
+        /Assign a territory before freezing/i.test(raw)
+      ) {
         return {
           ok: false,
           message:
-            "This franchisee has no territory tiles assigned. " +
-            "Open the Territory Builder, assign at least one tile, " +
-            "then try issuing the contract again.",
+            "This franchisee has no territory assigned. " +
+            "Open the Territory Builder, assign at least one tile or " +
+            "postcode sector, then try issuing the contract again.",
         };
       }
       if (/already frozen/i.test(raw)) {
