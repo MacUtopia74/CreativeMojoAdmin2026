@@ -78,7 +78,7 @@ const PortalInvoiceCard = ({ invoice, onDeleted }) => {
                 disabled={deleting}
                 data-testid={`invoice-card-delete-${invoice.id}`}
                 title="Delete invoice"
-                className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity w-8 h-8 rounded-md border border-stone-200 hover:border-rose-300 hover:bg-rose-50 flex items-center justify-center"
+                className="w-8 h-8 rounded-md border border-stone-200 hover:border-rose-300 hover:bg-rose-50 flex items-center justify-center transition-colors"
               >
                 {deleting
                   ? <Loader2 className="w-3.5 h-3.5 animate-spin text-stone-500" />
