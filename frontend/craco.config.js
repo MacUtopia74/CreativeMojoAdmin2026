@@ -51,6 +51,24 @@ let webpackConfig = {
         ],
       };
 
+      // Suppress source-map-loader failures for pdfjs-dist. react-pdf
+      // ships pre-bundled artefacts whose original source files are
+      // stripped from the published package; source-map-loader errors
+      // (ENOENT on `pdf.mjs`) block the whole compile even though the
+      // runtime code works. Tell the loader to skip pdfjs entirely.
+      const oneOfRules = webpackConfig.module.rules.find((r) => Array.isArray(r.oneOf));
+      if (oneOfRules) {
+        for (const rule of oneOfRules.oneOf) {
+          if (rule.enforce === "pre" && String(rule.loader || "").includes("source-map-loader")) {
+            const prev = rule.exclude;
+            const skip = /node_modules[\\/](pdfjs-dist|react-pdf)/;
+            rule.exclude = Array.isArray(prev)
+              ? [...prev, skip]
+              : (prev ? [prev, skip] : [skip]);
+          }
+        }
+      }
+
       // Add health check plugin to webpack if enabled
       if (config.enableHealthCheck && healthPluginInstance) {
         webpackConfig.plugins.push(healthPluginInstance);

@@ -208,8 +208,14 @@ class TestPortalAcceptance:
             found = ""
             for pg in doc:
                 found += pg.get_text("text")
-            assert "Electronically accepted by: Test Franchisee" in found, \
-                f"Overlay 'Electronically accepted by:' missing.\nFound: {found[:500]}"
+            # Overlay wording per the final signing spec: heading is
+            # "Electronically signed", details lines follow underneath.
+            assert "Electronically signed" in found, \
+                f"Overlay heading 'Electronically signed' missing.\nFound: {found[:500]}"
+            assert "Name: Test Franchisee" in found, \
+                f"Overlay 'Name:' line missing.\nFound: {found[:500]}"
+            assert "Organisation:" in found, \
+                f"Overlay 'Organisation:' line missing.\nFound: {found[:500]}"
             assert "Date and time:" in found
             assert "Contract reference:" in found
         finally:

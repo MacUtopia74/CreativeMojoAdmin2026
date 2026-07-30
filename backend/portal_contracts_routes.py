@@ -36,7 +36,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import fitz
 from fastapi import Depends, HTTPException, Request
@@ -138,14 +138,22 @@ def _overlay_acceptance_block(
     *,
     signing_block: Dict[str, Any],
     typed_name: str,
+    organisation: str,
     contract_reference: Optional[str],
     accepted_at: datetime,
-) -> bytes:
-    """Return a new PDF = personalised PDF with a compact acceptance
-    block overlaid into the configured ``signing_block`` rectangle
-    (typed name, date/time, contract reference). The source
-    ``personalised_bytes`` buffer is never modified — we open it via
-    ``BytesIO`` and save to a fresh buffer."""
+) -> Tuple[bytes, Dict[str, Any]]:
+    """Return ``(new_pdf_bytes, stamp_visible_fields)``.
+
+    The returned ``stamp_visible_fields`` dict is the exact set of
+    values written onto the PDF stamp — persisted alongside the
+    acceptance record so the DB audit and the on-page stamp are
+    provably from the same signing event. Every caller MUST persist
+    that dict verbatim; do not mutate before storing.
+
+    The source ``personalised_bytes`` buffer is never modified; we
+    open it via ``BytesIO`` and save to a fresh buffer so the R2
+    object for the issued PDF stays byte-for-byte immutable.
+    """
     src = fitz.open(stream=io.BytesIO(personalised_bytes), filetype="pdf")
     try:
         page_num = int(signing_block.get("page") or src.page_count)
@@ -154,41 +162,66 @@ def _overlay_acceptance_block(
         x = float(signing_block.get("x", 60))
         y = float(signing_block.get("y", 700))
         w = float(signing_block.get("width", 300))
-        h = float(signing_block.get("height", 60))
+        # Grow the stamp block a bit — the extra "Electronically signed"
+        # heading + organisation line push us past the historical 60pt
+        # height. Templates that already specify a taller height win.
+        h = float(signing_block.get("height", 92))
         page = src[page_num - 1]
 
-        # Draw a subtle border around the acceptance block so HQ can
-        # locate the overlay clearly on the signing page.
+        # Subtle border so HQ can locate the overlay clearly.
         page.draw_rect(fitz.Rect(x, y, x + w, y + h),
                        color=(0.6, 0.6, 0.6), width=0.4)
 
-        # UK local time for the acceptance date/time line.
+        # UK local time for the acceptance date/time line + ISO for
+        # the audit copy. Both come from the same ``accepted_at``.
         accepted_uk = accepted_at.astimezone(ZoneInfo("Europe/London"))
-        date_str = accepted_uk.strftime("%-d %B %Y, %H:%M")
+        date_display = accepted_uk.strftime("%-d %B %Y, %H:%M %Z").strip()
 
-        # Line 1 — typed full name (the electronic signature line).
+        # Wording matches the DB-persisted ``signature_wording`` field
+        # so the stamp text and the audit record can never drift apart.
+        signature_wording = "Electronically signed"
+
+        # Layout — heading in bold, details in normal weight, 12pt line
+        # step so five lines fit comfortably in the 92pt tall block.
         page.insert_text(
-            (x + 6, y + 16),
-            f"Electronically accepted by: {typed_name}",
+            (x + 6, y + 14),
+            signature_wording,
+            fontsize=10, fontname="helv", color=(0, 0, 0),
+            render_mode=0,
+        )
+        # Simulate bold on the heading via a second overlay pass — the
+        # bundled ``helv`` font has no true bold, but a subtle offset
+        # gives an unmistakable weight without embedding a new font.
+        page.insert_text(
+            (x + 6.4, y + 14),
+            signature_wording,
             fontsize=10, fontname="helv", color=(0, 0, 0),
         )
-        # Line 2 — UK date + time.
-        page.insert_text(
-            (x + 6, y + 32),
-            f"Date and time: {date_str}",
-            fontsize=10, fontname="helv", color=(0, 0, 0),
-        )
-        # Line 3 — contract reference (if present).
-        if contract_reference:
+
+        def _line(offset_y: int, text: str) -> None:
             page.insert_text(
-                (x + 6, y + 48),
-                f"Contract reference: {contract_reference}",
-                fontsize=10, fontname="helv", color=(0, 0, 0),
+                (x + 6, y + offset_y),
+                text,
+                fontsize=9.5, fontname="helv", color=(0.1, 0.1, 0.1),
             )
+
+        _line(30, f"Name: {typed_name}")
+        _line(45, f"Organisation: {organisation or '—'}")
+        _line(60, f"Date and time: {date_display}")
+        if contract_reference:
+            _line(75, f"Contract reference: {contract_reference}")
 
         out = io.BytesIO()
         src.save(out, deflate=True, garbage=3, clean=True)
-        return out.getvalue()
+
+        stamp_visible_fields = {
+            "typed_name": typed_name,
+            "organisation": organisation or "",
+            "signed_at": accepted_at.astimezone(ZoneInfo("Europe/London")).isoformat(),
+            "contract_reference": contract_reference or "",
+            "signature_wording": signature_wording,
+        }
+        return out.getvalue(), stamp_visible_fields
     finally:
         src.close()
 
@@ -331,6 +364,14 @@ def attach(api, db, require_role):
         fr = await db[FRANCHISEES_COLLECTION].find_one({"id": c["franchisee_id"]})
         franchisee_full_name = f"{(fr or {}).get('first_name') or ''} {(fr or {}).get('last_name') or ''}".strip() or (fr or {}).get("organisation") or ""
         franchisee_email = user.get("email") or (fr or {}).get("mojo_email") or ""
+        # Organisation stamped on the signed PDF + persisted verbatim
+        # in ``stamp_visible_fields``. Falls back to territory_name
+        # only if the primary field is empty — so we never stamp an
+        # empty "Organisation:" line when both are set.
+        stamp_organisation = (
+            ((fr or {}).get("organisation") or "").strip()
+            or ((fr or {}).get("territory_name") or "").strip()
+        )
 
         # Template — used to pick the signing block rectangle
         tpl = await db["contract_templates"].find_one({"id": c["template_id"]})
@@ -349,10 +390,11 @@ def attach(api, db, require_role):
         accepted_at = _now()
         ip = _pick_ip(request)
         user_agent = request.headers.get("user-agent") or "unknown"
-        signed_bytes = _overlay_acceptance_block(
+        signed_bytes, stamp_visible_fields = _overlay_acceptance_block(
             personalised_bytes,
             signing_block=signing_block,
             typed_name=typed_name,
+            organisation=stamp_organisation,
             contract_reference=ref,
             accepted_at=accepted_at,
         )
@@ -391,6 +433,11 @@ def attach(api, db, require_role):
             "user_agent": user_agent,
             "method": "portal.electronic",
             "signed_pdf_sha256": signed_sha,
+            # The exact set of values written onto the stamp on the
+            # final page of ``signed-final.pdf``. Persisted verbatim
+            # so a legal review can prove the DB record and the PDF
+            # stamp came from the same signing event.
+            "stamp_visible_fields": stamp_visible_fields,
         }
 
         # Flip status only if it's still 'issued' — CAS guard against races
