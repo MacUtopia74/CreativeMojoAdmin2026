@@ -85,36 +85,33 @@ def wp_content_to_text(html_str: str) -> str:
 
 
 # ---------- planning ---------------------------------------------------------
-async def build_plan(db, csv_rows: list[dict]) -> dict:
+async def build_plan(db, csv_rows: list[dict],
+                     manual_inclusions: list[dict] | None = None) -> dict:
     """Return a deterministic list of actions the migration would take
     against the current DB. Purely read-only.
 
-    Returns
-    -------
-    {
-      "stats": { "to_insert": int, "to_overwrite": int,
-                 "to_preserve": int, "to_skip_short": int,
-                 "to_skip_placeholder": int,
-                 "to_skip_pending_manual_choice": int,
-                 "wp_rows_matched": int, "wp_rows_unmatched": int },
-      "actions": [
-        {"franchisee_id": ..., "franchise_number": ..., "name": ...,
-         "action": "inserted"|"overwrote_approved"|"preserved_existing"|
-                   "skipped_short_content"|"skipped_placeholder"|
-                   "skipped_pending_manual_choice"|"skipped_blank_content",
-         "chars": int,
-         "text": str,           # only present when will_write is True
-         "previous_bio": str?,  # only for overwrite branches
-         "source_permalink": str,
-         "source_title": str,
-         "source_row_index": int,
-         "will_write": bool,
-         "note": str },
-        ...
-      ],
-      "unmatched_wp_rows": [ {row_index, title, contact_email, name}, ... ]
-    }
+    `manual_inclusions` — one-off HQ-approved additions applied on top
+    of the WP-export plan. Each entry is:
+
+        {
+          "franchise_number": "0092",              # required
+          "expected_franchisee_name": "Samantha Whiteman",  # required — safety check
+          "text": "<bio>",                         # required
+          "action": "inserted_manual_approved_samantha_whiteman",
+          "note": "HQ-approved manual biography...",
+          "override_hold_back": false,             # true → overrides HOLD_BACK gate
+          "override_existing_bio": false,          # true → still refuses to overwrite existing bio; report a conflict
+        }
+
+    Rules for manual inclusions:
+      * If the live franchisee doesn't exist → 'skipped_manual_inclusion_no_match'.
+      * If expected_franchisee_name doesn't match live → 'skipped_manual_inclusion_name_mismatch'.
+      * If live website_bio is already populated with something OTHER than
+        the provided text → 'skipped_manual_inclusion_conflict'.
+      * Otherwise → the specified `action` is used, and an entry appears
+        in the plan with `will_write=True`.
     """
+    manual_inclusions = manual_inclusions or []
     # 1) Load live franchisees.
     active = await db.franchisees.find(
         {"tags": "Franchisee", "lifecycle_status": {"$ne": "ex"}},
@@ -248,7 +245,101 @@ async def build_plan(db, csv_rows: list[dict]) -> dict:
                   else "Inserted from WP export."),
         ))
 
-    # 5) Stats.
+    # 5) Manual inclusions (HQ-approved, one-off additions bolted on
+    #    top of the WP plan). Applied ONLY if the target franchisee
+    #    exists, name matches, and either the bio is blank or the
+    #    provided text is already stored verbatim (idempotent).
+    for m in manual_inclusions:
+        fno = (m.get("franchise_number") or "").strip()
+        expected_name = (m.get("expected_franchisee_name") or "").strip()
+        text = (m.get("text") or "").strip()
+        action_name = (m.get("action") or "inserted_manual_approved").strip()
+        override_hold_back = bool(m.get("override_hold_back"))
+        note = m.get("note") or ""
+
+        target = next((f for f in active if
+                       (f.get("franchise_number") or "") == fno), None)
+        if target is None:
+            actions.append({
+                "franchisee_id": None, "franchise_number": fno,
+                "name": expected_name,
+                "action": "skipped_manual_inclusion_no_match",
+                "chars": 0, "text": None, "previous_bio": None,
+                "source_permalink": "", "source_title": "manual_inclusion",
+                "source_row_index": None, "will_write": False,
+                "note": (f"No active franchisee with franchise_number "
+                         f"{fno!r} found. {note}").strip(),
+            })
+            continue
+
+        live_name = (f"{target.get('first_name') or ''} "
+                     f"{target.get('last_name') or ''}").strip()
+        if expected_name and _dedup_key(live_name) != _dedup_key(expected_name):
+            actions.append({
+                "franchisee_id": target["id"],
+                "franchise_number": fno, "name": live_name,
+                "action": "skipped_manual_inclusion_name_mismatch",
+                "chars": 0, "text": None, "previous_bio": None,
+                "source_permalink": "", "source_title": "manual_inclusion",
+                "source_row_index": None, "will_write": False,
+                "note": (f"franchise_number {fno} → live name is "
+                         f"{live_name!r} but caller expected "
+                         f"{expected_name!r}. Refusing to write."),
+            })
+            continue
+
+        existing = (target.get("website_bio") or "").strip()
+
+        # Idempotent no-op: identical text already stored.
+        if existing and _dedup_key(existing) == _dedup_key(text):
+            actions.append({
+                "franchisee_id": target["id"],
+                "franchise_number": fno, "name": live_name,
+                "action": "preserved_existing",
+                "chars": len(existing), "text": None,
+                "previous_bio": existing,
+                "source_permalink": "", "source_title": "manual_inclusion",
+                "source_row_index": None, "will_write": True,
+                "note": ("Manual inclusion already present verbatim; "
+                         "only ensuring show_website_bio=true. " + note).strip(),
+            })
+            continue
+
+        # Existing but different — conflict, do NOT overwrite.
+        if existing:
+            actions.append({
+                "franchisee_id": target["id"],
+                "franchise_number": fno, "name": live_name,
+                "action": "skipped_manual_inclusion_conflict",
+                "chars": len(existing), "text": None,
+                "previous_bio": existing,
+                "source_permalink": "", "source_title": "manual_inclusion",
+                "source_row_index": None, "will_write": False,
+                "note": (f"Live bio already populated ({len(existing)}c) "
+                         "and differs from the proposed manual text. "
+                         "Not overwriting; needs review. " + note).strip(),
+            })
+            continue
+
+        # Optionally, if the target is on the WP hold-back list and the
+        # caller passed override_hold_back=True, we strip the earlier
+        # 'skipped_pending_manual_choice' action for this franchisee.
+        if override_hold_back:
+            actions = [a for a in actions
+                       if not (a.get("franchisee_id") == target["id"]
+                               and a["action"] == "skipped_pending_manual_choice")]
+
+        actions.append({
+            "franchisee_id": target["id"],
+            "franchise_number": fno, "name": live_name,
+            "action": action_name,
+            "chars": len(text), "text": text, "previous_bio": None,
+            "source_permalink": "", "source_title": "manual_inclusion",
+            "source_row_index": None, "will_write": True,
+            "note": note,
+        })
+
+    # 6) Stats.
     def _count(name: str) -> int:
         return sum(1 for a in actions if a["action"] == name)
 
@@ -263,6 +354,17 @@ async def build_plan(db, csv_rows: list[dict]) -> dict:
         "to_skip_pending_manual_choice":
             _count("skipped_pending_manual_choice"),
         "to_skip_blank_content": _count("skipped_blank_content"),
+        # manual-inclusion metrics:
+        "manual_inclusions_to_apply": sum(
+            1 for a in actions
+            if a["will_write"] and a["action"].startswith("inserted_manual")
+        ),
+        "manual_inclusions_skipped_no_match": _count(
+            "skipped_manual_inclusion_no_match"),
+        "manual_inclusions_skipped_name_mismatch": _count(
+            "skipped_manual_inclusion_name_mismatch"),
+        "manual_inclusions_skipped_conflict": _count(
+            "skipped_manual_inclusion_conflict"),
     }
     return {
         "stats": stats,

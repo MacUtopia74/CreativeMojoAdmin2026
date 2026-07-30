@@ -100,7 +100,8 @@ def build_wp_bio_migration_router(db, require_role):
     ):
         identity = environment_identity()
         rows, csv_md5 = _decode_csv((body or {}).get("source_csv_base64"))
-        plan = await build_plan(db, rows)
+        manual = (body or {}).get("manual_inclusions") or []
+        plan = await build_plan(db, rows, manual_inclusions=manual)
         token = _confirmation_token(identity["deployment_fingerprint"],
                                     csv_md5, plan)
         return {
@@ -113,6 +114,7 @@ def build_wp_bio_migration_router(db, require_role):
             "approved_overwrite_franchise_numbers": sorted(
                 APPROVED_OVERWRITE_FRANCHISE_NUMBERS),
             "min_chars_threshold": MIN_CHARS,
+            "manual_inclusions_provided": len(manual),
             "actions_preview": plan["actions"],
             "confirmation_token": token,
         }
@@ -156,7 +158,8 @@ def build_wp_bio_migration_router(db, require_role):
             })
 
         rows, csv_md5 = _decode_csv((body or {}).get("source_csv_base64"))
-        plan = await build_plan(db, rows)
+        manual = (body or {}).get("manual_inclusions") or []
+        plan = await build_plan(db, rows, manual_inclusions=manual)
 
         # 4) confirmation_token binds the caller to the exact plan we
         #    just computed. A stale token from a previous dry-run
@@ -195,23 +198,23 @@ def build_wp_bio_migration_router(db, require_role):
             prior = await db.website_bio_migration_log.find_one(
                 {"franchisee_id": a["franchisee_id"],
                  "script_version": SCRIPT_VERSION,
-                 "action": {"$in": [
-                     "inserted", "overwrote_approved",
-                     "inserted_manual_choice_A", "inserted_manual_choice_B",
-                 ]}},
+                 "action": {"$regex": "^(inserted|overwrote_approved)"}},
                 {"_id": 0, "action": 1},
             )
             if prior:
                 results["skipped_already_migrated"] += 1
                 continue
 
-            if action == "inserted":
+            if action == "inserted" or action.startswith("inserted_manual"):
                 await db.franchisees.update_one(
                     {"id": a["franchisee_id"]},
                     {"$set": {
                         "website_bio": a["text"],
                         "show_website_bio": True,
-                        "website_bio_source": "wp_export_2026_07_29",
+                        "website_bio_source": (
+                            "wp_export_2026_07_29"
+                            if action == "inserted"
+                            else "hq_manual_2026_07_29"),
                         "website_bio_migrated_at": now,
                     }},
                 )
