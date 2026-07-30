@@ -26,7 +26,7 @@ const PortalInvoiceCard = ({ invoice, onDeleted }) => {
     if (!window.confirm(`Move invoice ${invoice.invoice_number} to deleted?`)) return;
     setDeleting(true);
     try {
-      await api.patch(`/portal/invoices/${invoice.id}/status`, { status: "deleted" });
+      await api.delete(`/portal/invoices/${invoice.id}`);
       toast.success("Invoice moved to deleted");
       onDeleted?.(invoice.id);
     } catch {

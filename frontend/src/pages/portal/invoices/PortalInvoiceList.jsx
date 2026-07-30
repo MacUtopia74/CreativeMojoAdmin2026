@@ -78,7 +78,7 @@ const InvoiceList = () => {
 
       {/* Stats Cards */}
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4" data-testid="stats-section">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4" data-testid="stats-section">
           <Card 
             className={`p-6 cursor-pointer transition-all hover:shadow-md hover:scale-[1.02] ${statusFilter === "all" ? "ring-2 ring-[#dedd0a]" : ""}`}
             onClick={() => setStatusFilter("all")}
@@ -107,16 +107,6 @@ const InvoiceList = () => {
             <p className="text-sm font-medium text-muted-foreground">Sent</p>
             <p className="text-4xl font-bold mt-3 text-stone-950" data-testid="stat-sent">
               {stats.sent_count}
-            </p>
-          </Card>
-          <Card 
-            className={`p-6 cursor-pointer transition-all hover:shadow-md hover:scale-[1.02] ${statusFilter === "partial" ? "ring-2 ring-amber-500" : ""}`}
-            onClick={() => setStatusFilter("partial")}
-            data-testid="stat-card-partial"
-          >
-            <p className="text-sm font-medium text-muted-foreground">Partial</p>
-            <p className="text-4xl font-bold mt-3 text-amber-600" data-testid="stat-partial">
-              {stats.partial_count || 0}
             </p>
           </Card>
           <Card 
@@ -152,7 +142,6 @@ const InvoiceList = () => {
             <SelectItem value="all">All Statuses</SelectItem>
             <SelectItem value="draft">Draft</SelectItem>
             <SelectItem value="sent">Sent</SelectItem>
-            <SelectItem value="partial">Partial</SelectItem>
             <SelectItem value="paid">Paid</SelectItem>
           </SelectContent>
         </Select>

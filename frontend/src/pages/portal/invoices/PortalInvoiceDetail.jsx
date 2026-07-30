@@ -224,7 +224,7 @@ function InvoiceDetail() {
 
   const deleteInvoice = async () => {
     try {
-      await api.patch(`/portal/invoices/${id}/status`, { status: "deleted" });
+      await api.delete(`/portal/invoices/${id}`);
       toast.success("Invoice moved to deleted");
       navigate("/portal/invoices/deleted");
     } catch (err) { toast.error("Failed to delete invoice"); }
