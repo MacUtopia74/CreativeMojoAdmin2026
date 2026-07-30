@@ -288,6 +288,16 @@ async def build_plan(db, csv_rows: list[dict],
             })
             continue
 
+        # If the target is on the WP hold-back list and the caller
+        # passed override_hold_back=True, remove the earlier
+        # 'skipped_pending_manual_choice' action so it doesn't
+        # double-count. Done up-front so it fires whether the bio is
+        # blank, matches (idempotent), or conflicts.
+        if override_hold_back:
+            actions = [a for a in actions
+                       if not (a.get("franchisee_id") == target["id"]
+                               and a["action"] == "skipped_pending_manual_choice")]
+
         existing = (target.get("website_bio") or "").strip()
 
         # Idempotent no-op: identical text already stored.
@@ -320,14 +330,6 @@ async def build_plan(db, csv_rows: list[dict],
                          "Not overwriting; needs review. " + note).strip(),
             })
             continue
-
-        # Optionally, if the target is on the WP hold-back list and the
-        # caller passed override_hold_back=True, we strip the earlier
-        # 'skipped_pending_manual_choice' action for this franchisee.
-        if override_hold_back:
-            actions = [a for a in actions
-                       if not (a.get("franchisee_id") == target["id"]
-                               and a["action"] == "skipped_pending_manual_choice")]
 
         actions.append({
             "franchisee_id": target["id"],

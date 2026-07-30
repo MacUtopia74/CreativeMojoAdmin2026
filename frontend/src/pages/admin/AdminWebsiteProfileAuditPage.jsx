@@ -10,6 +10,7 @@ import api from "@/lib/api";
 import {
   ShieldAlert, RefreshCw, CheckCircle2, AlertTriangle, Loader2, Eye, EyeOff,
 } from "lucide-react";
+import AdminWpBioMigrationControl from "./AdminWpBioMigrationControl";
 
 export default function AdminWebsiteProfileAuditPage() {
   const [report, setReport] = useState(null);
@@ -244,6 +245,8 @@ export default function AdminWebsiteProfileAuditPage() {
           </div>
         </div>
       )}
+
+      <AdminWpBioMigrationControl />
     </div>
   );
 }
