@@ -338,7 +338,14 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
   const [contractTermYears, setContractTermYears] = useState("");
   const [commencementDate, setCommencementDate] = useState("");
   const [renewalDate, setRenewalDate] = useState("");
-  const [renewalFee, setRenewalFee] = useState("");
+  // Renewal fee (GBP, ex-VAT). Applies to BOTH new franchise contracts
+  // and renewal contracts — populates `contracts.renewal_fee` on the
+  // draft doc and drives the {{RENEWAL_FEE}} marker in the PDF.
+  // Defaults to £500 for every fresh draft; HQ can amend before save.
+  // We seed the default here (not just in the input's placeholder) so
+  // that a HQ user who never touches the field still ends up with a
+  // real value on the draft.
+  const [renewalFee, setRenewalFee] = useState("500");
   // Auto-populate renewal_date from commencement + term when both
   // are set and HQ hasn't manually overridden it. Manual edits win —
   // once the user types in the renewal_date field we stop auto-syncing
@@ -416,8 +423,11 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
       if (!isRenewal && initialFranchiseFee !== "") {
         body.initial_franchise_fee = Number(initialFranchiseFee);
       }
-      // Renewal fee — only on renewals.
-      if (isRenewal && renewalFee !== "") {
+      // Renewal fee — always sent when the field is populated. Applies
+      // to both new franchise and renewal contracts. Empty string is
+      // still allowed (dropped from payload) if HQ deliberately clears
+      // the default before saving.
+      if (renewalFee !== "") {
         body.renewal_fee = Number(renewalFee);
       }
       await api.post("/admin/contracts", body);
@@ -518,24 +528,26 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
               </span>
             </label>
           )}
-          {/* Renewal fee — only surfaced when the draft supersedes an
-              earlier CMS contract. Freezes into the renewal PDF via
-              the {{RENEWAL_FEE}} marker (Bucket A). */}
-          {(renewalOn && renewalOf?.id) && (
-            <label className="block text-sm" data-testid="new-contract-renewal-fee-row">
-              <span className="text-stone-700">Renewal fee (£)</span>
-              <input
-                type="number" step="0.01" min="0"
-                value={renewalFee}
-                onChange={(e) => setRenewalFee(e.target.value)}
-                placeholder="e.g. 500"
-                className="w-full mt-1 border rounded-md px-2 py-1.5 text-sm"
-                data-testid="new-contract-renewal-fee-input" />
-              <span className="block mt-1 text-[11px] text-stone-500">
-                One-off renewal fee for the next term (excluding VAT).
-              </span>
-            </label>
-          )}
+          {/* Renewal fee — shown on BOTH new-franchise and renewal
+              drafts. Sits directly beneath Initial Franchise Fee on
+              new contracts; takes the equivalent position on renewals
+              where the Initial Franchise Fee row is hidden. Populates
+              `contracts.renewal_fee` on the draft doc, which the
+              resolver reads verbatim into {{RENEWAL_FEE}} on the PDF. */}
+          <label className="block text-sm" data-testid="new-contract-renewal-fee-row">
+            <span className="text-stone-700">Renewal fee (£)</span>
+            <input
+              type="number" step="0.01" min="0"
+              value={renewalFee}
+              onChange={(e) => setRenewalFee(e.target.value)}
+              placeholder="e.g. 500"
+              className="w-full mt-1 border rounded-md px-2 py-1.5 text-sm"
+              data-testid="new-contract-renewal-fee-input" />
+            <span className="block mt-1 text-[11px] text-stone-500">
+              One-off renewal fee at the end of the term (excluding VAT).
+              Defaults to £500 — amend if this contract carries a different figure.
+            </span>
+          </label>
           {/* Dates & term — populates the ``{{COMMENCEMENT_DATE}}``,
               ``{{RENEWAL_DATE}}`` and ``{{CONTRACT_TERM_YEARS}}``
               markers on the PDF. Renewal-date auto-computes from
