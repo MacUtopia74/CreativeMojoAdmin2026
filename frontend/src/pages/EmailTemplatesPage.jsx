@@ -156,6 +156,21 @@ function TemplateEditor({ template, onChanged, onDuplicate, onDelete }) {
   // the new node land at the actual cursor position instead of always
   // being appended to the end of the body.
   const editorRef = useRef(null);
+  // Available signatures loaded from the backend — populates the
+  // "Signature" picker so admins can pin a template to either Paul or
+  // Sandra's sign-off. Fetched once per editor mount; adding a signer
+  // server-side surfaces it here without a frontend deploy.
+  const [signatures, setSignatures] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await api.get("/email-templates/signatures/available");
+        if (!cancelled) setSignatures(data?.items || []);
+      } catch { /* fall back to hard-coded default */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => { setDraft(template); }, [template]);
 
@@ -317,6 +332,37 @@ function TemplateEditor({ template, onChanged, onDuplicate, onDelete }) {
             className="w-full px-3 py-2 bg-white border border-stone-300 text-sm rounded-lg focus:outline-none focus:border-stone-900" />
         </div>
         <div>
+          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1">
+            Signature <span className="text-stone-400 normal-case font-normal tracking-normal">— which sign-off gets appended when this template sends</span>
+          </label>
+          <div className="flex flex-wrap gap-2" data-testid="template-signature-picker">
+            {(signatures.length ? signatures : [
+              { key: "paul", label: "Paul Caldeira-Dunkerley", email: "paul@creativemojo.co.uk" },
+              { key: "sandra", label: "Sandra Caldeira-Dunkerley", email: "sandra@creativemojo.co.uk" },
+            ]).map((sig) => {
+              const active = (draft.signature_key || "paul") === sig.key;
+              return (
+                <button
+                  key={sig.key}
+                  type="button"
+                  onClick={() => setDraft((d) => ({ ...d, signature_key: sig.key }))}
+                  data-testid={`template-signature-${sig.key}`}
+                  className={`px-3 py-2 text-xs rounded-lg border transition-colors text-left ${
+                    active
+                      ? "bg-stone-950 text-[#dddd16] border-stone-950 font-bold"
+                      : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"
+                  }`}
+                >
+                  <div className="font-semibold">{sig.label}</div>
+                  {sig.email && (
+                    <div className={`text-[10px] normal-case tracking-normal ${active ? "text-stone-400" : "text-stone-500"}`}>{sig.email}</div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div>
           <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600 mb-1">Default Cc (comma separated)</label>
           <input value={(draft.default_cc || []).join(", ")} onChange={setCsv("default_cc")} data-testid="template-cc"
             className="w-full px-3 py-2 bg-white border border-stone-300 text-sm rounded-lg focus:outline-none focus:border-stone-900" />
@@ -404,7 +450,15 @@ function TemplateEditor({ template, onChanged, onDuplicate, onDelete }) {
           onInsertCta={insertCta}
           onInsertOutline={insertOutline}
           onReady={(ed) => { editorRef.current = ed; }}
-          signatureHtml={draft.signature_html || ""}
+          signatureHtml={
+            // Prefer the freshly-picked signature from the loaded list
+            // so switching the radio updates the preview instantly.
+            // Falls back to the backend-serialised copy for legacy
+            // templates that pre-date the picker.
+            (signatures.find((s) => s.key === (draft.signature_key || "paul"))?.preview_html)
+              || draft.signature_html
+              || ""
+          }
           logoUrl="/brand/creative-mojo-logo.png"
         />
       </div>

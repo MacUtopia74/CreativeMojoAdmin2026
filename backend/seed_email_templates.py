@@ -13,8 +13,7 @@ from datetime import datetime, timezone
 
 from motor.motor_asyncio import AsyncIOMotorClient
 
-SIGNATURE_HTML = """
-<p style="margin:0 0 6px 0;">Best Regards,</p>
+SIGNATURE_STYLE_BLOCK = """
 <style>
   /* Mobile-friendly stacking for the two-column signature. Apple Mail,
      Gmail Web/iOS, Outlook.com, and Yahoo all honour <style> media
@@ -35,18 +34,54 @@ SIGNATURE_HTML = """
     .cm-sig-name { font-size: 20px !important; }
   }
 </style>
+"""
+
+# Registry of pickable signatures. Each entry only differs by the
+# sender's display name, mobile number and reply-to email — the rest
+# of the block (landline, website, address, socials, promo CTA,
+# confidentiality footer) is identical across signers. Add a new entry
+# here and it becomes selectable in the template editor immediately.
+SIGNATURES = {
+    "paul": {
+        "label": "Paul Caldeira-Dunkerley",
+        "name_html": "Paul&nbsp;Caldeira&#8209;Dunkerley",
+        "role": "Director, Creative Mojo Ltd",
+        "mobile_html": "07886&nbsp;374959",
+        "email": "paul@creativemojo.co.uk",
+    },
+    "sandra": {
+        "label": "Sandra Caldeira-Dunkerley",
+        "name_html": "Sandra&nbsp;Caldeira&#8209;Dunkerley",
+        "role": "Director, Creative Mojo Ltd",
+        "mobile_html": "07957&nbsp;343449",
+        "email": "sandra@creativemojo.co.uk",
+    },
+}
+
+
+def build_signature_html(signature_key: str = "paul") -> str:
+    """Build the outbound email signature HTML for a given signer key.
+
+    Falls back to Paul silently if an unknown key is passed — the field
+    is admin-controlled so this branch should never fire in production,
+    but the fallback keeps stale templates rendering cleanly.
+    """
+    signer = SIGNATURES.get(signature_key) or SIGNATURES["paul"]
+    return f"""
+<p style="margin:0 0 6px 0;">Best Regards,</p>
+{SIGNATURE_STYLE_BLOCK}
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;border-collapse:collapse;font-family:Helvetica,Arial,sans-serif;color:#1a1a1a;word-break:break-word;">
   <tr>
     <td class="cm-sig-details" valign="top" style="padding-right:18px;">
-      <div class="cm-sig-name" style="font-size:22px;font-weight:bold;color:#dddd16;line-height:1.1;margin-bottom:2px;white-space:nowrap;">Paul&nbsp;Caldeira&#8209;Dunkerley</div>
-      <div style="font-size:14px;font-weight:bold;color:#1a1a1a;margin-bottom:8px;">Director, Creative Mojo Ltd</div>
+      <div class="cm-sig-name" style="font-size:22px;font-weight:bold;color:#dddd16;line-height:1.1;margin-bottom:2px;white-space:nowrap;">{signer['name_html']}</div>
+      <div style="font-size:14px;font-weight:bold;color:#1a1a1a;margin-bottom:8px;">{signer['role']}</div>
       <hr style="border:0;border-top:1px solid #cccccc;margin:6px 0 10px 0;" />
       <div style="font-size:13px;line-height:1.8;">
         <span style="white-space:nowrap;">&#9742;&nbsp;01884&nbsp;303606</span>
         &nbsp;&nbsp;
-        <span style="white-space:nowrap;">&#128241;&nbsp;07886&nbsp;374959</span><br/>
+        <span style="white-space:nowrap;">&#128241;&nbsp;{signer['mobile_html']}</span><br/>
         <span>&#127760;&nbsp;<a href="https://www.creativemojo.co.uk" style="color:#1a1a1a;text-decoration:none;">www.creativemojo.co.uk</a></span><br/>
-        <span>&#9993;&nbsp;<a href="mailto:paul@creativemojo.co.uk" style="color:#1a1a1a;text-decoration:none;">paul@creativemojo.co.uk</a></span><br/>
+        <span>&#9993;&nbsp;<a href="mailto:{signer['email']}" style="color:#1a1a1a;text-decoration:none;">{signer['email']}</a></span><br/>
         <span>&#128205;&nbsp;Channings, Brithem Bottom,<br/>&nbsp;&nbsp;&nbsp;&nbsp;Cullompton, Devon EX15&nbsp;1NB</span>
       </div>
       <div style="margin-top:14px;font-size:13px;line-height:1;white-space:nowrap;">
@@ -85,6 +120,13 @@ SIGNATURE_HTML = """
   <strong>VAT Registration No. 301645048</strong>
 </p>
 """
+
+
+# Paul's signature is kept as the module-level `SIGNATURE_HTML` alias so
+# every existing importer (tests, historical body templates, refresh
+# tooling) keeps working without a migration. New callers should use
+# ``build_signature_html(key)`` directly.
+SIGNATURE_HTML = build_signature_html("paul")
 
 FRANCHISE_BODY = f"""
 <p>Hi {{{{first_name}}}},</p>

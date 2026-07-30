@@ -86,6 +86,11 @@ class EmailTemplate(BaseModel):
     # stone chip. Deliberately fixed to a small palette so the picker in
     # the UI stays tight and the whole library scans at a glance.
     display_color: Optional[str] = None
+    # Signature to append at render time. Currently either "paul" or
+    # "sandra" — both are pinned to a @creativemojo.co.uk sender so
+    # Resend accepts either without DKIM tweaks. Defaults to Paul so
+    # every pre-existing template keeps its historical sign-off.
+    signature_key: Optional[str] = "paul"
 
 
 def build_email_templates_router(db, require_role):  # noqa: D401
@@ -114,30 +119,36 @@ def build_email_templates_router(db, require_role):  # noqa: D401
                 earliest = m.start()
         return body_html[:earliest].rstrip() if earliest is not None else body_html
 
-    def _attach_signature(body_html: str) -> str:
+    def _attach_signature(body_html: str, signature_key: str = "paul") -> str:
         # Local import keeps the cyclic dep off the module top.
-        from seed_email_templates import SIGNATURE_HTML
+        from seed_email_templates import build_signature_html
         editable = _strip_signature(body_html or "")
         # No extra spacer paragraph — the signature's own "Best Regards,"
         # has a tight top margin and its own internal spacing, so the
         # body's last sentence flows naturally into the sign-off.
-        return f"{editable}\n{SIGNATURE_HTML.strip()}"
+        sig = build_signature_html(signature_key or "paul").strip()
+        return f"{editable}\n{sig}"
 
     async def _serialise(doc: dict, *, for_editor: bool = False) -> dict:
         doc.pop("_id", None)
+        sig_key = doc.get("signature_key") or "paul"
         # The "rendered" copy is what preview + send should use. The
         # editor-facing copy has the signature stripped so the WYSIWYG
         # can't mangle it.
-        full_body = _attach_signature(doc.get("body_html") or "")
+        full_body = _attach_signature(doc.get("body_html") or "", sig_key)
         if for_editor:
             doc["body_html"] = _strip_signature(doc.get("body_html") or "")
         doc["rendered_html"] = full_body
-        # Expose the static system signature so the WYSIWYG editor can
+        # Expose the picked system signature so the WYSIWYG editor can
         # render it inline (read-only) beneath the body — letting the
-        # admin see the full email layout while editing. This stays
-        # in lockstep with seed_email_templates.SIGNATURE_HTML.
-        from seed_email_templates import SIGNATURE_HTML
-        doc["signature_html"] = SIGNATURE_HTML
+        # admin see the full email layout while editing. Refreshed from
+        # the live ``build_signature_html`` so any tweak to Paul's /
+        # Sandra's contact details propagates immediately.
+        from seed_email_templates import build_signature_html
+        doc["signature_html"] = build_signature_html(sig_key)
+        # Guarantee the field is present on legacy documents so the
+        # editor's picker can pre-select the correct radio option.
+        doc["signature_key"] = sig_key
         return doc
 
     @router.get("/email-templates")
@@ -169,6 +180,11 @@ def build_email_templates_router(db, require_role):  # noqa: D401
         doc["display_color"] = _validate_display_color(doc.get("display_color"))
         if doc.get("display_name"):
             doc["display_name"] = doc["display_name"].strip() or None
+        # Normalise the signature picker choice — unknown keys fall
+        # back to Paul so a rogue value can't wedge the editor.
+        from seed_email_templates import SIGNATURES
+        sk = (doc.get("signature_key") or "paul").strip().lower()
+        doc["signature_key"] = sk if sk in SIGNATURES else "paul"
         # Persist only the editable body — the signature is system-managed
         # and re-applied on every read/preview/send.
         doc["body_html"] = _strip_signature(doc.get("body_html") or "")
@@ -194,7 +210,7 @@ def build_email_templates_router(db, require_role):  # noqa: D401
         EDITABLE = {
             "name", "subject", "body_html", "default_from", "sender_name",
             "default_cc", "default_bcc", "attachments", "category",
-            "display_name", "display_color",
+            "display_name", "display_color", "signature_key",
         }
         update = {k: v for k, v in (body or {}).items() if k in EDITABLE}
         if not update:
@@ -205,6 +221,13 @@ def build_email_templates_router(db, require_role):  # noqa: D401
         if "display_name" in update:
             dn = (update["display_name"] or "").strip()
             update["display_name"] = dn or None
+        # Signature key must map to a known signer. Any unknown value
+        # falls back to "paul" silently rather than 400-ing so a stale
+        # frontend can't wedge the editor.
+        if "signature_key" in update:
+            from seed_email_templates import SIGNATURES
+            sk = (update["signature_key"] or "paul").strip().lower()
+            update["signature_key"] = sk if sk in SIGNATURES else "paul"
         # Always strip the signature on write — Tiptap can mangle it, and
         # we recompute it from SIGNATURE_HTML at render time anyway.
         if "body_html" in update:
@@ -236,6 +259,26 @@ def build_email_templates_router(db, require_role):  # noqa: D401
         clone["updated_by"] = user.get("email")
         await db.email_templates.insert_one(clone)
         return await _serialise(clone)
+
+    @router.get("/email-templates/signatures/available")
+    async def list_signatures(_user: dict = Depends(require_role("admin"))):
+        """Return the signature keys the template editor can pick from.
+
+        Keeps the picker in the frontend in sync with whatever signers
+        the seed exposes — add a new entry to ``SIGNATURES`` and the
+        dropdown updates without a frontend deploy.
+        """
+        from seed_email_templates import SIGNATURES, build_signature_html
+        items = []
+        for key, signer in SIGNATURES.items():
+            items.append({
+                "key": key,
+                "label": signer.get("label") or key.title(),
+                "email": signer.get("email"),
+                "mobile": signer.get("mobile_html", "").replace("&nbsp;", " "),
+                "preview_html": build_signature_html(key),
+            })
+        return {"items": items}
 
     @router.post("/email-templates/refresh-signature")
     async def refresh_signature(user: dict = Depends(require_role("admin"))):
