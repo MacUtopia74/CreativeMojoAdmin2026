@@ -503,9 +503,22 @@ export default function FranchiseeTerritoryWidget({
       interactive={false}
       homes={hideHomeMarkers ? [] : homes}
       activeHomeIndex={openHome}
-      onMarkerClick={(i) => {
+      onMarkerClick={(i, home) => {
         setOpenHome(i);
         setHomesListExpanded(true);
+        // Match the row-click behaviour on the Plus/admin layout —
+        // open the same detail modal (client edit / HQ-note /
+        // seeded mark-home) that clicking the corresponding row
+        // opens on the CQC panel. Previously the marker only
+        // highlighted the circle + scrolled the list, which felt
+        // unresponsive on MyTerritory+ where the tall map hides
+        // the list below the fold. Basic (non-Plus) franchisees
+        // keep the old highlight-only behaviour so an accidental
+        // marker click doesn't pop the mark-as-client seeded modal.
+        if (plusOn) {
+          const target = home || homes[i];
+          if (target) openClientForHome(target);
+        }
         const scrollToRow = () => {
           const row = document.querySelector(`[data-testid="home-row-${i + 1}"]`);
           if (row) row.scrollIntoView({ behavior: "smooth", block: "center" });
