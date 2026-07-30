@@ -16,6 +16,7 @@
 //     pre-selected so `supersedes_id` is set on save.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import api from "@/lib/api";
+import { resolveAndIssueContract } from "@/lib/contractIssuance";
 import {
   Loader2, FileText, Download, Upload, CheckCircle2, AlertTriangle, Trash2,
 } from "lucide-react";
@@ -88,25 +89,14 @@ export default function CmsContractsPanel({
     setBusyRow(cid);
     try {
       const c = rows.find((r) => r.id === cid);
-      if (!c?.contract_variables) {
-        try {
-          await api.post(`/admin/contracts/${cid}/resolve-variables`);
-        } catch (e) {
-          const detail = e?.response?.data?.detail;
-          if (typeof detail === "object" && detail?.errors?.length) {
-            const msg = detail.errors.map((x) => `${x.code}: ${x.reason}`).join("\n");
-            alert(`Cannot issue — missing values:\n\n${msg}`);
-            setBusyRow(null);
-            return;
-          }
-          throw e;
-        }
+      const result = await resolveAndIssueContract(cid, {
+        hasResolvedVariables: !!c?.contract_variables,
+      });
+      if (!result.ok) {
+        alert(result.message);
+        return;
       }
-      await api.post(`/admin/contracts/${cid}/issue`);
       await load();
-    } catch (e) {
-      const d = e?.response?.data?.detail;
-      alert(`Issue failed: ${typeof d === "string" ? d : JSON.stringify(d || e.message)}`);
     } finally { setBusyRow(null); }
   }
 
