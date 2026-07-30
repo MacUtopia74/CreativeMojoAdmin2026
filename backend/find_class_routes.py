@@ -708,15 +708,53 @@ def attach(api, db, require_role):
             "lookups": plotted,
         }
 
-    @router.get("/find-class/embed.html")
-    async def get_embed(_user: dict = Depends(require_role("admin"))):
-        """Return the WordPress embed HTML for the admin to copy-paste into
-        the Find-a-Class page on creativemojo.com."""
+    # Allow-list of origins permitted to iframe the public embed. Kept
+    # tight so the embed page can't be reframed by unrelated sites
+    # (basic click-jacking mitigation). Add subdomains as needed.
+    _EMBED_FRAME_ANCESTORS = (
+        "'self' "
+        "https://creativemojo.co.uk "
+        "https://www.creativemojo.co.uk "
+        "https://hub.creativemojo.co.uk"
+    )
+
+    @router.get("/find-class/embed.html", include_in_schema=False)
+    async def get_embed():
+        """Public map-popup embed HTML. Loaded by WordPress via an
+        iframe on creativemojo.co.uk so future embed changes ship
+        automatically. Serves ONLY the map interface — the JS inside
+        this page talks to the already-public
+        ``/api/public/find-class`` endpoint for franchisee data; no
+        admin, portal, or authenticated endpoints are touched from
+        here.
+
+        Frame-ancestor headers restrict embedding to the Creative Mojo
+        domains. Cache is deliberately short so an admin deploy is
+        visible within a few minutes."""
         from pathlib import Path
         from fastapi.responses import Response
         embed_path = Path(__file__).parent / "static" / "find_class_embed.html"
         if not embed_path.exists():
             raise HTTPException(404, detail="Embed file missing")
-        return Response(content=embed_path.read_text(), media_type="text/html; charset=utf-8")
+        headers = {
+            # Modern browsers honour CSP frame-ancestors. Blocks any
+            # site outside the allow-list from iframing the embed.
+            "Content-Security-Policy":
+                f"frame-ancestors {_EMBED_FRAME_ANCESTORS}",
+            # Short cache so a fresh deploy propagates within minutes,
+            # while still avoiding a hot-hit on every popup.
+            "Cache-Control": "public, max-age=300",
+            # Explicit no-sniff for good measure.
+            "X-Content-Type-Options": "nosniff",
+            # Referrer stripped so franchisee postcode lookups don't
+            # leak the WP page URL as a referrer to third-party
+            # analytics if you add any later.
+            "Referrer-Policy": "no-referrer",
+        }
+        return Response(
+            content=embed_path.read_text(),
+            media_type="text/html; charset=utf-8",
+            headers=headers,
+        )
 
     return router
