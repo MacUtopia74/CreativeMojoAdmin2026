@@ -1,4 +1,24 @@
 # Creative Mojo — Admin & Franchisee Hub PRD
+- ⏳ **One-off WordPress → website_bio backfill — TEMPORARY control shipping to production (2026-07-30)**
+    * Bundled WordPress export (SHA-256 `b45f03770e17…`) + two frozen
+      HQ-approved manual biographies (Samantha Whiteman #0095, Helen
+      Lyons #0006 Option A) driving the biography migration.
+    * Endpoints: `POST /api/admin/wp-bio-migration/bundled-dry-run`,
+      `POST /api/admin/wp-bio-migration/bundled-apply` (checksum +
+      env-fingerprint + confirmation-token + typed PROCEED guarded),
+      `GET /api/admin/wp-bio-migration/log` (audit view),
+      `GET /api/admin/wp-bio-migration/dry-run.csv` (auth'd download).
+    * UI: temporary purple panel on `/admin/website-profile-audit`
+      built from `AdminWpBioMigrationControl.jsx`.
+    * Ratified preview totals: 21 inserted + 1 overwrote_approved
+      (Anita) + 1 preserved_existing (Monica) + 1 inserted_manual_A
+      (Helen) + 2 skipped_short (Shelley, Helen Reeves) = 24 displaying.
+    * Production totals expected: same + Samantha Whiteman = **25 displaying**.
+    * Durable audit collection: `website_bio_migration_log` (kept
+      forever). Script version pinned to `wp_bio_backfill_2026_07_29_v1`.
+    * **Removal PR queued** — the temporary migration control (routes
+      + core + bundled CSV + frontend panel) will be deleted after Paul
+      confirms production is happy. Only the audit collection remains.
 - ✅ **Cross-franchisee contact-leak guard v2 — SHIPPED to preview (Feb 2026)**
     * **Incident:** Monica's Mojo-map popup surfaced Bel McDonald's
       email `bel@creativemojo.co.uk` on production. My v1 guard missed
