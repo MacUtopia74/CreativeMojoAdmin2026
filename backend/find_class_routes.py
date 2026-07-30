@@ -197,9 +197,6 @@ def _apply_cross_leak_guard(franchisee: dict, other_emails: set, other_phones: s
     return phone_str, email_public
 
 
-    window.append(now)
-
-
 # ---------- postcode parsing --------------------------------------------------
 _PC_RE = re.compile(
     r"^\s*([A-Z]{1,2}\d[A-Z\d]?)\s*(\d)([A-Z]{2})\s*$",
@@ -404,7 +401,7 @@ def attach(api, db, require_role):
                 "_id": 0, "id": 1, "first_name": 1, "last_name": 1,
                 "organisation": 1, "wp_title": 1,
                 "photos": 1, "photo_url": 1,
-                "facebook": 1, "wp_page_url": 1, "territory_sectors": 1,
+                "facebook": 1, "territory_sectors": 1,
                 "franchise_number": 1,
                 # Franchisee-curated website profile — governs what actually
                 # reaches the public map popup. Admin `email` / phone are
@@ -412,6 +409,13 @@ def attach(api, db, require_role):
                 # into the response.
                 "website_email": 1, "website_phone": 1, "website_bio": 1,
                 "show_website_email": 1, "show_website_phone": 1, "show_website_bio": 1,
+                # Jul-2026 popup overhaul: four additional show-flags so
+                # the franchisee also gates territory-name, their name,
+                # their profile photo and the Facebook link. No fallback
+                # to internal admin data — if a flag is unticked the
+                # field is completely omitted from the response.
+                "show_website_territory_name": 1, "show_website_franchisee_name": 1,
+                "show_website_photo": 1, "show_website_facebook": 1,
             },
         )
 
@@ -443,28 +447,50 @@ def attach(api, db, require_role):
                     except Exception as exc:  # noqa: BLE001
                         logger.warning("Failed to dissolve territory: %s", exc)
 
-            # Build the public-facing card. Strip internal fields.
-            full_name = " ".join(filter(None, [franchisee.get("first_name"), franchisee.get("last_name")])).strip() or None
-            # Prefer the (cleaner) WordPress title for the popup heading; fall
-            # back to the verbose `organisation` if it's missing.
-            area = (franchisee.get("wp_title") or franchisee.get("organisation") or "").strip()
-            for prefix in ("Creative Mojo - ", "Creative Mojo "):
-                if area.lower().startswith(prefix.lower()):
-                    area = area[len(prefix):]
-                    break
+            # Build the public-facing card. Every field is gated by the
+            # franchisee's own `show_website_*` opt-in checkbox. When
+            # any flag is unticked (or the underlying value is blank),
+            # the field is completely omitted from the response — no
+            # fallback to `users`, admin contact fields, `wp_title`,
+            # `wp_page_url` or any other internal data.
+            #
+            # For the four Jul-2026 show flags (territory / name /
+            # photo / facebook), a MISSING flag defaults to True so
+            # the popup carries on rendering franchisees who haven't
+            # yet opened their portal to explicitly opt in. An
+            # explicit False always wins.
+            def _flag_default_true(key: str) -> bool:
+                v = franchisee.get(key)
+                return True if v is None else bool(v)
+
+            full_name = None
+            if _flag_default_true("show_website_franchisee_name"):
+                full_name = " ".join(filter(None, [franchisee.get("first_name"), franchisee.get("last_name")])).strip() or None
+
+            area = None
+            if _flag_default_true("show_website_territory_name"):
+                raw_area = (franchisee.get("organisation") or "").strip()
+                for prefix in ("Creative Mojo - ", "Creative Mojo "):
+                    if raw_area.lower().startswith(prefix.lower()):
+                        raw_area = raw_area[len(prefix):]
+                        break
+                area = raw_area or None
+
             photo_url = None
-            if franchisee.get("photos"):
-                photo_url = (franchisee["photos"][0] or {}).get("url") if isinstance(franchisee["photos"], list) else None
-            photo_url = photo_url or franchisee.get("photo_url")
-            # Photos are served from this admin app (relative `/api/uploads/...`).
-            # The embed runs on creativemojo.com so we need to return absolute
-            # URLs prefixed with the public origin of this API.
-            if photo_url and photo_url.startswith("/"):
-                public_origin = (request.headers.get("x-forwarded-host")
-                                 or request.headers.get("host"))
-                scheme = request.headers.get("x-forwarded-proto", "https")
-                if public_origin:
-                    photo_url = f"{scheme}://{public_origin}{photo_url}"
+            if _flag_default_true("show_website_photo"):
+                if franchisee.get("photos") and isinstance(franchisee["photos"], list):
+                    photo_url = (franchisee["photos"][0] or {}).get("url")
+                photo_url = photo_url or franchisee.get("photo_url") or None
+                # Photos are served from this admin app (relative
+                # `/api/uploads/...`). The embed runs on
+                # creativemojo.com so we need to return absolute URLs
+                # prefixed with the public origin of this API.
+                if photo_url and photo_url.startswith("/"):
+                    public_origin = (request.headers.get("x-forwarded-host")
+                                     or request.headers.get("host"))
+                    scheme = request.headers.get("x-forwarded-proto", "https")
+                    if public_origin:
+                        photo_url = f"{scheme}://{public_origin}{photo_url}"
             # Franchisee-curated public profile fields. Only surface a
             # value when the franchisee has explicitly opted in on their
             # "My Franchise" portal page. This fixed the Jul-2026 issue
@@ -525,9 +551,9 @@ def attach(api, db, require_role):
                 "bio": bio_public,
                 "bio_preview": bio_preview,
                 "bio_truncated": bio_truncated,
-                "facebook": franchisee.get("facebook"),
+                "facebook": (franchisee.get("facebook")
+                             if _flag_default_true("show_website_facebook") else None),
                 "photo_url": photo_url,
-                "wp_page_url": franchisee.get("wp_page_url"),
             }
 
         # ---------- log the lookup for analytics (no PII) -----------------

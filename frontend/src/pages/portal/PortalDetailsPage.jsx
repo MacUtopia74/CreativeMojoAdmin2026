@@ -59,6 +59,48 @@ function Field({ icon: Icon, label, value, href }) {
   return href ? <a href={href} className="block hover:bg-stone-50 -mx-2 px-2 py-1.5 rounded-md transition-colors">{content}</a> : <div>{content}</div>;
 }
 
+// Read-only, opt-in display field used inside "Your Mojo page profile".
+// Renders the underlying admin value non-editably and offers a single
+// checkbox that gates whether the field surfaces on the public map
+// popup. Explicitly does NOT fall back to any other data source — if
+// `value` is blank the popup will simply omit the field.
+function ReadOnlyGate({ label, icon: Icon, value, placeholder, toggleLabel,
+                       checked, onChange, testid, renderValue }) {
+  const hasValue = !!value;
+  return (
+    <div data-testid={testid}>
+      <label className="text-[11px] uppercase tracking-[0.2em] font-bold text-stone-500 flex items-center gap-2">
+        <Icon className="w-3.5 h-3.5" /> {label}
+      </label>
+      <div className="mt-2 px-3 py-2.5 border border-stone-200 rounded-lg bg-stone-50 text-sm text-stone-900 flex items-center gap-3 min-h-[46px]">
+        {renderValue && hasValue
+          ? renderValue(value)
+          : (
+            <span className={hasValue ? "truncate" : "text-stone-400 italic"}>
+              {hasValue ? value : placeholder}
+            </span>
+          )}
+      </div>
+      <label
+        className={`mt-1.5 flex items-center gap-2 text-sm ${
+          hasValue ? "text-stone-800 cursor-pointer" : "text-stone-400 cursor-not-allowed"
+        }`}
+      >
+        <input
+          type="checkbox"
+          data-testid={`${testid}-toggle`}
+          checked={hasValue && checked}
+          disabled={!hasValue}
+          onChange={(e) => onChange(e.target.checked)}
+          className="w-4 h-4 accent-emerald-600 disabled:opacity-40"
+        />
+        {toggleLabel}
+        {!hasValue && <span className="text-[11px] text-stone-400 italic">(no value to show)</span>}
+      </label>
+    </div>
+  );
+}
+
 export default function PortalDetailsPage() {
   const { profile: data, refreshProfile } = useOutletContext();
   const profile = data?.profile;
@@ -73,6 +115,13 @@ export default function PortalDetailsPage() {
     show_website_email: false,
     show_website_phone: false,
     show_website_bio: false,
+    // Jul-2026 popup overhaul — new opt-in gates for the read-only
+    // display fields the franchisee also gets to control (territory
+    // name, their full name, profile photo, Facebook link).
+    show_website_territory_name: false,
+    show_website_franchisee_name: false,
+    show_website_photo: false,
+    show_website_facebook: false,
   });
   const [wpSaving, setWpSaving] = useState(false);
   const [wpSavedAt, setWpSavedAt] = useState(null);
@@ -80,6 +129,17 @@ export default function PortalDetailsPage() {
 
   useEffect(() => {
     if (!profile) return;
+    // Jul-2026 popup overhaul: the four new show_* flags default to
+    // true when the underlying value is populated and the franchisee
+    // has not yet explicitly untied. This mirrors backend behaviour
+    // in find_class_routes._flag_default_true so the portal UI
+    // reflects what the map popup will actually render.
+    const rawArea = (profile?.organisation || "").trim();
+    const franchiseeName = [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim();
+    const photoUrl = (Array.isArray(profile?.photos) && profile.photos[0]?.url) || profile?.photo_url || "";
+    const facebookUrl = profile?.facebook || "";
+    const dflt = (flag, hasValue) =>
+      flag === undefined || flag === null ? !!hasValue : !!flag;
     setWpForm({
       website_email: profile.website_email || "",
       website_phone: profile.website_phone || "",
@@ -87,9 +147,17 @@ export default function PortalDetailsPage() {
       show_website_email: !!profile.show_website_email,
       show_website_phone: !!profile.show_website_phone,
       show_website_bio: !!profile.show_website_bio,
+      show_website_territory_name: dflt(profile.show_website_territory_name, rawArea),
+      show_website_franchisee_name: dflt(profile.show_website_franchisee_name, franchiseeName),
+      show_website_photo: dflt(profile.show_website_photo, photoUrl),
+      show_website_facebook: dflt(profile.show_website_facebook, facebookUrl),
     });
   }, [profile?.website_email, profile?.website_phone, profile?.website_bio,
-      profile?.show_website_email, profile?.show_website_phone, profile?.show_website_bio]);
+      profile?.show_website_email, profile?.show_website_phone, profile?.show_website_bio,
+      profile?.show_website_territory_name, profile?.show_website_franchisee_name,
+      profile?.show_website_photo, profile?.show_website_facebook,
+      profile?.organisation, profile?.first_name, profile?.last_name,
+      profile?.photo_url, profile?.facebook]);
 
   const saveWebsiteProfile = async () => {
     setWpSaving(true); setWpErr("");
@@ -303,6 +371,71 @@ export default function PortalDetailsPage() {
         </div>
 
         <div className="space-y-5">
+          {/* Read-only, checkbox-gated display fields sourced from the
+              franchisee's admin record. No admin/user-account/WordPress
+              fallback — if the value is blank OR the checkbox is
+              unticked, the field disappears from the map popup. */}
+          {(() => {
+            const rawArea = (profile?.organisation || "").trim();
+            const territory = rawArea.replace(/^Creative Mojo(?:\s*-)?\s+/i, "");
+            const franchiseeName = [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim();
+            const photoUrl = (Array.isArray(profile?.photos) && profile.photos[0]?.url) || profile?.photo_url || "";
+            const facebookUrl = profile?.facebook || "";
+            return (
+              <>
+                <ReadOnlyGate
+                  label="Territory name"
+                  icon={Globe}
+                  value={territory}
+                  placeholder="Not set on your admin record"
+                  toggleLabel="Show my territory name on my Mojo page"
+                  checked={wpForm.show_website_territory_name}
+                  onChange={(v) => setWpForm((f) => ({ ...f, show_website_territory_name: v }))}
+                  testid="wp-territory"
+                />
+                <ReadOnlyGate
+                  label="Franchisee name"
+                  icon={UserIcon}
+                  value={franchiseeName}
+                  placeholder="Not set on your admin record"
+                  toggleLabel="Show my name on my Mojo page"
+                  checked={wpForm.show_website_franchisee_name}
+                  onChange={(v) => setWpForm((f) => ({ ...f, show_website_franchisee_name: v }))}
+                  testid="wp-franchisee-name"
+                />
+                <ReadOnlyGate
+                  label="Profile image"
+                  icon={UserIcon}
+                  value={photoUrl}
+                  placeholder="No photo uploaded — ask HQ to add one"
+                  toggleLabel="Show my photo on my Mojo page"
+                  checked={wpForm.show_website_photo}
+                  onChange={(v) => setWpForm((f) => ({ ...f, show_website_photo: v }))}
+                  testid="wp-photo"
+                  renderValue={(url) =>
+                    url ? (
+                      <img
+                        src={url}
+                        alt="Profile"
+                        className="w-16 h-16 object-cover rounded-lg border border-stone-200"
+                      />
+                    ) : null
+                  }
+                />
+                <ReadOnlyGate
+                  label="Facebook page"
+                  icon={Facebook}
+                  value={facebookUrl}
+                  placeholder="Not set on your admin record"
+                  toggleLabel="Show my Facebook page on my Mojo page"
+                  checked={wpForm.show_website_facebook}
+                  onChange={(v) => setWpForm((f) => ({ ...f, show_website_facebook: v }))}
+                  testid="wp-facebook"
+                />
+              </>
+            );
+          })()}
+
           {/* Biography */}
           <div>
             <label className="text-[11px] uppercase tracking-[0.2em] font-bold text-stone-500 flex items-center gap-2">

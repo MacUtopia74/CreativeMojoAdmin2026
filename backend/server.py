@@ -2695,6 +2695,10 @@ async def portal_me(user: dict = Depends(require_role("franchisee"))):
         # See find_class_routes.py for the gating logic.
         "website_email", "website_phone", "website_bio",
         "show_website_email", "show_website_phone", "show_website_bio",
+        # Jul-2026 popup overhaul — new opt-in gates for territory,
+        # franchisee name, profile photo and Facebook link.
+        "show_website_territory_name", "show_website_franchisee_name",
+        "show_website_photo", "show_website_facebook",
     }
     profile = {k: f.get(k) for k in keep if k in f}
     # Normalise ``tags`` to always be an array. Legacy Airtable records
@@ -2833,6 +2837,14 @@ class PortalWebsiteProfileIn(BaseModel):
     show_website_email: Optional[bool] = None
     show_website_phone: Optional[bool] = None
     show_website_bio: Optional[bool] = None
+    # Jul-2026 popup overhaul — four new opt-in gates so the
+    # franchisee also controls whether their territory heading, full
+    # name, profile photo and Facebook link surface on the public map.
+    # There is no fallback to admin data if a flag is off.
+    show_website_territory_name: Optional[bool] = None
+    show_website_franchisee_name: Optional[bool] = None
+    show_website_photo: Optional[bool] = None
+    show_website_facebook: Optional[bool] = None
 
 
 @api.patch("/portal/me/website-profile")

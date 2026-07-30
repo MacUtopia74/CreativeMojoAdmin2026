@@ -353,60 +353,67 @@ To swap from the legacy Airtable lookup to this:
   function renderMatchPopup(f) {
     var phoneTel = (f.phone || "").replace(/\s+/g, "");
     var facebookLine = f.facebook
-      ? '<div class="cm-find__row"><a href="' + escapeHtml(f.facebook) + '" target="_blank" rel="noopener"><span style="color:#1877f2">f</span>&nbsp; Visit my page</a></div>'
+      ? '<div class="cm-find__row"><a href="' + escapeHtml(f.facebook) + '" target="_blank" rel="noopener"><span style="color:#1877f2">f</span>&nbsp; Visit Facebook page</a></div>'
       : "";
-    // Biography — teaser first. When the franchisee has a WordPress
-    // biography page, "Read more…" becomes a direct link to that
-    // expanded page (Paul's spec Feb 2026: reader should be *taken to*
-    // the full profile, not toggled in-place). We keep the in-place
-    // toggle only as a fallback when no WP page URL is available.
+    // Biography — 2-line teaser by default. When truncated we render
+    // an inline "Read more" / "Show less" toggle that expands the full
+    // text within the same popup. No page navigation, no WordPress
+    // fallback — the biography is sourced entirely from the
+    // franchisee's My Franchise → Your Mojo page profile textarea.
     var bioBlock = "";
     if (f.bio_preview) {
-      if (f.bio_truncated && f.wp_page_url) {
-        bioBlock =
-          '<div class="cm-find__bio">' + escapeHtml(f.bio_preview) + '</div>' +
-          '<a class="cm-find__bio-toggle" href="' + escapeHtml(f.wp_page_url) + '">Read more…</a>';
-      } else if (f.bio_truncated && f.bio) {
-        // Fallback: no WP page URL — keep in-place toggle.
+      if (f.bio_truncated && f.bio) {
+        var previewEncoded = "";
         var fullEncoded = "";
-        try { fullEncoded = window.btoa(unescape(encodeURIComponent(f.bio))); } catch (e) { fullEncoded = ""; }
+        try {
+          previewEncoded = window.btoa(unescape(encodeURIComponent(f.bio_preview)));
+          fullEncoded = window.btoa(unescape(encodeURIComponent(f.bio)));
+        } catch (e) { previewEncoded = ""; fullEncoded = ""; }
         bioBlock =
           '<div class="cm-find__bio" data-bio-role="teaser">' + escapeHtml(f.bio_preview) + '</div>' +
-          '<button type="button" class="cm-find__bio-toggle" data-bio-toggle data-bio-full="' + escapeHtml(fullEncoded) + '">Read more…</button>';
+          '<button type="button" class="cm-find__bio-toggle" data-bio-toggle data-bio-state="collapsed"' +
+            ' data-bio-preview="' + escapeHtml(previewEncoded) + '"' +
+            ' data-bio-full="' + escapeHtml(fullEncoded) + '">Read more</button>';
       } else {
         bioBlock = '<div class="cm-find__bio">' + escapeHtml(f.bio_preview) + '</div>';
       }
     }
+    var titleForAria = f.name || f.area || "Franchisee details";
     var html =
-      '<div class="cm-find__popup" role="dialog" aria-label="Franchisee details">' +
+      '<div class="cm-find__popup" role="dialog" aria-label="' + escapeHtml(titleForAria) + '">' +
         '<button class="cm-find__popup-close" aria-label="Close" onclick="this.closest(\'.cm-find__popup\').remove();">×</button>' +
         '<div class="cm-find__popup-body">' +
-          '<h3>' + escapeHtml(f.area) + '</h3>' +
+          (f.area ? '<h3>' + escapeHtml(f.area) + '</h3>' : '') +
           (f.name ? '<div class="cm-find__name">' + escapeHtml(f.name) + '</div>' : '') +
+          bioBlock +
           (f.phone ? '<div class="cm-find__row"><a href="tel:' + escapeHtml(phoneTel) + '">' + escapeHtml(f.phone) + '</a></div>' : '') +
           (f.email ? '<div class="cm-find__row"><a href="mailto:' + escapeHtml(f.email) + '">' + escapeHtml(f.email) + '</a></div>' : '') +
-          bioBlock +
           facebookLine +
         '</div>' +
         '<div class="cm-find__popup-photo">' +
-          (f.photo_url ? '<img src="' + escapeHtml(f.photo_url) + '" alt="' + escapeHtml(f.name || f.area) + '" />' : '') +
-          (f.wp_page_url ? '<a class="cm-find__visit" href="' + escapeHtml(f.wp_page_url) + '">Visit Page</a>' : '') +
+          (f.photo_url ? '<img src="' + escapeHtml(f.photo_url) + '" alt="' + escapeHtml(f.name || f.area || "") + '" />' : '') +
         '</div>' +
       '</div>';
     popupHost.innerHTML = html;
-    // Wire up the Read more toggle after the innerHTML paint.
+    // Wire up the in-place Read more / Show less toggle after paint.
     var toggle = popupHost.querySelector("[data-bio-toggle]");
     if (toggle) {
       toggle.addEventListener("click", function () {
         var teaser = popupHost.querySelector('[data-bio-role="teaser"]');
-        var encoded = toggle.getAttribute("data-bio-full") || "";
-        var full = "";
-        try { full = decodeURIComponent(escape(window.atob(encoded))); } catch (e) { full = ""; }
-        if (teaser && full) {
-          teaser.textContent = full;
-          teaser.removeAttribute("data-bio-role");
+        if (!teaser) return;
+        var state = toggle.getAttribute("data-bio-state");
+        var attr = state === "expanded" ? "data-bio-preview" : "data-bio-full";
+        var encoded = toggle.getAttribute(attr) || "";
+        var text = "";
+        try { text = decodeURIComponent(escape(window.atob(encoded))); } catch (e) { text = ""; }
+        if (text) teaser.textContent = text;
+        if (state === "expanded") {
+          toggle.setAttribute("data-bio-state", "collapsed");
+          toggle.textContent = "Read more";
+        } else {
+          toggle.setAttribute("data-bio-state", "expanded");
+          toggle.textContent = "Show less";
         }
-        toggle.remove();
       });
     }
   }
@@ -414,7 +421,7 @@ To swap from the legacy Airtable lookup to this:
   function renderFallbackPopup(fb) {
     var phoneTel = (fb.phone || "").replace(/\s+/g, "");
     var facebookLine = fb.facebook
-      ? '<div class="cm-find__row"><a href="' + escapeHtml(fb.facebook) + '" target="_blank" rel="noopener"><span style="color:#1877f2;font-weight:900;">f</span>&nbsp; Visit my page</a></div>'
+      ? '<div class="cm-find__row"><a href="' + escapeHtml(fb.facebook) + '" target="_blank" rel="noopener"><span style="color:#1877f2;font-weight:900;">f</span>&nbsp; Visit Facebook page</a></div>'
       : "";
     var isSvgLogo = fb.photo_url && /\.svg(\?|$)/i.test(fb.photo_url);
     var photoStyle = isSvgLogo
@@ -435,7 +442,6 @@ To swap from the legacy Airtable lookup to this:
           (fb.photo_url
             ? '<img src="' + escapeHtml(fb.photo_url) + '" alt="Creative Mojo" style="' + imgStyle + '" />'
             : '<div style="text-align:center;padding:16px;font-weight:700;color:#1a1a1a;line-height:1.3;">Creative<br/>Mojo</div>') +
-          (fb.wp_page_url ? '<a class="cm-find__visit" href="' + escapeHtml(fb.wp_page_url) + '">Visit Page</a>' : '') +
         '</div>' +
       '</div>';
     popupHost.innerHTML = html;
