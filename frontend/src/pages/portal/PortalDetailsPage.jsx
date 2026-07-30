@@ -137,7 +137,7 @@ export default function PortalDetailsPage() {
     const rawArea = (profile?.organisation || "").trim();
     const franchiseeName = [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim();
     const photoUrl = (Array.isArray(profile?.photos) && profile.photos[0]?.url) || profile?.photo_url || "";
-    const facebookUrl = profile?.facebook || "";
+    const facebookUrl = profile?.facebook_page || profile?.facebook_url || profile?.facebook || "";
     const dflt = (flag, hasValue) =>
       flag === undefined || flag === null ? !!hasValue : !!flag;
     setWpForm({
@@ -157,7 +157,7 @@ export default function PortalDetailsPage() {
       profile?.show_website_territory_name, profile?.show_website_franchisee_name,
       profile?.show_website_photo, profile?.show_website_facebook,
       profile?.organisation, profile?.first_name, profile?.last_name,
-      profile?.photo_url, profile?.facebook]);
+      profile?.photo_url, profile?.facebook, profile?.facebook_page, profile?.facebook_url]);
 
   const saveWebsiteProfile = async () => {
     setWpSaving(true); setWpErr("");
@@ -380,7 +380,7 @@ export default function PortalDetailsPage() {
             const territory = rawArea.replace(/^Creative Mojo(?:\s*-)?\s+/i, "");
             const franchiseeName = [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim();
             const photoUrl = (Array.isArray(profile?.photos) && profile.photos[0]?.url) || profile?.photo_url || "";
-            const facebookUrl = profile?.facebook || "";
+            const facebookUrl = profile?.facebook_page || profile?.facebook_url || profile?.facebook || "";
             return (
               <>
                 <ReadOnlyGate

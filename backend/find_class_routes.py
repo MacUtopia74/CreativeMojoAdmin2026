@@ -401,7 +401,8 @@ def attach(api, db, require_role):
                 "_id": 0, "id": 1, "first_name": 1, "last_name": 1,
                 "organisation": 1, "wp_title": 1,
                 "photos": 1, "photo_url": 1,
-                "facebook": 1, "territory_sectors": 1,
+                "facebook": 1, "facebook_page": 1, "facebook_url": 1,
+                "territory_sectors": 1,
                 "franchise_number": 1,
                 # Franchisee-curated website profile — governs what actually
                 # reaches the public map popup. Admin `email` / phone are
@@ -551,8 +552,12 @@ def attach(api, db, require_role):
                 "bio": bio_public,
                 "bio_preview": bio_preview,
                 "bio_truncated": bio_truncated,
-                "facebook": (franchisee.get("facebook")
-                             if _flag_default_true("show_website_facebook") else None),
+                "facebook": (
+                    (franchisee.get("facebook_page")
+                     or franchisee.get("facebook_url")
+                     or franchisee.get("facebook"))
+                    if _flag_default_true("show_website_facebook") else None
+                ),
                 "photo_url": photo_url,
             }
 
