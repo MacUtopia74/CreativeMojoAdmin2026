@@ -518,19 +518,22 @@ def attach(api, db, require_role):
             if franchisee.get("show_website_bio") and franchisee.get("website_bio"):
                 bio_public = str(franchisee["website_bio"]).strip() or None
             if bio_public:
-                # Preview = ~2 lines in a typical popup card. Trim to
-                # ~200 chars, then back to the last full word/sentence
-                # so we don't chop mid-word before adding an ellipsis.
+                # Preview = the first paragraph if it fits within ~2
+                # lines (~200 chars), otherwise a clipped snippet. When
+                # the first paragraph is short but there ARE more
+                # paragraphs to reveal on "Read more", flag as
+                # truncated so the popup renders the toggle.
                 PREVIEW_LIMIT = 200
-                first_para = bio_public.split("\n\n", 1)[0].replace("\n", " ")
-                if len(first_para) <= PREVIEW_LIMIT and first_para == bio_public.replace("\n", " "):
+                first_para = bio_public.split("\n\n", 1)[0].replace("\n", " ").strip()
+                full_flat = bio_public.replace("\n\n", " ").replace("\n", " ").strip()
+                if len(first_para) <= PREVIEW_LIMIT:
+                    # First paragraph fits — use it as-is. Truncated
+                    # only when the full bio contains more content
+                    # beyond this paragraph.
                     bio_preview = first_para
-                    bio_truncated = False
+                    bio_truncated = first_para != full_flat
                 else:
                     snippet = first_para[:PREVIEW_LIMIT]
-                    # Prefer to end on a sentence boundary if one lives
-                    # in the last 60 chars — reads far more naturally
-                    # than an arbitrary word-boundary cut with "…".
                     tail = snippet.rfind(". ")
                     if tail > PREVIEW_LIMIT - 60:
                         bio_preview = snippet[:tail + 1]
