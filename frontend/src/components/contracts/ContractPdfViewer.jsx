@@ -285,21 +285,36 @@ export default function ContractPdfViewer({
             PDF viewer failed to start.
           </div>
         ) : (
-          <Document
-            file={fileProp}
-            options={options}
-            loading={
-              <div className="flex items-center justify-center py-16 text-stone-500 text-sm gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" /> Loading contract…
-              </div>
-            }
-            onLoadSuccess={onLoadSuccess}
-            onLoadError={(e) => {
-              const msg = e?.message || "PDF failed to load";
-              setLoadError(msg);
-              onViewerError?.(msg);
-            }}
-          >
+          <>
+            {/* TEMP DIAGNOSTIC — logs the EXACT ``file`` prop the
+                Document receives on this render, right before pdfjs
+                fetches it. If this shows an R2 hostname the source
+                URL was replaced somewhere upstream; if it shows the
+                Hub API URL and pdfjs still hits R2 we're chasing a
+                redirect / different bug entirely. Remove this once
+                prod is confirmed stable. */}
+            {(() => {
+              console.info(
+                "[ContractPdfViewer] rendering <Document> with file prop:",
+                fileProp,
+              );
+              return null;
+            })()}
+            <Document
+              file={fileProp}
+              options={options}
+              loading={
+                <div className="flex items-center justify-center py-16 text-stone-500 text-sm gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Loading contract…
+                </div>
+              }
+              onLoadSuccess={onLoadSuccess}
+              onLoadError={(e) => {
+                const msg = e?.message || "PDF failed to load";
+                setLoadError(msg);
+                onViewerError?.(msg);
+              }}
+            >
             {Array.from({ length: numPages }, (_, i) => {
               const pageNumber = i + 1;
               const isLast = pageNumber === numPages;
@@ -320,7 +335,8 @@ export default function ContractPdfViewer({
                 </div>
               );
             })}
-          </Document>
+            </Document>
+          </>
         )}
       </div>
     </div>
