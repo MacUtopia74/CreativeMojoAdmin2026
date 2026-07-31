@@ -72,6 +72,7 @@ const ZOOM_STEP = 0.2;
 
 export default function ContractPdfViewer({
   fileUrl,
+  fileHeaders,
   downloadUrl,
   fileName = "contract.pdf",
   onReachedLastPage,
@@ -157,6 +158,19 @@ export default function ContractPdfViewer({
     cMapUrl: "https://unpkg.com/pdfjs-dist@3.11.174/cmaps/",
     cMapPacked: true,
   }), []);
+
+  // ``file`` prop shape for react-pdf. Using the object form so we
+  // can pass ``httpHeaders`` (Authorization: Bearer …) for
+  // authenticated same-origin PDF endpoints. Memoised so pdfjs
+  // doesn't tear down + rebuild the Document on every render.
+  const fileProp = useMemo(() => {
+    if (!fileUrl) return null;
+    return {
+      url: fileUrl,
+      httpHeaders: fileHeaders || undefined,
+      withCredentials: !!fileHeaders,
+    };
+  }, [fileUrl, fileHeaders]);
 
   function enterFullscreen() {
     const el = containerRef.current;
@@ -272,7 +286,7 @@ export default function ContractPdfViewer({
           </div>
         ) : (
           <Document
-            file={fileUrl}
+            file={fileProp}
             options={options}
             loading={
               <div className="flex items-center justify-center py-16 text-stone-500 text-sm gap-2">

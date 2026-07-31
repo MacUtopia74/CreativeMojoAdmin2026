@@ -12,7 +12,7 @@
 // Both share the same list/detail internals. Only the outer chrome
 // differs (page heading + centred container vs. section card).
 import { useCallback, useEffect, useState } from "react";
-import api from "@/lib/api";
+import api, { API_BASE as API, getAccessToken } from "@/lib/api";
 import ContractPdfViewer from "@/components/contracts/ContractPdfViewer";
 import {
   Loader2, AlertTriangle, CheckCircle2, ExternalLink, FileSignature, Lock,
@@ -177,11 +177,36 @@ function ContractDetail({ contract, onClose, onSigned }) {
   useEffect(() => {
     (async () => {
       try {
-        const endpoint = row.status === "signed"
+        // Same-origin streaming endpoint. Prev version handed the
+        // R2 pre-signed URL directly to pdfjs; the browser's PDF.js
+        // worker fetch was blocked by R2 CORS ("Failed to fetch").
+        // Streaming through the Hub keeps the request same-origin
+        // and picks up the session cookie / bearer automatically.
+        const variant = row.status === "signed" ? "signed" : "personalised";
+        const streamUrl = `${API}/portal/contracts/${row.id}/pdf?variant=${variant}`;
+        // Also fetch the R2 pre-signed URL — used ONLY as the
+        // "Download" affordance where a direct link is fine (a
+        // top-level <a href> download isn't subject to CORS).
+        const legacyEndpoint = row.status === "signed"
           ? `/portal/contracts/${row.id}/signed-pdf`
           : `/portal/contracts/${row.id}/personalised-pdf`;
-        const { data } = await api.get(endpoint);
-        setPdfUrl(data.url);
+        const { data } = await api.get(legacyEndpoint);
+        // TEMP DIAGNOSTIC — logs the exact URL + HTTP status the
+        // viewer will use so we can spot auth/CORS/redirect issues
+        // in the wild. Safe to remove once the fix is stable.
+        try {
+          const probe = await fetch(streamUrl, {
+            credentials: "include",
+            headers: { Authorization: `Bearer ${getAccessToken() || ""}` },
+          });
+          console.info(
+            "[ContractPdfViewer] resolved PDF URL",
+            { url: streamUrl, status: probe.status, contentType: probe.headers.get("content-type") },
+          );
+        } catch (probeErr) {
+          console.warn("[ContractPdfViewer] PDF URL probe failed", streamUrl, probeErr);
+        }
+        setPdfUrl(streamUrl);
         setDownloadUrl(data.url);
       } catch (e) {
         setErr(e?.response?.data?.detail || e.message);
@@ -247,6 +272,13 @@ function ContractDetail({ contract, onClose, onSigned }) {
             {pdfUrl ? (
               <ContractPdfViewer
                 fileUrl={pdfUrl}
+                fileHeaders={{
+                  // Same-origin authenticated PDF endpoint — pass
+                  // the current bearer so pdfjs' fetch is
+                  // authorised. Cookies would work too, but the
+                  // Hub is JWT-in-header only.
+                  Authorization: `Bearer ${getAccessToken() || ""}`,
+                }}
                 downloadUrl={downloadUrl}
                 fileName={`${row.contract_reference || row.id}.pdf`}
                 // Only listen for last-page while the contract is still

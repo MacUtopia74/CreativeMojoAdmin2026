@@ -155,6 +155,50 @@ class TestPortalAcceptance:
         assert rr.status_code == 200
         assert rr.content.startswith(b"%PDF")
 
+    def test_streaming_pdf_endpoint_serves_bytes(self, franchisee, issued_contract):
+        """Same-origin streaming endpoint that the inline pdfjs viewer
+        actually hits. Must return raw PDF bytes with the right MIME so
+        the browser's PDF.js worker doesn't hit R2 CORS."""
+        cid = issued_contract["id"]
+        r = franchisee.get(
+            f"{BASE_URL}/api/portal/contracts/{cid}/pdf?variant=personalised",
+            timeout=30,
+        )
+        assert r.status_code == 200, r.text
+        assert r.headers.get("Content-Type") == "application/pdf", r.headers
+        assert "inline" in (r.headers.get("Content-Disposition") or "").lower()
+        assert r.content.startswith(b"%PDF-"), r.content[:20]
+        assert int(r.headers.get("Content-Length") or 0) == len(r.content)
+        etag = r.headers.get("ETag")
+        assert etag, "ETag missing on streamed PDF"
+        # Replay with If-None-Match — must be 304.
+        r304 = franchisee.get(
+            f"{BASE_URL}/api/portal/contracts/{cid}/pdf?variant=personalised",
+            headers={"If-None-Match": etag}, timeout=15,
+        )
+        assert r304.status_code == 304, r304.text
+        assert r304.content == b""
+
+    def test_streaming_pdf_variant_auto_picks_personalised_before_sign(
+        self, franchisee, issued_contract,
+    ):
+        cid = issued_contract["id"]
+        r = franchisee.get(
+            f"{BASE_URL}/api/portal/contracts/{cid}/pdf?variant=auto",
+            timeout=15,
+        )
+        assert r.status_code == 200
+        assert r.content.startswith(b"%PDF-")
+
+    def test_streaming_pdf_rejects_unknown_variant(self, franchisee, issued_contract):
+        cid = issued_contract["id"]
+        r = franchisee.get(
+            f"{BASE_URL}/api/portal/contracts/{cid}/pdf?variant=other",
+            timeout=15,
+        )
+        assert r.status_code == 400
+
+
     def test_reject_unticked_checkbox(self, franchisee, issued_contract):
         cid = issued_contract["id"]
         r = franchisee.post(

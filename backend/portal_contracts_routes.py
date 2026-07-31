@@ -40,6 +40,7 @@ from typing import Any, Dict, Optional, Tuple
 
 import fitz
 from fastapi import Depends, HTTPException, Request
+from fastapi.responses import Response as FastAPIResponse
 
 import file_storage as fs
 
@@ -263,6 +264,95 @@ def attach(api, db, require_role):
     ):
         c = await _load_own_contract(contract_id, user)
         return _redact_franchisee_contract(c)
+
+    @api.get("/portal/contracts/{contract_id}/pdf")
+    async def portal_contract_pdf_stream(
+        contract_id: str,
+        request: Request,
+        variant: str = "auto",
+        user: dict = Depends(require_role("franchisee")),
+    ):
+        """Stream the PDF bytes back through the Hub origin.
+
+        Direct R2 pre-signed URLs work in curl but break when the
+        browser's PDF.js worker fetches them: R2 CORS blocks the
+        cross-origin ``fetch``. Streaming through this endpoint
+        keeps the PDF request same-origin, which means the browser
+        already sends the session cookie / bearer for auth and no
+        CORS handshake is needed.
+
+        ``variant`` values:
+          * ``"personalised"`` — the pristine issued PDF
+          * ``"signed"`` — the immutable signed copy (only after accept)
+          * ``"auto"`` (default) — signed if the contract is signed,
+            personalised otherwise. Matches what the portal detail
+            modal wants to show without an extra round-trip.
+        """
+        c = await _load_own_contract(contract_id, user)
+
+        v = (variant or "auto").lower()
+        if v == "auto":
+            v = "signed" if c.get("status") == "signed" and c.get("signed_pdf_r2_key") else "personalised"
+
+        if v == "signed":
+            key = c.get("signed_pdf_r2_key")
+            sha = c.get("signed_pdf_sha256")
+            filename = f"{contract_id}-signed.pdf"
+        elif v == "personalised":
+            key = c.get("personalised_pdf_r2_key")
+            sha = c.get("personalised_pdf_sha256")
+            filename = f"{contract_id}.pdf"
+        else:
+            raise HTTPException(400, detail=f"Unknown variant '{variant}'.")
+
+        if not key:
+            raise HTTPException(404, detail=f"{v.title()} PDF not available on this contract.")
+
+        # Fetch from R2 server-side. Single read into memory is fine
+        # for contract PDFs (typically 200-800 KB, hard-capped by the
+        # personalise step). Streaming chunked would add complexity
+        # for no meaningful gain at this size.
+        try:
+            obj = fs.get_client().get_object(Bucket=fs.R2_BUCKET, Key=key)
+            body = obj["Body"].read()
+        except Exception as e:
+            logging.exception("portal.contract.pdf.stream.r2_read_failed", extra={
+                "contract_id": contract_id, "variant": v, "key": key,
+            })
+            raise HTTPException(502, detail=f"Could not read contract PDF from storage: {e}")
+
+        # Tamper-proof: if the stored SHA doesn't match, refuse to
+        # serve the bytes. Same logic as the accept endpoint — we
+        # never let a mutated R2 object reach the franchisee.
+        if sha:
+            live_sha = hashlib.sha256(body).hexdigest()
+            if live_sha != sha:
+                logging.error("portal.contract.pdf.stream.sha_mismatch", extra={
+                    "contract_id": contract_id, "variant": v,
+                    "expected": sha, "actual": live_sha,
+                })
+                raise HTTPException(500, detail="Contract PDF integrity check failed.")
+
+        # Weak ETag from the SHA — lets the browser 304 on refresh.
+        etag = f'W/"{(sha or "").split(":")[-1][:16] or "nosha"}"'
+        if request.headers.get("If-None-Match", "") == etag:
+            return FastAPIResponse(status_code=304, headers={"ETag": etag})
+
+        return FastAPIResponse(
+            content=body,
+            media_type="application/pdf",
+            headers={
+                "Content-Length": str(len(body)),
+                "Content-Disposition": f'inline; filename="{filename}"',
+                # Contract PDFs shouldn't sit in caches for long — the
+                # signed copy replaces the personalised one on accept.
+                "Cache-Control": "private, max-age=60, must-revalidate",
+                "ETag": etag,
+                # Hint to any accidentally-configured intermediary that
+                # this response is binary; do not rewrite it.
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
 
     @api.get("/portal/contracts/{contract_id}/personalised-pdf")
     async def portal_personalised_pdf(
