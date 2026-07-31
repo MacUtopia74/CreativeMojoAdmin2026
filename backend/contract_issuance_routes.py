@@ -117,13 +117,26 @@ async def _pick_frozen_markers(
 
 
 def _all_marker_codes(markers: List[Dict[str, Any]]) -> List[str]:
+    """Codes for markers that MUST carry a resolved value at issuance.
+
+    ``signature_anchor`` markers (e.g. ``FRANCHISEE_SIGNATURE_POSITION``)
+    are placement anchors for a drawn signature — they carry no value
+    at issuance time. The resolver deliberately skips them, and the
+    render engine redacts the token from the personalised PDF and
+    records the anchor position for the acceptance flow to stamp the
+    signature PNG into. Requiring them here would 409-block every
+    contract that uses drawn signatures.
+    """
     out: List[str] = []
     seen: set = set()
     for m in markers:
         c = m.get("code")
-        if c and c not in seen:
-            seen.add(c)
-            out.append(c)
+        if not c or c in seen:
+            continue
+        if (m.get("data_type") or "").lower() == "signature_anchor":
+            continue
+        seen.add(c)
+        out.append(c)
     return out
 
 

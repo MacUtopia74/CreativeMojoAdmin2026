@@ -50,6 +50,9 @@ Bespoke admin system for a franchise business consolidating Airtable, FileCamp, 
 - Added "Delete (test)" button on `AdminContractsPage.jsx` for every non-draft row with double confirmation (window.confirm + reason prompt).
 - Unblocks the drawn-signature test flow — a stale signed test contract no longer forces the new one into "renewal" mode.
 
+### 2026-07-31 — Fix: issuance blocked by signature-anchor marker
+- `contract_issuance_routes.py::_all_marker_codes` now skips markers whose `data_type == "signature_anchor"` (case-insensitive). These markers deliberately have no value at issuance — the resolver already skips them, but the pre-issue "missing values" check was blindly requiring one, producing "Frozen contract_variables are missing values for one or more markers declared on the template." on every drawn-signature template.
+
 ## Key files
 - `/app/frontend/src/components/territory/FranchiseeTerritoryWidget.jsx` — MyTerritory+ orchestrator
 - `/app/frontend/src/components/territory/TerritoryMap.jsx` — Mapbox layer + markers
