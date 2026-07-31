@@ -940,7 +940,7 @@ def build_territory_router(db, require_role):  # noqa: D401
 
     # ---------------------------------- public viewer (no auth, by token)
     @router.get("/public/territory-plans/{share_token}")
-    async def public_plan(share_token: str):
+    async def public_plan(share_token: str, request: Request, response: Response):
         """Read-only payload for the public share page. Returns the plan's
         sectors with polygon geometry + home count + centre. Excludes PII
         (contact id/name, internal notes, audit fields).
@@ -979,9 +979,21 @@ def build_territory_router(db, require_role):  # noqa: D401
         # coordinates. Postcode-sector geometry inside these areas is
         # NOT shipped (only the dissolved outline), so the prospect
         # only sees per-sector detail for their own proposed patch.
+        #
+        # PERFORMANCE — served through the shared ``atlas_cache`` so
+        # each share-link view is a single fingerprint lookup instead
+        # of a fresh ~500-franchisee shapely union rebuild every hit.
+        # (Direct compute took multiple seconds on the live network
+        # and made this public page feel broken.) Cache invalidation
+        # is already wired to every ``territory_save``/rollback so
+        # the payload is never more than one save behind reality.
         overlay_payload = None
+        atlas_fp = ""
         try:
-            atlas = await _compute_territory_atlas(db)
+            atlas, _meta = await atlas_cache.load(
+                db, lambda: _compute_territory_atlas(db),
+            )
+            atlas_fp = (_meta.get("fingerprint") or _meta.get("computed_at") or "")[:16]
             outline_features = atlas.get("outlines", {}).get("features") or []
             fill_features = atlas.get("geojson", {}).get("features") or []
             # Strip owner_name from every feature's properties.
@@ -990,10 +1002,14 @@ def build_territory_router(db, require_role):  # noqa: D401
                 p.pop("owner_name", None)
                 return {**feat, "properties": p}
             overlay_payload = {
-                "geojson": {
-                    "type": "FeatureCollection",
-                    "features": [_scrub(f) for f in fill_features],
-                },
+                # Public share only ships OUTLINES — the coloured fill
+                # layer nearly doubles the payload (~4.4 MB total on
+                # a full network) and adds no useful signal for a
+                # prospect. Empty fill FeatureCollection keeps the
+                # frontend map source happy without rendering fills.
+                # The admin atlas endpoint still emits fills for HQ
+                # planning — this scrub is public-only.
+                "geojson": {"type": "FeatureCollection", "features": []},
                 "outlines": {
                     "type": "FeatureCollection",
                     "features": [_scrub(f) for f in outline_features],
@@ -1009,7 +1025,7 @@ def build_territory_router(db, require_role):  # noqa: D401
             # Overlay is a nice-to-have — if it fails, the share still
             # renders with just the proposed sectors.
             overlay_payload = None
-        return {
+        overlay_payload_result = {
             "name": plan.get("name") or "Proposed territory",
             "sectors": [
                 {"sector": p["sector"], "geometry": p.get("geometry"),
@@ -1035,6 +1051,23 @@ def build_territory_router(db, require_role):  # noqa: D401
             "show_counties": bool(plan.get("show_counties")),
             "franchisee_overlay": overlay_payload,
         }
+        # HTTP caching hints — the payload is a scrubbed, deterministic
+        # function of ``(plan, atlas)`` so we can safely ask browsers +
+        # any upstream CDN to reuse it for a minute. This turns a
+        # rapid-fire tab reload from a ~4 MB retransfer into a 304.
+        # ``stale-while-revalidate`` keeps the page instant after the
+        # 60 s window elapses while the origin refreshes in the
+        # background.
+        etag = f'W/"share-{atlas_fp}-{plan.get("updated_at") or ""}-{share_token[:8]}"'
+        response.headers["ETag"] = etag
+        response.headers["Cache-Control"] = "public, max-age=60, stale-while-revalidate=300"
+        if_none = request.headers.get("If-None-Match", "")
+        if if_none and if_none == etag:
+            return Response(status_code=304, headers={
+                "ETag": etag,
+                "Cache-Control": "public, max-age=60, stale-while-revalidate=300",
+            })
+        return overlay_payload_result
 
     @router.post("/franchisees/{franchisee_id}/territory/parse")
     async def parse_territory_paste(
