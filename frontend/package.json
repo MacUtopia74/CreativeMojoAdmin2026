@@ -75,6 +75,10 @@
   "scripts": {
     "start": "craco start",
     "build": "craco build",
+    "prestart": "node scripts/copy-pdf-worker.js",
+    "prebuild": "node scripts/copy-pdf-worker.js",
+    "postinstall": "node scripts/copy-pdf-worker.js",
+    "copy-pdf-worker": "node scripts/copy-pdf-worker.js",
     "test": "craco test"
   },
   "browserslist": {

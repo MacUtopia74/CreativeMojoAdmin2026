@@ -13,13 +13,58 @@ import { Download, Loader2, Maximize2, Minimize2, ZoomIn, ZoomOut } from "lucide
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 
-// Point pdfjs at its bundled worker. `.min.js` ships in
-// pdfjs-dist v3 — matching the version pinned by react-pdf@7 which
-// is the last CRA-compatible pair (v4 requires Node ≥ 22).
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-  "pdfjs-dist/build/pdf.worker.min.js",
-  import.meta.url,
-).toString();
+// Point pdfjs at the worker file we copy into ``public/`` at build
+// time (see ``scripts/copy-pdf-worker.js``). Using the public path
+// keeps the worker URL stable in production — the previous
+// ``new URL(..., import.meta.url)`` trick emitted a fingerprinted
+// ``/static/media/pdf.worker.min.<hash>.js`` URL which some
+// production ingresses were rewriting to ``index.html``, resulting
+// in pdfjs raising:
+//   Cannot read properties of undefined (reading 'WorkerMessageHandler')
+// because it was parsing the SPA shell instead of the worker JS.
+//
+// The copied file is byte-for-byte identical to
+// ``pdfjs-dist/build/pdf.worker.min.js`` and is refreshed on every
+// ``yarn install`` / ``yarn build`` via ``prebuild``. Keeping it in
+// ``public/`` guarantees:
+//   1. CRA never transforms it (no tree-shaking, no minifier changes)
+//   2. It's served from a stable ``/pdf.worker.min.js`` URL
+//   3. The worker version always matches the pdfjs-dist API version
+//      in the JS bundle
+const WORKER_URL = `${process.env.PUBLIC_URL || ""}/pdf.worker.min.js`;
+pdfjs.GlobalWorkerOptions.workerSrc = WORKER_URL;
+
+// Runtime guard — verify the worker file at ``WORKER_URL`` actually
+// looks like a pdfjs worker (contains ``WorkerMessageHandler``) BEFORE
+// the first PDF loads. Fails fast with a clear diagnostic instead of
+// the cryptic "Cannot read properties of undefined" message pdfjs
+// itself would surface. Also captures the pdfjs API version so the
+// viewer's error state can tell the user exactly what's wrong.
+async function _probeWorker() {
+  try {
+    const res = await fetch(WORKER_URL, { method: "GET" });
+    if (!res.ok) {
+      return { ok: false, reason: `Worker HTTP ${res.status} at ${WORKER_URL}` };
+    }
+    const text = await res.text();
+    if (!/WorkerMessageHandler/.test(text)) {
+      // The URL is being served but the payload isn't a pdfjs worker
+      // — this is the SPA-shell-rewrite failure mode. Surface a
+      // hostname-aware message so ops can spot the problem.
+      return {
+        ok: false,
+        reason:
+          `PDF worker at ${WORKER_URL} did not return the pdfjs bundle ` +
+          `(got ${text.length} bytes of non-worker content). Check that ` +
+          `\`public/pdf.worker.min.js\` is deployed and not being ` +
+          `rewritten by the ingress.`,
+      };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, reason: `Worker fetch failed: ${e?.message || e}` };
+  }
+}
 
 const MIN_ZOOM = 0.6;
 const MAX_ZOOM = 2.4;
@@ -30,14 +75,35 @@ export default function ContractPdfViewer({
   downloadUrl,
   fileName = "contract.pdf",
   onReachedLastPage,
+  onViewerError,
   minHeight = 560,
 }) {
   const [numPages, setNumPages] = useState(0);
   const [zoom, setZoom] = useState(1);
   const [loadError, setLoadError] = useState("");
+  const [workerReady, setWorkerReady] = useState(null); // null=probing, true|false
   const containerRef = useRef(null);
   const lastPageRef = useRef(null);
   const scrollBoxRef = useRef(null);
+
+  // Probe the worker once per mount — if the file at WORKER_URL isn't
+  // the real pdfjs worker we show a clear error and NEVER call
+  // onReachedLastPage, so the parent's sign button stays disabled.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const probe = await _probeWorker();
+      if (cancelled) return;
+      if (!probe.ok) {
+        setWorkerReady(false);
+        setLoadError(probe.reason);
+        onViewerError?.(probe.reason);
+      } else {
+        setWorkerReady(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const reachedRef = useRef(false);
 
@@ -182,8 +248,27 @@ export default function ContractPdfViewer({
         data-testid="pdf-scroll-container"
       >
         {loadError ? (
+          <div
+            className="text-red-800 bg-red-50 border border-red-200 rounded p-3 text-sm"
+            data-testid="pdf-viewer-error"
+          >
+            <div className="font-semibold mb-1">Couldn&apos;t load the contract PDF</div>
+            <div className="text-xs">{loadError}</div>
+            <div className="text-xs mt-2 text-red-700">
+              Please refresh the page. If this keeps happening, contact
+              Creative Mojo — signing is disabled until the viewer loads.
+            </div>
+          </div>
+        ) : workerReady === null ? (
+          <div className="flex items-center justify-center py-16 text-stone-500 text-sm gap-2">
+            <Loader2 className="h-4 w-4 animate-spin" /> Preparing PDF viewer…
+          </div>
+        ) : workerReady === false ? (
+          // Redundant with loadError above (they're set in the same
+          // branch) but kept as a defensive path — if a future change
+          // clears loadError this still blocks the Document render.
           <div className="text-red-800 bg-red-50 border border-red-200 rounded p-3 text-sm">
-            Couldn&apos;t load PDF: {loadError}
+            PDF viewer failed to start.
           </div>
         ) : (
           <Document
@@ -195,7 +280,11 @@ export default function ContractPdfViewer({
               </div>
             }
             onLoadSuccess={onLoadSuccess}
-            onLoadError={(e) => setLoadError(e?.message || "PDF failed to load")}
+            onLoadError={(e) => {
+              const msg = e?.message || "PDF failed to load";
+              setLoadError(msg);
+              onViewerError?.(msg);
+            }}
           >
             {Array.from({ length: numPages }, (_, i) => {
               const pageNumber = i + 1;

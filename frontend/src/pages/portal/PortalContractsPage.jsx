@@ -169,6 +169,10 @@ function ContractDetail({ contract, onClose, onSigned }) {
   // become visible. Never unset — a signer who scrolls back up is
   // still trusted to have read the contract.
   const [reachedEnd, setReachedEnd] = useState(false);
+  // Sticky flag set when the PDF viewer itself is broken (worker
+  // load failed, network error, etc). While true we NEVER allow the
+  // sign button to enable — even if reachedEnd flips somehow.
+  const [viewerBroken, setViewerBroken] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -212,8 +216,15 @@ function ContractDetail({ contract, onClose, onSigned }) {
 
   const isSigned = row.status === "signed";
   const nameLongEnough = typedName.trim().length >= 2;
-  const canAccept = checkbox && nameLongEnough && reachedEnd && !signing && row.status === "issued";
+  // Sign button stays disabled whenever the viewer itself is broken —
+  // we can't legitimately claim the signer "read the contract" if
+  // pdfjs never rendered it.
+  const canAccept =
+    checkbox && nameLongEnough && reachedEnd &&
+    !signing && !viewerBroken &&
+    row.status === "issued";
   const lockedReasons = [];
+  if (viewerBroken) lockedReasons.push("PDF viewer failed — refresh the page");
   if (!reachedEnd) lockedReasons.push("scroll to the final page");
   if (!checkbox) lockedReasons.push("tick the confirmation box");
   if (!nameLongEnough) lockedReasons.push("type your full name");
@@ -242,6 +253,14 @@ function ContractDetail({ contract, onClose, onSigned }) {
                 // awaiting signature — once signed we don't need the
                 // gate anymore.
                 onReachedLastPage={isSigned ? undefined : () => setReachedEnd(true)}
+                // If the viewer itself fails to boot (missing worker,
+                // corrupt PDF, ingress rewriting the worker URL to
+                // index.html) we latch ``viewerBroken`` so the sign
+                // button stays hard-disabled regardless of whether
+                // the intersection observer misfires. Preserves the
+                // spec rule "Do not enable signing when the viewer
+                // fails to load."
+                onViewerError={() => setViewerBroken(true)}
               />
             ) : (
               <div className="p-8 text-stone-500 text-sm flex items-center gap-2">
