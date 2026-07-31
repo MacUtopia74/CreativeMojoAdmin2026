@@ -692,6 +692,137 @@ def attach(api, db, require_role):
         )
         return _strip_mongo(await db[CONTRACTS_COLLECTION].find_one({"id": contract_id}))
 
+    @api.delete("/admin/contracts/{contract_id}/force")
+    async def force_delete_contract(
+        contract_id: str,
+        confirm: bool = False,
+        reason: str = "",
+        user: dict = Depends(require_role("admin")),
+    ):
+        """DEV / TESTING ONLY — hard-delete a contract regardless of
+        status, including ``issued`` and ``signed``. Also removes the
+        matching personalised / signed PDFs from R2 so the storage
+        namespace is freed for a fresh test issuance.
+
+        Requires ``?confirm=true`` and a written ``reason`` (max 500
+        chars). Every call is audited by ``contract_id`` so the
+        deletion history survives even though the contract row does
+        not. This endpoint MUST NOT be surfaced next to normal admin
+        actions in production — the CMS drives real legal records,
+        and destroying a signed contract is only ever appropriate
+        while testing the issuance / signing flow end-to-end.
+        """
+        if not confirm:
+            raise HTTPException(
+                400,
+                detail=(
+                    "Force delete requires ?confirm=true — this is "
+                    "a destructive dev/testing action."
+                ),
+            )
+        reason = (reason or "").strip()
+        if not reason:
+            raise HTTPException(
+                400,
+                detail="A written 'reason' is required to force-delete a contract.",
+            )
+        if len(reason) > 500:
+            raise HTTPException(400, detail="Reason is too long (max 500 characters).")
+
+        contract = await db[CONTRACTS_COLLECTION].find_one({"id": contract_id})
+        if not contract:
+            raise HTTPException(404, detail="Contract not found.")
+
+        status = contract.get("status")
+        # Drafts already have a clean DELETE path in contracts_routes.py.
+        # Sending them through the force path would just be confusing;
+        # nudge the caller to the correct route.
+        if status == "draft":
+            raise HTTPException(
+                400,
+                detail=(
+                    "Use the standard DELETE /admin/contracts/{id} "
+                    "endpoint for drafts — force delete is only for "
+                    "issued / signed / superseded / revoked records."
+                ),
+            )
+
+        actor = user.get("email") or "admin"
+        removed_keys: List[str] = []
+        r2_errors: List[Dict[str, Any]] = []
+
+        # Remove any R2 objects associated with the contract. Only
+        # ``NoSuchKey`` is quietly swallowed; every other exception
+        # is captured so the caller can see partial cleanup rather
+        # than a silent half-success.
+        for key_field in ("personalised_pdf_r2_key", "signed_pdf_r2_key"):
+            r2_key = contract.get(key_field)
+            if not r2_key:
+                continue
+            try:
+                fs.delete_object(r2_key)
+                removed_keys.append(r2_key)
+            except Exception as exc:  # noqa: BLE001
+                msg = str(exc)
+                if "NoSuchKey" in msg or "Not Found" in msg or "404" in msg:
+                    removed_keys.append(r2_key)  # already gone — fine
+                else:
+                    r2_errors.append({"key": r2_key, "error": msg})
+
+        # If a supersede predecessor was flipped by issuing THIS
+        # contract, restore it to 'issued' so it isn't left orphaned
+        # as 'superseded → <deleted id>'. This is critical because
+        # the user's block is exactly this scenario: a stale
+        # renewal-chain from a test issuance.
+        predecessor_id = contract.get("supersedes_id")
+        if predecessor_id:
+            prior = await db[CONTRACTS_COLLECTION].find_one({"id": predecessor_id})
+            if prior and prior.get("status") == "superseded" \
+                    and prior.get("superseded_by_contract_id") == contract_id:
+                await db[CONTRACTS_COLLECTION].update_one(
+                    {"id": predecessor_id},
+                    {
+                        "$set": {
+                            "status": "issued",
+                            "updated_at": _now_iso(),
+                            "updated_by": actor,
+                        },
+                        "$unset": {
+                            "superseded_at": "",
+                            "superseded_by": "",
+                            "superseded_by_contract_id": "",
+                        },
+                    },
+                )
+                await _emit_audit(
+                    db, predecessor_id, "contract.supersede.reversed", actor,
+                    {"reverted_from_contract_id": contract_id, "reason": reason},
+                )
+
+        delete_result = await db[CONTRACTS_COLLECTION].delete_one({"id": contract_id})
+        if delete_result.deleted_count != 1:
+            raise HTTPException(500, detail="Contract row could not be removed.")
+
+        await _emit_audit(
+            db, contract_id, "contract.force_deleted", actor,
+            {
+                "prior_status": status,
+                "reason": reason,
+                "removed_r2_keys": removed_keys,
+                "r2_errors": r2_errors,
+                "template_id": contract.get("template_id"),
+                "franchisee_id": contract.get("franchisee_id"),
+            },
+        )
+        return {
+            "ok": True,
+            "id": contract_id,
+            "deleted": True,
+            "prior_status": status,
+            "removed_r2_keys": removed_keys,
+            "r2_errors": r2_errors,
+        }
+
     @api.get("/admin/contracts/{contract_id}/signed-pdf")
     async def signed_pdf_signed_url(
         contract_id: str,

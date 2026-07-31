@@ -6,7 +6,7 @@ import api from "@/lib/api";
 import { resolveAndIssueContract } from "@/lib/contractIssuance";
 import {
   Loader2, Plus, FileText, Download, Upload, RefreshCw, X,
-  CheckCircle2, AlertTriangle, ExternalLink,
+  CheckCircle2, AlertTriangle, ExternalLink, Trash2,
 } from "lucide-react";
 
 const STATUS_STYLES = {
@@ -141,6 +141,35 @@ export default function AdminContractsPage() {
       await load();
     } catch (e) {
       alert(`Revoke failed: ${e?.response?.data?.detail || e.message}`);
+    } finally { setBusyRow(null); }
+  }
+
+  async function forceDeleteContract(cid, status) {
+    // Testing-only escape hatch. Real legal records must NEVER be
+    // routed through this — the confirm dialog spells it out and the
+    // backend audit trail keeps a record even after the row is gone.
+    const confirm1 = window.confirm(
+      "TESTING ONLY — hard-delete this contract?\n\n" +
+      `Status: ${status}\n\n` +
+      "This removes the row and the personalised/signed PDF from " +
+      "storage. It cannot be undone. Do NOT use this on a real " +
+      "franchisee's live contract."
+    );
+    if (!confirm1) return;
+    const reason = window.prompt(
+      "Please give a short reason for the force delete " +
+      "(recorded to the audit log):",
+      "Testing signature flow — clearing stale contract",
+    );
+    if (reason === null || !reason.trim()) return;
+    setBusyRow(cid);
+    try {
+      await api.delete(`/admin/contracts/${cid}/force`, {
+        params: { confirm: true, reason: reason.trim() },
+      });
+      await load();
+    } catch (e) {
+      alert(`Force delete failed: ${e?.response?.data?.detail || e.message}`);
     } finally { setBusyRow(null); }
   }
 
@@ -310,6 +339,18 @@ export default function AdminContractsPage() {
                           <span className="text-xs text-stone-500" data-testid={`contract-superseded-note-${c.id}`}>
                             → {c.superseded_by_contract_id.slice(0, 8)}
                           </span>
+                        )}
+                        {c.status !== "draft" && (
+                          <button
+                            onClick={() => forceDeleteContract(c.id, c.status)}
+                            disabled={isBusy}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs border rounded bg-white text-rose-800 border-rose-400 hover:bg-rose-100 disabled:opacity-50"
+                            data-testid={`contract-force-delete-btn-${c.id}`}
+                            title="TESTING ONLY — hard-delete this contract and its stored PDFs. Do not use on real live contracts."
+                          >
+                            {isBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                            Delete (test)
+                          </button>
                         )}
                       </div>
                     </td>

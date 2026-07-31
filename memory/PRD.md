@@ -43,6 +43,13 @@ Bespoke admin system for a franchise business consolidating Airtable, FileCamp, 
 - Refactor `server.py` into distinct routers
 - Specialisms filter dropdown on MyTerritory+ Territory pool (paused by user)
 
+## Changelog
+
+### 2026-07-31 — Admin force-delete for test contracts
+- Added `DELETE /api/admin/contracts/{id}/force?confirm=true&reason=...` (in `contract_issuance_routes.py`) for testing-only hard-delete of issued / signed / superseded / revoked contracts. Requires explicit `confirm=true` + written reason, removes personalised + signed PDFs from R2, reverses supersede on predecessor, audit event is preserved.
+- Added "Delete (test)" button on `AdminContractsPage.jsx` for every non-draft row with double confirmation (window.confirm + reason prompt).
+- Unblocks the drawn-signature test flow — a stale signed test contract no longer forces the new one into "renewal" mode.
+
 ## Key files
 - `/app/frontend/src/components/territory/FranchiseeTerritoryWidget.jsx` — MyTerritory+ orchestrator
 - `/app/frontend/src/components/territory/TerritoryMap.jsx` — Mapbox layer + markers
