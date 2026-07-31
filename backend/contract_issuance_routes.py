@@ -325,6 +325,23 @@ def attach(api, db, require_role):
                     "template_version": template_version,
                     "source_pdf_sha256": source_sha_after,
                 },
+                # Signature-anchor occurrences (page + render_bbox) are
+                # copied verbatim from the render report so the accept
+                # endpoint can place the drawn signature at exactly the
+                # ``[[FRANCHISEE_SIGNATURE_POSITION]]`` marker location
+                # this template used, without a hard-coded rectangle.
+                # Empty list → template lacks the marker → signing is
+                # hard-blocked on the portal side.
+                "signature_anchors": [
+                    {
+                        "page": occ.get("page"),
+                        "render_bbox": occ.get("render_bbox"),
+                        "token_bbox": occ.get("token_bbox"),
+                        "occurrence_id": occ.get("occurrence_id"),
+                    }
+                    for occ in (render_report.get("occurrences") or [])
+                    if (occ.get("data_type") or "").lower() == "signature_anchor"
+                ],
                 "updated_at": issued_at,
                 "updated_by": user.get("email"),
             }},

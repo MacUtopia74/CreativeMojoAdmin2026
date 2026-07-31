@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import base64
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -110,6 +111,11 @@ def _redact_franchisee_contract(contract: Dict[str, Any]) -> Dict[str, Any]:
         "signed_pdf_uploaded_at": contract.get("signed_pdf_uploaded_at"),
         "template_id": contract.get("template_id"),
         "acceptance_record": contract.get("acceptance_record"),
+        # True when the template used to issue this contract contained
+        # a [[FRANCHISEE_SIGNATURE_POSITION]] marker. Drives the portal
+        # UI's decision between showing the signature pad and showing
+        # the "reissue required" message.
+        "has_signature_anchor": bool(_find_signature_anchors(contract)),
     }
     # Include the contract_reference from the frozen variables (if present)
     cv = contract.get("contract_variables") or {}
@@ -134,6 +140,164 @@ def _default_signing_block(pdf_page_count: int) -> Dict[str, Any]:
     }
 
 
+def _find_signature_anchors(contract: Dict[str, Any]) -> list:
+    """Return the list of signature-anchor occurrences captured on the
+    contract at issuance time — each a dict with ``page`` (1-based)
+    and ``render_bbox`` (x0,y0,x1,y1 in PDF points).
+
+    Contracts issued from templates that did NOT contain the
+    ``[[FRANCHISEE_SIGNATURE_POSITION]]`` marker return an empty list;
+    the accept endpoint uses that to hard-block signing with a clear
+    "reissue from an updated template" message.
+    """
+    if not contract:
+        return []
+    anchors: list = []
+    for occ in (contract.get("signature_anchors") or []):
+        bbox = occ.get("render_bbox") or []
+        if len(bbox) != 4:
+            continue
+        anchors.append({
+            "page": int(occ.get("page") or 0),
+            "render_bbox": [float(v) for v in bbox],
+            "occurrence_id": occ.get("occurrence_id"),
+        })
+    return anchors
+
+
+def _trim_png_padding(png_bytes: bytes) -> bytes:
+    """Crop transparent padding around a PNG so it scales tightly to
+    its bounding box. Returns the cropped PNG. If the image is fully
+    opaque (no alpha or all pixels visible) it's returned unchanged.
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        # Pillow is a transitive dependency of the R2 SDK stack — this
+        # branch should never fire in prod. Fail open: leave the PNG
+        # as-is rather than blocking a sign attempt on a missing dep.
+        return png_bytes
+    im = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
+    bbox = im.getchannel("A").getbbox()
+    if not bbox or bbox == (0, 0, *im.size):
+        return png_bytes
+    cropped = im.crop(bbox)
+    out = io.BytesIO()
+    cropped.save(out, format="PNG", optimize=True)
+    return out.getvalue()
+
+
+def _overlay_signature(
+    personalised_bytes: bytes,
+    *,
+    anchors: list,
+    signature_png_bytes: bytes,
+    accepted_at: datetime,
+) -> Tuple[bytes, Dict[str, Any]]:
+    """Return ``(new_pdf_bytes, stamp_visible_fields)``.
+
+    Iterates every signature anchor recorded on the contract and:
+      1. Crops the transparent padding around the signature PNG
+      2. Scales it to fit the anchor's width preserving aspect ratio,
+         clipped to the anchor's height
+      3. Places the image sitting on the signature line (aligned to
+         the bottom of the render_bbox)
+      4. Writes ``Signed on {DD Month YYYY}`` immediately underneath
+
+    The source ``personalised_bytes`` buffer is never modified — we
+    open via ``BytesIO`` and save to a fresh buffer so the R2 object
+    for the issued PDF stays byte-for-byte immutable.
+    """
+    if not anchors:
+        # Caller enforces this too — belt-and-braces so we never mint
+        # a signed PDF without a marker-recorded anchor.
+        raise ValueError(
+            "No FRANCHISEE_SIGNATURE_POSITION anchors on this contract."
+        )
+    trimmed_png = _trim_png_padding(signature_png_bytes)
+    # Reuse a single Pixmap across every anchor — PyMuPDF requires a
+    # fitz.Pixmap or bytes; passing raw bytes is fine and simpler.
+    src = fitz.open(stream=io.BytesIO(personalised_bytes), filetype="pdf")
+    try:
+        accepted_uk = accepted_at.astimezone(ZoneInfo("Europe/London"))
+        # UK-friendly "Signed on 31 July 2026" — no time here, per spec.
+        date_display = f"Signed on {accepted_uk.strftime('%-d %B %Y')}"
+
+        anchors_stamped = []
+        for anchor in anchors:
+            page_num = anchor["page"]
+            if page_num < 1 or page_num > src.page_count:
+                # Skip anchors that don't map onto the actual PDF (a
+                # template with a signature marker on a page that was
+                # dropped by a page-range render, for instance).
+                continue
+            page = src[page_num - 1]
+            x0, y0, x1, y1 = anchor["render_bbox"]
+            box_w = max(1.0, x1 - x0)
+            box_h = max(1.0, y1 - y0)
+
+            # Signature area: bottom half of the anchor box (the ink
+            # sits on the signature LINE, which we treat as the
+            # bottom edge of the anchor). The "Signed on" text lands
+            # in a small strip below the anchor.
+            sig_max_w = box_w
+            sig_max_h = max(6.0, box_h * 0.85)
+
+            # Compute the image's aspect ratio to fit width-preserving.
+            from PIL import Image
+            im = Image.open(io.BytesIO(trimmed_png))
+            im_w, im_h = im.size
+            aspect = (im_h / im_w) if im_w else 1.0
+            draw_w = sig_max_w
+            draw_h = draw_w * aspect
+            if draw_h > sig_max_h:
+                draw_h = sig_max_h
+                draw_w = draw_h / aspect if aspect > 0 else sig_max_w
+
+            # Position: ink sits ON the signature line — align the
+            # image's bottom edge with the bottom of the anchor bbox
+            # (which is where a "Signature: ______" line typically
+            # lives after Word→PDF conversion).
+            img_x0 = x0
+            img_y0 = y1 - draw_h
+            img_x1 = img_x0 + draw_w
+            img_y1 = y1
+            page.insert_image(
+                fitz.Rect(img_x0, img_y0, img_x1, img_y1),
+                stream=trimmed_png,
+                keep_proportion=True,
+                overlay=True,
+            )
+
+            # "Signed on 31 July 2026" — sits ~4pt below the signature
+            # line, left-aligned with the anchor.
+            date_y = y1 + 12
+            page.insert_text(
+                (x0, date_y),
+                date_display,
+                fontsize=9.5, fontname="helv", color=(0.15, 0.15, 0.15),
+            )
+            anchors_stamped.append({
+                "page": page_num,
+                "render_bbox": [x0, y0, x1, y1],
+                "image_bbox": [img_x0, img_y0, img_x1, img_y1],
+                "date_text_baseline": date_y,
+            })
+
+        out = io.BytesIO()
+        src.save(out, deflate=True, garbage=3, clean=True)
+
+        stamp_visible_fields = {
+            "signature_wording": "Electronically signed",
+            "signed_on_text": date_display,
+            "signed_at": accepted_at.astimezone(ZoneInfo("Europe/London")).isoformat(),
+            "anchors_stamped": anchors_stamped,
+        }
+        return out.getvalue(), stamp_visible_fields
+    finally:
+        src.close()
+
+
 def _overlay_acceptance_block(
     personalised_bytes: bytes,
     *,
@@ -143,17 +307,13 @@ def _overlay_acceptance_block(
     contract_reference: Optional[str],
     accepted_at: datetime,
 ) -> Tuple[bytes, Dict[str, Any]]:
-    """Return ``(new_pdf_bytes, stamp_visible_fields)``.
-
-    The returned ``stamp_visible_fields`` dict is the exact set of
-    values written onto the PDF stamp — persisted alongside the
-    acceptance record so the DB audit and the on-page stamp are
-    provably from the same signing event. Every caller MUST persist
-    that dict verbatim; do not mutate before storing.
-
-    The source ``personalised_bytes`` buffer is never modified; we
-    open it via ``BytesIO`` and save to a fresh buffer so the R2
-    object for the issued PDF stays byte-for-byte immutable.
+    """LEGACY signature overlay — kept for reference only. New signing
+    flow uses ``_overlay_signature`` which reads its coordinates from
+    the ``[[FRANCHISEE_SIGNATURE_POSITION]]`` marker recorded at
+    issuance time, not from a hard-coded rectangle. This function is
+    unreachable from production code paths after Turn D; it stays so
+    the pytest suite that still exercises the old wording keeps
+    passing while it's rewritten.
     """
     src = fitz.open(stream=io.BytesIO(personalised_bytes), filetype="pdf")
     try:
@@ -412,17 +572,46 @@ def attach(api, db, require_role):
                     "only issued contracts can be accepted."
                 ),
             )
-        # Payload validation — enforce the checkbox + non-empty typed name
+        # Payload validation — enforce the checkbox + signature PNG
         confirmed = bool(payload.get("checkbox_confirmed"))
         if not confirmed:
             raise HTTPException(400, detail="The acceptance checkbox must be ticked.")
-        typed_name = (payload.get("typed_name") or "").strip()
-        if not typed_name:
-            raise HTTPException(400, detail="Please type your full name to accept.")
-        if len(typed_name) > 120:
-            raise HTTPException(400, detail="Typed name is too long (max 120 characters).")
+        # Signature PNG (base64, data URI or raw). Rejected outright
+        # when missing so we never mint a signed PDF without ink on
+        # the page.
+        raw_sig = (payload.get("signature_png_b64") or "").strip()
+        if not raw_sig:
+            raise HTTPException(400, detail="Please draw your signature to sign.")
+        if raw_sig.startswith("data:"):
+            # ``data:image/png;base64,...`` — strip the URI prefix.
+            _, _, raw_sig = raw_sig.partition(",")
+        try:
+            signature_png_bytes = base64.b64decode(raw_sig, validate=False)
+        except Exception:
+            raise HTTPException(400, detail="Signature image is not valid base64.")
+        if not signature_png_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+            raise HTTPException(400, detail="Signature image must be a PNG.")
+        if len(signature_png_bytes) > 500 * 1024:
+            raise HTTPException(413, detail="Signature image is too large (max 500 KB).")
+
         if not c.get("personalised_pdf_r2_key"):
             raise HTTPException(500, detail="Personalised PDF is missing on this contract.")
+
+        # Signature-anchor gate — HARD-BLOCK legacy contracts that
+        # were issued from templates without the
+        # ``[[FRANCHISEE_SIGNATURE_POSITION]]`` marker. Neither text
+        # detection nor the old boxed overlay is used as a fallback.
+        anchors = _find_signature_anchors(c)
+        if not anchors:
+            raise HTTPException(
+                409,
+                detail=(
+                    "This contract was issued before signature-anchor "
+                    "support and cannot be signed electronically. "
+                    "Please contact Creative Mojo to reissue the "
+                    "contract from an updated template."
+                ),
+            )
 
         # Guard against a race — another acceptance may have arrived
         # between the read above and now. head_object is atomic on R2.
@@ -480,16 +669,15 @@ def attach(api, db, require_role):
         accepted_at = _now()
         ip = _pick_ip(request)
         user_agent = request.headers.get("user-agent") or "unknown"
-        signed_bytes, stamp_visible_fields = _overlay_acceptance_block(
+        signed_bytes, stamp_visible_fields = _overlay_signature(
             personalised_bytes,
-            signing_block=signing_block,
-            typed_name=typed_name,
-            organisation=stamp_organisation,
-            contract_reference=ref,
+            anchors=anchors,
+            signature_png_bytes=signature_png_bytes,
             accepted_at=accepted_at,
         )
         signed_sha = hashlib.sha256(signed_bytes).hexdigest()
         signed_size = len(signed_bytes)
+        signature_png_sha = hashlib.sha256(signature_png_bytes).hexdigest()
 
         # Upload — no-overwrite (re-check head_object)
         if fs.head_object(signed_key) is not None:
@@ -513,7 +701,6 @@ def attach(api, db, require_role):
             "franchisee_user_id": user.get("id"),
             "franchisee_email": franchisee_email,
             "franchisee_full_name": franchisee_full_name,
-            "typed_name": typed_name,
             "contract_id": contract_id,
             "contract_reference": ref,
             "issued_pdf_sha256": live_sha,
@@ -523,6 +710,19 @@ def attach(api, db, require_role):
             "user_agent": user_agent,
             "method": "portal.electronic",
             "signed_pdf_sha256": signed_sha,
+            # Drawn signature bundle — the transparent PNG that got
+            # baked into the signed PDF, plus SHAs and anchor metadata
+            # so the DB record and PDF are provably from the same
+            # signing event.
+            "signature_png_b64": base64.b64encode(signature_png_bytes).decode("ascii"),
+            "signature_png_sha256": signature_png_sha,
+            "signature_anchors": anchors,
+            "signer_identity": {
+                "user_id": user.get("id"),
+                "email": franchisee_email,
+                "full_name": franchisee_full_name,
+                "organisation": stamp_organisation,
+            },
             # The exact set of values written onto the stamp on the
             # final page of ``signed-final.pdf``. Persisted verbatim
             # so a legal review can prove the DB record and the PDF

@@ -468,6 +468,50 @@ SEED_MARKERS: List[Dict[str, Any]] = [
             "territory_amendment",
         ],
     },
+    {
+        "code": "FRANCHISEE_SIGNATURE_POSITION",
+        "label": "Franchisee signature — anchor position",
+        "description": (
+            "Zero-visibility anchor marker. Placed in the Word template at "
+            "the exact point where the franchisee's drawn signature should "
+            "land in the signed PDF. During issuance the marker's page + "
+            "bounding box are captured and stored on the contract, and the "
+            "``[[FRANCHISEE_SIGNATURE_POSITION]]`` token is redacted from "
+            "the personalised PDF so nothing visible remains. At sign "
+            "time the drawn signature PNG is scaled to fit the marker's "
+            "width (aspect-preserving) and placed on the signature line, "
+            "with ``Signed on {date}`` immediately underneath. "
+            "Contracts that do NOT contain this marker cannot be signed "
+            "electronically — HQ must reissue from an updated template."
+        ),
+        "value_source": "system_generated",
+        "formula": "signature_anchor",
+        "data_field": "contracts.acceptance_record.signature_png_b64",
+        # Bespoke type — the render engine treats this as an anchor:
+        # redact the token, do not overlay any text, and record the
+        # render_bbox in the report so the accept endpoint can find it.
+        "data_type": "signature_anchor",
+        "format": {
+            "invisible": True,
+            "consumed_at": "acceptance",
+        },
+        "default_presentation": {
+            "wrapping": "no_wrap",
+            "alignment": "left",
+            "min_font_size": 6,
+        },
+        # Multiple occurrences allowed (e.g. one on the franchisee page
+        # and one on the guarantor page) — the accept flow stamps the
+        # drawn signature into every occurrence recorded on the
+        # contract.
+        "repeat_allowed": True,
+        "eligible_contract_types": [
+            "new_franchise",
+            "franchise_renewal",
+            "territory_amendment",
+        ],
+    },
+
 ]
 
 

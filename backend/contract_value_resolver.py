@@ -439,6 +439,14 @@ def resolve_contract_variables(
             ))
             continue
 
+        # Signature-anchor markers are consumed at acceptance, not at
+        # issuance. They carry no value — the render engine redacts
+        # the token and records the bounding box so the accept flow
+        # can stamp the drawn signature into it. Skip the resolver
+        # entirely so we don't 400-block issuance for a "missing" value.
+        if (lib.get("data_type") or "").lower() == "signature_anchor":
+            continue
+
         try:
             rv = _resolve_one(code, lib, contract, franchisee, at, issue_date)
         except _MissingRequired as exc:

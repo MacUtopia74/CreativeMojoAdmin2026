@@ -462,6 +462,37 @@ def render(
             page = doc[page_num - 1]
             for m in by_page.get(page_num, []):
                 code = m.get("code") or ""
+                dtype = (m.get("data_type") or "").lower()
+
+                # Signature anchor: zero-visibility marker. Redact the
+                # token bbox (paint white) so the placeholder text is
+                # NOT present in either the issued or signed PDF, and
+                # record the render_bbox in the report so the accept
+                # endpoint can find where to stamp the drawn signature.
+                # No value_map lookup, no overlay text — the anchor is
+                # consumed at the acceptance step, not at issuance.
+                if dtype == "signature_anchor":
+                    legacy_bbox = m.get("bbox") or []
+                    token_bbox = m.get("token_bbox") or legacy_bbox
+                    render_bbox = m.get("render_bbox") or legacy_bbox
+                    if len(token_bbox) != 4 or len(render_bbox) != 4:
+                        raise RenderError(
+                            f"Signature-anchor marker {code} p{m.get('page')} "
+                            "has bad bbox metadata.",
+                            offenders=[str(m.get("occurrence_id") or code)],
+                        )
+                    page.add_redact_annot(fitz.Rect(*token_bbox), fill=(1, 1, 1))
+                    page.apply_redactions()
+                    report["occurrences"].append({
+                        "code": code,
+                        "page": page_num,
+                        "occurrence_id": m.get("occurrence_id"),
+                        "data_type": "signature_anchor",
+                        "render_bbox": list(render_bbox),
+                        "token_bbox": list(token_bbox),
+                    })
+                    continue
+
                 if code not in values_map or values_map[code] in (None, ""):
                     if strict_missing_values:
                         raise RenderError(

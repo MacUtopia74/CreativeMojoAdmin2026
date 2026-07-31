@@ -11,9 +11,10 @@
 //
 // Both share the same list/detail internals. Only the outer chrome
 // differs (page heading + centred container vs. section card).
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import api, { API_BASE as API, getAccessToken } from "@/lib/api";
 import ContractPdfViewer from "@/components/contracts/ContractPdfViewer";
+import SignatureCanvas from "react-signature-canvas";
 import {
   Loader2, AlertTriangle, CheckCircle2, ExternalLink, FileSignature, Lock,
 } from "lucide-react";
@@ -162,9 +163,12 @@ function ContractDetail({ contract, onClose, onSigned }) {
   const [pdfUrl, setPdfUrl] = useState("");
   const [downloadUrl, setDownloadUrl] = useState("");
   const [checkbox, setCheckbox] = useState(false);
-  const [typedName, setTypedName] = useState("");
   const [signing, setSigning] = useState(false);
   const [err, setErr] = useState("");
+  // Ref to the signature canvas so accept() can read the drawn PNG
+  // on submit without every stroke re-rendering the parent.
+  const sigPadRef = useRef(null);
+  const [sigEmpty, setSigEmpty] = useState(true);
   // Set to true the first time the viewer reports the last page has
   // become visible. Never unset — a signer who scrolls back up is
   // still trusted to have read the contract.
@@ -217,9 +221,22 @@ function ContractDetail({ contract, onClose, onSigned }) {
   async function accept() {
     setErr(""); setSigning(true);
     try {
+      const pad = sigPadRef.current;
+      if (!pad || pad.isEmpty()) {
+        setErr("Please draw your signature to sign.");
+        setSigning(false);
+        return;
+      }
+      // Capture the drawn signature as a transparent PNG data URL.
+      // ``toDataURL()`` on the trimmed canvas returns the full canvas
+      // but signature-canvas exposes ``getTrimmedCanvas()`` which
+      // crops to the ink bounds — keeps the payload small and lines
+      // up perfectly when the server-side scaler crops any remaining
+      // padding.
+      const dataUrl = pad.getTrimmedCanvas().toDataURL("image/png");
       await api.post(`/portal/contracts/${row.id}/accept`, {
         checkbox_confirmed: true,
-        typed_name: typedName.trim(),
+        signature_png_b64: dataUrl,
       });
       // Fetch the fresh contract row (now status=signed) so the modal
       // re-renders with the signed confirmation + signed PDF URL.
@@ -240,19 +257,21 @@ function ContractDetail({ contract, onClose, onSigned }) {
   }
 
   const isSigned = row.status === "signed";
-  const nameLongEnough = typedName.trim().length >= 2;
+  const hasSignatureAnchor = row.has_signature_anchor !== false; // undefined = permissive for legacy list rows; server does the real gate
   // Sign button stays disabled whenever the viewer itself is broken —
   // we can't legitimately claim the signer "read the contract" if
-  // pdfjs never rendered it.
+  // pdfjs never rendered it. Also disabled without a drawn signature
+  // and without a signature anchor on the contract.
   const canAccept =
-    checkbox && nameLongEnough && reachedEnd &&
-    !signing && !viewerBroken &&
+    checkbox && !sigEmpty && reachedEnd &&
+    !signing && !viewerBroken && hasSignatureAnchor &&
     row.status === "issued";
   const lockedReasons = [];
+  if (!hasSignatureAnchor) lockedReasons.push("this contract needs to be reissued by HQ");
   if (viewerBroken) lockedReasons.push("PDF viewer failed — refresh the page");
   if (!reachedEnd) lockedReasons.push("scroll to the final page");
   if (!checkbox) lockedReasons.push("tick the confirmation box");
-  if (!nameLongEnough) lockedReasons.push("type your full name");
+  if (sigEmpty && hasSignatureAnchor) lockedReasons.push("draw your signature");
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-stretch p-2 sm:p-4" data-testid="portal-contract-detail">
@@ -310,12 +329,36 @@ function ContractDetail({ contract, onClose, onSigned }) {
                     Signed on {new Date(row.signed_at).toLocaleString("en-GB")}
                   </div>
                   <div className="text-xs text-emerald-700 mt-1">
-                    Accepted by {row.acceptance_record?.typed_name || "franchisee"}
+                    Accepted by {row.acceptance_record?.signer_identity?.full_name
+                      || row.acceptance_record?.franchisee_full_name
+                      || "franchisee"}
                   </div>
                   <div className="text-xs text-emerald-700 mt-2">
                     The signed PDF above is the immutable record. Download or
                     print it for your files.
                   </div>
+                </div>
+              </div>
+            ) : !hasSignatureAnchor ? (
+              // Legacy contract issued before the
+              // [[FRANCHISEE_SIGNATURE_POSITION]] marker was added to
+              // the template. HARD block — no fallback, no text
+              // detection, no boxed overlay. HQ must reissue.
+              <div
+                className="text-amber-900 bg-amber-50 border border-amber-300 rounded-md p-4 text-sm"
+                data-testid="portal-contract-reissue-required"
+              >
+                <div className="font-semibold mb-1 flex items-center gap-1.5">
+                  <AlertTriangle className="h-4 w-4" />
+                  Contract needs to be reissued
+                </div>
+                <div className="text-xs mt-1 text-amber-800 leading-relaxed">
+                  This contract was issued before our new electronic signature
+                  workflow. It doesn&apos;t include a signature position marker,
+                  so we can&apos;t place your drawn signature on the correct line.
+                  <br/><br/>
+                  Please contact Creative Mojo to have the contract reissued from
+                  an updated template.
                 </div>
               </div>
             ) : (
@@ -324,14 +367,11 @@ function ContractDetail({ contract, onClose, onSigned }) {
                 <p className="text-sm text-stone-600 mb-4">
                   Please read the contract in full — signing is only available
                   once you&apos;ve scrolled to the final page. When you&apos;re
-                  ready, tick the confirmation box, type your full name and
-                  click <em>Accept and sign contract</em>.
+                  ready, tick the confirmation box, draw your signature and click
+                  <em> Accept and sign contract</em>.
                 </p>
 
-                {/* "Reached the end?" progress row — the visible cue
-                    that flips green once the viewer observes the last
-                    page. Sits above the form so it's the first thing
-                    the eye lands on. */}
+                {/* Progress cue */}
                 <div
                   className={`flex items-center gap-2 rounded-md border px-3 py-2 mb-3 text-xs ${
                     reachedEnd
@@ -365,18 +405,48 @@ function ContractDetail({ contract, onClose, onSigned }) {
                   />
                   <span>{ACCEPTANCE_WORDING}</span>
                 </label>
-                <label className={`block text-sm mb-4 ${reachedEnd ? "" : "opacity-50"}`}>
-                  <span className="text-stone-700">Your full name</span>
-                  <input
-                    type="text"
-                    value={typedName}
-                    disabled={!reachedEnd}
-                    onChange={(e) => setTypedName(e.target.value)}
-                    placeholder="Type your full name"
-                    className="w-full mt-1 border rounded-md px-2 py-1.5 text-sm disabled:bg-stone-50"
-                    data-testid="portal-contract-name-input"
-                  />
-                </label>
+
+                {/* Signature pad */}
+                <div className={`mb-4 ${reachedEnd ? "" : "opacity-50 pointer-events-none"}`}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-sm text-stone-700 font-medium">
+                      Draw your signature
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        sigPadRef.current?.clear();
+                        setSigEmpty(true);
+                      }}
+                      className="text-xs text-stone-500 hover:text-stone-800 underline"
+                      data-testid="portal-contract-signature-clear-btn"
+                    >
+                      Clear signature
+                    </button>
+                  </div>
+                  <div
+                    className="rounded-md border border-stone-300 bg-white touch-none"
+                    // ``touch-none`` disables browser scroll gestures
+                    // on touch devices so a signer can drag their
+                    // finger without accidentally scrolling the panel.
+                    data-testid="portal-contract-signature-pad"
+                  >
+                    <SignatureCanvas
+                      ref={sigPadRef}
+                      penColor="#0f172a"
+                      onEnd={() => setSigEmpty(!!sigPadRef.current?.isEmpty())}
+                      canvasProps={{
+                        width: 380,
+                        height: 140,
+                        className: "w-full h-[140px] rounded-md",
+                      }}
+                    />
+                  </div>
+                  <div className="text-[11px] text-stone-500 mt-1">
+                    Works with mouse, trackpad, touchscreen and stylus.
+                  </div>
+                </div>
+
                 {err && (
                   <div className="mb-3 text-xs bg-red-50 border border-red-200 text-red-800 rounded p-2 flex items-start gap-1.5"
                        data-testid="portal-contract-sign-error">
