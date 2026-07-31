@@ -52,6 +52,13 @@ CONTRACT_STATUSES = {
     "issued",
     "signed",
     "superseded",
+    # ``revoked`` — HQ pulled back an issued contract that the
+    # franchisee never signed (rejected, needs changes, etc). Stays in
+    # the DB for audit but is hidden from the franchisee portal so a
+    # stale document doesn't linger in front of them. Only ``issued``
+    # contracts can transition here — signed contracts are legal
+    # records and must be preserved as-is.
+    "revoked",
     "retired",
 }
 

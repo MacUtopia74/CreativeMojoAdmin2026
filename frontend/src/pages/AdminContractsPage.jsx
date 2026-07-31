@@ -15,6 +15,7 @@ const STATUS_STYLES = {
   issued:        { label: "Issued",      cls: "bg-emerald-50 text-emerald-800 border-emerald-300" },
   signed:        { label: "Signed",      cls: "bg-sky-50 text-sky-800 border-sky-300" },
   superseded:    { label: "Superseded",  cls: "bg-stone-50 text-stone-500 border-stone-200" },
+  revoked:       { label: "Revoked",     cls: "bg-rose-50 text-rose-800 border-rose-300" },
   retired:       { label: "Retired",     cls: "bg-stone-50 text-stone-400 border-stone-200" },
 };
 
@@ -121,6 +122,26 @@ export default function AdminContractsPage() {
     } catch (e) {
       alert(`Download failed: ${e?.response?.data?.detail || e.message}`);
     }
+  }
+
+  async function revokeIssued(cid) {
+    // Two-step confirmation — a stern default and a required reason so
+    // admins can't blow away a franchisee's live contract in a click.
+    const reason = window.prompt(
+      "Revoke this issued contract?\n\n" +
+      "The franchisee will no longer see it in their portal. This is " +
+      "for contracts they've rejected or asked to change — signed " +
+      "contracts can't be revoked.\n\n" +
+      "Please give a short reason (visible in the audit trail):",
+    );
+    if (reason === null) return; // user cancelled
+    setBusyRow(cid);
+    try {
+      await api.post(`/admin/contracts/${cid}/revoke`, { reason: reason.trim() });
+      await load();
+    } catch (e) {
+      alert(`Revoke failed: ${e?.response?.data?.detail || e.message}`);
+    } finally { setBusyRow(null); }
   }
 
   function openUploadPicker(cid) {
@@ -254,6 +275,28 @@ export default function AdminContractsPage() {
                             {isBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
                             Upload signed
                           </button>
+                        )}
+                        {c.status === "issued" && (
+                          <button
+                            onClick={() => revokeIssued(c.id)}
+                            disabled={isBusy}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs border rounded bg-white text-rose-700 border-rose-300 hover:bg-rose-50 disabled:opacity-50"
+                            data-testid={`contract-revoke-btn-${c.id}`}
+                            title="Withdraw this issued contract from the franchisee's portal"
+                          >
+                            {isBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}
+                            Revoke
+                          </button>
+                        )}
+                        {c.status === "revoked" && (
+                          <span
+                            className="text-xs text-rose-700"
+                            data-testid={`contract-revoked-note-${c.id}`}
+                            title={c.revoke_reason || ""}
+                          >
+                            Revoked {c.revoked_at ? fmt(c.revoked_at) : ""}
+                            {c.revoke_reason ? ` — ${c.revoke_reason}` : ""}
+                          </span>
                         )}
                         {(c.status === "signed") && c.signed_pdf_r2_key && (
                           <button

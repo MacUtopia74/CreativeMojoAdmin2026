@@ -516,6 +516,92 @@ def attach(api, db, require_role):
         items = [_strip_mongo(d) async for d in cur]
         return {"items": items, "total": len(items)}
 
+    @api.post("/admin/contracts/{contract_id}/revoke")
+    async def revoke_contract(
+        contract_id: str,
+        payload: Optional[Dict[str, Any]] = None,
+        user: dict = Depends(require_role("admin")),
+    ):
+        """Withdraw an issued contract that the franchisee never
+        signed — used when they've rejected it or asked for a change
+        so it must not stay on their portal.
+
+        Only ``issued`` contracts are eligible. Signed contracts are
+        legal records and must never be revoked; a signed contract
+        can only be superseded by issuing a new one. Drafts should be
+        deleted outright via the existing DELETE endpoint.
+
+        The reason is captured verbatim on the contract so HQ can see
+        why each revocation happened without diving into the audit
+        log. The event is also emitted to the audit collection so a
+        full timeline is preserved.
+        """
+        payload = payload or {}
+        reason = (payload.get("reason") or "").strip()
+        if len(reason) > 500:
+            raise HTTPException(400, detail="Revocation reason is too long (max 500 characters).")
+
+        contract = await db[CONTRACTS_COLLECTION].find_one({"id": contract_id})
+        if not contract:
+            raise HTTPException(404, detail="Contract not found.")
+
+        status = contract.get("status")
+        if status == "signed":
+            raise HTTPException(
+                409,
+                detail=(
+                    "Signed contracts are legal records and can't be revoked. "
+                    "Issue a superseding contract if this one needs to change."
+                ),
+            )
+        if status == "draft":
+            raise HTTPException(
+                409,
+                detail="Drafts can't be revoked — delete the draft instead.",
+            )
+        if status == "revoked":
+            raise HTTPException(409, detail="This contract has already been revoked.")
+        if status != "issued":
+            raise HTTPException(
+                409,
+                detail=(
+                    f"Only 'issued' contracts can be revoked "
+                    f"(this one is '{status}')."
+                ),
+            )
+
+        now = _now_iso()
+        actor = user.get("email") or "admin"
+        # CAS guard — refuse the update if another admin flipped the
+        # status between our read and this write. Better a 409 than
+        # silently overwriting a race-winner state.
+        result = await db[CONTRACTS_COLLECTION].update_one(
+            {"id": contract_id, "status": "issued"},
+            {"$set": {
+                "status": "revoked",
+                "revoked_at": now,
+                "revoked_by": actor,
+                "revoke_reason": reason or None,
+                "updated_at": now,
+                "updated_by": actor,
+            }},
+        )
+        if result.modified_count != 1:
+            raise HTTPException(
+                409,
+                detail=(
+                    "Revoke failed — the contract's status changed "
+                    "since you loaded the page. Refresh and try again."
+                ),
+            )
+        await _emit_audit(
+            db, contract_id, "contract.revoked", actor,
+            {"reason": reason or None},
+        )
+        updated = await db[CONTRACTS_COLLECTION].find_one({"id": contract_id})
+        return _strip_mongo(updated)
+
+
     @api.post("/admin/contracts/{contract_id}/upload-signed")
     async def upload_signed_pdf(
         contract_id: str,
