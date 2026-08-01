@@ -220,23 +220,52 @@ function ContractDetail({ contract, onClose, onSigned }) {
 
   async function accept() {
     setErr(""); setSigning(true);
+
+    // --- 1. Signature extraction ------------------------------------
+    // ``getTrimmedCanvas()`` was blowing up in the production bundle
+    // because the ``trim-canvas`` dependency is imported lazily and
+    // some webpack/CRACO chunk-splits mangle its export path (the
+    // "m7 is not a function" runtime error). ``getCanvas()`` is on
+    // the SignatureCanvas ref itself — always defined, no lazy dep,
+    // no bundler surprises. The backend already crops transparent
+    // padding with PIL before scaling, so sending the full transparent
+    // canvas is not just safe but preferred.
+    let signaturePngB64;
     try {
       const pad = sigPadRef.current;
-      if (!pad || pad.isEmpty()) {
+      if (!pad || pad.isEmpty?.()) {
         setErr("Please draw your signature to sign.");
         setSigning(false);
         return;
       }
-      // Capture the drawn signature as a transparent PNG data URL.
-      // ``toDataURL()`` on the trimmed canvas returns the full canvas
-      // but signature-canvas exposes ``getTrimmedCanvas()`` which
-      // crops to the ink bounds — keeps the payload small and lines
-      // up perfectly when the server-side scaler crops any remaining
-      // padding.
-      const dataUrl = pad.getTrimmedCanvas().toDataURL("image/png");
+      const canvas = pad.getCanvas?.();
+      if (!canvas || typeof canvas.toDataURL !== "function") {
+        throw new Error(
+          "Signature pad canvas is not available. Please refresh the page and try again.",
+        );
+      }
+      signaturePngB64 = canvas.toDataURL("image/png");
+      if (!signaturePngB64 || !signaturePngB64.startsWith("data:image/")) {
+        throw new Error("Signature could not be captured. Please draw again and retry.");
+      }
+    } catch (extractErr) {
+      console.error(
+        "[PortalContract accept] signature extraction failed",
+        extractErr?.stack || extractErr,
+      );
+      setErr(
+        extractErr?.message ||
+        "Could not capture your signature. Please refresh the page and draw it again.",
+      );
+      setSigning(false);
+      return;
+    }
+
+    // --- 2. Upload / signing request --------------------------------
+    try {
       await api.post(`/portal/contracts/${row.id}/accept`, {
         checkbox_confirmed: true,
-        signature_png_b64: dataUrl,
+        signature_png_b64: signaturePngB64,
       });
       // Fetch the fresh contract row (now status=signed) so the modal
       // re-renders with the signed confirmation + signed PDF URL.
@@ -249,10 +278,20 @@ function ContractDetail({ contract, onClose, onSigned }) {
       setRow(updated);
       // Notify parent so its list refreshes in the background.
       onSigned?.(updated);
-    } catch (e) {
+    } catch (uploadErr) {
+      console.error(
+        "[PortalContract accept] signing request failed",
+        uploadErr?.response?.status,
+        uploadErr?.response?.data,
+        uploadErr?.stack || uploadErr,
+      );
       // Keep the modal open, surface the error, allow retry — spec
       // requirement. No modal close, no toast.
-      setErr(e?.response?.data?.detail || e.message || "Signing failed. Please try again.");
+      setErr(
+        uploadErr?.response?.data?.detail ||
+        uploadErr?.message ||
+        "Signing failed. Please try again.",
+      );
     } finally { setSigning(false); }
   }
 
