@@ -6,12 +6,14 @@ import LinkExistingFranchiseeModal from "@/components/contacts/LinkExistingFranc
 import MergeContactsModal from "@/components/contacts/MergeContactsModal";
 import DuplicatesModal from "@/components/contacts/DuplicatesModal";
 import ContactPostcodeMapModal from "@/components/contacts/ContactPostcodeMapModal";
-import { Search, AlertCircle, LayoutList, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, ChevronsLeft, ChevronsRight, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus, Plus, Sparkles, Upload, FileText, CheckCircle2, Send, Award, Target, Link2, GitMerge, Home, Package, Flame, Clock, Pencil, RefreshCw } from "lucide-react";
+import { Search, AlertCircle, Kanban, X, Mail, Phone, MapPin, Calendar, Trash2, ArrowUpCircle, ArrowDownCircle, Loader2, Users, Briefcase, ArrowRightLeft, ChevronDown, ChevronsLeft, ChevronsRight, CheckSquare, Square, Instagram, Facebook, Twitter, Globe, HelpCircle, UserPlus, Plus, Sparkles, Upload, FileText, CheckCircle2, Send, Award, Target, Link2, GitMerge, Home, Package, Flame, Clock, Pencil, RefreshCw } from "lucide-react";
 import ReplyWithTemplateModal from "@/components/ReplyWithTemplateModal";
 import EmailTimeline from "@/components/EmailTimeline";
 import TerritoryMap from "@/components/territory/TerritoryMap";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import LeadTemperatureBadge from "@/components/LeadTemperatureBadge";
+import SalesPipelineTabsView from "@/components/pipeline/SalesPipelineTabsView";
+import { Rows3 } from "lucide-react";
 
 const STAGES = [
   { key: "new", label: "New", color: "bg-stone-100 text-stone-700 border-stone-300", barColor: "bg-stone-400" },
@@ -2363,7 +2365,7 @@ export default function ContactsPage() {
           {isPipeline && (
             <div className="flex border border-stone-300 rounded-lg overflow-hidden">
               <button onClick={() => setView("list")} data-testid="view-list" className={`px-3 py-2 text-xs font-bold uppercase tracking-wider transition-colors flex items-center gap-1.5 ${view === "list" ? "bg-stone-950 text-white" : "bg-white text-stone-700 hover:bg-stone-50"}`}>
-                <LayoutList className="w-3 h-3" /> List
+                <Rows3 className="w-3 h-3" /> Tabs
               </button>
               <button onClick={() => setView("pipeline")} data-testid="view-pipeline" className={`px-3 py-2 text-xs font-bold uppercase tracking-wider transition-colors flex items-center gap-1.5 ${view === "pipeline" ? "bg-stone-950 text-white" : "bg-white text-stone-700 hover:bg-stone-50"}`}>
                 <Kanban className="w-3 h-3" /> Pipeline
@@ -2805,6 +2807,30 @@ export default function ContactsPage() {
             })}
           </div>
         ) : (() => {
+          // Sales-Pipeline TABS view — shown when the user picks the
+          // "Tabs" toggle. Renders four full-width panels (NEW /
+          // CONTACTED / FOLLOW-UP DUE / INTERESTED) with expandable
+          // rows for at-a-glance actioning. Dormant + Lost remain on
+          // the kanban only. See SalesPipelineTabsView.jsx for the
+          // full design rationale.
+          if (isPipeline && view === "list") {
+            return (
+              <SalesPipelineTabsView
+                contacts={listItems}
+                tempMap={tempMap}
+                onOpenContact={(c) => openContact(c)}
+                onReplyContact={(c) => setKanbanReplyContact(c)}
+                onContactUpdated={(id, patch) => {
+                  // Merge the patch into local state so the row's chip /
+                  // notes / checklist stay in sync without a full reload.
+                  setData((d) => ({
+                    ...d,
+                    items: d.items.map((x) => x.id === id ? { ...x, ...patch } : x),
+                  }));
+                }}
+              />
+            );
+          }
           // Common table block reused by both layouts — full-width for
           // most tabs, wrapped inside a ResizablePanel for care_home.
           const tableView = (
@@ -3252,4 +3278,9 @@ function CareHomeMapPanel({ filter, onFilterChange, pins, allPins, loading, erro
     </div>
   );
 }
+
+// Named re-exports so the pipeline Tabs view (and any future consumer)
+// can reuse the same widgets instead of duplicating the checklist +
+// notes save logic. Keeps the source of truth in this file.
+export { InterestedChecklist, AdminNotesEditor };
 

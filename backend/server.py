@@ -4890,6 +4890,33 @@ async def list_contacts(
     else:
         items.sort(key=lambda x: _date_to_epoch(x.get("date") or x.get("date_added")), reverse=True)
 
+    # Enrich pipeline items with an ``email_sends_count`` derived from
+    # the ``email_sends`` collection so the new tabbed pipeline view
+    # can render an accurate "Emailed / Not emailed" chip without each
+    # row making its own network call. Single aggregation query for
+    # every visible contact — no per-row roundtrips.
+    if tab == "pipeline" and items:
+        visible_ids = [i["id"] for i in items[:limit] if i.get("id")]
+        if visible_ids:
+            pipe = [
+                {"$match": {"contact_id": {"$in": visible_ids}}},
+                {"$group": {
+                    "_id": "$contact_id",
+                    "n": {"$sum": 1},
+                    "last_at": {"$max": "$sent_at"},
+                }},
+            ]
+            counts = {
+                r["_id"]: {"n": int(r.get("n") or 0), "last_at": r.get("last_at")}
+                async for r in db.email_sends.aggregate(pipe)
+                if r.get("_id")
+            }
+            for i in items:
+                bucket = counts.get(i.get("id")) or {}
+                i["email_sends_count"] = bucket.get("n", 0)
+                if bucket.get("last_at"):
+                    i["email_sends_last_at"] = bucket["last_at"]
+
     return {"items": items[:limit], "total": len(items)}
 
 

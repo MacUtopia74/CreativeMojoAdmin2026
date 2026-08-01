@@ -63,6 +63,15 @@ Bespoke admin system for a franchise business consolidating Airtable, FileCamp, 
 - **Frontend:** `resolveAndIssueContract` returns `{kind: "render_invariant_failed", failedInvariant, markerCode, page, bbox, renderJobId, ...}`. New `<RenderErrorModal>` on AdminContractsPage shows the invariant, marker, page, bbox, template + render job id and a human-friendly copy line keyed off `failed_invariant` (e.g. "Issue failed because the signature anchor could not be located in the rendered PDF. Please check the marker placement in the template."). Browser `alert()` no longer used for these classes of failure.
 - **Belt-and-braces guard:** if template library declares `signature_anchor` but render_report has zero anchor occurrences (should not happen after the fix), return `failed_invariant: "signature_anchor_not_persisted"` with the specific message + log the full context.
 
+### 2026-08-01 — Sales Pipeline: Tabbed list view
+- New `<SalesPipelineTabsView>` (in `src/components/pipeline/`) replaces the flat list on the Sales Pipeline tab. Four full-width tabs: NEW / CONTACTED / FOLLOW-UP DUE / INTERESTED. Dormant + Lost stay on the kanban only (per user pref).
+- LIST toggle renamed to **TABS** with a `Rows3` icon; internal state key kept as `"list"` to avoid churn on saved recentSearches.
+- Row layout matches the mockup: name + establishment + email, days-in-stage, postcode, temperature flame with band label, and an **Emailed / Not emailed** chip (question 4b). Row expands in place to reveal Summary / Checklist / Activity / Notes side-by-side plus quick-reply, reply-with-template, and view-correspondence action buttons.
+- Panels reuse the existing widgets: `InterestedChecklist` (checklist gated to `qualified` rows with a helper hint elsewhere), `EmailTimeline` inside a scrollable Activity panel, and `AdminNotesEditor` (which persists to the existing `admin_notes` field — no schema change).
+- **Backend:** `/api/contacts?tab=pipeline` now aggregates `email_sends_count` (+ `email_sends_last_at`) per visible contact via a single `$group` on `email_sends`, so the Emailed/Not-emailed chip is accurate without per-row network calls.
+- Named re-exports `InterestedChecklist` and `AdminNotesEditor` added at the bottom of `ContactsPage.js` so the tabs view uses the exact same widgets as the drawer (single source of truth).
+- Verified live on preview: tabs render with real counts, expanded row shows all 4 panels correctly, and Notes / Checklist writes flow back through the drawer's PATCH endpoints.
+
 ### 2026-08-01 — Fix: portal signature submission "m7 is not a function"
 - **Root cause:** `getTrimmedCanvas()` from `react-signature-canvas` bundles the `trim-canvas` helper lazily; the production CRACO chunk-split mangles the export path so the reference resolves to an undefined minified name (`m7`) at runtime.
 - **Fix:** `PortalContractsPage.jsx::accept()` now uses `sigPadRef.current.getCanvas().toDataURL("image/png")` — a direct property on the ref, no lazy dep. Sends the full transparent canvas; the backend's existing `_trim_png_padding` (PIL alpha bbox crop) handles the padding.
