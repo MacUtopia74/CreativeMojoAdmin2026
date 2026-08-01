@@ -39,11 +39,35 @@ WATERMARK_TEXT = "PREVIEW - NOT FOR ISSUE"
 class RenderError(Exception):
     """Raised by the engine when a strict-mode invariant fails —
     overflow, missing value, residual token, or hyperlink without
-    a URL. The caller should abort and NOT persist any output."""
+    a URL. The caller should abort and NOT persist any output.
 
-    def __init__(self, message: str, *, offenders: Optional[List[str]] = None):
+    ``invariant`` is a short machine-readable identifier for the
+    specific check that fired (e.g. ``"missing_value"``,
+    ``"signature_anchor_bad_bbox"``, ``"residual_tokens"``,
+    ``"overflow"``, ``"hyperlink_missing_url"``, ``"unknown_data_type"``).
+    ``marker_code`` / ``page`` / ``bbox`` describe the offending
+    occurrence when applicable (may be ``None`` for whole-document
+    invariants like ``residual_tokens``).
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        offenders: Optional[List[str]] = None,
+        invariant: str = "unspecified",
+        marker_code: Optional[str] = None,
+        page: Optional[int] = None,
+        bbox: Optional[List[float]] = None,
+        context: Optional[Dict[str, Any]] = None,
+    ):
         super().__init__(message)
         self.offenders = offenders or []
+        self.invariant = invariant
+        self.marker_code = marker_code
+        self.page = page
+        self.bbox = list(bbox) if bbox else None
+        self.context = context or {}
 
 
 # ---------------------------------------------------------------------------
@@ -100,6 +124,10 @@ def _write_string_value(
         raise RenderError(
             f"Marker {marker.get('code')} has bad bbox metadata.",
             offenders=[str(marker.get('occurrence_id') or marker.get('code'))],
+            invariant="bad_bbox_metadata",
+            marker_code=marker.get("code"),
+            page=marker.get("page"),
+            bbox=render_bbox or token_bbox,
         )
     redact_rect = fitz.Rect(*token_bbox)
     overlay_rect = fitz.Rect(*render_bbox)
@@ -212,6 +240,11 @@ def _write_string_value(
             "value did not fit at min_font_size. Fix render_bbox or "
             "shorten the value.",
             offenders=[str(marker.get('occurrence_id') or marker.get('code'))],
+            invariant="overflow",
+            marker_code=marker.get("code"),
+            page=marker.get("page"),
+            bbox=render_bbox,
+            context={"value_preview": (value or "")[:60], "min_font_size": min_size},
         )
 
     return {
@@ -251,6 +284,10 @@ def _write_hyperlink_value(
         raise RenderError(
             f"Hyperlink marker {marker.get('code')} has an empty URL.",
             offenders=[str(marker.get('occurrence_id') or marker.get('code'))],
+            invariant="hyperlink_missing_url",
+            marker_code=marker.get("code"),
+            page=marker.get("page"),
+            bbox=marker.get("render_bbox") or marker.get("bbox"),
         )
 
     legacy_bbox = marker.get("bbox") or []
@@ -259,6 +296,10 @@ def _write_hyperlink_value(
     if len(token_bbox) != 4 or len(render_bbox) != 4:
         raise RenderError(
             f"Hyperlink marker {marker.get('code')} has bad bbox metadata.",
+            invariant="bad_bbox_metadata",
+            marker_code=marker.get("code"),
+            page=marker.get("page"),
+            bbox=render_bbox or token_bbox,
         )
     redact_rect = fitz.Rect(*token_bbox)
     overlay_rect = fitz.Rect(*render_bbox)
@@ -305,6 +346,11 @@ def _write_hyperlink_value(
                 f"Hyperlink '{display}' overflows render_bbox for "
                 f"{marker.get('code')} p{marker.get('page')}.",
                 offenders=[str(marker.get('occurrence_id') or marker.get('code'))],
+                invariant="hyperlink_overflow",
+                marker_code=marker.get("code"),
+                page=marker.get("page"),
+                bbox=marker.get("render_bbox") or marker.get("bbox"),
+                context={"display": display},
             )
         current = min_size
 
@@ -480,6 +526,10 @@ def render(
                             f"Signature-anchor marker {code} p{m.get('page')} "
                             "has bad bbox metadata.",
                             offenders=[str(m.get("occurrence_id") or code)],
+                            invariant="signature_anchor_bad_bbox",
+                            marker_code=code,
+                            page=m.get("page"),
+                            bbox=render_bbox or token_bbox,
                         )
                     page.add_redact_annot(fitz.Rect(*token_bbox), fill=(1, 1, 1))
                     page.apply_redactions()
@@ -499,6 +549,21 @@ def render(
                             f"Marker {code} p{m.get('page')} has no resolved value "
                             f"in the values_map. Issuance is blocked.",
                             offenders=[str(m.get("occurrence_id") or code)],
+                            invariant="missing_value",
+                            marker_code=code,
+                            page=m.get("page"),
+                            bbox=m.get("render_bbox") or m.get("bbox"),
+                            context={
+                                "declared_data_type": dtype or None,
+                                "hint": (
+                                    "Positional-only markers (signature_anchor) "
+                                    "must have data_type set on the marker "
+                                    "passed to the render engine — the library "
+                                    "value is not consulted here. Callers must "
+                                    "enrich template.markers[*] with the library "
+                                    "data_type before calling render()."
+                                ),
+                            },
                         )
                     # Preview: skip silently (caller uses synthetic default upstream).
                     continue
@@ -572,6 +637,8 @@ def render(
         raise RenderError(
             f"{report['residual_token_count']} residual `[[` tokens remain "
             "in the output — some markers were not redacted cleanly.",
+            invariant="residual_tokens",
+            context={"residual_token_count": report["residual_token_count"]},
         )
 
     report["byte_size"] = len(pdf_bytes)

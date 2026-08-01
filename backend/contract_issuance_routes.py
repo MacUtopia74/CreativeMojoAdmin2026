@@ -283,10 +283,27 @@ def attach(api, db, require_role):
         )
 
         # ---- Render ---------------------------------------------------
+        # Enrich each marker with ``data_type`` from the library BEFORE
+        # calling render. Template.markers[*] stores data_type=None; the
+        # library is authoritative (mirrors what _all_marker_codes does).
+        # Without this, the render engine's ``signature_anchor`` branch
+        # never fires and positional-only markers try to look up a
+        # value in values_map (which correctly skipped them), hitting
+        # the ``missing_value`` invariant.
+        markers_for_render: List[Dict[str, Any]] = []
+        for _m in markers:
+            _code = _m.get("code")
+            _lib = library_by_code.get(_code) if _code else None
+            if _lib and (_lib.get("data_type") is not None) and (_m.get("data_type") is None):
+                markers_for_render.append({**_m, "data_type": _lib.get("data_type")})
+            else:
+                markers_for_render.append(_m)
+
+        render_job_id = f"render_{contract_id[:8]}_{int(datetime.now(timezone.utc).timestamp())}"
         try:
             personalised_bytes, render_report = engine.render(
                 source_bytes,
-                markers,
+                markers_for_render,
                 values_map,
                 mode="issuance",
                 template_name=template.get("name") or "template",
@@ -297,16 +314,94 @@ def attach(api, db, require_role):
                 {"id": contract_id},
                 {"$set": {"status": "draft", "updated_at": _now_iso()}},
             )
+            invariant = getattr(exc, "invariant", "unspecified")
+            marker_code = getattr(exc, "marker_code", None)
+            page = getattr(exc, "page", None)
+            bbox = getattr(exc, "bbox", None)
+            render_context = getattr(exc, "context", None) or {}
+
+            # Human-friendly copy per invariant — the admin UI keys off
+            # ``reason_code`` to pick a message; ``message`` is a safe
+            # fallback for older clients.
+            humanised = {
+                "signature_anchor_bad_bbox": (
+                    "Issue failed because the signature anchor could not "
+                    "be located in the rendered PDF. Please check the "
+                    "[[FRANCHISEE_SIGNATURE_POSITION]] marker placement "
+                    "in the template."
+                ),
+                "missing_value": (
+                    "Issue failed because a marker on the template has "
+                    "no resolved value. Refresh the contract variables "
+                    "or check the template markers."
+                ),
+                "overflow": (
+                    "Issue failed because a value did not fit inside "
+                    "its render box, even at minimum font size. Widen "
+                    "the marker's render_bbox or shorten the value."
+                ),
+                "hyperlink_missing_url": (
+                    "Issue failed because a hyperlink marker has no URL. "
+                    "Set a URL on the marker before issuing."
+                ),
+                "hyperlink_overflow": (
+                    "Issue failed because a hyperlink's display text "
+                    "does not fit its render box. Shorten the display "
+                    "text or widen the render_bbox."
+                ),
+                "bad_bbox_metadata": (
+                    "Issue failed because a marker has missing or "
+                    "malformed bounding-box metadata. Re-detect the "
+                    "marker in the template editor."
+                ),
+                "residual_tokens": (
+                    "Issue failed because one or more [[MARKER]] tokens "
+                    "remained visible in the output PDF. Check for "
+                    "overlapping markers or missing library entries."
+                ),
+            }.get(invariant, "Issue failed at the rendering stage.")
+
+            # Log the full detail server-side so ops can trace the exact
+            # invariant against the contract ID. Also include the
+            # traceback for genuinely unexpected failures.
+            logger.error(
+                "Contract %s (template %s v%s) render aborted — "
+                "invariant=%s marker=%s page=%s bbox=%s render_job_id=%s ctx=%s",
+                contract_id, template.get("id"), template_version,
+                invariant, marker_code, page, bbox, render_job_id, render_context,
+                exc_info=True,
+            )
             await _emit_audit(
                 db, contract_id, "contract.issue.aborted", user.get("email") or "admin",
-                {"reason": str(exc), "offenders": exc.offenders},
+                {
+                    "reason": str(exc),
+                    "reason_code": "render_invariant_failed",
+                    "failed_invariant": invariant,
+                    "marker_code": marker_code,
+                    "page": page,
+                    "bbox": bbox,
+                    "render_job_id": render_job_id,
+                    "template_id": template.get("id"),
+                    "template_version": template_version,
+                    "offenders": exc.offenders,
+                    "context": render_context,
+                },
             )
             raise HTTPException(
                 422,
                 detail={
-                    "message": "Render engine hard-failed under issuance-mode invariants.",
-                    "reason": str(exc),
+                    "message": humanised,
+                    "reason_code": "render_invariant_failed",
+                    "failed_invariant": invariant,
+                    "marker_code": marker_code,
+                    "page": page,
+                    "bbox": bbox,
+                    "template_id": template.get("id"),
+                    "template_version": template_version,
+                    "render_job_id": render_job_id,
                     "offenders": exc.offenders,
+                    "raw_error": str(exc),
+                    "context": render_context,
                 },
             )
 

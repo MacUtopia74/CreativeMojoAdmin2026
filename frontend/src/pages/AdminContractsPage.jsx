@@ -51,6 +51,11 @@ export default function AdminContractsPage() {
   // the exact missing marker codes and a "Refresh and issue" button
   // instead of a browser alert() that leaks API instructions.
   const [refreshPrompt, setRefreshPrompt] = useState(null);
+  // Modal state for render-engine invariant failures — surfaces the
+  // exact failed_invariant, marker_code, page + render_job_id so the
+  // admin can act on the specific problem in the template rather than
+  // guessing from a generic error string.
+  const [renderErrorPrompt, setRenderErrorPrompt] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true); setErr("");
@@ -89,6 +94,20 @@ export default function AdminContractsPage() {
           setRefreshPrompt({
             contractId: cid,
             missingCodes: result.missingMarkerCodes || [],
+            message: result.message,
+          });
+          return;
+        }
+        if (result.kind === "render_invariant_failed") {
+          setRenderErrorPrompt({
+            contractId: cid,
+            failedInvariant: result.failedInvariant,
+            markerCode: result.markerCode,
+            page: result.page,
+            bbox: result.bbox,
+            renderJobId: result.renderJobId,
+            templateId: result.templateId,
+            templateVersion: result.templateVersion,
             message: result.message,
           });
           return;
@@ -417,6 +436,94 @@ export default function AdminContractsPage() {
           onConfirm={confirmRefreshAndIssue}
         />
       )}
+
+      {renderErrorPrompt && (
+        <RenderErrorModal
+          detail={renderErrorPrompt}
+          onClose={() => setRenderErrorPrompt(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function RenderErrorModal({ detail, onClose }) {
+  const {
+    failedInvariant, markerCode, page, bbox, renderJobId,
+    templateId, templateVersion, message,
+  } = detail;
+  return (
+    <div
+      className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+      data-testid="render-error-modal"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start gap-3">
+          <div className="shrink-0 mt-0.5">
+            <AlertTriangle className="h-5 w-5 text-rose-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-lg font-semibold text-stone-900">Contract could not be issued</h2>
+            <p className="mt-2 text-sm text-stone-700" data-testid="render-error-message">{message}</p>
+            <dl className="mt-4 text-xs text-stone-600 grid grid-cols-3 gap-y-1 gap-x-3">
+              {failedInvariant && (
+                <>
+                  <dt className="font-medium">Reason</dt>
+                  <dd className="col-span-2 font-mono text-stone-800" data-testid="render-error-invariant">{failedInvariant}</dd>
+                </>
+              )}
+              {markerCode && (
+                <>
+                  <dt className="font-medium">Marker</dt>
+                  <dd className="col-span-2 font-mono text-stone-800" data-testid="render-error-marker">{markerCode}</dd>
+                </>
+              )}
+              {page != null && (
+                <>
+                  <dt className="font-medium">Page</dt>
+                  <dd className="col-span-2 font-mono text-stone-800">{page}</dd>
+                </>
+              )}
+              {Array.isArray(bbox) && bbox.length === 4 && (
+                <>
+                  <dt className="font-medium">Bbox</dt>
+                  <dd className="col-span-2 font-mono text-stone-800 truncate">
+                    [{bbox.map((n) => Number(n).toFixed(1)).join(", ")}]
+                  </dd>
+                </>
+              )}
+              {templateId && (
+                <>
+                  <dt className="font-medium">Template</dt>
+                  <dd className="col-span-2 font-mono text-stone-800 truncate">
+                    {templateId}{templateVersion ? ` v${templateVersion}` : ""}
+                  </dd>
+                </>
+              )}
+              {renderJobId && (
+                <>
+                  <dt className="font-medium">Job</dt>
+                  <dd className="col-span-2 font-mono text-stone-800 truncate">{renderJobId}</dd>
+                </>
+              )}
+            </dl>
+          </div>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3 py-1.5 text-sm border border-stone-300 rounded bg-white hover:bg-stone-50"
+            data-testid="render-error-close"
+          >
+            Close
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

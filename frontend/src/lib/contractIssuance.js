@@ -137,6 +137,23 @@ export async function resolveAndIssueContract(contractId, { hasResolvedVariables
           "Its contract details need refreshing before it can be issued.",
       };
     }
+    // Render-engine invariant failure — surface the exact invariant,
+    // marker code, page and bbox so the admin can see what to fix in
+    // the template rather than a generic "hard-failed" message.
+    if (d && typeof d === "object" && d.reason_code === "render_invariant_failed") {
+      return {
+        ok: false,
+        kind: "render_invariant_failed",
+        failedInvariant: d.failed_invariant || "unspecified",
+        markerCode: d.marker_code || null,
+        page: d.page || null,
+        bbox: Array.isArray(d.bbox) ? d.bbox : null,
+        renderJobId: d.render_job_id || null,
+        templateId: d.template_id || null,
+        templateVersion: d.template_version || null,
+        message: d.message || "Issue failed at the rendering stage.",
+      };
+    }
     const raw = typeof d === "string" ? d : (d?.message || JSON.stringify(d || e.message));
     return { ok: false, message: `Issue failed: ${raw}` };
   }
