@@ -416,6 +416,74 @@ def attach(api, db, require_role):
         output_sha = hashlib.sha256(personalised_bytes).hexdigest()
         byte_size = len(personalised_bytes)
 
+        # ---- Explicit anchor-detection log --------------------------
+        # Everything below relies on ``render_report.occurrences[*]``
+        # carrying at least one ``data_type == "signature_anchor"``
+        # occurrence for templates that use drawn signatures. Log the
+        # detected anchors (with the exact page + bboxes that will be
+        # persisted onto ``contract.signature_anchors`` a few lines
+        # further down) so any future "vault empty of anchors" issue
+        # can be diagnosed by grepping this line in the server log.
+        detected_anchors = [
+            {
+                "code": occ.get("code"),
+                "page": occ.get("page"),
+                "occurrence_id": occ.get("occurrence_id"),
+                "render_bbox": occ.get("render_bbox"),
+                "token_bbox": occ.get("token_bbox"),
+            }
+            for occ in (render_report.get("occurrences") or [])
+            if (occ.get("data_type") or "").lower() == "signature_anchor"
+        ]
+        template_has_signature_marker = any(
+            (library_by_code.get(m.get("code")) or {}).get("data_type") == "signature_anchor"
+            for m in markers
+        )
+        if template_has_signature_marker and not detected_anchors:
+            # Should not happen after the enrichment fix — but if it
+            # ever does, the acceptance flow WOULD have nowhere to
+            # stamp the signature. Fail loudly rather than issuing a
+            # contract that cannot be signed.
+            logger.error(
+                "Contract %s render succeeded but zero signature anchors "
+                "were persisted. Template %s v%s markers=%s render_report.occurrences=%s",
+                contract_id, template.get("id"), template_version,
+                [m.get("code") for m in markers],
+                [{k: o.get(k) for k in ("code","data_type","page")} for o in (render_report.get("occurrences") or [])],
+            )
+            await db[CONTRACTS_COLLECTION].update_one(
+                {"id": contract_id},
+                {"$set": {"status": "draft", "updated_at": _now_iso()}},
+            )
+            raise HTTPException(
+                422,
+                detail={
+                    "message": (
+                        "Issue failed because the signature anchor was "
+                        "declared on the template but was not detected "
+                        "in the rendered PDF. Please check the marker "
+                        "placement in the template."
+                    ),
+                    "reason_code": "render_invariant_failed",
+                    "failed_invariant": "signature_anchor_not_persisted",
+                    "marker_code": "FRANCHISEE_SIGNATURE_POSITION",
+                    "template_id": template.get("id"),
+                    "template_version": template_version,
+                    "render_job_id": render_job_id,
+                },
+            )
+        logger.info(
+            "Contract %s render OK — template=%s v%s pages=%s "
+            "occurrences=%s signature_anchors=%s residual_tokens=%s "
+            "output_sha=%s bytes=%s",
+            contract_id, template.get("id"), template_version,
+            render_report.get("page_count"),
+            len(render_report.get("occurrences") or []),
+            detected_anchors,
+            render_report.get("residual_token_count"),
+            output_sha[:12], byte_size,
+        )
+
         # Sanity — the render engine already checked residual tokens in
         # issuance mode. Assert the report matches.
         if render_report.get("residual_token_count", 0) != 0:
