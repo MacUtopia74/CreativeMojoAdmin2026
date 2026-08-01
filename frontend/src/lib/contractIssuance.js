@@ -124,7 +124,51 @@ export async function resolveAndIssueContract(contractId, { hasResolvedVariables
     return { ok: true };
   } catch (e) {
     const d = e?.response?.data?.detail;
+    // Structured stale-template signal from the backend — surfaces the
+    // exact marker codes that need refreshing and lets the caller offer
+    // a "Refresh and issue" flow instead of dumping a raw error string.
+    if (d && typeof d === "object" && d.reason_code === "stale_frozen_variables") {
+      return {
+        ok: false,
+        kind: "stale_frozen_variables",
+        missingMarkerCodes: Array.isArray(d.missing_marker_codes) ? d.missing_marker_codes : [],
+        message: d.message ||
+          "This draft was prepared using an earlier version of the template. " +
+          "Its contract details need refreshing before it can be issued.",
+      };
+    }
     const raw = typeof d === "string" ? d : (d?.message || JSON.stringify(d || e.message));
     return { ok: false, message: `Issue failed: ${raw}` };
+  }
+}
+
+/**
+ * Refresh a stale contract's variables under a controlled reason, then
+ * retry /issue. Used by the "Refresh and issue" recovery flow after
+ * ``resolveAndIssueContract`` returns ``kind: 'stale_frozen_variables'``.
+ * The reason string is persisted in ``contract_variables.refresh_history``
+ * so the audit trail explains why the refresh happened.
+ */
+export async function refreshAndIssueContract(contractId, reason) {
+  const cleanReason = String(reason || "").trim();
+  if (!cleanReason) {
+    return { ok: false, message: "A short reason is required to refresh variables." };
+  }
+  try {
+    await api.post(`/admin/contracts/${contractId}/refresh-variables`, {
+      reason: cleanReason,
+    });
+  } catch (e) {
+    const d = e?.response?.data?.detail;
+    const raw = typeof d === "string" ? d : (d?.message || e.message || "");
+    return { ok: false, message: raw || "Failed to refresh contract variables." };
+  }
+  try {
+    await api.post(`/admin/contracts/${contractId}/issue`);
+    return { ok: true };
+  } catch (e) {
+    const d = e?.response?.data?.detail;
+    const raw = typeof d === "string" ? d : (d?.message || JSON.stringify(d || e.message));
+    return { ok: false, message: `Issue failed after refresh: ${raw}` };
   }
 }

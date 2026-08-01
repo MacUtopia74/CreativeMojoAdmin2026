@@ -50,9 +50,11 @@ Bespoke admin system for a franchise business consolidating Airtable, FileCamp, 
 - Added "Delete (test)" button on `AdminContractsPage.jsx` for every non-draft row with double confirmation (window.confirm + reason prompt).
 - Unblocks the drawn-signature test flow — a stale signed test contract no longer forces the new one into "renewal" mode.
 
-### 2026-07-31 — Fix: issuance blocked by signature-anchor marker
-- `contract_issuance_routes.py::_all_marker_codes` now skips markers whose `data_type == "signature_anchor"` (case-insensitive). These markers deliberately have no value at issuance — the resolver already skips them, but the pre-issue "missing values" check was blindly requiring one, producing "Frozen contract_variables are missing values for one or more markers declared on the template." on every drawn-signature template.
-- `contractIssuance.js::runResolve` now treats "Contract already has frozen variables" as an idempotent success and skips straight to `/issue`, so retrying Issue on a draft where a previous attempt succeeded at resolve but failed at issue no longer 400s.
+### 2026-08-01 — Fix: stale-variables completeness check + Refresh-and-issue UX
+- **Root cause of the recurring "missing markers" 409:** `_all_marker_codes` was reading `data_type` from the template's `markers[*]` array — where `data_type` is always `None`. The Marker Library is the authoritative source (matching what the resolver already does). Old check silently included `signature_anchor` markers in the required set.
+- **Fix:** `_all_marker_codes(markers, library_by_code)` now consults the library. Added `POSITIONAL_ONLY_DATA_TYPES = {"signature_anchor"}` constant — extensible for future positional/redaction-only marker types.
+- **Better error payload:** `/admin/contracts/{id}/issue` now returns `reason_code: "stale_frozen_variables"`, `missing_marker_codes: [...]`, `template_id`, `template_version` alongside a plain-English admin message.
+- **Frontend recovery flow:** `resolveAndIssueContract` detects `reason_code === "stale_frozen_variables"`; new `<RefreshAndIssueModal>` on AdminContractsPage shows the missing marker chips and a "Refresh and issue" action that calls `POST /admin/contracts/{id}/refresh-variables` with a reason then retries `/issue`. Browser `alert()` no longer leaks API instructions.
 
 ### 2026-07-31 — File Vault diagnostic endpoint
 - New `GET /api/admin/files/diag?q=<id|number|name|org>` (admin-only, read-only by default) in `files_routes.py`. Locates the franchisee, derives the expected R2 prefix, counts files_index rows bound to it, surfaces orphan/wrong-id rows under the prefix, lists actual R2 objects, flags un-indexed R2 keys, and searches "nearby" prefixes sharing the same franchise number (catches organisation renames after upload).

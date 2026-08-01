@@ -36,6 +36,7 @@ from fastapi.responses import StreamingResponse
 import contract_render_engine as engine
 import contract_preview_generator as previewgen
 import contract_value_resolver as resolver
+import contract_markers_library as markers_library
 import file_storage as fs
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,13 @@ CONTRACTS_COLLECTION = "contracts"
 TEMPLATES_COLLECTION = "contract_templates"
 TEMPLATE_VERSIONS_COLLECTION = "contract_template_versions"
 AUDIT_COLLECTION = "contract_audit"
+
+# Marker data_types that carry NO frozen value — they exist only to
+# mark a position / redact a token in the rendered PDF. The resolver
+# deliberately skips them (see contract_value_resolver.py :~447), so
+# they must also be excluded from the issue-time completeness check.
+# Any new positional / redaction-only marker types get added here.
+POSITIONAL_ONLY_DATA_TYPES = {"signature_anchor"}
 
 
 def _now_iso() -> str:
@@ -116,27 +124,37 @@ async def _pick_frozen_markers(
     return list(template.get("markers") or []), approved_v
 
 
-def _all_marker_codes(markers: List[Dict[str, Any]]) -> List[str]:
+def _all_marker_codes(
+    markers: List[Dict[str, Any]],
+    library_by_code: Dict[str, Dict[str, Any]],
+) -> List[str]:
     """Codes for markers that MUST carry a resolved value at issuance.
 
-    ``signature_anchor`` markers (e.g. ``FRANCHISEE_SIGNATURE_POSITION``)
-    are placement anchors for a drawn signature — they carry no value
-    at issuance time. The resolver deliberately skips them, and the
-    render engine redacts the token from the personalised PDF and
-    records the anchor position for the acceptance flow to stamp the
-    signature PNG into. Requiring them here would 409-block every
-    contract that uses drawn signatures.
+    A marker is VALUE-BEARING iff its Marker Library entry declares a
+    ``data_type`` that isn't in ``POSITIONAL_ONLY_DATA_TYPES``. The
+    template's own marker entries do NOT store ``data_type`` reliably
+    (it's typically ``None`` on template.markers[*]), so the library
+    is the sole source of truth for classification — same rule the
+    resolver uses in ``resolve_contract_variables``.
+
+    Positional / redaction-only markers (currently just
+    ``signature_anchor``, e.g. ``FRANCHISEE_SIGNATURE_POSITION``) are
+    detected + recorded at render time but never held in
+    ``contract.contract_variables``. Requiring them here would 409
+    every drawn-signature contract.
     """
     out: List[str] = []
     seen: set = set()
     for m in markers:
-        c = m.get("code")
-        if not c or c in seen:
+        code = m.get("code")
+        if not code or code in seen:
             continue
-        if (m.get("data_type") or "").lower() == "signature_anchor":
+        lib = library_by_code.get(code) or {}
+        dt = (lib.get("data_type") or "").lower()
+        if dt in POSITIONAL_ONLY_DATA_TYPES:
             continue
-        seen.add(c)
-        out.append(c)
+        seen.add(code)
+        out.append(code)
     return out
 
 
@@ -206,20 +224,46 @@ def attach(api, db, require_role):
         # ---- Load source + markers + values ---------------------------
         source_bytes, source_sha_before = await _load_source_pdf_and_verify(template)
         markers, template_version = await _pick_frozen_markers(db, template)
-        template_codes = _all_marker_codes(markers)
+        # Library is authoritative for marker classification (see
+        # _all_marker_codes docstring). Load once, index by code.
+        library_by_code: Dict[str, Dict[str, Any]] = {
+            row["code"]: row
+            async for row in db[markers_library.LIBRARY_COLLECTION].find({})
+            if row.get("code")
+        }
+        template_codes = _all_marker_codes(markers, library_by_code)
         values_map = await _load_frozen_variables_map(contract)
-        # Every template-declared code must have a resolved value.
-        missing = [c for c in template_codes if c not in values_map or values_map[c] in (None, "")]
+        # Every VALUE-BEARING marker declared on the template must have
+        # a resolved value. Positional / redaction-only markers were
+        # already filtered out by _all_marker_codes.
+        missing = [
+            c for c in template_codes
+            if c not in values_map or values_map[c] in (None, "")
+        ]
         if missing:
+            # Named payload the frontend keys off — surfaces the exact
+            # marker codes back to the admin instead of a generic
+            # "missing values" message, and signals that a controlled
+            # refresh + retry is the correct remedy (the draft was
+            # prepared under an older template version). ``missing_codes``
+            # is retained for backward compatibility with older clients.
             raise HTTPException(
                 409,
                 detail={
                     "message": (
-                        "Frozen contract_variables are missing values for "
-                        "one or more markers declared on the template. "
-                        "Refresh variables before issuing."
+                        "This draft was prepared using an earlier version "
+                        "of the template. Its contract details need "
+                        "refreshing before it can be issued."
                     ),
+                    "reason_code": "stale_frozen_variables",
+                    "missing_marker_codes": missing,
                     "missing_codes": missing,
+                    "template_id": template.get("id"),
+                    "template_version": template_version,
+                    "hint": (
+                        "Call POST /admin/contracts/{id}/refresh-variables "
+                        "with an explicit reason, then retry /issue."
+                    ),
                 },
             )
 

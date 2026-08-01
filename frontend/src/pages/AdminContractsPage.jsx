@@ -3,7 +3,7 @@
 // No wizard, no evidence pack UI, no audit-trail viewer.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import api from "@/lib/api";
-import { resolveAndIssueContract } from "@/lib/contractIssuance";
+import { resolveAndIssueContract, refreshAndIssueContract } from "@/lib/contractIssuance";
 import {
   Loader2, Plus, FileText, Download, Upload, RefreshCw, X,
   CheckCircle2, AlertTriangle, ExternalLink, Trash2,
@@ -45,6 +45,12 @@ export default function AdminContractsPage() {
   const [busyRow, setBusyRow] = useState(null);
   const uploadInputRef = useRef(null);
   const [uploadTargetCid, setUploadTargetCid] = useState(null);
+  // Modal state for the "stale variables — refresh & retry" recovery
+  // flow. When the /issue endpoint returns reason_code=
+  // "stale_frozen_variables", we surface a proper in-app dialog with
+  // the exact missing marker codes and a "Refresh and issue" button
+  // instead of a browser alert() that leaks API instructions.
+  const [refreshPrompt, setRefreshPrompt] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true); setErr("");
@@ -78,6 +84,29 @@ export default function AdminContractsPage() {
       const result = await resolveAndIssueContract(cid, {
         hasResolvedVariables: !!c?.contract_variables,
       });
+      if (!result.ok) {
+        if (result.kind === "stale_frozen_variables") {
+          setRefreshPrompt({
+            contractId: cid,
+            missingCodes: result.missingMarkerCodes || [],
+            message: result.message,
+          });
+          return;
+        }
+        alert(result.message);
+        return;
+      }
+      await load();
+    } finally { setBusyRow(null); }
+  }
+
+  async function confirmRefreshAndIssue(reason) {
+    if (!refreshPrompt) return;
+    const cid = refreshPrompt.contractId;
+    setBusyRow(cid);
+    setRefreshPrompt(null);
+    try {
+      const result = await refreshAndIssueContract(cid, reason);
       if (!result.ok) {
         alert(result.message);
         return;
@@ -379,6 +408,98 @@ export default function AdminContractsPage() {
           onCreated={async () => { setShowNew(false); await load(); }}
         />
       )}
+
+      {refreshPrompt && (
+        <RefreshAndIssueModal
+          missingCodes={refreshPrompt.missingCodes}
+          message={refreshPrompt.message}
+          onCancel={() => setRefreshPrompt(null)}
+          onConfirm={confirmRefreshAndIssue}
+        />
+      )}
+    </div>
+  );
+}
+
+function RefreshAndIssueModal({ missingCodes, message, onCancel, onConfirm }) {
+  const [reason, setReason] = useState(
+    "Template changed after initial variable freeze; refreshing before issue",
+  );
+  const [submitting, setSubmitting] = useState(false);
+  return (
+    <div
+      className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+      data-testid="refresh-and-issue-modal"
+      onClick={onCancel}
+    >
+      <div
+        className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start gap-3">
+          <div className="shrink-0 mt-0.5">
+            <AlertTriangle className="h-5 w-5 text-amber-600" />
+          </div>
+          <div className="flex-1">
+            <h2 className="text-lg font-semibold text-stone-900">Refresh required before issue</h2>
+            <p className="mt-2 text-sm text-stone-700">{message}</p>
+            {missingCodes && missingCodes.length > 0 && (
+              <div className="mt-3 text-xs text-stone-600">
+                <div className="uppercase tracking-wider font-bold text-[10px] mb-1">
+                  Missing marker{missingCodes.length === 1 ? "" : "s"}
+                </div>
+                <div
+                  className="flex flex-wrap gap-1"
+                  data-testid="refresh-missing-codes"
+                >
+                  {missingCodes.map((code) => (
+                    <code
+                      key={code}
+                      className="px-1.5 py-0.5 rounded bg-stone-100 border border-stone-300 text-stone-800"
+                    >
+                      {code}
+                    </code>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+        <label className="block mt-4 text-sm">
+          <span className="text-xs font-medium text-stone-700">Reason (recorded in the audit trail)</span>
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={2}
+            className="mt-1 w-full text-sm border border-stone-300 rounded px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            data-testid="refresh-reason-input"
+          />
+        </label>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={submitting}
+            className="px-3 py-1.5 text-sm border border-stone-300 rounded bg-white hover:bg-stone-50 disabled:opacity-50"
+            data-testid="refresh-and-issue-cancel"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              setSubmitting(true);
+              await onConfirm(reason);
+            }}
+            disabled={submitting || !reason.trim()}
+            className="inline-flex items-center gap-1 px-3 py-1.5 text-sm border border-emerald-600 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+            data-testid="refresh-and-issue-confirm"
+          >
+            {submitting ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+            Refresh and issue
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
