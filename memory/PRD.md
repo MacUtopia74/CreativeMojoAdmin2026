@@ -52,6 +52,12 @@ Bespoke admin system for a franchise business consolidating Airtable, FileCamp, 
 
 ### 2026-07-31 — Fix: issuance blocked by signature-anchor marker
 - `contract_issuance_routes.py::_all_marker_codes` now skips markers whose `data_type == "signature_anchor"` (case-insensitive). These markers deliberately have no value at issuance — the resolver already skips them, but the pre-issue "missing values" check was blindly requiring one, producing "Frozen contract_variables are missing values for one or more markers declared on the template." on every drawn-signature template.
+- `contractIssuance.js::runResolve` now treats "Contract already has frozen variables" as an idempotent success and skips straight to `/issue`, so retrying Issue on a draft where a previous attempt succeeded at resolve but failed at issue no longer 400s.
+
+### 2026-07-31 — File Vault diagnostic endpoint
+- New `GET /api/admin/files/diag?q=<id|number|name|org>` (admin-only, read-only by default) in `files_routes.py`. Locates the franchisee, derives the expected R2 prefix, counts files_index rows bound to it, surfaces orphan/wrong-id rows under the prefix, lists actual R2 objects, flags un-indexed R2 keys, and searches "nearby" prefixes sharing the same franchise number (catches organisation renames after upload).
+- Optional `?rebind_orphans=true` rewrites every row under the expected prefix whose `franchisee_id` is null or wrong, binding them back to this franchisee (nothing deleted; only `franchisee_id`/`scope` updated).
+- Verdict codes: `looks_healthy` / `no_files_at_all` / `all_orphaned_under_prefix` / `hidden_or_trashed` / `r2_has_objects_but_no_index` / `renamed_or_wrong_prefix`, each with a plain-English hint on next action.
 
 ## Key files
 - `/app/frontend/src/components/territory/FranchiseeTerritoryWidget.jsx` — MyTerritory+ orchestrator

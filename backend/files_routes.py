@@ -178,8 +178,292 @@ def build_router(db, require_role) -> APIRouter:
         }
 
     # -----------------------------------------------------------------
-    # Helper: enforce per-franchisee scope on file queries. Returns a
-    # MongoDB filter clause (or None for admin = no restriction).
+    # Diagnostic endpoint — investigate why a franchisee's file vault
+    # looks empty in the UI. Read-only by default; the optional
+    # ``?rebind_orphans=true`` flag rewrites files_index rows whose
+    # key lives under the franchisee's R2 prefix but whose
+    # ``franchisee_id`` field is null / wrong, binding them to this
+    # franchisee. Nothing is deleted; only ``franchisee_id`` /
+    # ``scope`` are amended.
+    #
+    # Use cases:
+    #   * "Sam Whiteman's vault is empty" → find the mismatch class
+    #     (orphan, wrong-id, non-indexed R2 objects, etc.)
+    #   * Bulk repair after a franchise-number change / merge that
+    #     left old files_index rows pointing at the previous doc.
+    @router.get("/admin/files/diag")
+    async def files_vault_diag(
+        q: str = Query(..., description="franchisee_id, franchise_number, organisation, or name substring"),
+        rebind_orphans: bool = Query(False, description="If true, also bind any orphan/mismatched rows under the R2 prefix to this franchisee_id."),
+        _user: dict = Depends(require_role("admin")),
+    ):
+        raw = (q or "").strip()
+        if not raw:
+            raise HTTPException(400, detail="q is required")
+
+        # ---- Locate the franchisee -------------------------------
+        candidates: list[dict] = []
+        # Exact id
+        by_id = await db.franchisees.find_one({"id": raw})
+        if by_id:
+            candidates.append(by_id)
+        # Franchise number (accepts "46", "0046", 46)
+        if not candidates and re.fullmatch(r"\d{1,6}", raw):
+            padded = raw.zfill(4)
+            for fn in (raw, padded, int(raw)):
+                by_fn = await db.franchisees.find_one({"franchise_number": fn})
+                if by_fn:
+                    candidates.append(by_fn)
+                    break
+        # Free-text on organisation / first / last name
+        if not candidates:
+            rex = re.compile(re.escape(raw), re.IGNORECASE)
+            cur = db.franchisees.find({
+                "$or": [
+                    {"organisation": rex},
+                    {"first_name": rex},
+                    {"last_name": rex},
+                    {"email": rex},
+                ],
+            }).limit(10)
+            candidates = await cur.to_list(10)
+
+        if not candidates:
+            return {
+                "query": raw,
+                "matched_franchisees": 0,
+                "hint": "No franchisee matched — try franchise number, organisation, or full name.",
+            }
+        if len(candidates) > 1:
+            return {
+                "query": raw,
+                "matched_franchisees": len(candidates),
+                "hint": "Ambiguous — pass an exact franchisee_id or franchise number to narrow.",
+                "candidates": [
+                    {
+                        "id": c["id"],
+                        "franchise_number": c.get("franchise_number"),
+                        "organisation": c.get("organisation"),
+                        "name": f"{c.get('first_name','')} {c.get('last_name','')}".strip(),
+                    }
+                    for c in candidates
+                ],
+            }
+
+        f = candidates[0]
+        fid = f["id"]
+        prefix = derive_franchisee_prefix(f)
+
+        report: dict = {
+            "query": raw,
+            "franchisee": {
+                "id": fid,
+                "franchise_number": f.get("franchise_number"),
+                "organisation": f.get("organisation"),
+                "name": f"{f.get('first_name','')} {f.get('last_name','')}".strip(),
+                "email": f.get("email"),
+            },
+            "expected_r2_prefix": prefix,
+            "r2_configured": r2_configured(),
+        }
+
+        # ---- files_index inspection ------------------------------
+        # A) rows tagged to this franchisee_id
+        by_fid_total = await db.files_index.count_documents({"franchisee_id": fid})
+        by_fid_visible = await db.files_index.count_documents({
+            "franchisee_id": fid,
+            "hidden": {"$ne": True},
+            "key": {"$not": re.compile(r"^\.trash/")},
+        })
+        report["files_index"] = {
+            "matching_franchisee_id_total": by_fid_total,
+            "matching_franchisee_id_visible": by_fid_visible,
+        }
+
+        if not prefix:
+            report["hint"] = (
+                "This franchisee has no derivable R2 prefix (missing "
+                "franchise_number + organisation + name). Set at least "
+                "one identifying field, then rebuild the vault."
+            )
+            return report
+
+        # B) rows whose key lives under the expected prefix
+        prefix_rx = re.compile(r"^" + re.escape(prefix))
+        under_prefix_total = await db.files_index.count_documents({"key": prefix_rx})
+        under_prefix_bound = await db.files_index.count_documents({
+            "key": prefix_rx, "franchisee_id": fid,
+        })
+        under_prefix_null = await db.files_index.count_documents({
+            "key": prefix_rx, "franchisee_id": None,
+        })
+        under_prefix_wrong = await db.files_index.count_documents({
+            "key": prefix_rx,
+            "franchisee_id": {"$nin": [None, fid]},
+        })
+        report["files_index"].update({
+            "under_expected_prefix_total": under_prefix_total,
+            "under_expected_prefix_bound_to_this_franchisee": under_prefix_bound,
+            "under_expected_prefix_orphan_null_id": under_prefix_null,
+            "under_expected_prefix_wrong_id": under_prefix_wrong,
+        })
+
+        # C) sample orphan rows (up to 10)
+        sample_orphans = await db.files_index.find(
+            {"key": prefix_rx, "franchisee_id": {"$in": [None]}},
+            {"_id": 0, "key": 1, "name": 1, "franchisee_id": 1, "scope": 1, "size": 1},
+        ).limit(10).to_list(10)
+        sample_wrong = await db.files_index.find(
+            {"key": prefix_rx, "franchisee_id": {"$nin": [None, fid]}},
+            {"_id": 0, "key": 1, "name": 1, "franchisee_id": 1, "scope": 1, "size": 1},
+        ).limit(10).to_list(10)
+        report["files_index"]["sample_orphan_rows"] = sample_orphans
+        report["files_index"]["sample_wrong_id_rows"] = sample_wrong
+
+        # D) list what actually exists in R2 under the prefix
+        r2_view: dict = {"listable": False}
+        if r2_configured():
+            try:
+                s3 = get_client()
+                keys: list[str] = []
+                total_bytes = 0
+                token = None
+                while True:
+                    kwargs = {
+                        "Bucket": R2_BUCKET, "Prefix": prefix, "MaxKeys": 1000,
+                    }
+                    if token:
+                        kwargs["ContinuationToken"] = token
+                    resp = s3.list_objects_v2(**kwargs)
+                    for obj in resp.get("Contents", []):
+                        keys.append(obj["Key"])
+                        total_bytes += int(obj.get("Size") or 0)
+                    if resp.get("IsTruncated"):
+                        token = resp.get("NextContinuationToken")
+                    else:
+                        break
+                    if len(keys) > 5000:
+                        r2_view["truncated_listing"] = True
+                        break
+                r2_view.update({
+                    "listable": True,
+                    "object_count": len(keys),
+                    "total_bytes": total_bytes,
+                    "sample_keys": keys[:20],
+                })
+                # E) keys in R2 that have NO row in files_index
+                if keys:
+                    indexed = await db.files_index.find(
+                        {"key": {"$in": keys}}, {"_id": 0, "key": 1},
+                    ).to_list(len(keys))
+                    indexed_set = {r["key"] for r in indexed}
+                    unindexed = [k for k in keys if k not in indexed_set]
+                    r2_view["unindexed_object_count"] = len(unindexed)
+                    r2_view["sample_unindexed_keys"] = unindexed[:20]
+            except Exception as exc:  # noqa: BLE001
+                r2_view["error"] = f"{type(exc).__name__}: {exc}"
+        report["r2"] = r2_view
+
+        # ---- Optional rebind of orphaned / mis-bound rows --------
+        if rebind_orphans and prefix:
+            targets = await db.files_index.find(
+                {"key": prefix_rx, "franchisee_id": {"$nin": [fid]}},
+                {"_id": 0, "key": 1, "franchisee_id": 1},
+            ).to_list(50000)
+            rebound = 0
+            if targets:
+                res = await db.files_index.update_many(
+                    {"key": prefix_rx, "franchisee_id": {"$nin": [fid]}},
+                    {"$set": {
+                        "franchisee_id": fid,
+                        "scope": SCOPE_FRANCHISEE,
+                        "updated_at": _now(),
+                    }},
+                )
+                rebound = res.modified_count
+            report["rebind"] = {
+                "attempted": len(targets),
+                "modified": rebound,
+                "sample_before": targets[:10],
+            }
+
+        # ---- Verdict --------------------------------------------
+        # If the derived prefix is empty in both places but the
+        # franchisee has a franchise_number, look for nearby prefixes
+        # that share the same number — most common cause of an empty
+        # vault is a rename (organisation slug changed after upload).
+        nearby_prefixes: list[dict] = []
+        if prefix and (under_prefix_total == 0):
+            fn = f.get("franchise_number")
+            if fn:
+                padded = str(fn).zfill(4)
+                nearby_rx = re.compile(r"^franchisees/" + re.escape(padded) + r"-")
+                pipe = [
+                    {"$match": {"key": nearby_rx}},
+                    {"$group": {
+                        "_id": {"$arrayElemAt": [{"$split": ["$key", "/"]}, 1]},
+                        "files": {"$sum": 1},
+                        "bytes": {"$sum": "$size"},
+                    }},
+                    {"$sort": {"files": -1}},
+                    {"$limit": 5},
+                ]
+                nearby_prefixes = await db.files_index.aggregate(pipe).to_list(5)
+        report["nearby_prefixes_with_same_number"] = nearby_prefixes
+
+        # ---- Verdict --------------------------------------------
+        if under_prefix_total == 0 and (r2_view.get("object_count") or 0) == 0:
+            if nearby_prefixes:
+                report["verdict"] = "renamed_or_wrong_prefix"
+                report["hint"] = (
+                    "The current derived prefix has no files, but "
+                    "another prefix sharing the same franchise number "
+                    f"({f.get('franchise_number')}) does. This "
+                    "franchisee was almost certainly renamed after "
+                    "upload — the vault is 'empty' because the UI is "
+                    "looking at the new slug, not the old one. Options: "
+                    "1) rename back to the original organisation slug, "
+                    "2) rebind rows by patching the franchisee_id (safest "
+                    "if the wrong-prefix rows already carry this id), "
+                    "3) migrate the R2 objects to the new prefix."
+                )
+            else:
+                report["verdict"] = "no_files_at_all"
+                report["hint"] = (
+                    "Neither the index nor R2 has any objects under the "
+                    "expected prefix. This franchisee has genuinely never "
+                    "had files uploaded, OR their prefix has changed "
+                    "(e.g. franchise_number / organisation renamed after "
+                    "upload) — check nearby prefixes with the search endpoint."
+                )
+        elif under_prefix_bound == 0 and under_prefix_total > 0:
+            report["verdict"] = "all_orphaned_under_prefix"
+            report["hint"] = (
+                "Every indexed row under this prefix has a null or "
+                "wrong franchisee_id — the UI filters by franchisee_id, "
+                "so the vault renders empty. Re-run with "
+                "?rebind_orphans=true to bind them."
+            )
+        elif by_fid_visible == 0 and under_prefix_bound > 0:
+            report["verdict"] = "hidden_or_trashed"
+            report["hint"] = (
+                "Rows exist and are correctly bound, but every one is "
+                "either flagged hidden or under a .trash/ key — that's "
+                "why the UI is empty."
+            )
+        elif (r2_view.get("unindexed_object_count") or 0) > 0 and under_prefix_bound == 0:
+            report["verdict"] = "r2_has_objects_but_no_index"
+            report["hint"] = (
+                "R2 contains files, but files_index has no rows for "
+                "them. The FileCamp migration index likely never ran "
+                "for this franchisee. Options: re-run the migration "
+                "scanner, or upload replacements via the UI."
+            )
+        else:
+            report["verdict"] = "looks_healthy"
+        return report
+
+
     async def _franchisee_scope_filter(user: dict) -> Optional[dict]:
         if user.get("role") != "franchisee":
             return None
