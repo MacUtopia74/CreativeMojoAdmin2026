@@ -82,6 +82,16 @@ export async function resolveAndIssueContract(contractId, { hasResolvedVariables
       return { ok: true };
     } catch (e) {
       const detail = e?.response?.data?.detail;
+      // Idempotent retry: if a previous attempt already froze the
+      // variables (e.g. an earlier issue call failed AFTER resolve
+      // succeeded and rolled the status back to draft), the resolve
+      // endpoint refuses to overwrite. That's the correct default —
+      // but from the caller's perspective this just means "resolve
+      // has already been done, continue to issue". Detect and skip.
+      const rawStr = typeof detail === "string" ? detail : (detail?.message || "");
+      if (/already has frozen variables/i.test(rawStr)) {
+        return { ok: true };
+      }
       if (_resolverErrorsNeedTerritoryFreeze(detail)) {
         const frozen = await freezeIfNeeded();
         if (!frozen.ok) return frozen;
