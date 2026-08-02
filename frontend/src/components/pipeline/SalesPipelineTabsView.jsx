@@ -23,10 +23,10 @@ import {
 import { AdminNotesEditor, InterestedChecklist, TemperaturePicker } from "@/pages/ContactsPage";
 
 const TABS = [
+  { key: "qualified",     label: "Interested",     dot: "bg-emerald-500", bg: "bg-emerald-600", fg: "text-white" },
   { key: "new",           label: "New",            dot: "bg-stone-400",   bg: "bg-stone-900",   fg: "text-white" },
   { key: "contacted",     label: "Contacted",      dot: "bg-blue-400",    bg: "bg-blue-600",    fg: "text-white" },
   { key: "follow_up_due", label: "Follow-up Due",  dot: "bg-amber-500",   bg: "bg-amber-500",   fg: "text-stone-950" },
-  { key: "qualified",     label: "Interested",     dot: "bg-emerald-500", bg: "bg-emerald-600", fg: "text-white" },
 ];
 
 // Six stages. ``activeCls`` renders the selected pill as a solid
@@ -101,7 +101,7 @@ export default function SalesPipelineTabsView({
   onTemperatureChange,
 }) {
   void tempMap;
-  const [activeTab, setActiveTab] = useState("new");
+  const [activeTab, setActiveTab] = useState("qualified");
   const [userPickedTab, setUserPickedTab] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
   const [correspondenceContact, setCorrespondenceContact] = useState(null);
@@ -321,28 +321,42 @@ function TopBar({
       </div>
 
       {/* Right cluster — persistent email actions + info chips.
-          Stop-propagation so clicks don't collapse the row. */}
+          Each item lives in a fixed-width slot so columns line up
+          neatly across every row. Stop-propagation so clicks don't
+          collapse the row. */}
       <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
-        <button
-          type="button"
-          onClick={() => onReplyContact?.(c, { mode: "template" })}
-          className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-[#c9c914] rounded-full"
-          data-testid={`pipeline-row-template-reply-${c.id}`}
-        >
-          <Send className="w-3 h-3" /> Reply with Template
-        </button>
-        <button
-          type="button"
-          onClick={onViewCorrespondence}
-          className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-white border border-stone-300 text-stone-800 hover:bg-stone-50 rounded-full"
-          data-testid={`pipeline-row-view-correspondence-${c.id}`}
-        >
-          <FileText className="w-3 h-3" /> View Correspondence
-        </button>
+        <div className="hidden md:flex w-[172px] justify-start">
+          <button
+            type="button"
+            onClick={() => onReplyContact?.(c, { mode: "template" })}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-[#c9c914] rounded-full whitespace-nowrap"
+            data-testid={`pipeline-row-template-reply-${c.id}`}
+          >
+            <Send className="w-3 h-3" /> Reply with Template
+          </button>
+        </div>
 
-        {c.postcode ? (
-          <>
-            <span className="text-xs text-stone-800 shrink-0">{c.postcode}</span>
+        <div className="hidden md:flex w-[180px] justify-start">
+          <button
+            type="button"
+            onClick={onViewCorrespondence}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-white border border-stone-300 text-stone-800 hover:bg-stone-50 rounded-full whitespace-nowrap"
+            data-testid={`pipeline-row-view-correspondence-${c.id}`}
+          >
+            <FileText className="w-3 h-3" /> View Correspondence
+          </button>
+        </div>
+
+        <div className="w-[70px] text-right">
+          {c.postcode ? (
+            <span className="text-xs text-stone-800 tabular-nums">{c.postcode}</span>
+          ) : (
+            <span className="text-[11px] text-stone-400 italic">no postcode</span>
+          )}
+        </div>
+
+        <div className="w-[62px] flex justify-start">
+          {c.postcode ? (
             <button
               type="button"
               onClick={() => onOpenPostcodeMap?.(c)}
@@ -352,13 +366,13 @@ function TopBar({
             >
               <MapPin className="w-2.5 h-2.5" /> Map
             </button>
-          </>
-        ) : (
-          <span className="text-[11px] text-stone-400 italic">no postcode</span>
-        )}
+          ) : (
+            <span className="text-[10px] text-stone-300">—</span>
+          )}
+        </div>
 
         <span
-          className="inline-flex items-center"
+          className="inline-flex items-center justify-center w-[82px]"
           data-testid={`pipeline-row-temp-${c.id}`}
           onClick={(e) => e.stopPropagation()}
         >
@@ -370,22 +384,24 @@ function TopBar({
           />
         </span>
 
-        <span
-          className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border ${
-            emailed
-              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-              : "bg-stone-100 text-stone-500 border-stone-200"
-          }`}
-          data-testid={`pipeline-row-emailed-${c.id}`}
-        >
-          {emailed ? <Mail className="w-3 h-3" /> : <MailX className="w-3 h-3" />}
-          {emailed ? "Emailed" : "Not emailed"}
-        </span>
+        <div className="w-[112px] flex justify-start">
+          <span
+            className={`inline-flex items-center justify-center gap-1 w-full text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border ${
+              emailed
+                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                : "bg-stone-100 text-stone-500 border-stone-200"
+            }`}
+            data-testid={`pipeline-row-emailed-${c.id}`}
+          >
+            {emailed ? <Mail className="w-3 h-3" /> : <MailX className="w-3 h-3" />}
+            {emailed ? "Emailed" : "Not emailed"}
+          </span>
+        </div>
 
         <button
           type="button"
           onClick={onToggle}
-          className="text-stone-500 hover:text-stone-800"
+          className="text-stone-500 hover:text-stone-800 shrink-0"
           data-testid={`pipeline-row-chevron-${c.id}`}
         >
           {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
