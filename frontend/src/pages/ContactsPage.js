@@ -2824,6 +2824,11 @@ export default function ContactsPage() {
                 onOpenContact={(c) => openContact(c)}
                 onReplyContact={(c) => setKanbanReplyContact(c)}
                 onOpenPostcodeMap={(c) => setPostcodeMapContact(c)}
+                onStageChange={updateStage}
+                onDemote={demote}
+                onConvert={convertContact}
+                onLinkExisting={openLinkExisting}
+                onMarkFollowUpSent={markFollowUpSent}
                 onContactUpdated={(id, patch) => {
                   // Merge the patch into local state so the row's chip /
                   // notes / checklist stay in sync without a full reload.

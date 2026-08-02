@@ -2,32 +2,29 @@
 //
 // Replaces the flat list on the Sales Pipeline tab with a four-tab
 // layout (NEW / CONTACTED / FOLLOW-UP DUE / INTERESTED) whose rows
-// expand in place to reveal Summary / Checklist / Activity / Notes
-// side-by-side plus quick-action buttons. Dormant + Lost stay on the
+// expand in place to surface every action the drawer offers: full
+// contact card + edit, Interested checklist, Convert-to-franchisee /
+// licencee card, Move-to-stage pills, mark-follow-up-already-sent
+// amber panel, sales notes, admin notes. Dormant + Lost stay on the
 // kanban only (per PM decision, 2026-08-01).
 //
 // Row layout mirrors the reference mockup:
 //   Name/email | Stage pill | Postcode + Map | Heat + score | Emailed
-//   | Territory plan action card | Chevron
-// The columns have fixed widths so they line up down the whole list
-// (bunched-up-on-the-right was the first-pass mistake — fixed here).
+//   chip | Territory-plan action card | Chevron
+// The columns have fixed widths so they line up down the whole list.
 //
 // Reuses `InterestedChecklist`, `AdminNotesEditor` and `EmailTimeline`
-// via named re-exports from `ContactsPage.js` so this view never
-// drifts from the drawer if the checklist / notes schema evolves.
+// via named re-exports from `ContactsPage.js` so this view never drifts
+// from the drawer if the checklist / notes / email schemas evolve.
 
 import React, { useMemo, useState } from "react";
 import {
   Flame, MapPin, MessageSquare, FileText, ChevronDown, ChevronUp,
-  Mail, MailX, Send, ClipboardCheck, Activity as ActivityIcon,
-  StickyNote, Target,
+  Mail, MailX, Send, Target, Award, ArrowRightLeft, ArrowDownCircle,
+  Link2, CheckCircle2, Calendar, Phone, Pencil, StickyNote,
 } from "lucide-react";
-import EmailTimeline from "@/components/EmailTimeline";
 import { InterestedChecklist, AdminNotesEditor } from "@/pages/ContactsPage";
 
-// Order matches the mockup left→right. Colours line up with STAGES in
-// ContactsPage.js so the stage pill stays visually consistent between
-// the tabs view and the kanban.
 const TABS = [
   { key: "new",           label: "New",            accent: "bg-stone-800",    dot: "bg-stone-400" },
   { key: "contacted",     label: "Contacted",      accent: "bg-blue-700",     dot: "bg-blue-400" },
@@ -35,16 +32,17 @@ const TABS = [
   { key: "qualified",     label: "Interested",     accent: "bg-emerald-700",  dot: "bg-emerald-500" },
 ];
 
-// Kept in sync with STAGES in ContactsPage.js — see comment there.
+// Stage pill styling — kept in sync with STAGES in ContactsPage.js.
 const STAGE_PILL = {
   new:           { label: "New",           cls: "bg-stone-50 text-stone-700 border-stone-300", dot: "bg-stone-500" },
   contacted:     { label: "Contacted",     cls: "bg-blue-50 text-blue-700 border-blue-200",    dot: "bg-blue-500" },
   follow_up_due: { label: "Follow-up Due", cls: "bg-amber-50 text-amber-800 border-amber-300", dot: "bg-amber-500" },
   qualified:     { label: "Interested",    cls: "bg-emerald-50 text-emerald-800 border-emerald-200", dot: "bg-emerald-500" },
+  dormant:       { label: "Dormant",       cls: "bg-orange-50 text-orange-800 border-orange-200", dot: "bg-orange-500" },
+  lost:          { label: "Lost",          cls: "bg-red-50 text-red-700 border-red-200",       dot: "bg-red-500" },
 };
 
-// Heat score → flame colour + band label. Score buckets match the
-// backend LeadTemperature engine (see `contacts/{id}/temperature`).
+// Score buckets match the backend LeadTemperature engine.
 function heatFromScore(score) {
   const s = Number(score) || 0;
   if (s >= 60) return { label: "Hot",  colour: "text-red-600" };
@@ -60,6 +58,13 @@ function daysSinceISO(iso) {
   return Math.max(0, Math.floor((Date.now() - d.getTime()) / 86_400_000));
 }
 
+function formatDate(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
 export default function SalesPipelineTabsView({
   contacts,
   tempMap,
@@ -67,6 +72,11 @@ export default function SalesPipelineTabsView({
   onReplyContact,
   onContactUpdated,
   onOpenPostcodeMap,
+  onStageChange,
+  onDemote,
+  onConvert,
+  onLinkExisting,
+  onMarkFollowUpSent,
 }) {
   const [activeTab, setActiveTab] = useState("new");
   const [expandedId, setExpandedId] = useState(null);
@@ -139,6 +149,11 @@ export default function SalesPipelineTabsView({
               onReplyContact={onReplyContact}
               onContactUpdated={onContactUpdated}
               onOpenPostcodeMap={onOpenPostcodeMap}
+              onStageChange={onStageChange}
+              onDemote={onDemote}
+              onConvert={onConvert}
+              onLinkExisting={onLinkExisting}
+              onMarkFollowUpSent={onMarkFollowUpSent}
             />
           ))}
         </ul>
@@ -150,6 +165,7 @@ export default function SalesPipelineTabsView({
 function PipelineRow({
   contact, temp, isExpanded, onToggle,
   onOpenContact, onReplyContact, onContactUpdated, onOpenPostcodeMap,
+  onStageChange, onDemote, onConvert, onLinkExisting, onMarkFollowUpSent,
 }) {
   const c = contact;
   const displayName = [c.first_name, c.last_name].filter(Boolean).join(" ") || "(no name)";
@@ -160,11 +176,6 @@ function PipelineRow({
   const daysInStage = daysSinceISO(c.pipeline_status_updated_at || c.updated_at || c.date_added);
   const linkedPlan = c.linked_plan || null;
 
-  // Rendered as two rows inside a single container so the compact
-  // row + expanded panels share a hover / focus outline. The header
-  // itself is a <div> (not a <button>) so we can nest interactive
-  // elements — MAP, Territory-plan links, action buttons — without
-  // breaking a11y.
   return (
     <li data-testid={`pipeline-row-${c.id}`} className="bg-white">
       <div
@@ -176,7 +187,6 @@ function PipelineRow({
         tabIndex={0}
         data-testid={`pipeline-row-toggle-${c.id}`}
       >
-        {/* Name / email / days-in-stage */}
         <div className="min-w-0">
           <div className="text-sm font-semibold text-stone-950 truncate">
             {displayName}
@@ -192,7 +202,6 @@ function PipelineRow({
           </div>
         </div>
 
-        {/* Stage pill */}
         <div className="flex items-center">
           <span
             className={`inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wider border rounded-full ${stage.cls}`}
@@ -203,7 +212,6 @@ function PipelineRow({
           </span>
         </div>
 
-        {/* Postcode + MAP button */}
         <div className="flex items-center gap-2 text-xs text-stone-700 min-w-0">
           {c.postcode ? (
             <>
@@ -223,7 +231,6 @@ function PipelineRow({
           )}
         </div>
 
-        {/* Heat — flame + score number */}
         <div
           className={`flex items-center gap-1.5 text-xs ${heat.colour}`}
           data-testid={`pipeline-row-temp-${c.id}`}
@@ -238,7 +245,6 @@ function PipelineRow({
           </span>
         </div>
 
-        {/* Email status chip */}
         <div>
           <span
             className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border ${
@@ -253,10 +259,8 @@ function PipelineRow({
           </span>
         </div>
 
-        {/* Territory plan action card */}
         <TerritoryPlanCard contact={c} linkedPlan={linkedPlan} onClick={(e) => e.stopPropagation()} />
 
-        {/* Chevron */}
         <div className="text-stone-400 justify-self-end">
           {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
         </div>
@@ -267,13 +271,36 @@ function PipelineRow({
           className="px-4 pb-5 pt-1 bg-stone-50/60 border-t border-stone-100"
           data-testid={`pipeline-row-expanded-${c.id}`}
         >
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 mt-3">
-            <SummaryPanel contact={c} daysInStage={daysInStage} onOpenPostcodeMap={onOpenPostcodeMap} />
+          {/* Row 1 — 4 panels: Summary · Checklist · Convert · Notes.
+              Mirrors the drawer's vertical stack, laid out horizontally
+              here for at-a-glance actioning. */}
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 mt-3 items-start">
+            <SummaryPanel contact={c} onOpenPostcodeMap={onOpenPostcodeMap} onEdit={() => onOpenContact?.(c)} />
             <ChecklistPanel contact={c} onChanged={onContactUpdated} />
-            <ActivityPanel contactId={c.id} />
+            <ConvertPanel
+              contact={c}
+              onConvert={onConvert}
+              onLinkExisting={onLinkExisting}
+            />
             <NotesPanel contact={c} onChanged={onContactUpdated} />
           </div>
 
+          {/* Row 2 — Move to Stage pills + Mark Follow-up amber panel +
+              Remove from pipeline. Mirrors the drawer's action strip. */}
+          <div className="mt-3 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3 items-start">
+            <StageActionsPanel
+              contact={c}
+              onStageChange={onStageChange}
+              onDemote={onDemote}
+            />
+            <FollowUpPanel
+              contact={c}
+              onMarkFollowUpSent={onMarkFollowUpSent}
+            />
+          </div>
+
+          {/* Action buttons — kept below so they don't compete with
+              the panels above for visual weight. */}
           <div className="mt-4 flex flex-wrap gap-2 justify-end">
             <button
               type="button"
@@ -306,10 +333,10 @@ function PipelineRow({
   );
 }
 
-// "Plan their territory" / "Territory plan linked" — flips its CTA
-// based on whether the contact has a linked plan (surfaced by the
-// backend `linked_plan` enrichment). Anchors so we can wrap it in an
-// <a> without swallowing the row's click handler.
+// ---------------------------------------------------------------------
+// Territory-plan action card ("Plan their territory" ↔ "Territory plan
+// linked") — anchor so we can wrap the whole row in an <a> without
+// swallowing the row's expand-toggle click.
 function TerritoryPlanCard({ contact, linkedPlan, onClick }) {
   const href = linkedPlan
     ? `/territory-builder?plan_id=${linkedPlan.id}`
@@ -356,96 +383,308 @@ function TerritoryPlanCard({ contact, linkedPlan, onClick }) {
   );
 }
 
-function PanelShell({ icon: Icon, title, children, testId }) {
+// ---------------------------------------------------------------------
+// Panel shell — matches the drawer's rounded-outline card style so the
+// tabs view feels visually of-a-piece with the rest of the CRM.
+function PanelShell({ icon: Icon, title, children, testId, tone = "default", noBodyPadding = false }) {
+  const toneCls = {
+    default: "bg-white border-stone-200",
+    tinted:  "bg-gradient-to-br from-[#dddd16]/10 to-stone-50 border-stone-300",
+    amber:   "bg-amber-50 border-amber-200",
+    emerald: "bg-emerald-50 border-emerald-200",
+  }[tone];
   return (
     <section
-      className="bg-white border border-stone-200 rounded-xl overflow-hidden flex flex-col"
+      className={`border rounded-xl overflow-hidden flex flex-col ${toneCls}`}
       data-testid={testId}
     >
-      <header className="flex items-center gap-1.5 px-3 py-2 border-b border-stone-100 bg-stone-50">
-        {Icon && <Icon className="w-3 h-3 text-stone-500" />}
-        <h4 className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">
-          {title}
-        </h4>
-      </header>
-      <div className="p-3 text-xs text-stone-800 flex-1 min-h-0">{children}</div>
+      {title && (
+        <header className="flex items-center gap-1.5 px-3 py-2 border-b border-stone-100/70 bg-white/40">
+          {Icon && <Icon className="w-3 h-3 text-stone-500" />}
+          <h4 className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">
+            {title}
+          </h4>
+        </header>
+      )}
+      <div className={noBodyPadding ? "flex-1 min-h-0" : "p-3 text-xs text-stone-800 flex-1 min-h-0"}>
+        {children}
+      </div>
     </section>
   );
 }
 
-function SummaryPanel({ contact, daysInStage, onOpenPostcodeMap }) {
+// ---------------------------------------------------------------------
+// Summary — matches the drawer's contact card layout: email, phone,
+// full address (street/city/country + postcode + MAP button), first-
+// seen date and "days ago". EDIT button opens the drawer for full
+// inline editing (no need to reimplement the address form here).
+function SummaryPanel({ contact, onOpenPostcodeMap, onEdit }) {
   const c = contact;
-  const rows = [
-    ["Email",    c.email],
-    ["Phone",    c.telephone || c.phone],
-    ["Postcode", c.postcode ? (
-      <span className="inline-flex items-center gap-1.5">
-        {c.postcode}
-        <button
-          type="button"
-          onClick={() => onOpenPostcodeMap?.(c)}
-          className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border border-stone-300 rounded hover:bg-stone-100 text-stone-700"
-          data-testid={`pipeline-panel-summary-map-btn-${c.id}`}
-        >
-          <MapPin className="w-2.5 h-2.5" /> Map
-        </button>
-      </span>
-    ) : null],
-    ["First seen", c.date_added ? new Date(c.date_added).toLocaleDateString("en-GB") : (c.date || "—")],
-    ["Days in stage", typeof daysInStage === "number" ? `${daysInStage}` : "—"],
-  ];
+  const addressLines = [
+    c.address_line_1,
+    c.address_line_2,
+    c.city,
+  ].filter(Boolean);
+  const daysAgo = daysSinceISO(c.date_added || c.date);
   return (
     <PanelShell icon={FileText} title="Summary" testId="pipeline-panel-summary">
-      <dl className="grid grid-cols-3 gap-y-1 gap-x-2">
-        {rows.map(([k, v]) => (
-          <React.Fragment key={k}>
-            <dt className="col-span-1 text-stone-500">{k}</dt>
-            <dd className="col-span-2 text-stone-900 truncate">{v || <span className="text-stone-400">—</span>}</dd>
-          </React.Fragment>
-        ))}
-      </dl>
-    </PanelShell>
-  );
-}
-
-function ChecklistPanel({ contact, onChanged }) {
-  const isInterested = contact.pipeline_status === "qualified";
-  return (
-    <PanelShell icon={ClipboardCheck} title="Checklist" testId="pipeline-panel-checklist">
-      {isInterested ? (
-        <InterestedChecklist
-          contact={contact}
-          onChanged={(patch) => onChanged?.(contact.id, patch)}
-        />
-      ) : (
-        <p className="text-stone-500 italic">
-          Move this contact to <strong>Interested</strong> to enable the
-          checklist (territory, contract, shadow day, training).
-        </p>
-      )}
-    </PanelShell>
-  );
-}
-
-function ActivityPanel({ contactId }) {
-  return (
-    <PanelShell icon={ActivityIcon} title="Activity" testId="pipeline-panel-activity">
-      <div className="max-h-48 overflow-y-auto -mx-1 px-1">
-        <EmailTimeline contactId={contactId} refreshSignal={0} />
+      <div className="flex items-start gap-2">
+        <Mail className="w-3.5 h-3.5 text-stone-400 mt-0.5 shrink-0" />
+        <span className="break-all">{c.email || <span className="text-stone-400">—</span>}</span>
+      </div>
+      <div className="flex items-start gap-2 mt-1.5">
+        <Phone className="w-3.5 h-3.5 text-stone-400 mt-0.5 shrink-0" />
+        <span>{c.telephone || c.phone || <span className="text-stone-400">—</span>}</span>
+      </div>
+      <div className="flex items-start gap-2 mt-1.5">
+        <MapPin className="w-3.5 h-3.5 text-stone-400 mt-0.5 shrink-0" />
+        <div className="min-w-0">
+          {addressLines.map((ln) => <div key={ln} className="truncate">{ln}</div>)}
+          {c.postcode && (
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span>{c.postcode}</span>
+              <button
+                type="button"
+                onClick={() => onOpenPostcodeMap?.(c)}
+                data-testid={`pipeline-panel-summary-map-btn-${c.id}`}
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border border-stone-300 rounded hover:bg-stone-100 text-stone-700"
+              >
+                <MapPin className="w-2.5 h-2.5" /> Map
+              </button>
+            </div>
+          )}
+          {c.country && <div className="text-stone-500">{c.country}</div>}
+          {addressLines.length === 0 && !c.postcode && (
+            <span className="text-stone-400 italic">no address on file</span>
+          )}
+        </div>
+      </div>
+      <div className="flex items-start gap-2 mt-1.5">
+        <Calendar className="w-3.5 h-3.5 text-stone-400 mt-0.5 shrink-0" />
+        <span>
+          {formatDate(c.date_added || c.date)}
+          {typeof daysAgo === "number" && <span className="text-stone-500"> · {daysAgo} days ago</span>}
+        </span>
+      </div>
+      <div className="mt-3 flex justify-end">
+        <button
+          type="button"
+          onClick={onEdit}
+          className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider border border-stone-300 rounded hover:bg-stone-100 text-stone-700"
+          data-testid={`pipeline-panel-summary-edit-${c.id}`}
+        >
+          <Pencil className="w-2.5 h-2.5" /> Edit
+        </button>
       </div>
     </PanelShell>
   );
 }
 
+// ---------------------------------------------------------------------
+// Checklist — reuses the exact `<InterestedChecklist>` from the drawer.
+// The widget carries its own heading + tinted blue border, so we
+// intentionally render the panel WITHOUT its own title (no duplicate
+// "CHECKLIST" label). The panel shell just gives it a rounded outer
+// container consistent with the rest of the row.
+function ChecklistPanel({ contact, onChanged }) {
+  const isInterested = contact.pipeline_status === "qualified";
+  if (isInterested) {
+    return (
+      <div data-testid="pipeline-panel-checklist" className="min-w-0">
+        <InterestedChecklist
+          contact={contact}
+          onChanged={(patch) => onChanged?.(contact.id, patch)}
+        />
+      </div>
+    );
+  }
+  return (
+    <PanelShell icon={FileText} title="Checklist" testId="pipeline-panel-checklist">
+      <p className="text-stone-500 italic">
+        Move this contact to <strong>Interested</strong> to enable the
+        checklist (territory, contract, shadow day, training).
+      </p>
+    </PanelShell>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Convert to Franchisee / Licencee — mirrors the drawer's yellow-tinted
+// card. Confirms via window.confirm (same UX as the drawer) so an
+// accidental click doesn't spawn a franchisee record.
+function ConvertPanel({ contact, onConvert, onLinkExisting }) {
+  const [converting, setConverting] = useState(false);
+  const isLicenceEnq = contact.source === "licence_enquiry";
+  const convertLabel = isLicenceEnq ? "Convert to Licencee" : "Convert to Franchisee";
+  const alreadyConverted = !!contact.converted_to_franchisee_id;
+
+  return (
+    <PanelShell
+      testId="pipeline-panel-convert"
+      tone={alreadyConverted ? "emerald" : "tinted"}
+      title={null}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-xs font-semibold text-stone-950 flex items-center gap-1.5">
+            <Award className={`w-3.5 h-3.5 ${alreadyConverted ? "text-emerald-700" : "text-stone-700"}`} />
+            {alreadyConverted ? "Already converted" : convertLabel}
+          </div>
+          <div className="text-[11px] text-stone-600 mt-1">
+            {alreadyConverted
+              ? <>Converted to a {contact.converted_to_record_type === "licencee" ? "Licencee" : "Franchisee"} record.</>
+              : <>Create a {isLicenceEnq ? "Licencee" : "Franchisee"} record from this enquiry.</>}
+          </div>
+        </div>
+        {alreadyConverted ? (
+          <button
+            type="button"
+            onClick={() => onConvert?.(contact, true)}
+            data-testid={`pipeline-panel-convert-view-${contact.id}`}
+            className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-white text-emerald-800 border border-emerald-300 hover:bg-emerald-100 rounded-lg"
+          >
+            <ArrowRightLeft className="w-3 h-3" /> View
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={async () => {
+              const label = convertLabel;
+              const name = [contact.first_name, contact.last_name].filter(Boolean).join(" ") || "this contact";
+              if (!window.confirm(`${label} for ${name}?`)) return;
+              setConverting(true);
+              try { await onConvert?.(contact, false); }
+              finally { setConverting(false); }
+            }}
+            disabled={converting}
+            data-testid={`pipeline-panel-convert-btn-${contact.id}`}
+            className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-lg disabled:opacity-50"
+          >
+            <Award className="w-3 h-3" /> {converting ? "Converting…" : "Convert"}
+          </button>
+        )}
+      </div>
+      {!alreadyConverted && onLinkExisting && (
+        <div className="mt-3 pt-3 border-t border-stone-200/70">
+          <div className="text-[11px] text-stone-600 mb-2">
+            Already in the franchisees list? Link to the existing record.
+          </div>
+          <button
+            type="button"
+            onClick={() => onLinkExisting?.(contact)}
+            data-testid={`pipeline-panel-convert-link-existing-${contact.id}`}
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-white text-stone-800 border border-stone-300 hover:bg-stone-50 rounded-lg"
+          >
+            <Link2 className="w-3 h-3" /> Link to existing
+          </button>
+        </div>
+      )}
+    </PanelShell>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Notes — reuses the drawer's `<AdminNotesEditor>` which brings its own
+// header + save button. We skip the panel title to avoid the duplicate-
+// heading trap that was flagged on the earlier draft.
 function NotesPanel({ contact, onChanged }) {
   return (
-    <PanelShell icon={StickyNote} title="Notes" testId="pipeline-panel-notes">
+    <div data-testid="pipeline-panel-notes" className="min-w-0 border border-stone-200 rounded-xl bg-white p-3">
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <StickyNote className="w-3 h-3 text-stone-500" />
+        <h4 className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-600">Notes</h4>
+      </div>
       <AdminNotesEditor
         contact={contact}
         onUpdated={(id, notes, ts) =>
           onChanged?.(id, { admin_notes: notes, admin_notes_updated_at: ts })
         }
       />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Move-to-Stage pills — round buttons, one per stage. Current stage is
+// highlighted with its stage colour; others sit in a neutral outline.
+// Also carries the "Remove from sales pipeline" button, same as the
+// drawer.
+const MOVE_STAGES = [
+  { key: "new",           label: "New" },
+  { key: "contacted",     label: "Contacted" },
+  { key: "follow_up_due", label: "Follow-up Due" },
+  { key: "qualified",     label: "Interested" },
+  { key: "dormant",       label: "Dormant" },
+  { key: "lost",          label: "Lost" },
+];
+
+function StageActionsPanel({ contact, onStageChange, onDemote }) {
+  return (
+    <PanelShell testId="pipeline-panel-stage" title="Move to Stage">
+      <div className="grid grid-cols-3 gap-2">
+        {MOVE_STAGES.map((s) => {
+          const isCurrent = contact.pipeline_status === s.key;
+          const stagePill = STAGE_PILL[s.key] || STAGE_PILL.new;
+          return (
+            <button
+              key={s.key}
+              type="button"
+              onClick={() => onStageChange?.(contact.id, s.key)}
+              disabled={isCurrent}
+              className={`px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider border rounded-full transition-colors ${
+                isCurrent
+                  ? `${stagePill.cls} border-current cursor-default`
+                  : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"
+              }`}
+              data-testid={`pipeline-panel-stage-${s.key}-${contact.id}`}
+            >
+              {s.label}
+            </button>
+          );
+        })}
+      </div>
+      <button
+        type="button"
+        onClick={() => onDemote?.(contact.id)}
+        className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider border border-stone-300 bg-white text-stone-700 hover:bg-stone-50 rounded-lg"
+        data-testid={`pipeline-panel-demote-${contact.id}`}
+      >
+        <ArrowDownCircle className="w-3 h-3" /> Remove from sales pipeline
+      </button>
+    </PanelShell>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Mark Follow-up Already Sent — amber panel that only appears when the
+// contact hasn't yet been logged as followed-up. Flips into an emerald
+// "Follow-up recorded" chip after the click, matching the drawer.
+function FollowUpPanel({ contact, onMarkFollowUpSent }) {
+  const alreadyRecorded = Number(contact.follow_up_sent_count || 0) >= 1;
+  if (!onMarkFollowUpSent) return <div aria-hidden />;
+  if (alreadyRecorded) {
+    return (
+      <PanelShell testId="pipeline-panel-followup" tone="emerald" title="Follow-up status">
+        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-md">
+          <CheckCircle2 className="w-3 h-3" /> Follow-up recorded
+        </div>
+      </PanelShell>
+    );
+  }
+  return (
+    <PanelShell testId="pipeline-panel-followup" tone="amber" title="Follow-up status">
+      <div className="text-[11px] text-amber-900 mb-2">
+        Already sent a follow-up outside the system? Mark it as done so
+        this contact won&apos;t drop into <strong>Follow-up Due</strong>.
+      </div>
+      <button
+        type="button"
+        onClick={() => onMarkFollowUpSent?.(contact.id)}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-amber-600 text-white hover:bg-amber-700 rounded-lg"
+        data-testid={`pipeline-panel-mark-followup-${contact.id}`}
+      >
+        <CheckCircle2 className="w-3 h-3" /> Mark follow-up already sent
+      </button>
     </PanelShell>
   );
 }

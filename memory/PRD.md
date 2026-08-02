@@ -63,6 +63,16 @@ Bespoke admin system for a franchise business consolidating Airtable, FileCamp, 
 - **Frontend:** `resolveAndIssueContract` returns `{kind: "render_invariant_failed", failedInvariant, markerCode, page, bbox, renderJobId, ...}`. New `<RenderErrorModal>` on AdminContractsPage shows the invariant, marker, page, bbox, template + render job id and a human-friendly copy line keyed off `failed_invariant` (e.g. "Issue failed because the signature anchor could not be located in the rendered PDF. Please check the marker placement in the template."). Browser `alert()` no longer used for these classes of failure.
 - **Belt-and-braces guard:** if template library declares `signature_anchor` but render_report has zero anchor occurrences (should not happen after the fix), return `failed_invariant: "signature_anchor_not_persisted"` with the specific message + log the full context.
 
+### 2026-08-02 — Sales Pipeline Tabs: expanded panel now mirrors the drawer
+- Expanded row rebuilt so every drawer action is one click away without leaving the tabs view:
+  - **Summary** now carries the full contact card — email, phone, address lines, postcode + MAP button, first-seen date + "N days ago" — plus an **Edit** button that opens the drawer for inline editing.
+  - **Checklist** panel no longer double-labels — the reused `<InterestedChecklist>` widget carries its own header + blue-tinted outline, so we render it without an outer title.
+  - **Convert to Franchisee / Licencee** panel replaces the old empty Activity box. Yellow-gradient background (`from-[#dddd16]/10 to-stone-50`) matching the drawer, primary "Convert" button + "Link to existing" secondary, flips to an emerald "Already converted" card once linked.
+  - **Move to Stage** pill grid (New / Contacted / Follow-up Due / Interested / Dormant / Lost) with the current stage highlighted in its stage colour + "Remove from sales pipeline" button.
+  - **Follow-up status** amber panel with "MARK FOLLOW-UP ALREADY SENT" (only appears when `follow_up_sent_count == 0`; flips to an emerald "Follow-up recorded" chip otherwise).
+- Callbacks wired from `ContactsPage`: `onStageChange`, `onDemote`, `onConvert`, `onLinkExisting`, `onMarkFollowUpSent` — same handlers the drawer uses so behaviour + audit trail stay identical.
+- Rounded outlines + tinted backgrounds throughout (default white / yellow-tinted convert / amber follow-up / emerald recorded), matching the drawer's card language.
+
 ### 2026-08-01 — Sales Pipeline: Tabbed list view
 - New `<SalesPipelineTabsView>` (in `src/components/pipeline/`) replaces the flat list on the Sales Pipeline tab. Four full-width tabs: NEW / CONTACTED / FOLLOW-UP DUE / INTERESTED. Dormant + Lost stay on the kanban only (per user pref).
 - LIST toggle renamed to **TABS** with a `Rows3` icon; internal state key kept as `"list"` to avoid churn on saved recentSearches.
