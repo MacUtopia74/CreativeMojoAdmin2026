@@ -157,7 +157,7 @@ export default function SalesPipelineTabsView({
           No contacts in this stage right now.
         </div>
       ) : (
-        <ul className="divide-y divide-stone-200/80" data-testid="pipeline-rows">
+        <ul className="p-1.5 space-y-0.5" data-testid="pipeline-rows">
           {activeRows.map((c) => (
             <PipelineRow
               key={c.id}
@@ -210,14 +210,14 @@ function PipelineRow({
   const daysInStage = daysSinceISO(c.pipeline_status_updated_at || c.updated_at || c.date_added);
 
   return (
-    <li data-testid={`pipeline-row-${c.id}`} className="bg-white">
+    <li data-testid={`pipeline-row-${c.id}`} className="bg-white border border-stone-200 rounded-xl overflow-hidden">
       {/* Single outer container. When expanded it picks up the heat
           wash and a thicker keyline so the whole unit reads as one. */}
       <div
         className={
           isExpanded
             ? `m-3 border-2 rounded-2xl overflow-hidden shadow-sm ${heat.card}`
-            : "border-2 border-transparent"
+            : "border-2 border-transparent rounded-xl"
         }
         data-testid={isExpanded ? `pipeline-row-expanded-${c.id}` : undefined}
       >
