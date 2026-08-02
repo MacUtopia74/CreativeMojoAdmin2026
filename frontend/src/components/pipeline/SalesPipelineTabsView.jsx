@@ -216,7 +216,7 @@ function PipelineRow({
       <div
         className={
           isExpanded
-            ? `m-3 border-2 rounded-2xl overflow-hidden shadow-sm ${heat.card}`
+            ? "m-3 border-2 border-stone-200 rounded-2xl overflow-hidden shadow-sm bg-[#F2F2F0]"
             : "border-2 border-transparent rounded-xl"
         }
         data-testid={isExpanded ? `pipeline-row-expanded-${c.id}` : undefined}
