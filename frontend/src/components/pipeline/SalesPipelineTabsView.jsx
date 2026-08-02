@@ -18,7 +18,7 @@ import {
   Mail, MailX, Send, Target, Award,
   Link2, CheckCircle2, Calendar, Phone, Pencil,
   User as UserIcon, Clock, Save, X as XIcon,
-  ArrowDownCircle,
+  ArrowDownCircle, ArrowRightLeft,
 } from "lucide-react";
 import { AdminNotesEditor } from "@/pages/ContactsPage";
 
@@ -99,6 +99,7 @@ export default function SalesPipelineTabsView({
   onConvert,
   onLinkExisting,
   onMarkFollowUpSent,
+  onChangeSource,
 }) {
   const [activeTab, setActiveTab] = useState("new");
   const [expandedId, setExpandedId] = useState(null);
@@ -173,6 +174,7 @@ export default function SalesPipelineTabsView({
               onConvert={onConvert}
               onLinkExisting={onLinkExisting}
               onMarkFollowUpSent={onMarkFollowUpSent}
+              onChangeSource={onChangeSource}
               onViewCorrespondence={() => setCorrespondenceContact(c)}
             />
           ))}
@@ -198,6 +200,7 @@ function PipelineRow({
   contact, temp, isExpanded, onToggle,
   onOpenContact, onReplyContact, onContactUpdated, onOpenPostcodeMap,
   onStageChange, onDemote, onConvert, onLinkExisting, onMarkFollowUpSent,
+  onChangeSource,
   onViewCorrespondence,
 }) {
   const c = contact;
@@ -242,6 +245,7 @@ function PipelineRow({
             onConvert={onConvert}
             onLinkExisting={onLinkExisting}
             onMarkFollowUpSent={onMarkFollowUpSent}
+            onChangeSource={onChangeSource}
           />
         )}
       </div>
@@ -281,7 +285,7 @@ function TopBar({
       {/* Left cluster — name + email */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className={`truncate font-semibold text-stone-950 ${isExpanded ? "text-base" : "text-sm"}`}>
+          <span className={`truncate font-bold text-stone-950 ${isExpanded ? "text-base" : "text-sm"}`}>
             {displayNameFor(c)}
           </span>
           {typeof daysInStage === "number" && (
@@ -377,6 +381,7 @@ function TopBar({
 function ExpandedBody({
   contact, daysInStage, onOpenPostcodeMap, onContactUpdated, onOpenContact,
   onStageChange, onDemote, onConvert, onLinkExisting, onMarkFollowUpSent,
+  onChangeSource,
 }) {
   const c = contact;
   return (
@@ -403,11 +408,20 @@ function ExpandedBody({
 
       <div className="lg:col-start-3 lg:row-start-1 min-w-0 flex flex-col gap-3">
         <TerritoryPanel contact={c} />
-        <ConvertPanel
-          contact={c}
-          onConvert={onConvert}
-          onLinkExisting={onLinkExisting}
-        />
+        {/* Convert + Change Type sit side-by-side: Convert narrows so the
+            new Change Type dropdown gets breathing room per the Feb-2026
+            layout tweak. */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <ConvertPanel
+            contact={c}
+            onConvert={onConvert}
+            onLinkExisting={onLinkExisting}
+          />
+          <ChangeTypePanel
+            contact={c}
+            onChangeSource={onChangeSource}
+          />
+        </div>
       </div>
 
       <div className="lg:col-start-4 lg:row-span-2 min-w-0">
@@ -465,8 +479,11 @@ function SummaryPanel({ contact, daysInStage, onOpenPostcodeMap, onSaved }) {
     email: c.email || "",
     telephone: c.telephone || c.phone || "",
     address_line_1: c.address_line_1 || "",
+    address_line_2: c.address_line_2 || "",
     city: c.city || "",
     postcode: c.postcode || "",
+    county: c.county || "",
+    country: c.country || "",
   });
 
   async function save() {
@@ -521,11 +538,14 @@ function SummaryPanel({ contact, daysInStage, onOpenPostcodeMap, onSaved }) {
     >
       {editing ? (
         <div className="space-y-2">
-          <EditField label="Email"     value={form.email}          onChange={(v) => setForm({ ...form, email: v })} />
-          <EditField label="Phone"     value={form.telephone}      onChange={(v) => setForm({ ...form, telephone: v })} />
-          <EditField label="Address"   value={form.address_line_1} onChange={(v) => setForm({ ...form, address_line_1: v })} />
-          <EditField label="Town"      value={form.city}           onChange={(v) => setForm({ ...form, city: v })} />
-          <EditField label="Postcode"  value={form.postcode}       onChange={(v) => setForm({ ...form, postcode: v.toUpperCase() })} />
+          <EditField label="Email"           value={form.email}          onChange={(v) => setForm({ ...form, email: v })} />
+          <EditField label="Phone"           value={form.telephone}      onChange={(v) => setForm({ ...form, telephone: v })} />
+          <EditField label="Address"         value={form.address_line_1} onChange={(v) => setForm({ ...form, address_line_1: v })} />
+          <EditField label="2nd Line of Address" value={form.address_line_2} onChange={(v) => setForm({ ...form, address_line_2: v })} />
+          <EditField label="Town/City"       value={form.city}           onChange={(v) => setForm({ ...form, city: v })} />
+          <EditField label="County/State"    value={form.county}         onChange={(v) => setForm({ ...form, county: v })} />
+          <EditField label="Postcode"        value={form.postcode}       onChange={(v) => setForm({ ...form, postcode: v.toUpperCase() })} />
+          <EditField label="Country"         value={form.country}        onChange={(v) => setForm({ ...form, country: v })} />
           {err && <div className="text-[11px] text-red-600">{err}</div>}
         </div>
       ) : (
@@ -538,7 +558,9 @@ function SummaryPanel({ contact, daysInStage, onOpenPostcodeMap, onSaved }) {
               <MapPin className="w-3.5 h-3.5 text-stone-400 mt-0.5 shrink-0" />
               <div className="min-w-0">
                 {c.address_line_1 && <div className="truncate">{c.address_line_1}</div>}
+                {c.address_line_2 && <div className="truncate">{c.address_line_2}</div>}
                 {c.city && <div className="truncate">{c.city}</div>}
+                {c.county && <div className="truncate">{c.county}</div>}
                 {c.postcode && (
                   <div className="flex items-center gap-1.5 mt-0.5">
                     <span>{c.postcode}</span>
@@ -550,7 +572,8 @@ function SummaryPanel({ contact, daysInStage, onOpenPostcodeMap, onSaved }) {
                     ><MapPin className="w-2.5 h-2.5" /> Map</button>
                   </div>
                 )}
-                {!c.address_line_1 && !c.city && !c.postcode && (
+                {c.country && <div className="truncate text-stone-500">{c.country}</div>}
+                {!c.address_line_1 && !c.address_line_2 && !c.city && !c.county && !c.postcode && !c.country && (
                   <span className="text-stone-400 italic">no address on file</span>
                 )}
               </div>
@@ -682,6 +705,9 @@ function TerritoryPanel({ contact }) {
 
 // ---------------------------------------------------------------------
 // CONVERT TO FRANCHISEE — light tint, Convert + Link to Existing.
+// Sits in a half-width column beside CHANGE TYPE so the two actions
+// share the visual weight of the reclassification workflow. Buttons
+// stack vertically so short labels don't wrap in the narrow column.
 function ConvertPanel({ contact, onConvert, onLinkExisting }) {
   const [converting, setConverting] = useState(false);
   const isLicenceEnq = contact.source === "licence_enquiry";
@@ -694,13 +720,13 @@ function ConvertPanel({ contact, onConvert, onLinkExisting }) {
       testId="pipeline-panel-convert"
       tone={already ? "emerald" : "tinted"}
     >
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex flex-col gap-1.5">
         {already ? (
           <button
             type="button"
             onClick={() => onConvert?.(contact, true)}
             data-testid={`pipeline-panel-convert-view-${contact.id}`}
-            className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-white text-emerald-800 border border-emerald-300 hover:bg-emerald-100 rounded-full"
+            className="inline-flex items-center justify-center gap-1 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-white text-emerald-800 border border-emerald-300 hover:bg-emerald-100 rounded-full"
           >View {contact.converted_to_record_type === "licencee" ? "Licencee" : "Franchisee"}</button>
         ) : (
           <>
@@ -715,18 +741,69 @@ function ConvertPanel({ contact, onConvert, onLinkExisting }) {
               }}
               disabled={converting}
               data-testid={`pipeline-panel-convert-btn-${contact.id}`}
-              className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-[#c9c914] rounded-full disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-1 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-[#c9c914] rounded-full disabled:opacity-50"
             ><Award className="w-3 h-3" /> {converting ? "…" : "Convert"}</button>
             {onLinkExisting && (
               <button
                 type="button"
                 onClick={() => onLinkExisting?.(contact)}
                 data-testid={`pipeline-panel-convert-link-existing-${contact.id}`}
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-white text-stone-800 border border-stone-300 hover:bg-stone-50 rounded-full"
+                className="inline-flex items-center justify-center gap-1 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-white text-stone-800 border border-stone-300 hover:bg-stone-50 rounded-full"
               ><Link2 className="w-3 h-3" /> Link to existing</button>
             )}
           </>
         )}
+      </div>
+    </PanelShell>
+  );
+}
+
+// ---------------------------------------------------------------------
+// CHANGE TYPE — reclassify the enquiry between Franchise / Licence /
+// General without leaving the Sales Pipeline row. Backed by the same
+// `/contacts/{id}/move` endpoint used by the drawer's "Change type"
+// menu, so behaviour stays consistent across list + drawer views.
+const CHANGE_TYPE_OPTIONS = [
+  { key: "franchise", label: "Franchise", source: "franchise_enquiry" },
+  { key: "licence",   label: "Licence",   source: "licence_enquiry" },
+  { key: "general",   label: "General",   source: "general_enquiry" },
+];
+
+function ChangeTypePanel({ contact, onChangeSource }) {
+  const currentSource = contact.source || "general_enquiry";
+  const currentOpt = CHANGE_TYPE_OPTIONS.find((o) => o.source === currentSource);
+  const [busy, setBusy] = useState(false);
+  const canChange = !!onChangeSource;
+  return (
+    <PanelShell
+      icon={ArrowRightLeft}
+      title="Change Type"
+      testId="pipeline-panel-change-type"
+    >
+      <div className="flex flex-col gap-1.5">
+        <div className="text-[10px] uppercase tracking-wider font-bold text-stone-500">
+          Current: <span className="text-stone-800">{currentOpt?.label || "General"}</span>
+        </div>
+        <select
+          value={currentOpt?.key || "general"}
+          disabled={!canChange || busy}
+          onChange={async (e) => {
+            const target = e.target.value;
+            if (target === currentOpt?.key) return;
+            const label = CHANGE_TYPE_OPTIONS.find((o) => o.key === target)?.label || target;
+            const name = displayNameFor(contact);
+            if (!window.confirm(`Reclassify ${name} as a ${label} enquiry?`)) return;
+            setBusy(true);
+            try { await onChangeSource?.(contact, target); }
+            finally { setBusy(false); }
+          }}
+          className="w-full text-xs border border-stone-300 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-stone-900 disabled:opacity-50"
+          data-testid={`pipeline-panel-change-type-select-${contact.id}`}
+        >
+          {CHANGE_TYPE_OPTIONS.map((o) => (
+            <option key={o.key} value={o.key}>{o.label} enquiry</option>
+          ))}
+        </select>
       </div>
     </PanelShell>
   );

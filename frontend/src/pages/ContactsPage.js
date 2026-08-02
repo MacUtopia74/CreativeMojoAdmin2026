@@ -2058,6 +2058,25 @@ export default function ContactsPage() {
     } catch (e) { setError("Could not move contact."); }
   };
 
+  // Reclassify a contact's enquiry TYPE (Franchise ↔ Licence ↔ General)
+  // without removing them from the pipeline. Backed by the same /move
+  // endpoint but keeps the row in place so the pipeline tabs stay
+  // in-context — mirrors the drawer behaviour of "Change type".
+  const changeContactSource = async (c, target) => {
+    const labelMap = { franchise: "Franchise enquiry", licence: "Licence enquiry", general: "General enquiry" };
+    if (!window.confirm(`Reclassify ${[c.first_name, c.last_name].filter(Boolean).join(" ") || "this contact"} as a ${labelMap[target]}?`)) return;
+    try {
+      await api.post(`/contacts/${c.id}/move`, { target });
+      const newSource = target === "franchise" ? "franchise_enquiry" : target === "licence" ? "licence_enquiry" : "general_enquiry";
+      setData((d) => ({
+        ...d,
+        items: d.items.map((x) => x.id === c.id ? { ...x, source: newSource } : x),
+      }));
+      setSelected((sel) => sel && sel.id === c.id ? { ...sel, source: newSource } : sel);
+      loadCounts();
+    } catch { setError("Could not reclassify contact."); }
+  };
+
   const bulkMove = async (target, pipeline_status) => {
     const ids = Array.from(selectedIds);
     if (!ids.length) return;
@@ -2833,6 +2852,7 @@ export default function ContactsPage() {
                 onConvert={convertContact}
                 onLinkExisting={openLinkExisting}
                 onMarkFollowUpSent={markFollowUpSent}
+                onChangeSource={changeContactSource}
                 onContactUpdated={(id, patch) => {
                   // Merge the patch into local state so the row's chip /
                   // notes / checklist stay in sync without a full reload.
@@ -3064,26 +3084,7 @@ export default function ContactsPage() {
           }));
           setSelected((sel) => sel && sel.id === payload.id ? { ...sel, ...patch } : sel);
         }}
-        onChangeSource={async (c, target) => {
-          // Reclassify the contact (Franchise ↔ Licence ↔ General). Uses
-          // the same /contacts/{id}/move endpoint as the row-level MoveMenu
-          // so behaviour is consistent — but we want the drawer to STAY
-          // OPEN on the same contact afterwards so the admin can carry on
-          // working, rather than the drawer closing as it does in the
-          // list-view flow.
-          const labelMap = { franchise: "Franchise enquiry", licence: "Licence enquiry", general: "General enquiry" };
-          if (!window.confirm(`Reclassify ${[c.first_name, c.last_name].filter(Boolean).join(" ") || "this contact"} as a ${labelMap[target]}?`)) return;
-          try {
-            await api.post(`/contacts/${c.id}/move`, { target });
-            const newSource = target === "franchise" ? "franchise_enquiry" : target === "licence" ? "licence_enquiry" : "general_enquiry";
-            setData((d) => ({
-              ...d,
-              items: d.items.map((x) => x.id === c.id ? { ...x, source: newSource } : x),
-            }));
-            setSelected((sel) => sel && sel.id === c.id ? { ...sel, source: newSource } : sel);
-            loadCounts();
-          } catch { setError("Could not reclassify contact."); }
-        }} />
+        onChangeSource={changeContactSource} />
       <LinkExistingFranchiseeModal
         open={!!linkingContact}
         contact={linkingContact}

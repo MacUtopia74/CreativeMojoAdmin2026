@@ -1,0 +1,24 @@
+{
+  "summary": "Verified Feb-2026 Sales Pipeline tweaks in SalesPipelineTabsView: (1) Summary panel now includes address_line_2, county, country fields (edit form order: Email, Phone, Address, 2nd Line of Address, Town/City, County/State, Postcode, Country); Town → Town/City rename confirmed. (2) Contact name renders in font-bold on both collapsed and expanded row headers. (3) Convert-to-Franchisee panel narrowed (141px) and new Change Type panel (141px) sits side-by-side under Plan Their Territory in column 3. Change Type dropdown lists Franchise/Licence/General enquiry, shows correct 'Current: <Label>' matching contact.source, fires confirm() dialog, POSTs to /api/contacts/{id}/move, updates label in place, and flips Convert button to 'Convert to Licencee' when switched to licence. Reverted back to franchise cleanly. PATCH /api/contacts/{id}/details persisted new address fields (Apt 3B / Norfolk / United Kingdom visible in Summary display after save).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "ChangeTypePanel select", "issues": ["Minor React hydration warning in console: '<span> cannot be a child of <option>'. Non-blocking, but investigate if a stray span was rendered inside a <select> option somewhere in the row."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": ["Investigate console hydration warning about <span> inside <option> — likely from a select somewhere in expanded row (not blocking functionality)."],
+  "critical_code_review_comments": [
+    "SalesPipelineTabsView.jsx is now 922 lines — approaching split threshold; consider extracting SummaryPanel, ConvertPanel, ChangeTypePanel into individual files.",
+    "ChangeType dropdown fires window.confirm — acceptable for MVP but consider migrating to shadcn AlertDialog for better UX consistency."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@creativemojo.co.uk / CreativeMojo2026!",
+  "seed_data_creation": "Modified live contact 32d29221-49ae-4335-9c03-da31a37ccb30 (Christopher Smith): address_line_2='Apt 3B', county='Norfolk', country='United Kingdom' — not reverted. Source reverted from licence back to franchise. Test data may need cleanup if these values were empty before.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "SalesPipelineTabsView fully verified for Feb-2026 tweaks. Christopher Smith (contact 32d29221-...) had address_line_2/county/country populated during test — main agent may want to clear if seed contact. Change Type source was reverted to franchise. Backend endpoints /api/contacts/{id}/details (PATCH) and /api/contacts/{id}/move (POST target=licence|franchise|general) both working."
+}
