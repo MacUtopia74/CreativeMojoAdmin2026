@@ -3609,6 +3609,7 @@ def _extract_sales_handoff(contact: dict, captured_by: Optional[str]) -> Optiona
     if not contact:
         return None
     keys = (
+        "initial_territory_sent",
         "territory_defined",
         "contract_sent",
         "shadow_day_booked",
@@ -5635,7 +5636,7 @@ async def update_contact_checklist(
     keep the values forever — useful for reports later. Booleans only;
     anything else is coerced via ``bool()``.
     """
-    fields = {k: bool(body.get(k)) for k in ("territory_defined", "contract_sent", "shadow_day_booked", "training_days_booked")}
+    fields = {k: bool(body.get(k)) for k in ("initial_territory_sent", "territory_defined", "contract_sent", "shadow_day_booked", "training_days_booked")}
     # Optional companion fields for the "Shadow Day Booked" row — a date
     # (ISO YYYY-MM-DD or empty) and a free-text "with whom" string. Stored
     # alongside the booleans so the drawer can re-render them on reload.

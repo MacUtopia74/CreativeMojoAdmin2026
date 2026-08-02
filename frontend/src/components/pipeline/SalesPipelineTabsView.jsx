@@ -20,7 +20,7 @@ import {
   User as UserIcon, Clock, Save, X as XIcon,
   ArrowDownCircle, ArrowRightLeft,
 } from "lucide-react";
-import { AdminNotesEditor } from "@/pages/ContactsPage";
+import { AdminNotesEditor, InterestedChecklist } from "@/pages/ContactsPage";
 
 const TABS = [
   { key: "new",           label: "New",            dot: "bg-stone-400",   bg: "bg-stone-900",   fg: "text-white" },
@@ -386,7 +386,7 @@ function ExpandedBody({
   const c = contact;
   return (
     <div
-      className="p-4 grid gap-3 grid-cols-1 lg:grid-cols-4 lg:grid-rows-[auto_auto]"
+      className="p-4 grid gap-3 grid-cols-1 lg:grid-cols-4 lg:grid-rows-[auto_auto_auto]"
       data-testid={`pipeline-row-body-${c.id}`}
     >
       <div className="lg:col-start-1 lg:row-span-2 min-w-0">
@@ -399,10 +399,9 @@ function ExpandedBody({
       </div>
 
       <div className="lg:col-start-2 lg:row-start-1 min-w-0">
-        <StagePanel
+        <InterestedChecklist
           contact={c}
-          onStageChange={onStageChange}
-          onDemote={onDemote}
+          onChanged={(patch) => onContactUpdated?.(c.id, patch)}
         />
       </div>
 
@@ -434,9 +433,26 @@ function ExpandedBody({
           onMarkFollowUpSent={onMarkFollowUpSent}
         />
       </div>
+
+      {/* Move-to-Stage moved to the bottom and stretched full width so
+          the six stage pills space out proportionally under the whole
+          expanded card. */}
+      <div className="lg:col-start-1 lg:col-span-4 lg:row-start-3 min-w-0">
+        <StagePanel
+          contact={c}
+          onStageChange={onStageChange}
+          onDemote={onDemote}
+          stretch
+        />
+      </div>
     </div>
   );
 }
+
+// ---------------------------------------------------------------------
+// (Historical ChecklistPanel removed — the tab view now renders the
+// shared InterestedChecklist widget directly so the styling matches
+// the Kanban modal exactly.)
 
 // ---------------------------------------------------------------------
 // Panel shell — a single card style used by every expanded panel so
@@ -633,10 +649,15 @@ const STAGE_GRID = [
   { key: "lost",          label: "Lost" },
 ];
 
-function StagePanel({ contact, onStageChange, onDemote }) {
+function StagePanel({ contact, onStageChange, onDemote, stretch = false }) {
+  // In `stretch` mode the six pills spread out across a single row so
+  // the panel can span the full width of the expanded card cleanly.
+  const gridCls = stretch
+    ? "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2"
+    : "grid grid-cols-2 gap-2";
   return (
     <PanelShell icon={Clock} title="Move to Stage" testId="pipeline-panel-stage">
-      <div className="grid grid-cols-2 gap-2">
+      <div className={gridCls}>
         {STAGE_GRID.map((s) => {
           const isCurrent = contact.pipeline_status === s.key;
           const spec = STAGE[s.key];

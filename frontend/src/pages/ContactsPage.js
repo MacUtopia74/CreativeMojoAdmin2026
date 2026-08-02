@@ -1402,13 +1402,12 @@ function ContactDrawer({ contact, onClose, onStageChange, onPromote, onDemote, o
 
 
 function InterestedChecklist({ contact, onChanged }) {
-  // The Interested stage tracks four concrete actions:
-  //  • Territory confirmed?  • Contract Sent?
+  // The Interested stage tracks concrete actions:
+  //  • Initial Territory Sent?  • Territory confirmed?
+  //  • Contract Sent?
   //  • Shadow Day Booked?   (with date + "Shadowing:" free text)
   //  • Training Day(s) booked? (with one-or-more dates — training runs 2–3 days)
-  // Top two ticks sit side-by-side. Bottom two reveal their date/text inputs
-  // only when checked, and are separated by a divider so they read as
-  // distinct steps. Saves on blur (date/text) or instantly on tick.
+  const [initialTerritorySent, setInitialTerritorySent] = useState(!!contact.initial_territory_sent);
   const [territoryDefined, setTerritoryDefined] = useState(!!contact.territory_defined);
   const [contractSent, setContractSent] = useState(!!contact.contract_sent);
   const [shadowDayBooked, setShadowDayBooked] = useState(!!contact.shadow_day_booked);
@@ -1422,6 +1421,7 @@ function InterestedChecklist({ contact, onChanged }) {
 
   // When the drawer switches to a different contact, sync local state.
   useEffect(() => {
+    setInitialTerritorySent(!!contact.initial_territory_sent);
     setTerritoryDefined(!!contact.territory_defined);
     setContractSent(!!contact.contract_sent);
     setShadowDayBooked(!!contact.shadow_day_booked);
@@ -1430,13 +1430,14 @@ function InterestedChecklist({ contact, onChanged }) {
     setTrainingBooked(!!contact.training_days_booked);
     setTrainingDates(Array.isArray(contact.training_day_dates) ? [...contact.training_day_dates] : []);
     setNewTrainingDate("");
-  }, [contact.id, contact.territory_defined, contact.contract_sent, contact.shadow_day_booked, contact.shadow_day_date, contact.shadowing_with, contact.training_days_booked, contact.training_day_dates]);
+  }, [contact.id, contact.initial_territory_sent, contact.territory_defined, contact.contract_sent, contact.shadow_day_booked, contact.shadow_day_date, contact.shadowing_with, contact.training_days_booked, contact.training_day_dates]);
 
   // Single saver — accepts overrides so callers don't have to wait for
   // setState before firing the PATCH.
   const persist = async (overrides = {}) => {
     setSaving(true); setError("");
     const payload = {
+      initial_territory_sent: initialTerritorySent,
       territory_defined: territoryDefined,
       contract_sent: contractSent,
       shadow_day_booked: shadowDayBooked,
@@ -1505,8 +1506,9 @@ function InterestedChecklist({ contact, onChanged }) {
         {saving && <span className="text-[10px] font-normal normal-case text-stone-500">Saving…</span>}
       </div>
 
-      {/* Top row — Territory confirmed + Contract Sent side by side */}
-      <div className="grid grid-cols-2 gap-1">
+      {/* Top row — Initial Territory Sent + Territory Confirmed + Contract Sent */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+        <Tick k="initial-territory" label="Initial Territory Sent?" checked={initialTerritorySent} onCheck={(v) => toggle("initial_territory_sent", v, setInitialTerritorySent)} />
         <Tick k="territory" label="Territory confirmed?" checked={territoryDefined} onCheck={(v) => toggle("territory_defined", v, setTerritoryDefined)} />
         <Tick k="contract" label="Contract Sent?" checked={contractSent} onCheck={(v) => toggle("contract_sent", v, setContractSent)} />
       </div>
