@@ -63,6 +63,14 @@ Bespoke admin system for a franchise business consolidating Airtable, FileCamp, 
 - **Frontend:** `resolveAndIssueContract` returns `{kind: "render_invariant_failed", failedInvariant, markerCode, page, bbox, renderJobId, ...}`. New `<RenderErrorModal>` on AdminContractsPage shows the invariant, marker, page, bbox, template + render job id and a human-friendly copy line keyed off `failed_invariant` (e.g. "Issue failed because the signature anchor could not be located in the rendered PDF. Please check the marker placement in the template."). Browser `alert()` no longer used for these classes of failure.
 - **Belt-and-braces guard:** if template library declares `signature_anchor` but render_report has zero anchor occurrences (should not happen after the fix), return `failed_invariant: "signature_anchor_not_persisted"` with the specific message + log the full context.
 
+### 2026-08-02 — Sales Pipeline Tabs: UX polish pass
+- **Header click collapses.** Clicking anywhere on the expanded card's tinted header strip toggles the row shut. Interactive children (MAP button, chevron button) stop propagation so they still function.
+- **Row dividers** darkened from `divide-stone-100` → `divide-stone-200/80` so vertical row boundaries read at a glance.
+- **Territory-plan card removed from compact rows** (still shown in the expanded panel). Compact row grid tightened from 7 → 6 columns.
+- **Solid-colour active tab.** Tab bar for active section now renders a solid coloured block: New=stone-900 (white text), Contacted=blue-600, Follow-up Due=amber-500, Interested=emerald-600. Matches the count-pill against a lighter tint on the same accent so the active section is unmistakeable.
+- **Solid Move-to-Stage lozenges.** `STAGE_PILL.activeCls` swapped from outlined-with-ring to a solid fill in that stage's colour (stone-900 / blue-600 / amber-500 / emerald-600 / orange-500 / red-600). Disabled + `aria-current` when active.
+- **View Correspondence full-screen modal.** New `<CorrespondenceModal>` renders a `fixed inset-0` overlay with header (CORRESPONDENCE label + contact name + close) and an empty body placeholder ("Email correspondence layout coming next"). ESC + backdrop click + close button all dismiss. Body scroll locked while open.
+
 ### 2026-08-02 — Sales Pipeline Tabs: inline edit + heat-tinted card + stage highlighting
 - **Inline edit in Summary** — Edit button no longer opens the drawer. Swaps the panel into an in-place form (email / phone / address / city / postcode) that saves via the existing `PATCH /contacts/{id}/details` endpoint. Diff-only payload so a stale drawer edit isn't overwritten.
 - **Move to Stage current-stage highlighting** — active pill picks up its stage colour + a matching ring (e.g. Contacted → blue ring, Interested → emerald, Dormant → orange), and is disabled so it can't be clicked to itself.

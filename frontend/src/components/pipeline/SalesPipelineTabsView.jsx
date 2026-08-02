@@ -34,10 +34,13 @@ import {
 import { AdminNotesEditor } from "@/pages/ContactsPage";
 
 const TABS = [
-  { key: "new",           label: "New",            accent: "bg-stone-800",    dot: "bg-stone-400" },
-  { key: "contacted",     label: "Contacted",      accent: "bg-blue-700",     dot: "bg-blue-400" },
-  { key: "follow_up_due", label: "Follow-up Due",  accent: "bg-amber-700",    dot: "bg-amber-500" },
-  { key: "qualified",     label: "Interested",     accent: "bg-emerald-700",  dot: "bg-emerald-500" },
+  // ``bg``/``fg`` used to render the active tab as a bold solid block
+  // matching the stage colour (Aug 2 spec) — makes it obvious which
+  // section you're on rather than the previous white-on-white.
+  { key: "new",           label: "New",            dot: "bg-stone-400",  bg: "bg-stone-900",   fg: "text-white" },
+  { key: "contacted",     label: "Contacted",      dot: "bg-blue-400",   bg: "bg-blue-600",    fg: "text-white" },
+  { key: "follow_up_due", label: "Follow-up Due",  dot: "bg-amber-500",  bg: "bg-amber-500",   fg: "text-stone-950" },
+  { key: "qualified",     label: "Interested",     dot: "bg-emerald-500", bg: "bg-emerald-600", fg: "text-white" },
 ];
 
 // Stage pill styling — kept in sync with STAGES in ContactsPage.js.
@@ -46,27 +49,29 @@ const TABS = [
 const STAGE_PILL = {
   new: {
     label: "New",           cls: "bg-stone-50 text-stone-700 border-stone-300",   dot: "bg-stone-500",
-    activeCls: "bg-white text-stone-900 border-stone-900 ring-1 ring-stone-900/40",
+    // Solid colour applied when a stage is CURRENT — matches the
+    // tab bar so the whole panel reads as "this contact is HERE".
+    activeCls: "bg-stone-900 text-white border-stone-900",
   },
   contacted: {
     label: "Contacted",     cls: "bg-blue-50 text-blue-700 border-blue-200",      dot: "bg-blue-500",
-    activeCls: "bg-blue-50 text-blue-900 border-blue-600 ring-1 ring-blue-600/40",
+    activeCls: "bg-blue-600 text-white border-blue-600",
   },
   follow_up_due: {
     label: "Follow-up Due", cls: "bg-amber-50 text-amber-800 border-amber-300",   dot: "bg-amber-500",
-    activeCls: "bg-amber-50 text-amber-900 border-amber-600 ring-1 ring-amber-600/40",
+    activeCls: "bg-amber-500 text-stone-950 border-amber-500",
   },
   qualified: {
     label: "Interested",    cls: "bg-emerald-50 text-emerald-800 border-emerald-200", dot: "bg-emerald-500",
-    activeCls: "bg-emerald-50 text-emerald-900 border-emerald-600 ring-1 ring-emerald-600/40",
+    activeCls: "bg-emerald-600 text-white border-emerald-600",
   },
   dormant: {
     label: "Dormant",       cls: "bg-orange-50 text-orange-800 border-orange-200", dot: "bg-orange-500",
-    activeCls: "bg-orange-50 text-orange-900 border-orange-600 ring-1 ring-orange-600/40",
+    activeCls: "bg-orange-500 text-white border-orange-500",
   },
   lost: {
     label: "Lost",          cls: "bg-red-50 text-red-700 border-red-200",         dot: "bg-red-500",
-    activeCls: "bg-red-50 text-red-900 border-red-600 ring-1 ring-red-600/40",
+    activeCls: "bg-red-600 text-white border-red-600",
   },
 };
 
@@ -141,6 +146,9 @@ export default function SalesPipelineTabsView({
 }) {
   const [activeTab, setActiveTab] = useState("new");
   const [expandedId, setExpandedId] = useState(null);
+  // Full-screen correspondence modal — mounts empty per Aug 2 spec.
+  // Layout + content will be filled in a follow-up brief.
+  const [correspondenceContact, setCorrespondenceContact] = useState(null);
 
   const buckets = React.useMemo(() => {
     const out = { new: [], contacted: [], follow_up_due: [], qualified: [] };
@@ -174,16 +182,16 @@ export default function SalesPipelineTabsView({
               data-testid={`pipeline-tab-${t.key}`}
               className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold uppercase tracking-[0.18em] transition-colors border-b-2 ${
                 isActive
-                  ? "border-stone-900 text-stone-900 bg-white"
+                  ? `border-stone-900 ${t.bg} ${t.fg}`
                   : "border-transparent text-stone-500 hover:text-stone-800 hover:bg-white/60"
               }`}
             >
-              <span className={`inline-block w-2 h-2 rounded-full ${t.dot}`} />
+              <span className={`inline-block w-2 h-2 rounded-full ${isActive ? "bg-white/70" : t.dot}`} />
               <span>{t.label}</span>
               <span
                 className={`text-[10px] tabular-nums px-1.5 py-0.5 rounded-full ${
-                  isActive ? `${t.accent} text-white` : "bg-stone-200 text-stone-700"
-                }`}
+                  isActive ? "bg-white/25 text-white" : "bg-stone-200 text-stone-700"
+                } ${isActive && !t.fg.includes("white") ? "!bg-stone-900/15 !text-stone-950" : ""}`}
                 data-testid={`pipeline-tab-count-${t.key}`}
               >
                 {count}
@@ -198,7 +206,7 @@ export default function SalesPipelineTabsView({
           No contacts in this stage right now.
         </div>
       ) : (
-        <ul className="divide-y divide-stone-100">
+        <ul className="divide-y divide-stone-200/80">
           {activeRows.map((c) => (
             <PipelineRow
               key={c.id}
@@ -215,10 +223,76 @@ export default function SalesPipelineTabsView({
               onConvert={onConvert}
               onLinkExisting={onLinkExisting}
               onMarkFollowUpSent={onMarkFollowUpSent}
+              onViewCorrespondence={() => setCorrespondenceContact(c)}
             />
           ))}
         </ul>
       )}
+
+      {correspondenceContact && (
+        <CorrespondenceModal
+          contact={correspondenceContact}
+          onClose={() => setCorrespondenceContact(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------
+// View-Correspondence modal — full-screen shell for the upcoming email
+// correspondence layout. Deliberately empty per Aug 2 spec — content
+// will be filled in a follow-up brief. ESC + backdrop click close.
+function CorrespondenceModal({ contact, onClose }) {
+  const displayName = [contact.first_name, contact.last_name].filter(Boolean).join(" ") || contact.email || "Contact";
+  React.useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    // Lock body scroll while modal is open — matches other full-screen
+    // modals in the app.
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [onClose]);
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/40 flex items-stretch justify-center"
+      onClick={onClose}
+      data-testid="correspondence-modal-backdrop"
+    >
+      <div
+        className="bg-white w-full h-full flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Correspondence with ${displayName}`}
+        data-testid="correspondence-modal"
+      >
+        <header className="flex items-center justify-between gap-3 px-6 py-3 border-b border-stone-200 bg-stone-50">
+          <div className="min-w-0">
+            <div className="text-xs uppercase tracking-[0.2em] font-bold text-stone-500">Correspondence</div>
+            <div className="text-lg font-bold text-stone-950 truncate">{displayName}</div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wider border border-stone-300 bg-white text-stone-700 hover:bg-stone-100 rounded-md"
+            data-testid="correspondence-modal-close"
+          >
+            <XIcon className="w-3 h-3" /> Close
+          </button>
+        </header>
+        <div className="flex-1 min-h-0 overflow-auto bg-stone-50/50">
+          {/* Intentionally empty — layout comes next. */}
+          <div className="w-full h-full flex items-center justify-center text-sm text-stone-500 italic px-6 text-center">
+            Email correspondence layout coming next — the modal is
+            wired and ready.
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -227,6 +301,7 @@ function PipelineRow({
   contact, temp, isExpanded, onToggle,
   onOpenContact, onReplyContact, onContactUpdated, onOpenPostcodeMap,
   onStageChange, onDemote, onConvert, onLinkExisting, onMarkFollowUpSent,
+  onViewCorrespondence,
 }) {
   const c = contact;
   const displayName = [c.first_name, c.last_name].filter(Boolean).join(" ") || "(no name)";
@@ -276,6 +351,7 @@ function PipelineRow({
           onConvert={onConvert}
           onLinkExisting={onLinkExisting}
           onMarkFollowUpSent={onMarkFollowUpSent}
+          onViewCorrespondence={onViewCorrespondence}
         />
       )}
     </li>
@@ -283,14 +359,16 @@ function PipelineRow({
 }
 
 // ---------------------------------------------------------------------
-// Compact row — the default 7-column layout for un-expanded contacts.
+// Compact row — the default 6-column layout for un-expanded contacts.
+// The territory-plan card was removed here per Aug 2 spec — it only
+// shows inside the expanded panel now, so the collapsed row stays
+// clean and scannable.
 function CompactRow({ contact, stage, heat, heatScore, emailed, daysInStage, onToggle, onOpenPostcodeMap }) {
   const c = contact;
   const displayName = [c.first_name, c.last_name].filter(Boolean).join(" ") || "(no name)";
-  const linkedPlan = c.linked_plan || null;
   return (
     <div
-      className="grid grid-cols-[minmax(0,1fr)_130px_150px_100px_130px_260px_28px] gap-3 items-center px-4 py-3 cursor-pointer hover:bg-stone-50 transition-colors"
+      className="grid grid-cols-[minmax(0,1fr)_130px_150px_100px_130px_28px] gap-3 items-center px-4 py-3 cursor-pointer hover:bg-stone-50 transition-colors"
       onClick={onToggle}
       role="button"
       tabIndex={0}
@@ -363,8 +441,6 @@ function CompactRow({ contact, stage, heat, heatScore, emailed, daysInStage, onT
         </span>
       </div>
 
-      <TerritoryPlanCard contact={c} linkedPlan={linkedPlan} onClick={(e) => e.stopPropagation()} />
-
       <div className="text-stone-400 justify-self-end">
         <ChevronDown className="w-4 h-4" />
       </div>
@@ -378,6 +454,7 @@ function ExpandedCard({
   contact, stage, heatKey, heat, heatScore, emailed, daysInStage, displayName,
   onToggle, onOpenContact, onReplyContact, onContactUpdated, onOpenPostcodeMap,
   onStageChange, onDemote, onConvert, onLinkExisting, onMarkFollowUpSent,
+  onViewCorrespondence,
 }) {
   const c = contact;
   return (
@@ -385,9 +462,17 @@ function ExpandedCard({
       className={`border rounded-2xl m-3 overflow-hidden shadow-sm ${heat.card}`}
       data-testid={`pipeline-row-expanded-${c.id}`}
     >
-      {/* Header strip — sits inside the heat-tinted card. Extra border-
-          below adds separation before the white body panels below. */}
-      <div className="flex items-center gap-4 px-5 py-4 border-b border-stone-200/60">
+      {/* Header strip — clicking anywhere on it (except the interactive
+          MAP button) collapses the row. Rendered as a div because we
+          have interactive children; keyboard toggle via Enter / Space. */}
+      <div
+        onClick={onToggle}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle?.(); } }}
+        role="button"
+        tabIndex={0}
+        className="w-full flex items-center gap-4 px-5 py-4 border-b border-stone-200/60 cursor-pointer hover:bg-white/40 transition-colors"
+        data-testid={`pipeline-expanded-header-${c.id}`}
+      >
         <div className="w-11 h-11 rounded-full bg-white/70 text-stone-800 font-bold text-sm flex items-center justify-center border border-white/50 shrink-0">
           {initialsFor(c)}
         </div>
@@ -409,7 +494,7 @@ function ExpandedCard({
             <span className="font-semibold">{c.postcode}</span>
             <button
               type="button"
-              onClick={() => onOpenPostcodeMap?.(c)}
+              onClick={(e) => { e.stopPropagation(); onOpenPostcodeMap?.(c); }}
               className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border border-stone-400 rounded hover:bg-white/60 text-stone-700"
               data-testid={`pipeline-expanded-postcode-map-${c.id}`}
             >
@@ -433,7 +518,7 @@ function ExpandedCard({
         </span>
         <button
           type="button"
-          onClick={onToggle}
+          onClick={(e) => { e.stopPropagation(); onToggle?.(); }}
           className="text-stone-500 hover:text-stone-800"
           data-testid={`pipeline-expanded-collapse-${c.id}`}
         >
@@ -494,7 +579,7 @@ function ExpandedCard({
           </button>
           <button
             type="button"
-            onClick={() => onOpenContact?.(c)}
+            onClick={() => onViewCorrespondence?.(c)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-md bg-white text-stone-800 border-stone-300 hover:bg-stone-100"
             data-testid={`pipeline-row-view-correspondence-${c.id}`}
           >
