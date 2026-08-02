@@ -450,13 +450,17 @@ function ExpandedBody({
 // not the panel chrome itself.
 function PanelShell({ icon: Icon, title, action, children, testId, tone = "default", bodyClass = "" }) {
   void tone;
-  const shellCls = "bg-emerald-50/70 border-2 border-emerald-500";
+  const shellCls = "border-2";
   return (
     <section
       className={`h-full rounded-xl flex flex-col overflow-hidden ${shellCls}`}
+      style={{ backgroundColor: "#fafbe9", borderColor: "#dddd16" }}
       data-testid={testId}
     >
-      <header className="flex items-center gap-2 px-3 py-2 border-b border-emerald-200">
+      <header
+        className="flex items-center gap-2 px-3 py-2 border-b"
+        style={{ borderColor: "#e6e37f" }}
+      >
         {Icon && <Icon className="w-3.5 h-3.5 text-stone-500" />}
         <h4 className="text-[11px] uppercase tracking-[0.16em] font-bold text-stone-700">{title}</h4>
         {action && <div className="ml-auto">{action}</div>}
