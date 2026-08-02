@@ -63,6 +63,14 @@ Bespoke admin system for a franchise business consolidating Airtable, FileCamp, 
 - **Frontend:** `resolveAndIssueContract` returns `{kind: "render_invariant_failed", failedInvariant, markerCode, page, bbox, renderJobId, ...}`. New `<RenderErrorModal>` on AdminContractsPage shows the invariant, marker, page, bbox, template + render job id and a human-friendly copy line keyed off `failed_invariant` (e.g. "Issue failed because the signature anchor could not be located in the rendered PDF. Please check the marker placement in the template."). Browser `alert()` no longer used for these classes of failure.
 - **Belt-and-braces guard:** if template library declares `signature_anchor` but render_report has zero anchor occurrences (should not happen after the fix), return `failed_invariant: "signature_anchor_not_persisted"` with the specific message + log the full context.
 
+### 2026-08-02 — Sales Pipeline Tabs: inline edit + heat-tinted card + stage highlighting
+- **Inline edit in Summary** — Edit button no longer opens the drawer. Swaps the panel into an in-place form (email / phone / address / city / postcode) that saves via the existing `PATCH /contacts/{id}/details` endpoint. Diff-only payload so a stale drawer edit isn't overwritten.
+- **Move to Stage current-stage highlighting** — active pill picks up its stage colour + a matching ring (e.g. Contacted → blue ring, Interested → emerald, Dormant → orange), and is disabled so it can't be clicked to itself.
+- **Checklist panel removed entirely** from the tabs view (it's only relevant after conversion to a franchisee).
+- **Heat-tinted expanded card** — whole card background gets a soft gradient wash based on the contact's temperature: cold=blue, warm=purple, hot=orange (three-tier scale matching the flame swatches). Header no longer standalone-tinted; the wash wraps the entire expanded panel so the temperature is visible even when scrolling below the header.
+- Expanded layout locked to match the mockup: heat-tinted card → header strip → Row 1 (Summary + edit · Plan territory · Notes · Convert) → Row 2 (Move to Stage · Follow-up Status) → Quick Reply / Reply with Template / View Correspondence.
+- Verified on preview: all six panels render, checklist gone, inline email input appears on Edit click, NEW stage button correctly marked disabled/aria-current on a NEW-stage contact.
+
 ### 2026-08-02 — Sales Pipeline Tabs: expanded panel now mirrors the drawer
 - Expanded row rebuilt so every drawer action is one click away without leaving the tabs view:
   - **Summary** now carries the full contact card — email, phone, address lines, postcode + MAP button, first-seen date + "N days ago" — plus an **Edit** button that opens the drawer for inline editing.
