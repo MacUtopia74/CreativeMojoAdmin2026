@@ -119,7 +119,7 @@ export default function SalesPipelineTabsView({
 
   return (
     <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid="sales-pipeline-tabs">
-      <div role="tablist" className="flex border-b border-stone-200 bg-[#F2F2F0]">
+      <div role="tablist" className="flex gap-1.5 p-1.5 bg-white border-b border-stone-200">
         {TABS.map((t) => {
           const isActive = t.key === activeTab;
           const count = (buckets[t.key] || []).length;
@@ -131,10 +131,10 @@ export default function SalesPipelineTabsView({
               aria-selected={isActive}
               onClick={() => { setActiveTab(t.key); setExpandedId(null); }}
               data-testid={`pipeline-tab-${t.key}`}
-              className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold uppercase tracking-[0.18em] transition-colors border-b-2 ${
+              className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold uppercase tracking-[0.18em] transition-colors rounded-lg ${
                 isActive
-                  ? `border-stone-900 ${t.bg} ${t.fg}`
-                  : "border-transparent text-stone-500 hover:text-stone-800 hover:bg-white/60"
+                  ? `${t.bg} ${t.fg}`
+                  : "bg-[#F2F2F0] text-stone-500 hover:text-stone-800 hover:bg-stone-100"
               }`}
             >
               <span className={`inline-block w-2 h-2 rounded-full ${isActive ? "bg-white/70" : t.dot}`} />
