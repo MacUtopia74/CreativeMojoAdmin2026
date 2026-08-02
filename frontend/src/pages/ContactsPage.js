@@ -1700,7 +1700,7 @@ function AdminNotesEditor({ contact, onUpdated, fullHeight = false }) {
 export default function ContactsPage() {
   const navigate = useNavigate();
   const [tab, setTab] = useState("pipeline");
-  const [view, setView] = useState("pipeline");
+  const [view, setView] = useState("tabs");
   // Auto-temperature score map (contact_id → {score, band}) for kanban
   // cards. Loaded once when the pipeline view opens and refreshed when
   // the user toggles "Sort by hot lead". Empty map = render no badge.
