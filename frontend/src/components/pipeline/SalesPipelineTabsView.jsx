@@ -442,19 +442,21 @@ function ExpandedBody({
 // Panel shell — a single card style used by every expanded panel so
 // the layout reads as one composed unit rather than a collection of
 // unrelated boxes.
+// Per the Feb-2026 visual guide, every mini-panel in the expanded row
+// wears a thicker blue keyline + soft blue tint so the four columns are
+// visually parseable at a glance. Semantic tones (tinted/amber/emerald)
+// still exist for backward-compat but now all map to the same blue
+// treatment — the semantic meaning is carried by inner buttons/labels,
+// not the panel chrome itself.
 function PanelShell({ icon: Icon, title, action, children, testId, tone = "default", bodyClass = "" }) {
-  const toneCls = {
-    default: "bg-white border-stone-200",
-    tinted:  "bg-[#fbfbe8] border-[#e6e37f]",
-    amber:   "bg-amber-50 border-amber-200",
-    emerald: "bg-emerald-50 border-emerald-200",
-  }[tone];
+  void tone;
+  const shellCls = "bg-sky-50/70 border-2 border-sky-400";
   return (
     <section
-      className={`h-full border rounded-xl flex flex-col overflow-hidden ${toneCls}`}
+      className={`h-full rounded-xl flex flex-col overflow-hidden ${shellCls}`}
       data-testid={testId}
     >
-      <header className="flex items-center gap-2 px-3 py-2 border-b border-stone-200/70">
+      <header className="flex items-center gap-2 px-3 py-2 border-b border-sky-200">
         {Icon && <Icon className="w-3.5 h-3.5 text-stone-500" />}
         <h4 className="text-[11px] uppercase tracking-[0.16em] font-bold text-stone-700">{title}</h4>
         {action && <div className="ml-auto">{action}</div>}
