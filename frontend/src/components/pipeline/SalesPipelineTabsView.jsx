@@ -157,7 +157,7 @@ export default function SalesPipelineTabsView({
           No contacts in this stage right now.
         </div>
       ) : (
-        <ul className="p-1.5 space-y-0.5" data-testid="pipeline-rows">
+        <ul className="p-1.5 space-y-1.5" data-testid="pipeline-rows">
           {activeRows.map((c) => (
             <PipelineRow
               key={c.id}
