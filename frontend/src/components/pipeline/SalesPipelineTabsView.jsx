@@ -1,107 +1,56 @@
 // Sales Pipeline — Tabbed list view.
 //
-// Replaces the flat list on the Sales Pipeline tab with four full-
-// width tabs (NEW / CONTACTED / FOLLOW-UP DUE / INTERESTED). Rows
-// expand in place. Expanded rows surface every drawer action inline:
-// contact card + inline edit, Plan-their-territory, running notes,
-// Convert-to-franchisee, Move-to-stage pills, mark-follow-up-already-
-// sent. Dormant + Lost stay on the kanban only (per PM decision).
+// One row = one `<li>` container. The top bar renders identically
+// whether the row is collapsed or expanded (per Aug 2 spec — the two
+// email actions must not move). Below the top bar, the expanded
+// state reveals a 4-column grid: Summary | Move to Stage | Plan +
+// Convert stack | Notes, with Follow-up Status spanning columns
+// 2 + 3 beneath.
 //
-// Row layout (compact):
-//   Name/email | Stage pill | Postcode + Map | Heat + score | Emailed
-//   | Territory-plan card | Chevron
-//
-// Expanded layout (matching the reference mockup):
-//   Header strip tinted by lead temperature (blue = cold, purple =
-//       warm, orange = hot) — carries the same info as the compact
-//       row but bigger + with a subject-initials avatar.
-//   Row 1 (4 columns): Summary + inline edit | Plan territory |
-//       Notes | Convert to franchisee/licencee
-//   Row 2 (2 columns): Move to Stage pills   | Follow-up status
-//   Action buttons: Quick reply / Reply with template / View
-//       correspondence
-//
-// Reuses `AdminNotesEditor` via named re-export from `ContactsPage.js`.
+// The whole selected row + expanded content sits inside one
+// container so the tinted background, rounded corners and thicker
+// keyline wrap it as a single unit.
 
 import React, { useState } from "react";
 import api from "@/lib/api";
 import {
   Flame, MapPin, MessageSquare, FileText, ChevronDown, ChevronUp,
-  Mail, MailX, Send, Target, Award, ArrowDownCircle,
-  Link2, CheckCircle2, Calendar, Phone, Pencil, StickyNote,
+  Mail, MailX, Send, Target, Award,
+  Link2, CheckCircle2, Calendar, Phone, Pencil,
   User as UserIcon, Clock, Save, X as XIcon,
+  ArrowDownCircle,
 } from "lucide-react";
 import { AdminNotesEditor } from "@/pages/ContactsPage";
 
 const TABS = [
-  // ``bg``/``fg`` used to render the active tab as a bold solid block
-  // matching the stage colour (Aug 2 spec) — makes it obvious which
-  // section you're on rather than the previous white-on-white.
-  { key: "new",           label: "New",            dot: "bg-stone-400",  bg: "bg-stone-900",   fg: "text-white" },
-  { key: "contacted",     label: "Contacted",      dot: "bg-blue-400",   bg: "bg-blue-600",    fg: "text-white" },
-  { key: "follow_up_due", label: "Follow-up Due",  dot: "bg-amber-500",  bg: "bg-amber-500",   fg: "text-stone-950" },
+  { key: "new",           label: "New",            dot: "bg-stone-400",   bg: "bg-stone-900",   fg: "text-white" },
+  { key: "contacted",     label: "Contacted",      dot: "bg-blue-400",    bg: "bg-blue-600",    fg: "text-white" },
+  { key: "follow_up_due", label: "Follow-up Due",  dot: "bg-amber-500",   bg: "bg-amber-500",   fg: "text-stone-950" },
   { key: "qualified",     label: "Interested",     dot: "bg-emerald-500", bg: "bg-emerald-600", fg: "text-white" },
 ];
 
-// Stage pill styling — kept in sync with STAGES in ContactsPage.js.
-// Each entry also declares an ``activeCls`` used to highlight the
-// current stage in the Move-to-Stage pill grid (per Aug 2 spec).
-const STAGE_PILL = {
-  new: {
-    label: "New",           cls: "bg-stone-50 text-stone-700 border-stone-300",   dot: "bg-stone-500",
-    // Solid colour applied when a stage is CURRENT — matches the
-    // tab bar so the whole panel reads as "this contact is HERE".
-    activeCls: "bg-stone-900 text-white border-stone-900",
-  },
-  contacted: {
-    label: "Contacted",     cls: "bg-blue-50 text-blue-700 border-blue-200",      dot: "bg-blue-500",
-    activeCls: "bg-blue-600 text-white border-blue-600",
-  },
-  follow_up_due: {
-    label: "Follow-up Due", cls: "bg-amber-50 text-amber-800 border-amber-300",   dot: "bg-amber-500",
-    activeCls: "bg-amber-500 text-stone-950 border-amber-500",
-  },
-  qualified: {
-    label: "Interested",    cls: "bg-emerald-50 text-emerald-800 border-emerald-200", dot: "bg-emerald-500",
-    activeCls: "bg-emerald-600 text-white border-emerald-600",
-  },
-  dormant: {
-    label: "Dormant",       cls: "bg-orange-50 text-orange-800 border-orange-200", dot: "bg-orange-500",
-    activeCls: "bg-orange-500 text-white border-orange-500",
-  },
-  lost: {
-    label: "Lost",          cls: "bg-red-50 text-red-700 border-red-200",         dot: "bg-red-500",
-    activeCls: "bg-red-600 text-white border-red-600",
-  },
+// Six stages. ``activeCls`` renders the selected pill as a solid
+// coloured block matching the tab bar so admins instantly see which
+// stage the contact sits in.
+const STAGE = {
+  new:           { label: "New",            cls: "bg-white text-stone-700 border-stone-300", activeCls: "bg-stone-900 text-white border-stone-900" },
+  contacted:     { label: "Contacted",      cls: "bg-white text-stone-700 border-stone-300", activeCls: "bg-blue-600 text-white border-blue-600" },
+  qualified:     { label: "Interested",     cls: "bg-white text-stone-700 border-stone-300", activeCls: "bg-emerald-600 text-white border-emerald-600" },
+  dormant:       { label: "Dormant",        cls: "bg-white text-stone-700 border-stone-300", activeCls: "bg-orange-500 text-white border-orange-500" },
+  follow_up_due: { label: "Follow-up Due",  cls: "bg-white text-stone-700 border-stone-300", activeCls: "bg-amber-500 text-stone-950 border-amber-500" },
+  lost:          { label: "Lost",           cls: "bg-white text-stone-700 border-stone-300", activeCls: "bg-red-600 text-white border-red-600" },
 };
 
-// Three-tier heat scale matching the flame-swatch reference (Aug 2):
-//   COLD → blue, WARM → purple, HOT → orange.
-// The `header` classes tint the expanded-panel header strip so the
-// admin can gauge lead temperature at a glance without reading the
-// flame label.
+// (STAGE_TOPBAR removed — mockup shows no stage pill in the top bar;
+// the active tab implies the stage.)
+
+// Three-tier heat scale — cold=blue, warm=purple, hot=orange (matches
+// the flame swatches). ``card`` is the tint that wraps the entire
+// selected row + expanded content as one unit.
 const HEAT = {
-  cold: {
-    label: "Cold",
-    flame:  "text-blue-500",
-    // Whole-card tint applied to the expanded panel — mockup shows the
-    // heat colour wrapping the entire contact card, not just the
-    // header. Panels inside sit on white so content stays readable.
-    header: "bg-gradient-to-b from-blue-100 via-blue-50 to-white border-blue-200",
-    card:   "bg-gradient-to-b from-blue-100/70 via-blue-50/40 to-white border-blue-200",
-  },
-  warm: {
-    label: "Warm",
-    flame:  "text-purple-500",
-    header: "bg-gradient-to-b from-purple-100 via-purple-50 to-white border-purple-200",
-    card:   "bg-gradient-to-b from-purple-100/70 via-purple-50/40 to-white border-purple-200",
-  },
-  hot: {
-    label: "Hot",
-    flame:  "text-orange-600",
-    header: "bg-gradient-to-b from-orange-100 via-orange-50 to-white border-orange-200",
-    card:   "bg-gradient-to-b from-orange-100/70 via-orange-50/40 to-white border-orange-200",
-  },
+  cold: { label: "Cold", flame: "text-blue-500",   card: "bg-gradient-to-b from-blue-50 to-white   border-blue-300"   },
+  warm: { label: "Warm", flame: "text-purple-500", card: "bg-gradient-to-b from-purple-50 to-white border-purple-300" },
+  hot:  { label: "Hot",  flame: "text-orange-600", card: "bg-gradient-to-b from-orange-50 to-white border-orange-300" },
 };
 
 function heatFromScore(score) {
@@ -131,6 +80,13 @@ function initialsFor(contact) {
   return parts.map((p) => p[0]).join("").slice(0, 2).toUpperCase();
 }
 
+function displayNameFor(contact) {
+  return [contact.first_name, contact.last_name].filter(Boolean).join(" ") || "(no name)";
+}
+
+// ---------------------------------------------------------------------
+// Top-level tabs view
+// ---------------------------------------------------------------------
 export default function SalesPipelineTabsView({
   contacts,
   tempMap,
@@ -146,8 +102,6 @@ export default function SalesPipelineTabsView({
 }) {
   const [activeTab, setActiveTab] = useState("new");
   const [expandedId, setExpandedId] = useState(null);
-  // Full-screen correspondence modal — mounts empty per Aug 2 spec.
-  // Layout + content will be filled in a follow-up brief.
   const [correspondenceContact, setCorrespondenceContact] = useState(null);
 
   const buckets = React.useMemo(() => {
@@ -164,11 +118,7 @@ export default function SalesPipelineTabsView({
 
   return (
     <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid="sales-pipeline-tabs">
-      <div
-        role="tablist"
-        aria-label="Sales pipeline stages"
-        className="flex border-b border-stone-200 bg-[#F2F2F0]"
-      >
+      <div role="tablist" className="flex border-b border-stone-200 bg-[#F2F2F0]">
         {TABS.map((t) => {
           const isActive = t.key === activeTab;
           const count = (buckets[t.key] || []).length;
@@ -190,8 +140,8 @@ export default function SalesPipelineTabsView({
               <span>{t.label}</span>
               <span
                 className={`text-[10px] tabular-nums px-1.5 py-0.5 rounded-full ${
-                  isActive ? "bg-white/25 text-white" : "bg-stone-200 text-stone-700"
-                } ${isActive && !t.fg.includes("white") ? "!bg-stone-900/15 !text-stone-950" : ""}`}
+                  isActive ? "bg-black/20 text-white" : "bg-stone-200 text-stone-700"
+                } ${isActive && t.fg.includes("stone-950") ? "!bg-stone-900/15 !text-stone-950" : ""}`}
                 data-testid={`pipeline-tab-count-${t.key}`}
               >
                 {count}
@@ -206,7 +156,7 @@ export default function SalesPipelineTabsView({
           No contacts in this stage right now.
         </div>
       ) : (
-        <ul className="divide-y divide-stone-200/80">
+        <ul className="divide-y divide-stone-200/80" data-testid="pipeline-rows">
           {activeRows.map((c) => (
             <PipelineRow
               key={c.id}
@@ -240,63 +190,10 @@ export default function SalesPipelineTabsView({
 }
 
 // ---------------------------------------------------------------------
-// View-Correspondence modal — full-screen shell for the upcoming email
-// correspondence layout. Deliberately empty per Aug 2 spec — content
-// will be filled in a follow-up brief. ESC + backdrop click close.
-function CorrespondenceModal({ contact, onClose }) {
-  const displayName = [contact.first_name, contact.last_name].filter(Boolean).join(" ") || contact.email || "Contact";
-  React.useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    // Lock body scroll while modal is open — matches other full-screen
-    // modals in the app.
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prev;
-    };
-  }, [onClose]);
-  return (
-    <div
-      className="fixed inset-0 z-50 bg-black/40 flex items-stretch justify-center"
-      onClick={onClose}
-      data-testid="correspondence-modal-backdrop"
-    >
-      <div
-        className="bg-white w-full h-full flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Correspondence with ${displayName}`}
-        data-testid="correspondence-modal"
-      >
-        <header className="flex items-center justify-between gap-3 px-6 py-3 border-b border-stone-200 bg-stone-50">
-          <div className="min-w-0">
-            <div className="text-xs uppercase tracking-[0.2em] font-bold text-stone-500">Correspondence</div>
-            <div className="text-lg font-bold text-stone-950 truncate">{displayName}</div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wider border border-stone-300 bg-white text-stone-700 hover:bg-stone-100 rounded-md"
-            data-testid="correspondence-modal-close"
-          >
-            <XIcon className="w-3 h-3" /> Close
-          </button>
-        </header>
-        <div className="flex-1 min-h-0 overflow-auto bg-stone-50/50">
-          {/* Intentionally empty — layout comes next. */}
-          <div className="w-full h-full flex items-center justify-center text-sm text-stone-500 italic px-6 text-center">
-            Email correspondence layout coming next — the modal is
-            wired and ready.
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
+// A single row — unified container. Top bar renders in BOTH collapsed
+// and expanded states with the same slot for the two email actions.
+// Expanded content sits directly below the top bar inside the same
+// tinted outer container so the keyline wraps them as one unit.
 function PipelineRow({
   contact, temp, isExpanded, onToggle,
   onOpenContact, onReplyContact, onContactUpdated, onOpenPostcodeMap,
@@ -304,109 +201,127 @@ function PipelineRow({
   onViewCorrespondence,
 }) {
   const c = contact;
-  const displayName = [c.first_name, c.last_name].filter(Boolean).join(" ") || "(no name)";
-  const stage = STAGE_PILL[c.pipeline_status] || STAGE_PILL.new;
   const heatKey = heatFromScore(temp?.score);
   const heat = HEAT[heatKey];
-  const heatScore = temp?.score ?? null;
   const emailed = (c.email_sends_count || 0) > 0;
   const daysInStage = daysSinceISO(c.pipeline_status_updated_at || c.updated_at || c.date_added);
 
-  // Two render paths — a compact row when collapsed, and a full-
-  // width tinted card when expanded (matches the Aug 2 mockup).
   return (
-    <li
-      data-testid={`pipeline-row-${c.id}`}
-      className="bg-white"
-    >
-      {!isExpanded && (
-        <CompactRow
+    <li data-testid={`pipeline-row-${c.id}`} className="bg-white">
+      {/* Single outer container. When expanded it picks up the heat
+          wash and a thicker keyline so the whole unit reads as one. */}
+      <div
+        className={
+          isExpanded
+            ? `m-3 border-2 rounded-2xl overflow-hidden shadow-sm ${heat.card}`
+            : "border-2 border-transparent"
+        }
+        data-testid={isExpanded ? `pipeline-row-expanded-${c.id}` : undefined}
+      >
+        <TopBar
           contact={c}
-          stage={stage}
           heat={heat}
-          heatScore={heatScore}
           emailed={emailed}
           daysInStage={daysInStage}
+          isExpanded={isExpanded}
           onToggle={onToggle}
           onOpenPostcodeMap={onOpenPostcodeMap}
-        />
-      )}
-      {isExpanded && (
-        <ExpandedCard
-          contact={c}
-          stage={stage}
-          heatKey={heatKey}
-          heat={heat}
-          heatScore={heatScore}
-          emailed={emailed}
-          daysInStage={daysInStage}
-          displayName={displayName}
-          onToggle={onToggle}
-          onOpenContact={onOpenContact}
           onReplyContact={onReplyContact}
-          onContactUpdated={onContactUpdated}
-          onOpenPostcodeMap={onOpenPostcodeMap}
-          onStageChange={onStageChange}
-          onDemote={onDemote}
-          onConvert={onConvert}
-          onLinkExisting={onLinkExisting}
-          onMarkFollowUpSent={onMarkFollowUpSent}
-          onViewCorrespondence={onViewCorrespondence}
+          onViewCorrespondence={() => onViewCorrespondence?.(c)}
         />
-      )}
+
+        {isExpanded && (
+          <ExpandedBody
+            contact={c}
+            daysInStage={daysInStage}
+            onOpenPostcodeMap={onOpenPostcodeMap}
+            onContactUpdated={onContactUpdated}
+            onOpenContact={onOpenContact}
+            onStageChange={onStageChange}
+            onDemote={onDemote}
+            onConvert={onConvert}
+            onLinkExisting={onLinkExisting}
+            onMarkFollowUpSent={onMarkFollowUpSent}
+          />
+        )}
+      </div>
     </li>
   );
 }
 
 // ---------------------------------------------------------------------
-// Compact row — the default 6-column layout for un-expanded contacts.
-// The territory-plan card was removed here per Aug 2 spec — it only
-// shows inside the expanded panel now, so the collapsed row stays
-// clean and scannable.
-function CompactRow({ contact, stage, heat, heatScore, emailed, daysInStage, onToggle, onOpenPostcodeMap }) {
+// Top bar — identical layout in both collapsed and expanded states.
+// Left cluster: avatar + name + days-in-stage + email.
+// Right cluster: Reply-with-Template + View-Correspondence buttons,
+// postcode + MAP, heat, emailed chip, chevron.
+function TopBar({
+  contact, heat, emailed, daysInStage,
+  isExpanded, onToggle, onOpenPostcodeMap, onReplyContact, onViewCorrespondence,
+}) {
   const c = contact;
-  const displayName = [c.first_name, c.last_name].filter(Boolean).join(" ") || "(no name)";
   return (
     <div
-      className="grid grid-cols-[minmax(0,1fr)_130px_150px_100px_130px_28px] gap-3 items-center px-4 py-3 cursor-pointer hover:bg-stone-50 transition-colors"
+      className={`flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-white/40 transition-colors ${
+        isExpanded ? "border-b border-stone-200/70" : ""
+      }`}
       onClick={onToggle}
       role="button"
       tabIndex={0}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle?.(); } }}
       data-testid={`pipeline-row-toggle-${c.id}`}
     >
-      <div className="min-w-0">
-        <div className="text-sm font-semibold text-stone-950 truncate">
-          {displayName}
+      {/* Avatar (only in expanded state — collapsed rows stay
+          light to keep the list scannable). */}
+      {isExpanded && (
+        <div className="w-10 h-10 rounded-full bg-white/80 text-stone-800 font-bold text-sm flex items-center justify-center border border-white shrink-0">
+          {initialsFor(c)}
+        </div>
+      )}
+
+      {/* Left cluster — name + email */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className={`truncate font-semibold text-stone-950 ${isExpanded ? "text-base" : "text-sm"}`}>
+            {displayNameFor(c)}
+          </span>
           {typeof daysInStage === "number" && (
-            <span className="ml-2 text-[11px] font-normal text-stone-400">
-              · {daysInStage}d in stage
+            <span className="text-[11px] text-stone-500 shrink-0">
+              {daysInStage} in stage
             </span>
           )}
         </div>
-        <div className="text-[11px] text-stone-500 truncate mt-0.5">
-          {c.email || <span className="italic">no email</span>}
-          {c.establishment_name && <span className="ml-1 text-stone-400"> · {c.establishment_name}</span>}
+        <div className="text-[11px] text-stone-600 truncate mt-0.5">
+          {c.email || <span className="italic text-stone-400">no email</span>}
         </div>
       </div>
 
-      <div className="flex items-center">
-        <span
-          className={`inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wider border rounded-full ${stage.cls}`}
-          data-testid={`pipeline-row-stage-${c.id}`}
+      {/* Right cluster — persistent email actions + info chips.
+          Stop-propagation so clicks don't collapse the row. */}
+      <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          onClick={() => onReplyContact?.(c, { mode: "template" })}
+          className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-[#c9c914] rounded-full"
+          data-testid={`pipeline-row-template-reply-${c.id}`}
         >
-          <span className={`inline-block w-1.5 h-1.5 rounded-full ${stage.dot}`} />
-          {stage.label}
-        </span>
-      </div>
+          <Send className="w-3 h-3" /> Reply with Template
+        </button>
+        <button
+          type="button"
+          onClick={onViewCorrespondence}
+          className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-white border border-stone-300 text-stone-800 hover:bg-stone-50 rounded-full"
+          data-testid={`pipeline-row-view-correspondence-${c.id}`}
+        >
+          <FileText className="w-3 h-3" /> View Correspondence
+        </button>
 
-      <div className="flex items-center gap-2 text-xs text-stone-700 min-w-0">
         {c.postcode ? (
           <>
-            <span className="truncate" data-testid={`pipeline-row-postcode-${c.id}`}>{c.postcode}</span>
+            <span className="text-xs text-stone-800 shrink-0">{c.postcode}</span>
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); onOpenPostcodeMap?.(c); }}
-              className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border border-stone-300 rounded hover:bg-stone-100 text-stone-700 shrink-0"
+              onClick={() => onOpenPostcodeMap?.(c)}
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border border-stone-300 rounded hover:bg-stone-100 text-stone-700"
               data-testid={`pipeline-row-postcode-map-btn-${c.id}`}
               title={`See ${c.postcode} on the UK territory atlas`}
             >
@@ -414,20 +329,17 @@ function CompactRow({ contact, stage, heat, heatScore, emailed, daysInStage, onT
             </button>
           </>
         ) : (
-          <span className="text-stone-400 italic text-[11px]">no postcode</span>
+          <span className="text-[11px] text-stone-400 italic">no postcode</span>
         )}
-      </div>
 
-      <div
-        className={`flex items-center gap-1.5 text-xs ${heat.flame}`}
-        data-testid={`pipeline-row-temp-${c.id}`}
-        title={heatScore != null ? `Auto-score: ${heatScore}` : "No heat yet"}
-      >
-        <Flame className="w-4 h-4" />
-        <span className="uppercase font-bold tracking-wider text-[10px]">{heat.label}</span>
-      </div>
+        <span
+          className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider ${heat.flame}`}
+          data-testid={`pipeline-row-temp-${c.id}`}
+        >
+          <Flame className="w-3.5 h-3.5" />
+          {heat.label}
+        </span>
 
-      <div>
         <span
           className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border ${
             emailed
@@ -439,228 +351,111 @@ function CompactRow({ contact, stage, heat, heatScore, emailed, daysInStage, onT
           {emailed ? <Mail className="w-3 h-3" /> : <MailX className="w-3 h-3" />}
           {emailed ? "Emailed" : "Not emailed"}
         </span>
-      </div>
 
-      <div className="text-stone-400 justify-self-end">
-        <ChevronDown className="w-4 h-4" />
+        <button
+          type="button"
+          onClick={onToggle}
+          className="text-stone-500 hover:text-stone-800"
+          data-testid={`pipeline-row-chevron-${c.id}`}
+        >
+          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        </button>
       </div>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------
-// Expanded card — full-width tinted panel matching the mockup.
-function ExpandedCard({
-  contact, stage, heatKey, heat, heatScore, emailed, daysInStage, displayName,
-  onToggle, onOpenContact, onReplyContact, onContactUpdated, onOpenPostcodeMap,
+// Expanded body — 4 columns matching New visual.jpg.
+// Grid layout:
+//   Row 1: Summary (col 1, rows 1-2) | Move-to-Stage (col 2, row 1) |
+//          Territory + Convert stack (col 3, row 1) | Notes (col 4,
+//          rows 1-2)
+//   Row 2: Follow-up Status spanning col 2-3
+// This packs Notes into the full expanded height while keeping the
+// central column controls compact.
+function ExpandedBody({
+  contact, daysInStage, onOpenPostcodeMap, onContactUpdated, onOpenContact,
   onStageChange, onDemote, onConvert, onLinkExisting, onMarkFollowUpSent,
-  onViewCorrespondence,
 }) {
   const c = contact;
   return (
     <div
-      className={`border rounded-2xl m-3 overflow-hidden shadow-sm ${heat.card}`}
-      data-testid={`pipeline-row-expanded-${c.id}`}
+      className="p-4 grid gap-3 grid-cols-1 lg:grid-cols-4 lg:grid-rows-[auto_auto]"
+      data-testid={`pipeline-row-body-${c.id}`}
     >
-      {/* Header strip — clicking anywhere on it (except the interactive
-          MAP button) collapses the row. Rendered as a div because we
-          have interactive children; keyboard toggle via Enter / Space. */}
-      <div
-        onClick={onToggle}
-        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle?.(); } }}
-        role="button"
-        tabIndex={0}
-        className="w-full flex items-center gap-4 px-5 py-4 border-b border-stone-200/60 cursor-pointer hover:bg-white/40 transition-colors"
-        data-testid={`pipeline-expanded-header-${c.id}`}
-      >
-        <div className="w-11 h-11 rounded-full bg-white/70 text-stone-800 font-bold text-sm flex items-center justify-center border border-white/50 shrink-0">
-          {initialsFor(c)}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-3">
-            <div className="text-lg font-bold text-stone-950 truncate">{displayName}</div>
-            {typeof daysInStage === "number" && (
-              <div className="text-xs text-stone-600 shrink-0">{daysInStage} in stage</div>
-            )}
-          </div>
-          <div className="text-xs text-stone-700 truncate">{c.email}</div>
-        </div>
-        <span className={`inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wider border rounded-full ${stage.cls}`}>
-          <span className={`inline-block w-1.5 h-1.5 rounded-full ${stage.dot}`} />
-          {stage.label}
-        </span>
-        {c.postcode && (
-          <div className="flex items-center gap-2 text-xs text-stone-800">
-            <span className="font-semibold">{c.postcode}</span>
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onOpenPostcodeMap?.(c); }}
-              className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border border-stone-400 rounded hover:bg-white/60 text-stone-700"
-              data-testid={`pipeline-expanded-postcode-map-${c.id}`}
-            >
-              <MapPin className="w-2.5 h-2.5" /> Map
-            </button>
-          </div>
-        )}
-        <div className={`flex items-center gap-1.5 text-xs ${heat.flame}`}>
-          <Flame className="w-4 h-4" />
-          <span className="uppercase font-bold tracking-wider text-[10px]">{heat.label}</span>
-        </div>
-        <span
-          className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border ${
-            emailed
-              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-              : "bg-white/70 text-stone-600 border-stone-300"
-          }`}
-        >
-          {emailed ? <Mail className="w-3 h-3" /> : <MailX className="w-3 h-3" />}
-          {emailed ? "Emailed" : "Not emailed"}
-        </span>
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); onToggle?.(); }}
-          className="text-stone-500 hover:text-stone-800"
-          data-testid={`pipeline-expanded-collapse-${c.id}`}
-        >
-          <ChevronUp className="w-5 h-5" />
-        </button>
+      <div className="lg:col-start-1 lg:row-span-2 min-w-0">
+        <SummaryPanel
+          contact={c}
+          daysInStage={daysInStage}
+          onOpenPostcodeMap={onOpenPostcodeMap}
+          onSaved={(patch) => onContactUpdated?.(c.id, patch)}
+        />
       </div>
 
-      {/* Body — sits directly on the heat-tinted card so the wash is
-          visible around each white panel, matching the mockup. */}
-      <div className="p-4 space-y-4">
-        {/* Row 1 — 4 columns */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 items-start">
-          <SummaryPanel
-            contact={c}
-            daysInStage={daysInStage}
-            onOpenPostcodeMap={onOpenPostcodeMap}
-            onSaved={(patch) => onContactUpdated?.(c.id, patch)}
-          />
-          <TerritoryPanel contact={c} />
-          <NotesPanel contact={c} onChanged={onContactUpdated} />
-          <ConvertPanel
-            contact={c}
-            onConvert={onConvert}
-            onLinkExisting={onLinkExisting}
-          />
-        </div>
+      <div className="lg:col-start-2 lg:row-start-1 min-w-0">
+        <StagePanel
+          contact={c}
+          onStageChange={onStageChange}
+          onDemote={onDemote}
+        />
+      </div>
 
-        {/* Row 2 — Stage pills + follow-up */}
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] gap-3 items-start">
-          <StageActionsPanel
-            contact={c}
-            onStageChange={onStageChange}
-            onDemote={onDemote}
-          />
-          <FollowUpPanel
-            contact={c}
-            onMarkFollowUpSent={onMarkFollowUpSent}
-          />
-        </div>
+      <div className="lg:col-start-3 lg:row-start-1 min-w-0 flex flex-col gap-3">
+        <TerritoryPanel contact={c} />
+        <ConvertPanel
+          contact={c}
+          onConvert={onConvert}
+          onLinkExisting={onLinkExisting}
+        />
+      </div>
 
-        {/* Actions */}
-        <div className="flex flex-wrap gap-2 justify-end pt-2">
-          <button
-            type="button"
-            onClick={() => onReplyContact?.(c, { mode: "quick" })}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-md bg-white text-stone-800 border-stone-300 hover:bg-stone-100"
-            data-testid={`pipeline-row-quick-reply-${c.id}`}
-          >
-            <MessageSquare className="w-3 h-3" /> Quick Reply
-          </button>
-          <button
-            type="button"
-            onClick={() => onReplyContact?.(c, { mode: "template" })}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-md bg-stone-900 text-white border-stone-900 hover:bg-stone-800"
-            data-testid={`pipeline-row-template-reply-${c.id}`}
-          >
-            <Send className="w-3 h-3" /> Reply with Template
-          </button>
-          <button
-            type="button"
-            onClick={() => onViewCorrespondence?.(c)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-md bg-white text-stone-800 border-stone-300 hover:bg-stone-100"
-            data-testid={`pipeline-row-view-correspondence-${c.id}`}
-          >
-            <FileText className="w-3 h-3" /> View Correspondence
-          </button>
-        </div>
+      <div className="lg:col-start-4 lg:row-span-2 min-w-0">
+        <NotesPanel contact={c} onChanged={onContactUpdated} />
+      </div>
+
+      <div className="lg:col-start-2 lg:col-span-2 lg:row-start-2 min-w-0">
+        <FollowUpPanel
+          contact={c}
+          onMarkFollowUpSent={onMarkFollowUpSent}
+        />
       </div>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------
-// Compact territory-plan card (shown in the collapsed row).
-function TerritoryPlanCard({ contact, linkedPlan, onClick }) {
-  const href = linkedPlan
-    ? `/territory-builder?plan_id=${linkedPlan.id}`
-    : `/territory-builder?contact_id=${contact.id}`;
-  const label = linkedPlan ? "Territory plan linked" : "Plan their territory";
-  const cta   = linkedPlan ? "See linked plan"       : "Open builder";
-  const sub = linkedPlan
-    ? [
-        linkedPlan.name ? `Linked: ${linkedPlan.name}` : "Linked plan",
-        typeof linkedPlan.total_homes === "number" ? `${linkedPlan.total_homes} homes` : null,
-      ].filter(Boolean).join(" · ")
-    : "Build a mental territory plan for this contact.";
-  return (
-    <a
-      href={href}
-      onClick={onClick}
-      className={`flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg border text-[11px] ${
-        linkedPlan
-          ? "bg-emerald-50 border-emerald-200 hover:bg-emerald-100"
-          : "bg-stone-50 border-stone-200 hover:bg-stone-100"
-      }`}
-      data-testid={`pipeline-row-territory-plan-${contact.id}`}
-    >
-      <div className="flex items-center gap-1.5 min-w-0">
-        <Target className={`w-3.5 h-3.5 shrink-0 ${linkedPlan ? "text-emerald-700" : "text-stone-500"}`} />
-        <div className="min-w-0">
-          <div className={`font-semibold truncate ${linkedPlan ? "text-emerald-900" : "text-stone-900"}`}>{label}</div>
-          <div className={`truncate text-[10px] ${linkedPlan ? "text-emerald-700" : "text-stone-500"}`}>{sub}</div>
-        </div>
-      </div>
-      <span
-        className={`shrink-0 px-2 py-1 text-[9px] font-bold uppercase tracking-wider rounded ${
-          linkedPlan ? "bg-emerald-700 text-white" : "bg-stone-900 text-white"
-        }`}
-      >{cta}</span>
-    </a>
-  );
-}
-
-// ---------------------------------------------------------------------
-// Panel shell — matches the drawer's rounded-outline card style so the
-// tabs view feels visually of-a-piece with the rest of the CRM.
-function PanelShell({ icon: Icon, title, action, children, testId, tone = "default" }) {
+// Panel shell — a single card style used by every expanded panel so
+// the layout reads as one composed unit rather than a collection of
+// unrelated boxes.
+function PanelShell({ icon: Icon, title, action, children, testId, tone = "default", bodyClass = "" }) {
   const toneCls = {
     default: "bg-white border-stone-200",
-    tinted:  "bg-gradient-to-br from-[#dddd16]/25 to-white border-[#dddd16]/40",
+    tinted:  "bg-[#fbfbe8] border-[#e6e37f]",
     amber:   "bg-amber-50 border-amber-200",
     emerald: "bg-emerald-50 border-emerald-200",
   }[tone];
   return (
     <section
-      className={`border rounded-xl overflow-hidden flex flex-col ${toneCls}`}
+      className={`h-full border rounded-xl flex flex-col overflow-hidden ${toneCls}`}
       data-testid={testId}
     >
-      <header className="flex items-center gap-1.5 px-3 py-2 border-b border-stone-100/70 bg-white/40">
+      <header className="flex items-center gap-2 px-3 py-2 border-b border-stone-200/70">
         {Icon && <Icon className="w-3.5 h-3.5 text-stone-500" />}
-        <h4 className="text-[11px] uppercase tracking-[0.14em] font-bold text-stone-700">{title}</h4>
+        <h4 className="text-[11px] uppercase tracking-[0.16em] font-bold text-stone-700">{title}</h4>
         {action && <div className="ml-auto">{action}</div>}
       </header>
-      <div className="p-3 text-xs text-stone-800 flex-1 min-h-0">{children}</div>
+      <div className={`p-3 text-xs text-stone-800 flex-1 min-h-0 ${bodyClass}`}>
+        {children}
+      </div>
     </section>
   );
 }
 
 // ---------------------------------------------------------------------
-// Summary + inline edit — replaces the drawer-opening Edit button so
-// admins can fix typos without leaving the tabs view. Uses the same
-// PATCH /contacts/{id}/details endpoint the drawer uses.
+// SUMMARY — matches the reference layout: email, phone, town, postcode
+// with MAP button, then date + age at the BOTTOM, with breathing room
+// in between. Edit lives top-right of the panel header.
 function SummaryPanel({ contact, daysInStage, onOpenPostcodeMap, onSaved }) {
   const c = contact;
   const [editing, setEditing] = useState(false);
@@ -677,8 +472,6 @@ function SummaryPanel({ contact, daysInStage, onOpenPostcodeMap, onSaved }) {
   async function save() {
     setSaving(true); setErr("");
     try {
-      // Only send fields that actually changed — smaller payload, and
-      // avoids overwriting drawer-side edits made moments before.
       const diff = {};
       for (const k of Object.keys(form)) {
         const prev = c[k] || (k === "telephone" ? c.phone || "" : "");
@@ -701,17 +494,13 @@ function SummaryPanel({ contact, daysInStage, onOpenPostcodeMap, onSaved }) {
         disabled={saving}
         className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white rounded hover:bg-stone-800 disabled:opacity-50"
         data-testid={`pipeline-panel-summary-save-${c.id}`}
-      >
-        <Save className="w-2.5 h-2.5" /> Save
-      </button>
+      ><Save className="w-2.5 h-2.5" /> Save</button>
       <button
         type="button"
         onClick={() => { setEditing(false); setErr(""); }}
         className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-white text-stone-700 border border-stone-300 rounded hover:bg-stone-50"
         data-testid={`pipeline-panel-summary-cancel-${c.id}`}
-      >
-        <XIcon className="w-2.5 h-2.5" /> Cancel
-      </button>
+      ><XIcon className="w-2.5 h-2.5" /> Cancel</button>
     </div>
   ) : (
     <button
@@ -719,63 +508,69 @@ function SummaryPanel({ contact, daysInStage, onOpenPostcodeMap, onSaved }) {
       onClick={() => setEditing(true)}
       className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-white text-stone-700 border border-stone-300 rounded hover:bg-stone-50"
       data-testid={`pipeline-panel-summary-edit-${c.id}`}
-    >
-      <Pencil className="w-2.5 h-2.5" /> Edit
-    </button>
+    ><Pencil className="w-2.5 h-2.5" /> Edit</button>
   );
 
   return (
-    <PanelShell icon={UserIcon} title="Summary" testId="pipeline-panel-summary" action={editAction}>
+    <PanelShell
+      icon={UserIcon}
+      title="Summary"
+      testId="pipeline-panel-summary"
+      action={editAction}
+      bodyClass="flex flex-col"
+    >
       {editing ? (
         <div className="space-y-2">
-          <EditField label="Email"       value={form.email}          onChange={(v) => setForm({ ...form, email: v })}      testId={`pipeline-summary-edit-email-${c.id}`} />
-          <EditField label="Phone"       value={form.telephone}      onChange={(v) => setForm({ ...form, telephone: v })}  testId={`pipeline-summary-edit-phone-${c.id}`} />
-          <EditField label="Address"     value={form.address_line_1} onChange={(v) => setForm({ ...form, address_line_1: v })} testId={`pipeline-summary-edit-address-${c.id}`} />
-          <EditField label="City"        value={form.city}           onChange={(v) => setForm({ ...form, city: v })}       testId={`pipeline-summary-edit-city-${c.id}`} />
-          <EditField label="Postcode"    value={form.postcode}       onChange={(v) => setForm({ ...form, postcode: v.toUpperCase() })} testId={`pipeline-summary-edit-postcode-${c.id}`} />
+          <EditField label="Email"     value={form.email}          onChange={(v) => setForm({ ...form, email: v })} />
+          <EditField label="Phone"     value={form.telephone}      onChange={(v) => setForm({ ...form, telephone: v })} />
+          <EditField label="Address"   value={form.address_line_1} onChange={(v) => setForm({ ...form, address_line_1: v })} />
+          <EditField label="Town"      value={form.city}           onChange={(v) => setForm({ ...form, city: v })} />
+          <EditField label="Postcode"  value={form.postcode}       onChange={(v) => setForm({ ...form, postcode: v.toUpperCase() })} />
           {err && <div className="text-[11px] text-red-600">{err}</div>}
         </div>
       ) : (
-        <div className="space-y-2">
-          <ReadRow icon={Mail}     value={c.email} />
-          <ReadRow icon={Phone}    value={c.telephone || c.phone} />
-          <div className="flex items-start gap-2">
-            <MapPin className="w-3.5 h-3.5 text-stone-400 mt-0.5 shrink-0" />
-            <div className="min-w-0">
-              {c.address_line_1 && <div className="truncate">{c.address_line_1}</div>}
-              {c.city && <div className="truncate">{c.city}</div>}
-              {c.postcode && (
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <span>{c.postcode}</span>
-                  <button
-                    type="button"
-                    onClick={() => onOpenPostcodeMap?.(c)}
-                    className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border border-stone-300 rounded hover:bg-stone-100 text-stone-700"
-                    data-testid={`pipeline-panel-summary-map-btn-${c.id}`}
-                  >
-                    <MapPin className="w-2.5 h-2.5" /> Map
-                  </button>
-                </div>
-              )}
-              {!c.address_line_1 && !c.city && !c.postcode && (
-                <span className="text-stone-400 italic">no address on file</span>
-              )}
+        <>
+          {/* Contact block */}
+          <div className="space-y-3 flex-1">
+            <SummaryRow icon={Mail}  value={c.email} />
+            <SummaryRow icon={Phone} value={c.telephone || c.phone} />
+            <div className="flex items-start gap-2">
+              <MapPin className="w-3.5 h-3.5 text-stone-400 mt-0.5 shrink-0" />
+              <div className="min-w-0">
+                {c.address_line_1 && <div className="truncate">{c.address_line_1}</div>}
+                {c.city && <div className="truncate">{c.city}</div>}
+                {c.postcode && (
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span>{c.postcode}</span>
+                    <button
+                      type="button"
+                      onClick={() => onOpenPostcodeMap?.(c)}
+                      className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border border-stone-300 rounded hover:bg-stone-100 text-stone-700"
+                      data-testid={`pipeline-panel-summary-map-btn-${c.id}`}
+                    ><MapPin className="w-2.5 h-2.5" /> Map</button>
+                  </div>
+                )}
+                {!c.address_line_1 && !c.city && !c.postcode && (
+                  <span className="text-stone-400 italic">no address on file</span>
+                )}
+              </div>
             </div>
           </div>
-          <div className="flex items-start gap-2">
-            <Calendar className="w-3.5 h-3.5 text-stone-400 mt-0.5 shrink-0" />
+          {/* Date footer — sits at the bottom of the panel */}
+          <div className="mt-4 pt-3 border-t border-stone-200/70 flex items-center gap-2 text-[11px] text-stone-600">
+            <Calendar className="w-3.5 h-3.5 text-stone-400" />
             <span>
               {formatDate(c.date_added || c.date)}
-              {typeof daysInStage === "number" && <span className="text-stone-500"> · {daysInStage} days ago</span>}
+              {typeof daysInStage === "number" && <span> · {daysInStage} days ago</span>}
             </span>
           </div>
-        </div>
+        </>
       )}
     </PanelShell>
   );
 }
 
-function ReadRow({ icon: Icon, value }) {
+function SummaryRow({ icon: Icon, value }) {
   return (
     <div className="flex items-start gap-2">
       <Icon className="w-3.5 h-3.5 text-stone-400 mt-0.5 shrink-0" />
@@ -784,7 +579,7 @@ function ReadRow({ icon: Icon, value }) {
   );
 }
 
-function EditField({ label, value, onChange, testId }) {
+function EditField({ label, value, onChange }) {
   return (
     <label className="block">
       <span className="text-[10px] uppercase tracking-wider font-bold text-stone-500">{label}</span>
@@ -792,7 +587,6 @@ function EditField({ label, value, onChange, testId }) {
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        data-testid={testId}
         className="mt-0.5 w-full text-xs border border-stone-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-stone-900"
       />
     </label>
@@ -800,151 +594,23 @@ function EditField({ label, value, onChange, testId }) {
 }
 
 // ---------------------------------------------------------------------
-// Territory panel — inline "Plan their territory" callout that mirrors
-// the drawer version. If a plan is already linked we flip to an
-// emerald "Territory plan linked" pill; if not, the CTA opens the
-// builder pre-scoped to this contact.
-function TerritoryPanel({ contact }) {
-  const linkedPlan = contact.linked_plan || null;
-  const href = linkedPlan
-    ? `/territory-builder?plan_id=${linkedPlan.id}`
-    : `/territory-builder?contact_id=${contact.id}`;
-  return (
-    <PanelShell icon={Target} title="Plan their territory" testId="pipeline-panel-territory">
-      {linkedPlan ? (
-        <>
-          <p className="mb-2 text-stone-700">
-            Linked plan: <strong>{linkedPlan.name || "Unnamed plan"}</strong>
-            {typeof linkedPlan.total_homes === "number" && (
-              <> · {linkedPlan.total_homes} homes</>
-            )}
-          </p>
-          <a
-            href={href}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-emerald-700 text-white hover:bg-emerald-800 rounded-lg"
-            data-testid={`pipeline-panel-territory-see-linked-${contact.id}`}
-          >
-            <Target className="w-3 h-3" /> See linked plan
-          </a>
-        </>
-      ) : (
-        <>
-          <p className="mb-2 text-stone-700">Build a mental territory plan for this contact.</p>
-          <a
-            href={href}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-stone-950 text-white hover:bg-stone-800 rounded-lg"
-            data-testid={`pipeline-panel-territory-open-builder-${contact.id}`}
-          >
-            <Target className="w-3 h-3" /> Open builder
-          </a>
-        </>
-      )}
-    </PanelShell>
-  );
-}
-
-// ---------------------------------------------------------------------
-// Convert to Franchisee / Licencee — yellow-tinted card mirroring the
-// drawer's card exactly.
-function ConvertPanel({ contact, onConvert, onLinkExisting }) {
-  const [converting, setConverting] = useState(false);
-  const isLicenceEnq = contact.source === "licence_enquiry";
-  const convertLabel = isLicenceEnq ? "Convert to Licencee" : "Convert to Franchisee";
-  const alreadyConverted = !!contact.converted_to_franchisee_id;
-
-  const headerAction = alreadyConverted ? (
-    <button
-      type="button"
-      onClick={() => onConvert?.(contact, true)}
-      data-testid={`pipeline-panel-convert-view-${contact.id}`}
-      className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-white text-emerald-800 border border-emerald-300 hover:bg-emerald-100 rounded-lg"
-    >
-      View
-    </button>
-  ) : (
-    <button
-      type="button"
-      onClick={async () => {
-        const name = [contact.first_name, contact.last_name].filter(Boolean).join(" ") || "this contact";
-        if (!window.confirm(`${convertLabel} for ${name}?`)) return;
-        setConverting(true);
-        try { await onConvert?.(contact, false); }
-        finally { setConverting(false); }
-      }}
-      disabled={converting}
-      data-testid={`pipeline-panel-convert-btn-${contact.id}`}
-      className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-[#c9c914] rounded-lg disabled:opacity-50"
-    >
-      <Award className="w-3 h-3" /> {converting ? "…" : "Convert"}
-    </button>
-  );
-
-  return (
-    <PanelShell
-      icon={Award}
-      title={alreadyConverted ? "Already converted" : convertLabel}
-      testId="pipeline-panel-convert"
-      tone={alreadyConverted ? "emerald" : "tinted"}
-      action={headerAction}
-    >
-      <p className="text-stone-700 mb-2">
-        {alreadyConverted
-          ? <>Converted to a {contact.converted_to_record_type === "licencee" ? "Licencee" : "Franchisee"} record.</>
-          : <>Create a {isLicenceEnq ? "Licencee" : "Franchisee"} record from this enquiry.</>}
-      </p>
-      {!alreadyConverted && onLinkExisting && (
-        <>
-          <p className="text-[11px] text-stone-600 mb-1.5">
-            Already in the franchisees list? Link to the existing record.
-          </p>
-          <button
-            type="button"
-            onClick={() => onLinkExisting?.(contact)}
-            data-testid={`pipeline-panel-convert-link-existing-${contact.id}`}
-            className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-white text-stone-800 border border-stone-300 hover:bg-stone-50 rounded-lg"
-          >
-            <Link2 className="w-3 h-3" /> Link to existing
-          </button>
-        </>
-      )}
-    </PanelShell>
-  );
-}
-
-// ---------------------------------------------------------------------
-// Notes — reuses the drawer's `<AdminNotesEditor>`.
-function NotesPanel({ contact, onChanged }) {
-  return (
-    <PanelShell icon={StickyNote} title="Notes" testId="pipeline-panel-notes">
-      <AdminNotesEditor
-        contact={contact}
-        onUpdated={(id, notes, ts) =>
-          onChanged?.(id, { admin_notes: notes, admin_notes_updated_at: ts })
-        }
-      />
-    </PanelShell>
-  );
-}
-
-// ---------------------------------------------------------------------
-// Move-to-Stage pills — current stage is coloured / ringed with its
-// stage colour so admins can instantly see where the contact sits.
-const MOVE_STAGES = [
+// MOVE TO STAGE — 2 columns × 3 rows in the reference order.
+const STAGE_GRID = [
   { key: "new",           label: "New" },
   { key: "contacted",     label: "Contacted" },
-  { key: "follow_up_due", label: "Follow-up Due" },
   { key: "qualified",     label: "Interested" },
   { key: "dormant",       label: "Dormant" },
+  { key: "follow_up_due", label: "Follow-up Due" },
   { key: "lost",          label: "Lost" },
 ];
 
-function StageActionsPanel({ contact, onStageChange, onDemote }) {
+function StagePanel({ contact, onStageChange, onDemote }) {
   return (
-    <PanelShell testId="pipeline-panel-stage" title="Move to Stage" icon={Clock}>
-      <div className="grid grid-cols-3 gap-2">
-        {MOVE_STAGES.map((s) => {
+    <PanelShell icon={Clock} title="Move to Stage" testId="pipeline-panel-stage">
+      <div className="grid grid-cols-2 gap-2">
+        {STAGE_GRID.map((s) => {
           const isCurrent = contact.pipeline_status === s.key;
-          const stagePill = STAGE_PILL[s.key] || STAGE_PILL.new;
+          const spec = STAGE[s.key];
           return (
             <button
               key={s.key}
@@ -953,9 +619,7 @@ function StageActionsPanel({ contact, onStageChange, onDemote }) {
               disabled={isCurrent}
               aria-current={isCurrent}
               className={`px-2 py-2 text-[10px] font-bold uppercase tracking-wider border rounded-full transition-colors ${
-                isCurrent
-                  ? `${stagePill.activeCls} cursor-default`
-                  : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"
+                isCurrent ? `${spec.activeCls} cursor-default` : `${spec.cls} hover:bg-stone-50`
               }`}
               data-testid={`pipeline-panel-stage-${s.key}-${contact.id}`}
             >
@@ -977,34 +641,204 @@ function StageActionsPanel({ contact, onStageChange, onDemote }) {
 }
 
 // ---------------------------------------------------------------------
-// Mark Follow-up Already Sent — amber panel, only appears when the
-// contact hasn't yet been logged as followed-up.
+// PLAN THEIR TERRITORY — compact panel; empty-state → OPEN BUILDER,
+// linked → LINKED-PLAN card + SEE LINKED PLAN.
+function TerritoryPanel({ contact }) {
+  const lp = contact.linked_plan;
+  const href = lp
+    ? `/territory-builder?plan_id=${lp.id}`
+    : `/territory-builder?contact_id=${contact.id}`;
+  return (
+    <PanelShell
+      icon={Target}
+      title="Plan Their Territory"
+      testId="pipeline-panel-territory"
+      action={
+        <a
+          href={href}
+          className={`inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded ${
+            lp ? "bg-emerald-700 text-white hover:bg-emerald-800" : "bg-stone-950 text-white hover:bg-stone-800"
+          }`}
+          data-testid={`pipeline-panel-territory-action-${contact.id}`}
+        >
+          <Target className="w-3 h-3" /> {lp ? "See linked plan" : "Open builder"}
+        </a>
+      }
+    >
+      {lp ? (
+        <div className="text-stone-700">
+          <div className="font-semibold text-stone-900">{lp.name || "Unnamed plan"}</div>
+          <div className="text-[11px] text-stone-500 mt-0.5">
+            {typeof lp.total_homes === "number" && <>{lp.total_homes} homes</>}
+            {typeof lp.sectors_count === "number" && <> · {lp.sectors_count} sectors</>}
+          </div>
+        </div>
+      ) : (
+        <p className="text-stone-600">Build a mental territory plan for this contact.</p>
+      )}
+    </PanelShell>
+  );
+}
+
+// ---------------------------------------------------------------------
+// CONVERT TO FRANCHISEE — light tint, Convert + Link to Existing.
+function ConvertPanel({ contact, onConvert, onLinkExisting }) {
+  const [converting, setConverting] = useState(false);
+  const isLicenceEnq = contact.source === "licence_enquiry";
+  const label = isLicenceEnq ? "Convert to Licencee" : "Convert to Franchisee";
+  const already = !!contact.converted_to_franchisee_id;
+  return (
+    <PanelShell
+      icon={Award}
+      title={already ? "Already converted" : label}
+      testId="pipeline-panel-convert"
+      tone={already ? "emerald" : "tinted"}
+    >
+      <div className="flex items-center gap-2 flex-wrap">
+        {already ? (
+          <button
+            type="button"
+            onClick={() => onConvert?.(contact, true)}
+            data-testid={`pipeline-panel-convert-view-${contact.id}`}
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-white text-emerald-800 border border-emerald-300 hover:bg-emerald-100 rounded-full"
+          >View {contact.converted_to_record_type === "licencee" ? "Licencee" : "Franchisee"}</button>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={async () => {
+                const name = displayNameFor(contact);
+                if (!window.confirm(`${label} for ${name}?`)) return;
+                setConverting(true);
+                try { await onConvert?.(contact, false); }
+                finally { setConverting(false); }
+              }}
+              disabled={converting}
+              data-testid={`pipeline-panel-convert-btn-${contact.id}`}
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-[#dddd16] text-stone-950 hover:bg-[#c9c914] rounded-full disabled:opacity-50"
+            ><Award className="w-3 h-3" /> {converting ? "…" : "Convert"}</button>
+            {onLinkExisting && (
+              <button
+                type="button"
+                onClick={() => onLinkExisting?.(contact)}
+                data-testid={`pipeline-panel-convert-link-existing-${contact.id}`}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-white text-stone-800 border border-stone-300 hover:bg-stone-50 rounded-full"
+              ><Link2 className="w-3 h-3" /> Link to existing</button>
+            )}
+          </>
+        )}
+      </div>
+    </PanelShell>
+  );
+}
+
+// ---------------------------------------------------------------------
+// FOLLOW-UP STATUS — spans central columns 2 + 3. Compact vertical
+// height with the action button aligned right so the panel doesn't
+// feel left-heavy.
 function FollowUpPanel({ contact, onMarkFollowUpSent }) {
-  const alreadyRecorded = Number(contact.follow_up_sent_count || 0) >= 1;
-  if (!onMarkFollowUpSent) return <div aria-hidden />;
-  if (alreadyRecorded) {
+  const recorded = Number(contact.follow_up_sent_count || 0) >= 1;
+  if (recorded) {
     return (
-      <PanelShell testId="pipeline-panel-followup" tone="emerald" title="Follow-up Status" icon={Clock}>
-        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-md">
-          <CheckCircle2 className="w-3 h-3" /> Follow-up recorded
+      <PanelShell icon={Clock} title="Follow-up Status" testId="pipeline-panel-followup" tone="emerald">
+        <div className="flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-700" />
+          <span className="text-emerald-900">Follow-up recorded on this contact.</span>
         </div>
       </PanelShell>
     );
   }
   return (
-    <PanelShell testId="pipeline-panel-followup" tone="amber" title="Follow-up Status" icon={Clock}>
-      <div className="text-[11px] text-amber-900 mb-2">
-        Already sent a follow-up outside the system? Mark it as done so
-        this contact won&apos;t drop into <strong>Follow-up Due</strong>.
+    <PanelShell icon={Clock} title="Follow-up Status" testId="pipeline-panel-followup" tone="amber">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-amber-900 min-w-0">
+          Already sent a follow-up outside the system? Mark it as done so
+          this contact won&apos;t drop into <strong>Follow-up Due</strong>.
+        </p>
+        <button
+          type="button"
+          onClick={() => onMarkFollowUpSent?.(contact.id)}
+          className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-amber-500 text-stone-950 hover:bg-amber-600 rounded-full"
+          data-testid={`pipeline-panel-mark-followup-${contact.id}`}
+        >
+          <CheckCircle2 className="w-3 h-3" /> Mark follow-up already sent
+        </button>
       </div>
-      <button
-        type="button"
-        onClick={() => onMarkFollowUpSent?.(contact.id)}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-amber-500 text-stone-950 hover:bg-amber-600 rounded-lg"
-        data-testid={`pipeline-panel-mark-followup-${contact.id}`}
-      >
-        <CheckCircle2 className="w-3 h-3" /> Mark follow-up already sent
-      </button>
     </PanelShell>
+  );
+}
+
+// ---------------------------------------------------------------------
+// NOTES — right column, full expanded-body height. Textarea grows to
+// fill the panel's available space so admins can jot running notes,
+// call summaries, follow-up reminders in one place.
+function NotesPanel({ contact, onChanged }) {
+  return (
+    <PanelShell
+      icon={FileText}
+      title="Notes"
+      testId="pipeline-panel-notes"
+      bodyClass="flex flex-col"
+    >
+      <div className="flex-1 min-h-[220px] flex">
+        <AdminNotesEditor
+          contact={contact}
+          onUpdated={(id, notes, ts) =>
+            onChanged?.(id, { admin_notes: notes, admin_notes_updated_at: ts })
+          }
+          fullHeight
+        />
+      </div>
+    </PanelShell>
+  );
+}
+
+// ---------------------------------------------------------------------
+// View-Correspondence full-screen modal (empty layout placeholder).
+function CorrespondenceModal({ contact, onClose }) {
+  const displayName = displayNameFor(contact);
+  React.useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [onClose]);
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/40 flex items-stretch justify-center"
+      onClick={onClose}
+      data-testid="correspondence-modal-backdrop"
+    >
+      <div
+        className="bg-white w-full h-full flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        data-testid="correspondence-modal"
+      >
+        <header className="flex items-center justify-between gap-3 px-6 py-3 border-b border-stone-200 bg-stone-50">
+          <div className="min-w-0">
+            <div className="text-xs uppercase tracking-[0.2em] font-bold text-stone-500">Correspondence</div>
+            <div className="text-lg font-bold text-stone-950 truncate">{displayName}</div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wider border border-stone-300 bg-white text-stone-700 hover:bg-stone-100 rounded-md"
+            data-testid="correspondence-modal-close"
+          ><XIcon className="w-3 h-3" /> Close</button>
+        </header>
+        <div className="flex-1 min-h-0 overflow-auto bg-stone-50/50">
+          <div className="w-full h-full flex items-center justify-center text-sm text-stone-500 italic px-6 text-center">
+            Email correspondence layout coming next — the modal is
+            wired and ready.
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

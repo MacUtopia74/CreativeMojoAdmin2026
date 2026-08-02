@@ -63,6 +63,16 @@ Bespoke admin system for a franchise business consolidating Airtable, FileCamp, 
 - **Frontend:** `resolveAndIssueContract` returns `{kind: "render_invariant_failed", failedInvariant, markerCode, page, bbox, renderJobId, ...}`. New `<RenderErrorModal>` on AdminContractsPage shows the invariant, marker, page, bbox, template + render job id and a human-friendly copy line keyed off `failed_invariant` (e.g. "Issue failed because the signature anchor could not be located in the rendered PDF. Please check the marker placement in the template."). Browser `alert()` no longer used for these classes of failure.
 - **Belt-and-braces guard:** if template library declares `signature_anchor` but render_report has zero anchor occurrences (should not happen after the fix), return `failed_invariant: "signature_anchor_not_persisted"` with the specific message + log the full context.
 
+### 2026-08-02 — Sales Pipeline Tabs: layout matched to reference (New visual.jpg)
+- **Structural fix:** collapsed row and expanded card used to be separate components with separate top bars. Now unified — one `PipelineRow` renders a persistent `<TopBar>` in both states + a conditional `<ExpandedBody>` beneath, all inside a single tinted container so the heat wash + thick keyline wrap the whole selected unit.
+- **Top-bar actions never move:** Reply-with-Template + View-Correspondence buttons now sit in the top bar of every collapsed AND expanded row. Old bottom action row removed. Quick Reply removed entirely.
+- **4-column expanded grid:** Summary (col 1, full-height) | Move to Stage (col 2) | Plan Their Territory + Convert to Franchisee stack (col 3) | Notes (col 4, full-height). Follow-up Status spans cols 2+3 beneath the middle stack, no longer stretching under Summary or Notes.
+- **Summary panel:** email/phone/town/postcode+MAP with breathing room, date + age at the bottom above a divider (matches the mockup). Email no longer duplicated where the town should be.
+- **Move to Stage 2×3 grid** in the visual order New/Contacted, Interested/Dormant, Follow-up Due/Lost with solid coloured pill for the current stage.
+- **Notes panel full height** — `AdminNotesEditor` gained a `fullHeight` prop that swaps `rows={4}` for `flex-1` so the textarea grows to fill the right column.
+- **Stage pill removed from top bar** — the active tab strip already signals the stage; keeps the top bar clean per the mockup.
+- Verified on preview: 135 collapsed rows carry both top-bar actions, expanded row shows all six panels with no quick-reply footer, tinted keyline wraps the whole unit.
+
 ### 2026-08-02 — Sales Pipeline Tabs: UX polish pass
 - **Header click collapses.** Clicking anywhere on the expanded card's tinted header strip toggles the row shut. Interactive children (MAP button, chevron button) stop propagation so they still function.
 - **Row dividers** darkened from `divide-stone-100` → `divide-stone-200/80` so vertical row boundaries read at a glance.

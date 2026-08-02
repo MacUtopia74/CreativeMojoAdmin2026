@@ -1596,7 +1596,7 @@ function InterestedChecklist({ contact, onChanged }) {
   );
 }
 
-function AdminNotesEditor({ contact, onUpdated }) {
+function AdminNotesEditor({ contact, onUpdated, fullHeight = false }) {
   // Local draft separates the input value from the persisted value so the
   // user can type freely without losing focus mid-write. Auto-saves on blur
   // (with a short debounce safety net so accidental clicks don't lose work).
@@ -1631,7 +1631,7 @@ function AdminNotesEditor({ contact, onUpdated }) {
   };
 
   return (
-    <div data-testid="admin-notes-editor">
+    <div data-testid="admin-notes-editor" className={fullHeight ? "flex flex-col h-full min-h-0 w-full" : undefined}>
       <div className="flex items-center justify-between mb-2">
         <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">Notes</div>
         <div className="text-[10px] text-stone-500 flex items-center gap-1.5">
@@ -1661,9 +1661,13 @@ function AdminNotesEditor({ contact, onUpdated }) {
           }
         }}
         placeholder="Running notes — follow-ups, call summaries, anything you want to remember about this contact…"
-        rows={4}
+        rows={fullHeight ? undefined : 4}
         data-testid="admin-notes-textarea"
-        className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-sm focus:outline-none focus:border-stone-900 resize-y"
+        className={
+          fullHeight
+            ? "flex-1 min-h-0 w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-sm focus:outline-none focus:border-stone-900 resize-none"
+            : "w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-sm focus:outline-none focus:border-stone-900 resize-y"
+        }
       />
       <div className="flex items-center justify-between mt-1.5">
         <div className="text-[10px] text-stone-500">
