@@ -2855,6 +2855,7 @@ export default function ContactsPage() {
                 onLinkExisting={openLinkExisting}
                 onMarkFollowUpSent={markFollowUpSent}
                 onChangeSource={changeContactSource}
+                onTemperatureChange={setTemperature}
                 onContactUpdated={(id, patch) => {
                   // Merge the patch into local state so the row's chip /
                   // notes / checklist stay in sync without a full reload.
@@ -3307,5 +3308,5 @@ function CareHomeMapPanel({ filter, onFilterChange, pins, allPins, loading, erro
 // Named re-exports so the pipeline Tabs view (and any future consumer)
 // can reuse the same widgets instead of duplicating the checklist +
 // notes save logic. Keeps the source of truth in this file.
-export { InterestedChecklist, AdminNotesEditor };
+export { InterestedChecklist, AdminNotesEditor, TemperaturePicker };
 

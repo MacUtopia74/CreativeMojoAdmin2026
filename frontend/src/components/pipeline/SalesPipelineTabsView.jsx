@@ -20,7 +20,7 @@ import {
   User as UserIcon, Clock, Save, X as XIcon,
   ArrowDownCircle, ArrowRightLeft,
 } from "lucide-react";
-import { AdminNotesEditor, InterestedChecklist } from "@/pages/ContactsPage";
+import { AdminNotesEditor, InterestedChecklist, TemperaturePicker } from "@/pages/ContactsPage";
 
 const TABS = [
   { key: "new",           label: "New",            dot: "bg-stone-400",   bg: "bg-stone-900",   fg: "text-white" },
@@ -47,18 +47,16 @@ const STAGE = {
 // Three-tier heat scale — cold=blue, warm=purple, hot=orange (matches
 // the flame swatches). ``card`` is the tint that wraps the entire
 // selected row + expanded content as one unit.
+// Row-tint palette keyed on the manual pipeline temperature (Hot / Keen /
+// Lukewarm). Mirrors the flame colours used on the kanban card so the
+// two views feel like the same data. `row` is the soft tint applied to
+// each collapsed row when a temperature is set; `card` wraps the whole
+// expanded card with a thicker tinted border.
 const HEAT = {
-  cold: { label: "Cold", flame: "text-blue-500",   card: "bg-gradient-to-b from-blue-50 to-white   border-blue-300"   },
-  warm: { label: "Warm", flame: "text-purple-500", card: "bg-gradient-to-b from-purple-50 to-white border-purple-300" },
-  hot:  { label: "Hot",  flame: "text-orange-600", card: "bg-gradient-to-b from-orange-50 to-white border-orange-300" },
+  hot:      { label: "Hot",      row: "bg-orange-50", card: "border-orange-300" },
+  keen:     { label: "Keen",     row: "bg-purple-50", card: "border-purple-300" },
+  lukewarm: { label: "Lukewarm", row: "bg-blue-50",   card: "border-blue-300"   },
 };
-
-function heatFromScore(score) {
-  const s = Number(score) || 0;
-  if (s >= 50) return "hot";
-  if (s >= 20) return "warm";
-  return "cold";
-}
 
 function daysSinceISO(iso) {
   if (!iso) return null;
@@ -100,7 +98,9 @@ export default function SalesPipelineTabsView({
   onLinkExisting,
   onMarkFollowUpSent,
   onChangeSource,
+  onTemperatureChange,
 }) {
+  void tempMap;
   const [activeTab, setActiveTab] = useState("new");
   const [userPickedTab, setUserPickedTab] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
@@ -176,7 +176,6 @@ export default function SalesPipelineTabsView({
             <PipelineRow
               key={c.id}
               contact={c}
-              temp={tempMap?.[c.id]}
               isExpanded={expandedId === c.id}
               onToggle={() => setExpandedId(expandedId === c.id ? null : c.id)}
               onOpenContact={onOpenContact}
@@ -189,6 +188,7 @@ export default function SalesPipelineTabsView({
               onLinkExisting={onLinkExisting}
               onMarkFollowUpSent={onMarkFollowUpSent}
               onChangeSource={onChangeSource}
+              onTemperatureChange={onTemperatureChange}
               onViewCorrespondence={() => setCorrespondenceContact(c)}
             />
           ))}
@@ -211,33 +211,38 @@ export default function SalesPipelineTabsView({
 // Expanded content sits directly below the top bar inside the same
 // tinted outer container so the keyline wraps them as one unit.
 function PipelineRow({
-  contact, temp, isExpanded, onToggle,
+  contact, isExpanded, onToggle,
   onOpenContact, onReplyContact, onContactUpdated, onOpenPostcodeMap,
   onStageChange, onDemote, onConvert, onLinkExisting, onMarkFollowUpSent,
-  onChangeSource,
+  onChangeSource, onTemperatureChange,
   onViewCorrespondence,
 }) {
   const c = contact;
-  const heatKey = heatFromScore(temp?.score);
-  const heat = HEAT[heatKey];
+  const heat = HEAT[c.temperature] || null;
   const emailed = (c.email_sends_count || 0) > 0;
   const daysInStage = daysSinceISO(c.pipeline_status_updated_at || c.updated_at || c.date_added);
 
+  const rowTint = heat ? heat.row : "bg-white";
+  const borderTint = heat ? heat.card : "border-stone-200";
+
   return (
-    <li data-testid={`pipeline-row-${c.id}`} className="bg-white border border-stone-200 rounded-xl overflow-hidden">
-      {/* Single outer container. When expanded it picks up the heat
-          wash and a thicker keyline so the whole unit reads as one. */}
+    <li
+      data-testid={`pipeline-row-${c.id}`}
+      className={`${rowTint} border ${borderTint} rounded-xl overflow-hidden`}
+    >
+      {/* Single outer container. When expanded we thicken the keyline
+          so the whole unit reads as one, but the fill stays the same
+          tinted colour as the collapsed row so the heat is obvious. */}
       <div
         className={
           isExpanded
-            ? "m-3 border-2 border-stone-200 rounded-2xl overflow-hidden shadow-sm bg-[#F2F2F0]"
+            ? `m-3 border-2 ${borderTint} rounded-2xl overflow-hidden shadow-sm bg-[#F2F2F0]`
             : "border-2 border-transparent rounded-xl"
         }
         data-testid={isExpanded ? `pipeline-row-expanded-${c.id}` : undefined}
       >
         <TopBar
           contact={c}
-          heat={heat}
           emailed={emailed}
           daysInStage={daysInStage}
           isExpanded={isExpanded}
@@ -245,6 +250,7 @@ function PipelineRow({
           onOpenPostcodeMap={onOpenPostcodeMap}
           onReplyContact={onReplyContact}
           onViewCorrespondence={() => onViewCorrespondence?.(c)}
+          onTemperatureChange={onTemperatureChange}
         />
 
         {isExpanded && (
@@ -273,8 +279,9 @@ function PipelineRow({
 // Right cluster: Reply-with-Template + View-Correspondence buttons,
 // postcode + MAP, heat, emailed chip, chevron.
 function TopBar({
-  contact, heat, emailed, daysInStage,
+  contact, emailed, daysInStage,
   isExpanded, onToggle, onOpenPostcodeMap, onReplyContact, onViewCorrespondence,
+  onTemperatureChange,
 }) {
   const c = contact;
   return (
@@ -351,11 +358,16 @@ function TopBar({
         )}
 
         <span
-          className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider ${heat.flame}`}
+          className="inline-flex items-center"
           data-testid={`pipeline-row-temp-${c.id}`}
+          onClick={(e) => e.stopPropagation()}
         >
-          <Flame className="w-3.5 h-3.5" />
-          {heat.label}
+          <TemperaturePicker
+            value={c.temperature || null}
+            onChange={(next) => onTemperatureChange?.(c.id, next)}
+            size="sm"
+            testidPrefix={`pipeline-row-temp-${c.id}`}
+          />
         </span>
 
         <span
