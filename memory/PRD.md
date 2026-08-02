@@ -66,11 +66,12 @@ Bespoke admin system for a franchise business consolidating Airtable, FileCamp, 
 ### 2026-08-01 — Sales Pipeline: Tabbed list view
 - New `<SalesPipelineTabsView>` (in `src/components/pipeline/`) replaces the flat list on the Sales Pipeline tab. Four full-width tabs: NEW / CONTACTED / FOLLOW-UP DUE / INTERESTED. Dormant + Lost stay on the kanban only (per user pref).
 - LIST toggle renamed to **TABS** with a `Rows3` icon; internal state key kept as `"list"` to avoid churn on saved recentSearches.
-- Row layout matches the mockup: name + establishment + email, days-in-stage, postcode, temperature flame with band label, and an **Emailed / Not emailed** chip (question 4b). Row expands in place to reveal Summary / Checklist / Activity / Notes side-by-side plus quick-reply, reply-with-template, and view-correspondence action buttons.
-- Panels reuse the existing widgets: `InterestedChecklist` (checklist gated to `qualified` rows with a helper hint elsewhere), `EmailTimeline` inside a scrollable Activity panel, and `AdminNotesEditor` (which persists to the existing `admin_notes` field — no schema change).
-- **Backend:** `/api/contacts?tab=pipeline` now aggregates `email_sends_count` (+ `email_sends_last_at`) per visible contact via a single `$group` on `email_sends`, so the Emailed/Not-emailed chip is accurate without per-row network calls.
+- Row layout matches the mockup: CSS-grid columns for Name/email · Stage pill · Postcode + Map button · Heat flame + numeric score · Emailed / Not emailed chip · Territory-plan action card (flips between "Plan their territory / OPEN BUILDER" and "Territory plan linked / SEE LINKED PLAN"). Row expands in place to reveal Summary / Checklist / Activity / Notes side-by-side.
+- Postcode MAP button opens the same `ContactPostcodeMapModal` the drawer uses (`onOpenPostcodeMap` callback + top-level modal mount).
+- Panels reuse `InterestedChecklist`, `EmailTimeline`, `AdminNotesEditor` via named re-exports.
+- **Backend:** `/api/contacts?tab=pipeline` now aggregates `email_sends_count` + `email_sends_last_at` (from `email_sends`) AND a compact `linked_plan` summary (from `territory_plans`, latest per contact) so both the Emailed chip and the Territory-plan action card render accurately with zero per-row network calls.
 - Named re-exports `InterestedChecklist` and `AdminNotesEditor` added at the bottom of `ContactsPage.js` so the tabs view uses the exact same widgets as the drawer (single source of truth).
-- Verified live on preview: tabs render with real counts, expanded row shows all 4 panels correctly, and Notes / Checklist writes flow back through the drawer's PATCH endpoints.
+- Verified live on preview: 132 rows render with proper column spread, MAP button, HEAT score, Emailed chip and Territory-plan card correctly.
 
 ### 2026-08-01 — Fix: portal signature submission "m7 is not a function"
 - **Root cause:** `getTrimmedCanvas()` from `react-signature-canvas` bundles the `trim-canvas` helper lazily; the production CRACO chunk-split mangles the export path so the reference resolves to an undefined minified name (`m7`) at runtime.

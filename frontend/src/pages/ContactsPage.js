@@ -1732,6 +1732,9 @@ export default function ContactsPage() {
   // Contact whose Reply-with-template modal is currently open from the kanban
   // quick-Reply button (not the drawer — the drawer has its own state).
   const [kanbanReplyContact, setKanbanReplyContact] = useState(null);
+  // Contact whose postcode map modal is currently open from the pipeline
+  // tabs view (the drawer has its own state for the same modal).
+  const [postcodeMapContact, setPostcodeMapContact] = useState(null);
   const [ageFilter, setAgeFilter] = useState("all");
   // Care Home Contacts tab — map view + filters.
   // Presets: 30d / 12m / custom (with from+to inputs) / all.
@@ -2820,6 +2823,7 @@ export default function ContactsPage() {
                 tempMap={tempMap}
                 onOpenContact={(c) => openContact(c)}
                 onReplyContact={(c) => setKanbanReplyContact(c)}
+                onOpenPostcodeMap={(c) => setPostcodeMapContact(c)}
                 onContactUpdated={(id, patch) => {
                   // Merge the patch into local state so the row's chip /
                   // notes / checklist stay in sync without a full reload.
@@ -3109,6 +3113,15 @@ export default function ContactsPage() {
         onClose={() => setKanbanReplyContact(null)}
         onSent={() => { setKanbanReplyContact(null); load(); }}
       />
+      {/* Postcode-map modal launched from the Sales Pipeline TABS row —
+          shares the same component the drawer uses so the map UX is
+          consistent everywhere. */}
+      {postcodeMapContact && (
+        <ContactPostcodeMapModal
+          contact={postcodeMapContact}
+          onClose={() => setPostcodeMapContact(null)}
+        />
+      )}
     </div>
   );
 }

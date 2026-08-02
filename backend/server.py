@@ -4917,6 +4917,41 @@ async def list_contacts(
                 if bucket.get("last_at"):
                     i["email_sends_last_at"] = bucket["last_at"]
 
+            # Also attach a compact ``linked_plan`` summary so the tabs
+            # view can flip the "Plan their territory" action card to
+            # "Territory plan linked" without another per-row round-trip.
+            # Only latest plan per contact is surfaced (kanban/drawer
+            # already treat the newest plan as the canonical link).
+            plan_pipe = [
+                {"$match": {"contact_id": {"$in": visible_ids}}},
+                {"$sort": {"created_at": -1}},
+                {"$group": {
+                    "_id": "$contact_id",
+                    "plan_id": {"$first": "$id"},
+                    "name": {"$first": "$name"},
+                    "total_homes": {"$first": "$total_homes"},
+                    "sectors": {"$first": "$sectors"},
+                    "is_shared": {"$first": "$is_shared"},
+                }},
+            ]
+            plan_map: dict = {}
+            async for r in db.territory_plans.aggregate(plan_pipe):
+                cid = r.get("_id")
+                if not cid:
+                    continue
+                sectors = r.get("sectors") or []
+                plan_map[cid] = {
+                    "id": r.get("plan_id"),
+                    "name": r.get("name"),
+                    "total_homes": r.get("total_homes"),
+                    "sectors_count": len(sectors) if isinstance(sectors, list) else None,
+                    "is_shared": bool(r.get("is_shared")),
+                }
+            for i in items:
+                lp = plan_map.get(i.get("id"))
+                if lp:
+                    i["linked_plan"] = lp
+
     return {"items": items[:limit], "total": len(items)}
 
 

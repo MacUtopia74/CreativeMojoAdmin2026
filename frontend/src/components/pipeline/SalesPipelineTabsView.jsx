@@ -1,35 +1,26 @@
 // Sales Pipeline — Tabbed list view.
 //
-// Replaces the flat Airtable-style list on the Sales Pipeline tab with a
-// four-tab layout (NEW / CONTACTED / FOLLOW-UP DUE / INTERESTED) whose
-// rows expand in place to reveal Summary / Checklist / Activity / Notes
-// side-by-side plus quick-action buttons. Dormant + Lost stages remain
-// on the kanban only (per PM decision, 2026-08-01).
+// Replaces the flat list on the Sales Pipeline tab with a four-tab
+// layout (NEW / CONTACTED / FOLLOW-UP DUE / INTERESTED) whose rows
+// expand in place to reveal Summary / Checklist / Activity / Notes
+// side-by-side plus quick-action buttons. Dormant + Lost stay on the
+// kanban only (per PM decision, 2026-08-01).
 //
-// Design notes
-// ------------
-// * The row is a compact, at-a-glance summary — name, temperature flame,
-//   postcode, "Emailed / Not emailed" chip and a chevron. Nothing else,
-//   because the whole point of this view is to stay above the fold at
-//   normal desktop widths.
-// * Only one row expands at a time — collapsing a row keeps the view
-//   uncluttered and matches the mockup exactly.
-// * Reuses the existing `InterestedChecklist` + `AdminNotesEditor` widgets
-//   (re-exported from ContactsPage.js) so the pipeline tabs never fall
-//   out of sync with the drawer if the checklist schema evolves.
-// * `EmailTimeline` mounts on demand inside the expanded row's Activity
-//   panel so we don't hammer the backend with N GETs at list load.
-// * The three action buttons (Quick reply / Reply with template / View
-//   correspondence) call the callbacks the parent hands down —
-//   `openDrawer`, `openTemplateReply`. Real reply UX will come in a
-//   follow-up per user's note ("instructions for the email element will
-//   follow once this is built").
+// Row layout mirrors the reference mockup:
+//   Name/email | Stage pill | Postcode + Map | Heat + score | Emailed
+//   | Territory plan action card | Chevron
+// The columns have fixed widths so they line up down the whole list
+// (bunched-up-on-the-right was the first-pass mistake — fixed here).
+//
+// Reuses `InterestedChecklist`, `AdminNotesEditor` and `EmailTimeline`
+// via named re-exports from `ContactsPage.js` so this view never
+// drifts from the drawer if the checklist / notes schema evolves.
 
 import React, { useMemo, useState } from "react";
 import {
   Flame, MapPin, MessageSquare, FileText, ChevronDown, ChevronUp,
   Mail, MailX, Send, ClipboardCheck, Activity as ActivityIcon,
-  StickyNote,
+  StickyNote, Target,
 } from "lucide-react";
 import EmailTimeline from "@/components/EmailTimeline";
 import { InterestedChecklist, AdminNotesEditor } from "@/pages/ContactsPage";
@@ -38,18 +29,29 @@ import { InterestedChecklist, AdminNotesEditor } from "@/pages/ContactsPage";
 // ContactsPage.js so the stage pill stays visually consistent between
 // the tabs view and the kanban.
 const TABS = [
-  { key: "new",           label: "New",            accent: "bg-stone-800",    dot: "bg-stone-400", tint: "text-stone-700" },
-  { key: "contacted",     label: "Contacted",      accent: "bg-blue-700",     dot: "bg-blue-400",  tint: "text-blue-700" },
-  { key: "follow_up_due", label: "Follow-up Due",  accent: "bg-amber-700",    dot: "bg-amber-500", tint: "text-amber-800" },
-  { key: "qualified",     label: "Interested",     accent: "bg-emerald-700",  dot: "bg-emerald-500", tint: "text-emerald-800" },
+  { key: "new",           label: "New",            accent: "bg-stone-800",    dot: "bg-stone-400" },
+  { key: "contacted",     label: "Contacted",      accent: "bg-blue-700",     dot: "bg-blue-400" },
+  { key: "follow_up_due", label: "Follow-up Due",  accent: "bg-amber-700",    dot: "bg-amber-500" },
+  { key: "qualified",     label: "Interested",     accent: "bg-emerald-700",  dot: "bg-emerald-500" },
 ];
 
-const FLAME_COLOUR = {
-  cold: "text-blue-500",
-  cool: "text-sky-500",
-  warm: "text-amber-500",
-  hot:  "text-red-600",
+// Kept in sync with STAGES in ContactsPage.js — see comment there.
+const STAGE_PILL = {
+  new:           { label: "New",           cls: "bg-stone-50 text-stone-700 border-stone-300", dot: "bg-stone-500" },
+  contacted:     { label: "Contacted",     cls: "bg-blue-50 text-blue-700 border-blue-200",    dot: "bg-blue-500" },
+  follow_up_due: { label: "Follow-up Due", cls: "bg-amber-50 text-amber-800 border-amber-300", dot: "bg-amber-500" },
+  qualified:     { label: "Interested",    cls: "bg-emerald-50 text-emerald-800 border-emerald-200", dot: "bg-emerald-500" },
 };
+
+// Heat score → flame colour + band label. Score buckets match the
+// backend LeadTemperature engine (see `contacts/{id}/temperature`).
+function heatFromScore(score) {
+  const s = Number(score) || 0;
+  if (s >= 60) return { label: "Hot",  colour: "text-red-600" };
+  if (s >= 30) return { label: "Warm", colour: "text-amber-500" };
+  if (s >= 10) return { label: "Cool", colour: "text-sky-500" };
+  return         { label: "Cold", colour: "text-blue-500" };
+}
 
 function daysSinceISO(iso) {
   if (!iso) return null;
@@ -58,25 +60,17 @@ function daysSinceISO(iso) {
   return Math.max(0, Math.floor((Date.now() - d.getTime()) / 86_400_000));
 }
 
-function formatPostcodeLink(pc) {
-  const clean = (pc || "").trim();
-  if (!clean) return null;
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(clean)}`;
-}
-
 export default function SalesPipelineTabsView({
   contacts,
   tempMap,
   onOpenContact,
   onReplyContact,
   onContactUpdated,
+  onOpenPostcodeMap,
 }) {
   const [activeTab, setActiveTab] = useState("new");
   const [expandedId, setExpandedId] = useState(null);
 
-  // Split contacts into buckets by pipeline_status once per render.
-  // ``dormant`` / ``lost`` deliberately excluded — those stages stay on
-  // the kanban only.
   const buckets = useMemo(() => {
     const out = { new: [], contacted: [], follow_up_due: [], qualified: [] };
     for (const c of contacts) {
@@ -91,7 +85,6 @@ export default function SalesPipelineTabsView({
 
   return (
     <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden" data-testid="sales-pipeline-tabs">
-      {/* Tab bar */}
       <div
         role="tablist"
         aria-label="Sales pipeline stages"
@@ -129,7 +122,6 @@ export default function SalesPipelineTabsView({
         })}
       </div>
 
-      {/* Rows */}
       {activeRows.length === 0 ? (
         <div className="py-16 text-center text-sm text-stone-500" data-testid={`pipeline-tab-empty-${activeTab}`}>
           No contacts in this stage right now.
@@ -146,6 +138,7 @@ export default function SalesPipelineTabsView({
               onOpenContact={onOpenContact}
               onReplyContact={onReplyContact}
               onContactUpdated={onContactUpdated}
+              onOpenPostcodeMap={onOpenPostcodeMap}
             />
           ))}
         </ul>
@@ -154,99 +147,133 @@ export default function SalesPipelineTabsView({
   );
 }
 
-
 function PipelineRow({
   contact, temp, isExpanded, onToggle,
-  onOpenContact, onReplyContact, onContactUpdated,
+  onOpenContact, onReplyContact, onContactUpdated, onOpenPostcodeMap,
 }) {
   const c = contact;
   const displayName = [c.first_name, c.last_name].filter(Boolean).join(" ") || "(no name)";
-  const flameBand = temp?.band || "cold";
-  const flameColour = FLAME_COLOUR[flameBand] || FLAME_COLOUR.cold;
+  const stage = STAGE_PILL[c.pipeline_status] || STAGE_PILL.new;
+  const heat = heatFromScore(temp?.score);
+  const heatScore = temp?.score ?? null;
   const emailed = (c.email_sends_count || 0) > 0;
-  const postcodeLink = formatPostcodeLink(c.postcode);
   const daysInStage = daysSinceISO(c.pipeline_status_updated_at || c.updated_at || c.date_added);
+  const linkedPlan = c.linked_plan || null;
 
+  // Rendered as two rows inside a single container so the compact
+  // row + expanded panels share a hover / focus outline. The header
+  // itself is a <div> (not a <button>) so we can nest interactive
+  // elements — MAP, Territory-plan links, action buttons — without
+  // breaking a11y.
   return (
     <li data-testid={`pipeline-row-${c.id}`} className="bg-white">
-      {/* Compact row */}
-      <button
-        type="button"
-        onClick={onToggle}
-        className={`w-full flex items-center gap-4 px-4 py-3 hover:bg-stone-50 transition-colors text-left ${
+      <div
+        className={`grid grid-cols-[minmax(0,1fr)_130px_150px_100px_130px_260px_28px] gap-3 items-center px-4 py-3 cursor-pointer hover:bg-stone-50 transition-colors ${
           isExpanded ? "bg-stone-50" : ""
         }`}
+        onClick={onToggle}
+        role="button"
+        tabIndex={0}
         data-testid={`pipeline-row-toggle-${c.id}`}
       >
-        {/* Name / establishment */}
-        <div className="flex-1 min-w-0">
+        {/* Name / email / days-in-stage */}
+        <div className="min-w-0">
           <div className="text-sm font-semibold text-stone-950 truncate">
             {displayName}
-            {c.establishment_name && (
-              <span className="ml-2 text-xs font-normal text-stone-500 truncate">
-                · {c.establishment_name}
+            {typeof daysInStage === "number" && (
+              <span className="ml-2 text-[11px] font-normal text-stone-400">
+                · {daysInStage}d in stage
               </span>
             )}
           </div>
           <div className="text-[11px] text-stone-500 truncate mt-0.5">
             {c.email || <span className="italic">no email</span>}
-            {typeof daysInStage === "number" && (
-              <span className="ml-2 text-stone-400">· {daysInStage}d in stage</span>
-            )}
+            {c.establishment_name && <span className="ml-1 text-stone-400"> · {c.establishment_name}</span>}
           </div>
         </div>
 
-        {/* Postcode */}
-        {c.postcode && (
-          <span className="hidden md:inline-flex items-center gap-1 text-xs text-stone-600 shrink-0">
-            <MapPin className="w-3 h-3" />
-            {c.postcode}
+        {/* Stage pill */}
+        <div className="flex items-center">
+          <span
+            className={`inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wider border rounded-full ${stage.cls}`}
+            data-testid={`pipeline-row-stage-${c.id}`}
+          >
+            <span className={`inline-block w-1.5 h-1.5 rounded-full ${stage.dot}`} />
+            {stage.label}
           </span>
-        )}
+        </div>
 
-        {/* Temperature flame */}
-        <span
-          className={`inline-flex items-center gap-1 text-xs shrink-0 ${flameColour}`}
-          title={`Lead temperature: ${flameBand}`}
+        {/* Postcode + MAP button */}
+        <div className="flex items-center gap-2 text-xs text-stone-700 min-w-0">
+          {c.postcode ? (
+            <>
+              <span className="truncate" data-testid={`pipeline-row-postcode-${c.id}`}>{c.postcode}</span>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onOpenPostcodeMap?.(c); }}
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border border-stone-300 rounded hover:bg-stone-100 text-stone-700 shrink-0"
+                data-testid={`pipeline-row-postcode-map-btn-${c.id}`}
+                title={`See ${c.postcode} on the UK territory atlas`}
+              >
+                <MapPin className="w-2.5 h-2.5" /> Map
+              </button>
+            </>
+          ) : (
+            <span className="text-stone-400 italic text-[11px]">no postcode</span>
+          )}
+        </div>
+
+        {/* Heat — flame + score number */}
+        <div
+          className={`flex items-center gap-1.5 text-xs ${heat.colour}`}
           data-testid={`pipeline-row-temp-${c.id}`}
+          title={heatScore != null ? `Auto-score: ${heatScore}` : "No heat yet"}
         >
           <Flame className="w-4 h-4" />
-          <span className="uppercase font-bold tracking-wider text-[10px]">{flameBand}</span>
-        </span>
+          <span className="tabular-nums font-bold text-sm">
+            {heatScore != null ? heatScore : "—"}
+          </span>
+          <span className="uppercase font-bold tracking-wider text-[9px] text-stone-500">
+            {heat.label}
+          </span>
+        </div>
 
-        {/* Emailed chip */}
-        <span
-          className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border shrink-0 ${
-            emailed
-              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-              : "bg-stone-100 text-stone-500 border-stone-200"
-          }`}
-          data-testid={`pipeline-row-emailed-${c.id}`}
-        >
-          {emailed ? <Mail className="w-3 h-3" /> : <MailX className="w-3 h-3" />}
-          {emailed ? "Emailed" : "Not emailed"}
-        </span>
+        {/* Email status chip */}
+        <div>
+          <span
+            className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border ${
+              emailed
+                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                : "bg-stone-100 text-stone-500 border-stone-200"
+            }`}
+            data-testid={`pipeline-row-emailed-${c.id}`}
+          >
+            {emailed ? <Mail className="w-3 h-3" /> : <MailX className="w-3 h-3" />}
+            {emailed ? "Emailed" : "Not emailed"}
+          </span>
+        </div>
+
+        {/* Territory plan action card */}
+        <TerritoryPlanCard contact={c} linkedPlan={linkedPlan} onClick={(e) => e.stopPropagation()} />
 
         {/* Chevron */}
-        <span className="text-stone-400 shrink-0">
+        <div className="text-stone-400 justify-self-end">
           {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-        </span>
-      </button>
+        </div>
+      </div>
 
-      {/* Expanded panel — 4 sub-panels + actions row */}
       {isExpanded && (
         <div
           className="px-4 pb-5 pt-1 bg-stone-50/60 border-t border-stone-100"
           data-testid={`pipeline-row-expanded-${c.id}`}
         >
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 mt-3">
-            <SummaryPanel contact={c} postcodeLink={postcodeLink} daysInStage={daysInStage} />
+            <SummaryPanel contact={c} daysInStage={daysInStage} onOpenPostcodeMap={onOpenPostcodeMap} />
             <ChecklistPanel contact={c} onChanged={onContactUpdated} />
             <ActivityPanel contactId={c.id} />
             <NotesPanel contact={c} onChanged={onContactUpdated} />
           </div>
 
-          {/* Actions row */}
           <div className="mt-4 flex flex-wrap gap-2 justify-end">
             <button
               type="button"
@@ -279,6 +306,55 @@ function PipelineRow({
   );
 }
 
+// "Plan their territory" / "Territory plan linked" — flips its CTA
+// based on whether the contact has a linked plan (surfaced by the
+// backend `linked_plan` enrichment). Anchors so we can wrap it in an
+// <a> without swallowing the row's click handler.
+function TerritoryPlanCard({ contact, linkedPlan, onClick }) {
+  const href = linkedPlan
+    ? `/territory-builder?plan_id=${linkedPlan.id}`
+    : `/territory-builder?contact_id=${contact.id}`;
+  const label = linkedPlan ? "Territory plan linked" : "Plan their territory";
+  const cta   = linkedPlan ? "See linked plan"       : "Open builder";
+  const sub = linkedPlan
+    ? [
+        linkedPlan.name ? `Linked plan: ${linkedPlan.name}` : "Linked plan",
+        typeof linkedPlan.total_homes === "number" ? `${linkedPlan.total_homes} homes` : null,
+        typeof linkedPlan.sectors_count === "number" ? `${linkedPlan.sectors_count} sectors` : null,
+      ].filter(Boolean).join(" · ")
+    : "Build a sample territory plan for this contact.";
+  return (
+    <a
+      href={href}
+      onClick={onClick}
+      className={`flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg border text-[11px] ${
+        linkedPlan
+          ? "bg-emerald-50 border-emerald-200 hover:bg-emerald-100"
+          : "bg-stone-50 border-stone-200 hover:bg-stone-100"
+      }`}
+      data-testid={`pipeline-row-territory-plan-${contact.id}`}
+    >
+      <div className="flex items-center gap-1.5 min-w-0">
+        <Target className={`w-3.5 h-3.5 shrink-0 ${linkedPlan ? "text-emerald-700" : "text-stone-500"}`} />
+        <div className="min-w-0">
+          <div className={`font-semibold truncate ${linkedPlan ? "text-emerald-900" : "text-stone-900"}`}>
+            {label}
+          </div>
+          <div className={`truncate text-[10px] ${linkedPlan ? "text-emerald-700" : "text-stone-500"}`}>
+            {sub}
+          </div>
+        </div>
+      </div>
+      <span
+        className={`shrink-0 px-2 py-1 text-[9px] font-bold uppercase tracking-wider rounded ${
+          linkedPlan ? "bg-emerald-700 text-white" : "bg-stone-900 text-white"
+        }`}
+      >
+        {cta}
+      </span>
+    </a>
+  );
+}
 
 function PanelShell({ icon: Icon, title, children, testId }) {
   return (
@@ -297,15 +373,24 @@ function PanelShell({ icon: Icon, title, children, testId }) {
   );
 }
 
-
-function SummaryPanel({ contact, postcodeLink, daysInStage }) {
+function SummaryPanel({ contact, daysInStage, onOpenPostcodeMap }) {
   const c = contact;
   const rows = [
     ["Email",    c.email],
     ["Phone",    c.telephone || c.phone],
-    ["Postcode", c.postcode && postcodeLink
-      ? <a href={postcodeLink} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline">{c.postcode}</a>
-      : c.postcode],
+    ["Postcode", c.postcode ? (
+      <span className="inline-flex items-center gap-1.5">
+        {c.postcode}
+        <button
+          type="button"
+          onClick={() => onOpenPostcodeMap?.(c)}
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border border-stone-300 rounded hover:bg-stone-100 text-stone-700"
+          data-testid={`pipeline-panel-summary-map-btn-${c.id}`}
+        >
+          <MapPin className="w-2.5 h-2.5" /> Map
+        </button>
+      </span>
+    ) : null],
     ["First seen", c.date_added ? new Date(c.date_added).toLocaleDateString("en-GB") : (c.date || "—")],
     ["Days in stage", typeof daysInStage === "number" ? `${daysInStage}` : "—"],
   ];
@@ -323,11 +408,7 @@ function SummaryPanel({ contact, postcodeLink, daysInStage }) {
   );
 }
 
-
 function ChecklistPanel({ contact, onChanged }) {
-  // Only the Interested stage carries the real checklist today. For
-  // NEW / CONTACTED / FOLLOW-UP DUE rows we still show the panel but
-  // with a helper hint so the layout doesn't collapse asymmetrically.
   const isInterested = contact.pipeline_status === "qualified";
   return (
     <PanelShell icon={ClipboardCheck} title="Checklist" testId="pipeline-panel-checklist">
@@ -346,7 +427,6 @@ function ChecklistPanel({ contact, onChanged }) {
   );
 }
 
-
 function ActivityPanel({ contactId }) {
   return (
     <PanelShell icon={ActivityIcon} title="Activity" testId="pipeline-panel-activity">
@@ -356,7 +436,6 @@ function ActivityPanel({ contactId }) {
     </PanelShell>
   );
 }
-
 
 function NotesPanel({ contact, onChanged }) {
   return (
@@ -370,4 +449,3 @@ function NotesPanel({ contact, onChanged }) {
     </PanelShell>
   );
 }
-
