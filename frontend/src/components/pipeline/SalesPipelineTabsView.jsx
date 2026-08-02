@@ -102,6 +102,7 @@ export default function SalesPipelineTabsView({
   onChangeSource,
 }) {
   const [activeTab, setActiveTab] = useState("new");
+  const [userPickedTab, setUserPickedTab] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
   const [correspondenceContact, setCorrespondenceContact] = useState(null);
 
@@ -114,6 +115,19 @@ export default function SalesPipelineTabsView({
     }
     return out;
   }, [contacts]);
+
+  // Auto-pick the first non-empty tab on load so admins land on a
+  // populated list instead of the empty "New" bucket. Stops as soon as
+  // the user manually clicks a tab (userPickedTab flag) so this never
+  // overrides an explicit choice.
+  React.useEffect(() => {
+    if (userPickedTab) return;
+    if ((buckets[activeTab] || []).length > 0) return;
+    const firstWithData = TABS.find((t) => (buckets[t.key] || []).length > 0);
+    if (firstWithData && firstWithData.key !== activeTab) {
+      setActiveTab(firstWithData.key);
+    }
+  }, [buckets, activeTab, userPickedTab]);
 
   const activeRows = buckets[activeTab] || [];
 
@@ -129,7 +143,7 @@ export default function SalesPipelineTabsView({
               type="button"
               role="tab"
               aria-selected={isActive}
-              onClick={() => { setActiveTab(t.key); setExpandedId(null); }}
+              onClick={() => { setActiveTab(t.key); setUserPickedTab(true); setExpandedId(null); }}
               data-testid={`pipeline-tab-${t.key}`}
               className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold uppercase tracking-[0.18em] transition-colors rounded-lg ${
                 isActive
