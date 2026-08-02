@@ -11,6 +11,7 @@ Bespoke admin system for a franchise business consolidating Airtable, FileCamp, 
 - Integrations: Xero, Resend, WooCommerce, CQC API, Mapbox
 
 ## Recent changelog
+- 2026-02-02 — Sales Pipeline Feb tweaks: Summary panel gains 2nd Line of Address, County/State, Country fields (edit + display); "Town" renamed to "Town/City"; contact name bolded (font-bold) in row top bar; Convert-to-Franchisee panel narrowed and paired with new CHANGE TYPE dropdown (Franchise / Licence / General) that reuses POST /api/contacts/{id}/move for reclassification. Drawer's Change type menu now shares the same `changeContactSource` helper for behavioural parity.
 - 2026-02-XX — Fix: Numbered map markers on MyTerritory+ (`FranchiseeTerritoryWidget`) now open the detail entry modal on click (same as row click), instead of only highlighting the circle. Plus/admin layouts only; basic franchisees unchanged.
 - Map Popup Overhaul: public map now pulls from Franchisee Portal checkboxes only, no WP fallbacks.
 - Portal UI: Territory/Name/Image/Facebook opt-in checkboxes on `PortalDetailsPage`.
