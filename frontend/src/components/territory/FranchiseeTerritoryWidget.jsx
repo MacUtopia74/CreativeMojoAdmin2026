@@ -751,27 +751,56 @@ export default function FranchiseeTerritoryWidget({
         </div>
         )}
 
-        {editingClient && (
-          <TerritoryClientModal
-            initial={editingClient.__new ? null : editingClient}
-            cqcSnapshot={!editingClient.__new && editingClient.source !== "custom"
-              ? homeById.get(editingClient.home_id) || null
-              : null}
-            marketingEnabled={marketingEnabled}
-            hqEntries={editingClient.source && editingClient.home_id
-              ? hqNotesMap[`${editingClient.source}:${editingClient.home_id}`] || []
-              : []}
-            hqNoteEditable={adminMode}
-            onHqNoteSave={saveHqNote}
-            onHqEntryDelete={adminMode ? deleteHqEntry : null}
-            hqSource={editingClient.source}
-            hqHomeId={editingClient.home_id}
-            adminFranchiseeId={adminMode ? franchiseeId : null}
-            onClose={() => setEditingClient(null)}
-            onSaved={() => { reloadClients(); }}
-            onDeleted={() => { reloadClients(); }}
-          />
-        )}
+        {editingClient && (() => {
+          // Resolve ONE canonical (source, home_id) reference for HQ
+          // notes so admin and portal always agree. Priority:
+          //   1. A CQC/regulator seed carries __hq_source + __hq_home_id
+          //      (set when opening a home directly off the map).
+          //   2. A saved franchisee_clients doc with a real regulator
+          //      link (source in {cqc,scotland,wales,ni}) uses its
+          //      stored (source, home_id).
+          //   3. A manually-created custom client (source="custom",
+          //      home_id is null) uses ("custom", client.id) so it
+          //      still has a canonical, franchisee-scoped key.
+          //   4. Anything else (legacy row with no source at all)
+          //      falls back to ("custom", client.id) as long as the
+          //      row has an id — otherwise HQ Notes are suppressed
+          //      until the record is saved.
+          const REGULATOR_SOURCES = new Set(["cqc", "scotland", "wales", "ni"]);
+          let hqSource = null;
+          let hqHomeId = null;
+          if (editingClient.__hq_source && editingClient.__hq_home_id) {
+            hqSource = editingClient.__hq_source;
+            hqHomeId = editingClient.__hq_home_id;
+          } else if (REGULATOR_SOURCES.has(editingClient.source) && editingClient.home_id) {
+            hqSource = editingClient.source;
+            hqHomeId = editingClient.home_id;
+          } else if (editingClient.id) {
+            hqSource = "custom";
+            hqHomeId = editingClient.id;
+          }
+          const canShowHq = Boolean(hqSource && hqHomeId);
+          const entryKey = canShowHq ? `${hqSource}:${hqHomeId}` : null;
+          return (
+            <TerritoryClientModal
+              initial={editingClient.__new ? null : editingClient}
+              cqcSnapshot={!editingClient.__new && editingClient.source !== "custom"
+                ? homeById.get(editingClient.home_id) || null
+                : null}
+              marketingEnabled={marketingEnabled}
+              hqEntries={canShowHq ? (hqNotesMap[entryKey] || []) : []}
+              hqNoteEditable={adminMode && canShowHq}
+              onHqNoteSave={saveHqNote}
+              onHqEntryDelete={adminMode ? deleteHqEntry : null}
+              hqSource={hqSource}
+              hqHomeId={hqHomeId}
+              adminFranchiseeId={adminMode ? franchiseeId : null}
+              onClose={() => setEditingClient(null)}
+              onSaved={() => { reloadClients(); }}
+              onDeleted={() => { reloadClients(); }}
+            />
+          );
+        })()}
 
         {/* Admin note-only modal — HQ is annotating a CQC entry without
             creating a franchisee_clients doc. The rest of the form is

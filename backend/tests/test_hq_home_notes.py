@@ -176,6 +176,26 @@ class TestHqHomeNotes:
         assert r.status_code == 400
         assert "source" in r.text.lower()
 
+    def test_custom_source_accepted_for_manual_clients(self, admin, franchisee_id, cleanup):
+        """Manually-created franchisee_clients docs (Add Client flow)
+        have source="custom" and no regulator ``home_id``. We key those
+        HQ notes by the client's own UUID so admin + portal still share
+        one canonical (franchisee_id, source, home_id) triple. Regression
+        for the "Missing home reference" production bug on Garson House."""
+        client_uuid = f"client-{uuid4().hex[:12]}"
+        r = admin.post(
+            f"{BASE_URL}/api/admin/franchisees/{franchisee_id}/hq-home-notes/custom/{client_uuid}",
+            json={"note": "Spoke to manager on the phone"}, timeout=15,
+        )
+        assert r.status_code == 200, r.text
+        entry = r.json()["entry"]
+        assert entry["source"] == "custom"
+        assert entry["home_id"] == client_uuid
+        j = _list(admin, franchisee_id)
+        key = f"custom:{client_uuid}"
+        assert key in j["map"]
+        assert j["map"][key][0]["note"] == "Spoke to manager on the phone"
+
     def test_notes_are_scoped_per_franchisee(self, admin):
         f1 = f"hq-notes-scope-A-{uuid4().hex[:6]}"
         f2 = f"hq-notes-scope-B-{uuid4().hex[:6]}"

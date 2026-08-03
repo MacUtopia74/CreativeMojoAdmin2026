@@ -320,20 +320,26 @@ export default function TerritoryClientModal({
                 />
               </div>
 
-              {/* HQ notes — append-only history. Editable on the admin
-                  franchisee page; the same list renders read-only on
-                  the franchisee portal. Rendered even for basic
-                  MyTerritory franchisees because notes live against
-                  the CQC entry itself (no franchisee_clients doc
-                  required). */}
-              {(hqNoteEditable || (hqEntries && hqEntries.length > 0)) && (
+              {/* HQ notes — append-only history with controlled admin
+                  deletion. Editable on the admin franchisee page; the
+                  same list renders read-only on the franchisee portal.
+                  Rendered even for basic MyTerritory franchisees
+                  because notes live against the CQC entry itself (no
+                  franchisee_clients doc required). The parent widget
+                  resolves the canonical (source, home_id) reference
+                  and passes it in — we no longer fall back to
+                  ``initial?.source`` / ``initial?.home_id`` here because
+                  those fields diverge across CQC vs custom vs seeded
+                  records and were the root of the "Missing home
+                  reference" bug on manually-created clients. */}
+              {(hqNoteEditable || (hqEntries && hqEntries.length > 0)) && hqSource && hqHomeId && (
                 <HqNoteSection
                   hqEntries={hqEntries}
                   editable={hqNoteEditable}
                   onSave={onHqNoteSave}
                   onEntryDelete={onHqEntryDelete}
-                  source={hqSource || initial?.source}
-                  homeId={hqHomeId || initial?.home_id}
+                  source={hqSource}
+                  homeId={hqHomeId}
                 />
               )}
 

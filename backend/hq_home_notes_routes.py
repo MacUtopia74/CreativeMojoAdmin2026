@@ -56,7 +56,12 @@ from pydantic import BaseModel
 
 
 COLLECTION = "hq_home_notes"
-VALID_SOURCES = {"cqc", "scotland", "wales", "ni"}
+# Sources HQ Notes can be attached to. "custom" was added Feb 2026 so
+# manually-created (non-CQC) prospective clients can carry HQ notes
+# too — for those the client's own UUID is used as the ``home_id``
+# (the frontend passes ``initial.id`` in that slot). Every other
+# source uses its regulator ``home_id`` (CQC location_id, etc.).
+VALID_SOURCES = {"cqc", "scotland", "wales", "ni", "custom"}
 _logger = logging.getLogger("creative-mojo-admin.hq_home_notes")
 
 
