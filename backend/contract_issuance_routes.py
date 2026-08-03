@@ -568,14 +568,22 @@ def attach(api, db, require_role):
         )
 
         # ---- Supersede predecessor if applicable ---------------------
+        # A renewal can supersede either an ``issued`` or a ``signed``
+        # predecessor (the normal renewal case is signed → superseded).
+        # We stash the original status in ``pre_supersede_status`` so
+        # the revoke flow below can restore it accurately — restoring
+        # a signed predecessor back to "issued" would silently erase
+        # the fact that it was signed.
         predecessor_id = contract.get("supersedes_id")
         if predecessor_id:
             prior = await db[CONTRACTS_COLLECTION].find_one({"id": predecessor_id})
-            if prior and prior.get("status") == "issued":
+            prior_status = prior.get("status") if prior else None
+            if prior and prior_status in {"issued", "signed"}:
                 await db[CONTRACTS_COLLECTION].update_one(
-                    {"id": predecessor_id, "status": "issued"},
+                    {"id": predecessor_id, "status": prior_status},
                     {"$set": {
                         "status": "superseded",
+                        "pre_supersede_status": prior_status,
                         "superseded_at": issued_at,
                         "superseded_by": user.get("email"),
                         "superseded_by_contract_id": contract_id,
@@ -585,7 +593,10 @@ def attach(api, db, require_role):
                 await _emit_audit(
                     db, predecessor_id, "contract.superseded",
                     user.get("email") or "admin",
-                    {"superseded_by_contract_id": contract_id},
+                    {
+                        "superseded_by_contract_id": contract_id,
+                        "previous_status": prior_status,
+                    },
                 )
 
         # ---- Final audit --------------------------------------------
@@ -990,20 +1001,22 @@ def attach(api, db, require_role):
                     r2_errors.append({"key": r2_key, "error": msg})
 
         # If a supersede predecessor was flipped by issuing THIS
-        # contract, restore it to 'issued' so it isn't left orphaned
-        # as 'superseded → <deleted id>'. This is critical because
-        # the user's block is exactly this scenario: a stale
-        # renewal-chain from a test issuance.
+        # contract, restore it to whatever status it held BEFORE the
+        # supersede fired (``pre_supersede_status`` was stashed at
+        # supersede-time — typically 'issued' or 'signed'). Falling
+        # back to 'issued' preserves legacy revoke behaviour for
+        # rows written before that field existed.
         predecessor_id = contract.get("supersedes_id")
         if predecessor_id:
             prior = await db[CONTRACTS_COLLECTION].find_one({"id": predecessor_id})
             if prior and prior.get("status") == "superseded" \
                     and prior.get("superseded_by_contract_id") == contract_id:
+                restore_status = prior.get("pre_supersede_status") or "issued"
                 await db[CONTRACTS_COLLECTION].update_one(
                     {"id": predecessor_id},
                     {
                         "$set": {
-                            "status": "issued",
+                            "status": restore_status,
                             "updated_at": _now_iso(),
                             "updated_by": actor,
                         },
@@ -1011,12 +1024,17 @@ def attach(api, db, require_role):
                             "superseded_at": "",
                             "superseded_by": "",
                             "superseded_by_contract_id": "",
+                            "pre_supersede_status": "",
                         },
                     },
                 )
                 await _emit_audit(
                     db, predecessor_id, "contract.supersede.reversed", actor,
-                    {"reverted_from_contract_id": contract_id, "reason": reason},
+                    {
+                        "reverted_from_contract_id": contract_id,
+                        "reason": reason,
+                        "restored_status": restore_status,
+                    },
                 )
 
         delete_result = await db[CONTRACTS_COLLECTION].delete_one({"id": contract_id})

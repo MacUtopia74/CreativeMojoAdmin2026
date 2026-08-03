@@ -69,7 +69,7 @@ DRAFT_EDITABLE_FIELDS = {
     "template_id",
     "franchisee_id",
     "contract_type",
-    "supersedes_id",  # optional — links this draft to the previous issued contract
+    "supersedes_id",  # optional — links this draft to the previous issued/signed contract
     # Contract-specific values (Bucket A on the contract, per user directive)
     "monthly_fee",
     "renewal_fee",
@@ -143,6 +143,35 @@ async def _validate_franchisee_ref(db, franchisee_id: str) -> Dict[str, Any]:
     return f
 
 
+# Predecessor statuses a renewal draft is allowed to point at. Any other
+# status (draft, revoked, superseded, cancelled, expired, deleted) is
+# rejected so we never build a renewal chain from a document that has
+# already been retired, and so a draft can't be "superseded" before it
+# even goes live. Applies to both create and patch flows.
+SUPERSEDABLE_PREDECESSOR_STATUSES = {"issued", "signed"}
+
+
+async def _validate_supersedes_ref(db, supersedes_id: str) -> Dict[str, Any]:
+    """Fetch the predecessor contract referenced by ``supersedes_id`` and
+    verify it's currently in a status a renewal is allowed to supersede.
+    Raises HTTPException(400) with a human-readable detail otherwise."""
+    prior = await db[CONTRACTS_COLLECTION].find_one({"id": supersedes_id})
+    if not prior:
+        raise HTTPException(
+            400, detail=f"supersedes_id '{supersedes_id}' not found.",
+        )
+    status = prior.get("status")
+    if status not in SUPERSEDABLE_PREDECESSOR_STATUSES:
+        raise HTTPException(
+            400,
+            detail=(
+                f"Cannot supersede a contract in status '{status}' — "
+                "only 'issued' or 'signed' contracts can be superseded."
+            ),
+        )
+    return prior
+
+
 def attach(api, db, require_role):
 
     @api.post("/admin/contracts")
@@ -164,22 +193,10 @@ def attach(api, db, require_role):
         franchisee = await _validate_franchisee_ref(db, payload["franchisee_id"])
 
         # If this draft supersedes another contract, verify it exists
-        # and is currently ``issued`` — cannot supersede a draft, a
-        # superseded contract, or a retired one.
+        # and is in a supersedable status (issued or signed). Drafts,
+        # revoked/superseded/cancelled/expired predecessors are rejected.
         if payload.get("supersedes_id"):
-            prior = await db[CONTRACTS_COLLECTION].find_one({"id": payload["supersedes_id"]})
-            if not prior:
-                raise HTTPException(
-                    400, detail=f"supersedes_id '{payload['supersedes_id']}' not found.",
-                )
-            if prior.get("status") != "issued":
-                raise HTTPException(
-                    400,
-                    detail=(
-                        f"Cannot supersede a contract in status '{prior.get('status')}' "
-                        "— only 'issued' contracts can be superseded."
-                    ),
-                )
+            await _validate_supersedes_ref(db, payload["supersedes_id"])
 
         now = _now_iso()
         contract_id = _new_id()
@@ -300,6 +317,12 @@ def attach(api, db, require_role):
             await _validate_template_ref(db, update["template_id"])
         if "franchisee_id" in update:
             await _validate_franchisee_ref(db, update["franchisee_id"])
+        # A late-added / swapped supersedes_id needs the same status
+        # gate the create endpoint runs. Skipping this would let a user
+        # patch in any random contract ID and issue against a draft or
+        # retired predecessor.
+        if "supersedes_id" in update and update["supersedes_id"]:
+            await _validate_supersedes_ref(db, update["supersedes_id"])
         now = _now_iso()
         update["updated_at"] = now
         update["updated_by"] = user.get("email")
