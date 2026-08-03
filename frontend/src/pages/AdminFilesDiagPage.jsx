@@ -142,6 +142,95 @@ export default function AdminFilesDiagPage() {
             </div>
           )}
 
+          {/* Root-discovery simulation — what the FranchiseeFilesPanel's
+              first call actually returns, and which folder it will pick
+              as the panel's root. This is where the "0 files rendered"
+              bug lived: the panel used to pick folders[0] alphabetically
+              (returning the empty renamed slug) instead of the folder
+              that actually contains files. */}
+          {report.root_discovery_simulation && Array.isArray(report.root_discovery_simulation.folders) && (
+            <div className="mt-5 rounded-lg border border-stone-200 bg-white p-4">
+              <div className="text-[11px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-2">
+                Panel root discovery
+              </div>
+              <div className="text-xs text-stone-600 mb-3">
+                Simulating <code className="bg-stone-100 px-1.5 py-0.5 rounded">GET /files/tree?prefix=franchisees/&amp;franchisee_id={report.franchisee.id}</code> — the panel&apos;s <b>first</b> call.
+              </div>
+              {report.root_discovery_simulation.folders.length === 0 ? (
+                <div className="text-sm text-amber-700">Backend returns 0 candidate folders — the panel would show &quot;No R2 folder mapped to this franchisee yet.&quot;</div>
+              ) : (
+                <>
+                  <table className="w-full text-xs">
+                    <thead className="text-stone-500 uppercase tracking-wider text-[10px]">
+                      <tr>
+                        <th className="text-left py-1">Folder</th>
+                        <th className="text-right py-1">Files</th>
+                        <th className="text-right py-1">MB</th>
+                        <th className="text-right py-1">Picked?</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.root_discovery_simulation.folders.map((f) => {
+                        const picked = report.root_discovery_simulation.panel_would_pick;
+                        const isPicked = picked && picked.key === f.key;
+                        return (
+                          <tr key={f.key} className={`border-t border-stone-100 ${isPicked ? "bg-emerald-50" : ""}`}>
+                            <td className="py-1.5 font-mono">{f.name}</td>
+                            <td className="py-1.5 text-right tabular-nums">{f.files}</td>
+                            <td className="py-1.5 text-right tabular-nums">{((f.bytes || 0) / (1024 * 1024)).toFixed(1)}</td>
+                            <td className="py-1.5 text-right">{isPicked ? "✅" : ""}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  {report.root_discovery_simulation.matches_expected_prefix === false && (
+                    <div className="mt-3 text-xs text-amber-700">
+                      ⚠️ The folder the panel would pick differs from the canonical prefix (<code className="bg-stone-100 px-1 py-0.5 rounded">{report.expected_r2_prefix}</code>). This is the rename scenario.
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Rows bound to this franchisee_id whose keys live OUTSIDE
+              the current derived prefix. These are the "extra" rows
+              that account for a discrepancy between the total
+              franchisee_id count and what the panel sees. */}
+          {report.files_index?.bound_to_this_franchisee_outside_prefix && (report.files_index.bound_to_this_franchisee_outside_prefix.total || 0) > 0 && (
+            <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4">
+              <div className="text-[11px] uppercase tracking-[0.2em] font-bold text-amber-800 mb-2">
+                Rows bound to this franchisee but outside the canonical prefix
+              </div>
+              <div className="text-xs text-amber-900 mb-3">
+                {report.files_index.bound_to_this_franchisee_outside_prefix.total} row(s) have this franchisee_id but a key that doesn&apos;t start with
+                <code className="bg-white/60 px-1 py-0.5 rounded mx-1">{report.expected_r2_prefix}</code>.
+                These usually appear when a franchisee&apos;s organisation slug or franchise number was changed after upload.
+              </div>
+              {(report.files_index.bound_to_this_franchisee_outside_prefix.grouped_by_prefix || []).map((g) => (
+                <div key={g.prefix} className="mb-3">
+                  <div className="text-xs font-bold text-stone-800">
+                    <code className="bg-white/60 px-1.5 py-0.5 rounded">{g.prefix}</code>
+                    · {g.files} file{g.files === 1 ? "" : "s"} · {((g.bytes || 0) / (1024 * 1024)).toFixed(1)} MB
+                  </div>
+                </div>
+              ))}
+              <details className="mt-2">
+                <summary className="cursor-pointer text-[11px] text-stone-600 hover:text-stone-900">Show individual rows</summary>
+                <ul className="mt-2 space-y-1 text-[11px] font-mono text-stone-700 max-h-60 overflow-auto">
+                  {(report.files_index.bound_to_this_franchisee_outside_prefix.sample_rows || []).map((r) => (
+                    <li key={r.key} className="truncate">
+                      {r.hidden ? "🫥 " : "📄 "}
+                      {r.key}
+                      {r.size != null && <span className="text-stone-500"> · {((r.size || 0) / 1024).toFixed(1)} KB</span>}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            </div>
+          )}
+
           {report.tree_simulation && Array.isArray(report.tree_simulation.sub_folders) && (
             <div className="mt-5 rounded-lg border border-stone-200 bg-white p-4">
               <div className="text-[11px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-2">

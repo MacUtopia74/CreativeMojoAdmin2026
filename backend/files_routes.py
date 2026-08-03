@@ -320,6 +320,48 @@ def build_router(db, require_role) -> APIRouter:
         report["files_index"]["sample_orphan_rows"] = sample_orphans
         report["files_index"]["sample_wrong_id_rows"] = sample_wrong
 
+        # C2) rows bound to THIS franchisee_id but whose key is NOT
+        # under the currently-derived prefix. These are the "extra"
+        # rows that inflate ``matching_franchisee_id_total`` above the
+        # count actually visible to the panel. Typical cause: the
+        # organisation slug or franchise_number changed after the files
+        # were uploaded, so the row's ``key`` still points at the old
+        # prefix while ``derive_franchisee_prefix()`` now returns the
+        # new one. Nothing is modified here — we just surface the keys
+        # so a human can decide whether to migrate them, re-index them,
+        # or leave them alone.
+        outside_prefix_total = await db.files_index.count_documents({
+            "franchisee_id": fid,
+            "key": {"$not": prefix_rx},
+        })
+        outside_prefix_rows = await db.files_index.find(
+            {"franchisee_id": fid, "key": {"$not": prefix_rx}},
+            {"_id": 0, "key": 1, "name": 1, "scope": 1, "hidden": 1, "size": 1, "parent_prefix": 1},
+        ).sort("key", 1).limit(50).to_list(50)
+        # Group by leading `franchisees/<slug>/` so it's obvious how many
+        # legacy prefixes exist and which one holds the bulk of the
+        # extras.
+        legacy_prefixes: dict[str, dict] = {}
+        for row in outside_prefix_rows:
+            k = row.get("key") or ""
+            m = re.match(r"^(franchisees/[^/]+)/", k)
+            top = m.group(1) + "/" if m else (k.split("/", 1)[0] + "/" if "/" in k else k)
+            info = legacy_prefixes.setdefault(top, {
+                "prefix": top, "files": 0, "bytes": 0, "sample_keys": [],
+            })
+            if not row.get("hidden"):
+                info["files"] += 1
+                info["bytes"] += int(row.get("size") or 0)
+            if len(info["sample_keys"]) < 5:
+                info["sample_keys"].append(row["key"])
+        report["files_index"]["bound_to_this_franchisee_outside_prefix"] = {
+            "total": outside_prefix_total,
+            "grouped_by_prefix": sorted(
+                legacy_prefixes.values(), key=lambda x: x["files"], reverse=True,
+            ),
+            "sample_rows": outside_prefix_rows,
+        }
+
         # D) list what actually exists in R2 under the prefix
         r2_view: dict = {"listable": False}
         if r2_configured():
@@ -415,6 +457,62 @@ def build_router(db, require_role) -> APIRouter:
         except Exception as exc:  # noqa: BLE001
             tree_view = {"error": f"{type(exc).__name__}: {exc}"}
         report["tree_simulation"] = tree_view
+
+        # ---- Simulate the panel's ROOT DISCOVERY call --------------
+        # The frontend fires ``GET /files/tree?prefix=franchisees/&
+        # franchisee_id={fid}`` first, then picks a folder from the
+        # response as the panel's root. If more than one folder comes
+        # back (rename scenario) the panel now prefers the one with the
+        # most files — but we still surface every candidate here so
+        # it's obvious what was in play.
+        root_discovery: dict = {}
+        try:
+            root_prefix_rx = re.compile(r"^franchisees/")
+            root_q = {
+                "franchisee_id": fid,
+                "key": root_prefix_rx,
+            }
+            root_cur = db.files_index.find(
+                root_q, {"_id": 0, "key": 1, "hidden": 1, "size": 1},
+            ).limit(5000)
+            root_rows = await root_cur.to_list(5000)
+            sub_dirs: dict[str, dict] = {}
+            root_len = len("franchisees/")
+            for row in root_rows:
+                rel = row["key"][root_len:]
+                if "/" not in rel:
+                    continue
+                top = rel.split("/", 1)[0]
+                info = sub_dirs.setdefault(top, {
+                    "name": top,
+                    "key": f"franchisees/{top}/",
+                    "files": 0, "bytes": 0,
+                })
+                if not row.get("hidden"):
+                    info["files"] += 1
+                    info["bytes"] += int(row.get("size") or 0)
+            folder_list = sorted(sub_dirs.values(), key=lambda x: x["name"].lower())
+            # Same selection logic as the frontend
+            picked = None
+            if folder_list:
+                if len(folder_list) == 1:
+                    picked = folder_list[0]
+                else:
+                    picked = sorted(
+                        folder_list,
+                        key=lambda x: (-(x.get("files") or 0), -(x.get("bytes") or 0), x.get("name") or ""),
+                    )[0]
+            root_discovery = {
+                "returned_folder_count": len(folder_list),
+                "folders": folder_list,
+                "panel_would_pick": picked,
+                "matches_expected_prefix": bool(
+                    picked and picked["key"].rstrip("/") == prefix.rstrip("/")
+                ) if picked and prefix else None,
+            }
+        except Exception as exc:  # noqa: BLE001
+            root_discovery = {"error": f"{type(exc).__name__}: {exc}"}
+        report["root_discovery_simulation"] = root_discovery
 
         # ---- Optional rebind of orphaned / mis-bound rows --------
         if rebind_orphans and prefix:

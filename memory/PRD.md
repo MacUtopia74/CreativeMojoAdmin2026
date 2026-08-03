@@ -11,6 +11,7 @@ Bespoke admin system for a franchise business consolidating Airtable, FileCamp, 
 - Integrations: Xero, Resend, WooCommerce, CQC API, Mapbox
 
 ## Recent changelog
+- 2026-02-03 — File Vault: root-cause fix for franchisees seeing 0 files. `FranchiseeFilesPanel` now (a) uses AbortController on both root-discovery and tree fetches to prevent stale-response races (the second effect was landing after the first with empty state and blanking the tree), (b) resets `tree=null` on prefix change so old data doesn't linger, and (c) when multiple root folders come back (rename scenario — old + new organisation slug), picks the one with the MOST files instead of alphabetically first (which was landing the panel on the empty new slug). Verbose `[FFPanel]` console logs added, on by default while validating on production; toggle off with `localStorage.setItem("ff:debug","0")`. Backend `/api/admin/files/diag` now also returns (i) `bound_to_this_franchisee_outside_prefix` — grouped-by-legacy-prefix listing of the extra rows that live under a stale slug, exactly what caused Sam Whiteman's 18 total vs 11 in-prefix discrepancy — and (ii) `root_discovery_simulation` — mirrors the panel's first call and shows which folder the panel would pick, with a ⚠️ badge when it diverges from the canonical derived prefix. `AdminFilesDiagPage` renders both new sections.
 - 2026-02-02 — Sales Pipeline Feb tweaks: Summary panel gains 2nd Line of Address, County/State, Country fields (edit + display); "Town" renamed to "Town/City"; contact name bolded (font-bold) in row top bar; Convert-to-Franchisee panel narrowed and paired with new CHANGE TYPE dropdown (Franchise / Licence / General) that reuses POST /api/contacts/{id}/move for reclassification. Drawer's Change type menu now shares the same `changeContactSource` helper for behavioural parity.
 - 2026-02-XX — Fix: Numbered map markers on MyTerritory+ (`FranchiseeTerritoryWidget`) now open the detail entry modal on click (same as row click), instead of only highlighting the circle. Plus/admin layouts only; basic franchisees unchanged.
 - Map Popup Overhaul: public map now pulls from Franchisee Portal checkboxes only, no WP fallbacks.
@@ -24,7 +25,6 @@ Bespoke admin system for a franchise business consolidating Airtable, FileCamp, 
 - After WP iframe confirmed, delete dormant WP Bio Migration tooling
 
 ### P1
-- Sam Whiteman's File Vault empty — build `/api/admin/files/diag`
 - Contacts Page blank on Preview (recurring 6×)
 - `/api/email/sends` 500 hardening (Kathryn Wal malformed BSON)
 - Harden CQC sync (retry, completeness, stale warnings)

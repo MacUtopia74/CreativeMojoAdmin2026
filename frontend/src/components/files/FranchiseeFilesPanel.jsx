@@ -12,8 +12,26 @@
 // Backend access scoping (in /api/files/tree and /api/files/search)
 // makes sure a franchisee user only ever sees their own files and the
 // shared brand library — admins use the same component as a preview.
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import api, { API_BASE } from "@/lib/api";
+
+// Set localStorage.setItem("ff:debug","0") to silence, or leave alone
+// to keep verbose console logs from FranchiseeFilesPanel. Verbose by
+// default while we're chasing the "0 files rendered" bug on
+// production. Toggle off in prod with:
+//     localStorage.setItem("ff:debug","0"); location.reload();
+const FF_DEBUG = (() => {
+  if (typeof window === "undefined") return false;
+  if (window.__FF_DEBUG === false) return false;
+  if (window.__FF_DEBUG) return true;
+  try {
+    const v = localStorage.getItem("ff:debug");
+    if (v === "0") return false;
+    return true; // default ON until we've confirmed the fix
+  } catch { return true; }
+})();
+const flog = (...args) => { if (FF_DEBUG) console.log("[FFPanel]", ...args); };
+const fwarn = (...args) => { if (FF_DEBUG) console.warn("[FFPanel]", ...args); };
 import {
   Folder, FolderOpen, ChevronRight, Loader2, AlertCircle, Package, FolderPlus,
   Search, X, LayoutGrid, List as ListIcon, Download,
@@ -55,17 +73,80 @@ export default function FranchiseeFilesPanel({ franchisee, canUpload = true, loc
   // Root prefix for "their files" lazily resolved.
   const [ownRootPrefix, setOwnRootPrefix] = useState(null);
 
+  // ---------------------------------------------------------------
+  // Abort controllers — we run two chained fetches (root discovery +
+  // tree listing) and both can be superseded by a franchisee change or
+  // a tab flip. Without cancellation, an in-flight response can land
+  // AFTER a newer request completes and stomp the freshly-loaded
+  // ``tree`` / ``ownRootPrefix`` state with stale data (empty for the
+  // previous franchisee, for example). That was the root cause of the
+  // "0 files rendered even though the diagnostic simulation returns
+  // 4+5" symptom — the second effect kicked off with a stale
+  // fullPrefix while the root was still resolving, then the *first*
+  // fetch's response overrode ``ownRootPrefix`` mid-flight so tree
+  // state ended up dangling and never re-fetched.
+  const rootAbortRef = useRef(null);
+  const treeAbortRef = useRef(null);
+
   const fetchOwnRoot = useCallback(async () => {
+    // Cancel any in-flight root discovery for the previous franchisee.
+    if (rootAbortRef.current) rootAbortRef.current.abort();
+    const ac = new AbortController();
+    rootAbortRef.current = ac;
     setLoading(true); setErr("");
+    flog("fetchOwnRoot() start", { franchisee_id: franchisee?.id });
     try {
       const { data } = await api.get("/files/tree", {
         params: { prefix: "franchisees/", franchisee_id: franchisee.id },
+        signal: ac.signal,
       });
-      const candidate = (data.folders || [])[0];
+      if (ac.signal.aborted) { flog("fetchOwnRoot aborted post-response"); return; }
+      const folders = data?.folders || [];
+      // Prefer the folder that actually holds files. Backend sorts
+      // ``folders`` alphabetically by name, which used to bite us in
+      // rename scenarios — e.g. a franchisee originally onboarded as
+      // "0091-carer-plus" whose organisation was later renamed to
+      // "0091-samantha-whiteman-mynurserycare". files_index rows keep
+      // the ORIGINAL prefix, and the derived canonical prefix now
+      // points at the new slug. Picking ``folders[0]`` blindly would
+      // land the panel on the empty (new) folder even though the
+      // legacy (populated) folder is right there.
+      //
+      // Strategy:
+      //   1. If exactly one candidate: use it.
+      //   2. Otherwise, prefer the candidate with the most files. Ties
+      //      broken by highest byte size, then alphabetical name.
+      const candidate = folders.length <= 1
+        ? folders[0]
+        : [...folders].sort((a, b) => {
+            if ((b.files || 0) !== (a.files || 0)) return (b.files || 0) - (a.files || 0);
+            if ((b.bytes || 0) !== (a.bytes || 0)) return (b.bytes || 0) - (a.bytes || 0);
+            return (a.name || "").localeCompare(b.name || "");
+          })[0];
+      flog("fetchOwnRoot response", {
+        folder_count: folders.length,
+        candidate_key: candidate?.key || null,
+        candidate_files: candidate?.files || 0,
+        candidate_bytes: candidate?.bytes || 0,
+        all_root_folders: folders.map((f) => ({ key: f.key, files: f.files, bytes: f.bytes })),
+      });
+      if (folders.length > 1) {
+        fwarn(
+          "Multiple root folders returned for this franchisee — selected the one with the most files. This usually means the organisation slug changed after upload; consider consolidating the two prefixes.",
+          folders.map((f) => ({ key: f.key, files: f.files })),
+        );
+      }
       setOwnRootPrefix(candidate ? candidate.key : null);
     } catch (e) {
+      if (ac.signal.aborted || e?.name === "CanceledError" || e?.code === "ERR_CANCELED") {
+        flog("fetchOwnRoot canceled");
+        return;
+      }
+      flog("fetchOwnRoot error", e?.message || e);
       setErr(e?.response?.data?.detail || "Could not load files.");
-    } finally { setLoading(false); }
+    } finally {
+      if (rootAbortRef.current === ac) setLoading(false);
+    }
   }, [franchisee.id]);
 
   const fetchRoot = fetchOwnRoot;
@@ -94,15 +175,47 @@ export default function FranchiseeFilesPanel({ franchisee, canUpload = true, loc
 
   useEffect(() => {
     if (!fullPrefix || search) return;
+    // Cancel any in-flight tree fetch for the previous prefix. Without
+    // this, a slower request from an older ``fullPrefix`` could land
+    // after a newer one and blank the freshly-loaded tree — which is
+    // exactly the "0 files displayed" symptom users were seeing.
+    if (treeAbortRef.current) treeAbortRef.current.abort();
+    const ac = new AbortController();
+    treeAbortRef.current = ac;
     setLoading(true); setErr("");
+    // Clear stale tree data so the previous franchisee/folder's
+    // contents don't linger while the new fetch is in flight.
+    setTree(null);
+    const url = `${API_BASE}/files/tree?prefix=${encodeURIComponent(fullPrefix)}`;
+    flog("tree fetch start", { fullPrefix, url });
     (async () => {
       try {
-        const { data } = await api.get("/files/tree", { params: { prefix: fullPrefix } });
+        const { data } = await api.get("/files/tree", {
+          params: { prefix: fullPrefix },
+          signal: ac.signal,
+        });
+        if (ac.signal.aborted) { flog("tree fetch aborted post-response", { fullPrefix }); return; }
+        flog("tree fetch response", {
+          fullPrefix,
+          folder_count: (data?.folders || []).length,
+          file_count: (data?.files || []).length,
+          folder_cards: (data?.folders || []).map((f) => ({ name: f.name, key: f.key, files: f.files, bytes: f.bytes })),
+          file_names: (data?.files || []).map((f) => f.name),
+          total_in_tree: data?.total_in_tree,
+        });
         setTree(data);
       } catch (e) {
+        if (ac.signal.aborted || e?.name === "CanceledError" || e?.code === "ERR_CANCELED") {
+          flog("tree fetch canceled", { fullPrefix });
+          return;
+        }
+        flog("tree fetch error", { fullPrefix, message: e?.message || e });
         setErr(e?.response?.data?.detail || "Could not load files.");
-      } finally { setLoading(false); }
+      } finally {
+        if (treeAbortRef.current === ac) setLoading(false);
+      }
     })();
+    return () => { ac.abort(); };
   }, [fullPrefix, search]);
 
   // Debounced search across the franchisee's accessible bucket.
