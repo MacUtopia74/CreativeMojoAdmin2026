@@ -301,9 +301,19 @@ def _resolve_issue_date(
     at: datetime,
     library_format: Optional[Dict[str, Any]],
 ) -> Tuple[str, date, Dict[str, Any], Optional[str]]:
-    """AGREEMENT_DATE — defaults to ``at`` (issue date), overridable by
-    ``contract.agreement_date``. Returns
-    (formatted_string, raw_date, format_applied, override_note)."""
+    """AGREEMENT_DATE — the date the agreement is "dated for" on the
+    cover page. Resolution order:
+      1. Explicit HQ override on ``contract.agreement_date``.
+      2. ``contract.commencement_date`` — the semantic default for
+         renewals (and for new franchise contracts that are signed
+         after commencement kicks in). Prevents a franchise renewal
+         from carrying "AGREEMENT DATED: <today>" when HQ deliberately
+         backdated the commencement.
+      3. The issuance timestamp (``at``) as a last resort — used when
+         a draft has no commencement_date set (which will normally be
+         rejected earlier in the resolver pipeline, but keeps the
+         function total).
+    Returns (formatted_string, raw_date, format_applied, override_note)."""
     override = contract.get("agreement_date")
     if not _is_missing(override):
         d = _to_date(override)
@@ -311,8 +321,18 @@ def _resolve_issue_date(
             raise ValueError(f"agreement_date override could not be parsed: {override!r}")
         note = "HQ override on contract.agreement_date"
     else:
-        d = at.astimezone(timezone.utc).date() if at.tzinfo else at.date()
-        note = None
+        commencement = contract.get("commencement_date")
+        if not _is_missing(commencement):
+            parsed = _to_date(commencement)
+            if parsed is None:
+                raise ValueError(
+                    f"commencement_date could not be parsed for AGREEMENT_DATE fallback: {commencement!r}"
+                )
+            d = parsed
+            note = "Mirrored from contract.commencement_date"
+        else:
+            d = at.astimezone(timezone.utc).date() if at.tzinfo else at.date()
+            note = None
     pattern = (library_format or {}).get("date_pattern", "d MMMM yyyy")
     return _format_date(d, pattern), d, {"date_pattern": pattern}, note
 
@@ -418,8 +438,16 @@ def resolve_contract_variables(
 
     lib_by_code = {e["code"]: e for e in library_entries}
     codes = _unique_codes_in_template(template)
-    # Determine issue date once for CONTRACT_REFERENCE cross-reference
+    # Determine issue date once for CONTRACT_REFERENCE cross-reference.
+    # Precedence mirrors _resolve_issue_date: agreement_date override →
+    # commencement_date → issuance timestamp. Keeps the reference year
+    # consistent with the AGREEMENT_DATE printed on the cover.
     issue_date = at.astimezone(timezone.utc).date() if at.tzinfo else at.date()
+    commencement_val = contract.get("commencement_date")
+    if not _is_missing(commencement_val):
+        parsed_c = _to_date(commencement_val)
+        if parsed_c is not None:
+            issue_date = parsed_c
     agr_override = contract.get("agreement_date")
     if not _is_missing(agr_override):
         parsed = _to_date(agr_override)
@@ -524,11 +552,17 @@ def _resolve_one(
         formula = lib.get("formula")
         if formula == "issue_date":
             fmt_val, raw, applied, note = _resolve_issue_date(contract, at, lib_format)
+            if not _is_missing(contract.get("agreement_date")):
+                src = "contracts.agreement_date"
+            elif not _is_missing(contract.get("commencement_date")):
+                src = "contracts.commencement_date"
+            else:
+                src = "system:issue_date"
             return ResolvedValue(
                 code=code,
                 value=fmt_val,
                 raw_value=raw.isoformat() if isinstance(raw, date) else raw,
-                source="contracts.agreement_date" if not _is_missing(contract.get("agreement_date")) else "system:issue_date",
+                source=src,
                 resolver="system:issue_date",
                 format_applied=applied,
                 warning=note,

@@ -258,7 +258,11 @@ class TestResolverContractSpecificMarkers:
 
 
 class TestSystemGeneratedMarkers:
-    def test_agreement_date_defaults_to_issue_date(self):
+    def test_agreement_date_defaults_to_commencement_when_present(self):
+        """Contracts with a commencement_date get AGREEMENT_DATE mirrored
+        from it (renewal semantics — see _resolve_issue_date). Only
+        falls back to today's issue timestamp when the draft carries
+        no commencement_date."""
         template = _make_template(["AGREEMENT_DATE"])
         report = cvr.resolve_contract_variables(
             template, _make_contract(), _make_franchisee(),
@@ -266,7 +270,33 @@ class TestSystemGeneratedMarkers:
             at=datetime(2026, 8, 1, tzinfo=timezone.utc),
         )
         assert report.resolved["AGREEMENT_DATE"].value == "1 August 2026"
+        assert report.resolved["AGREEMENT_DATE"].source == "contracts.commencement_date"
+
+    def test_agreement_date_falls_back_to_issue_date_when_no_commencement(self):
+        template = _make_template(["AGREEMENT_DATE"])
+        c = _make_contract()
+        c.pop("commencement_date", None)
+        report = cvr.resolve_contract_variables(
+            template, c, _make_franchisee(),
+            _library_for(["AGREEMENT_DATE"]),
+            at=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        )
+        assert report.resolved["AGREEMENT_DATE"].value == "1 August 2026"
         assert report.resolved["AGREEMENT_DATE"].source == "system:issue_date"
+
+    def test_agreement_date_mirrors_backdated_commencement(self):
+        """The exact scenario from Paloma's renewal: commencement is
+        23 July but the draft is issued on 3 August — the PDF must
+        read '23 July 2026', not '3 August 2026'."""
+        template = _make_template(["AGREEMENT_DATE"])
+        c = _make_contract(commencement_date="2026-07-23")
+        report = cvr.resolve_contract_variables(
+            template, c, _make_franchisee(),
+            _library_for(["AGREEMENT_DATE"]),
+            at=datetime(2026, 8, 3, tzinfo=timezone.utc),
+        )
+        assert report.resolved["AGREEMENT_DATE"].value == "23 July 2026"
+        assert report.resolved["AGREEMENT_DATE"].source == "contracts.commencement_date"
 
     def test_agreement_date_hq_override_wins(self):
         template = _make_template(["AGREEMENT_DATE"])

@@ -618,6 +618,72 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
   const lockedFr = lockedFranchiseeId
     ? franchisees.find((f) => f.id === lockedFranchiseeId)
     : null;
+
+  // ---------------------------------------------------------------
+  // Renewal-template auto-detection.
+  //
+  // A renewal template (``contract_type`` ending in ``_renewal``) MUST
+  // be tied to a predecessor contract before it can be saved —
+  // otherwise HQ can end up with a "Franchise Renewal Agreement" PDF
+  // that isn't actually superseding anything, resulting in an invalid
+  // hybrid record (looks like a renewal, behaves like a new contract).
+  //
+  // Behaviour:
+  //   * Parent may inject ``renewalOf`` — used by the franchisee
+  //     detail page where the newest issued/signed contract for that
+  //     franchisee is already known.
+  //   * If no external ``renewalOf`` and the selected template is a
+  //     renewal type, we auto-fetch the franchisee's contracts and
+  //     surface a picker (auto-pre-selecting the newest supersedable
+  //     candidate).
+  //   * If a renewal template is picked but the franchisee has no
+  //     supersedable predecessor at all, save is blocked with a
+  //     clear error message.
+  // ---------------------------------------------------------------
+  const selectedTemplate = templates.find((t) => t.id === templateId) || null;
+  const isRenewalTemplate = Boolean(
+    selectedTemplate?.contract_type && /_renewal$/i.test(selectedTemplate.contract_type),
+  );
+  const [franchiseeCandidates, setFranchiseeCandidates] = useState([]);
+  const [candidatesLoading, setCandidatesLoading] = useState(false);
+  const [pickedPredecessorId, setPickedPredecessorId] = useState(null);
+
+  // Fetch the franchisee's supersedable contracts whenever a renewal
+  // template is selected against a franchisee, and we don't already
+  // have an external ``renewalOf``. Silent on failure — the save-gate
+  // below will still block the user with a friendly message.
+  useEffect(() => {
+    if (renewalOf) return; // external override wins
+    if (!isRenewalTemplate) { setFranchiseeCandidates([]); setPickedPredecessorId(null); return; }
+    if (!franchiseeId) { setFranchiseeCandidates([]); setPickedPredecessorId(null); return; }
+    let cancelled = false;
+    setCandidatesLoading(true);
+    (async () => {
+      try {
+        const { data } = await api.get("/admin/contracts", { params: { franchisee_id: franchiseeId } });
+        if (cancelled) return;
+        const rows = (data?.items || data || [])
+          .filter((r) => r.status === "issued" || r.status === "signed")
+          .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+        setFranchiseeCandidates(rows);
+        // Auto-pick the newest candidate so a lone predecessor doesn't
+        // require an extra click.
+        setPickedPredecessorId((prev) => prev && rows.some((r) => r.id === prev) ? prev : rows[0]?.id || null);
+      } catch { /* silent — save-gate will surface */ }
+      finally { if (!cancelled) setCandidatesLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [isRenewalTemplate, franchiseeId, renewalOf]);
+
+  const effectiveRenewalOf = renewalOf
+    || franchiseeCandidates.find((r) => r.id === pickedPredecessorId)
+    || null;
+  // Renewal mode is ON when either the parent handed us a predecessor
+  // OR the user selected a renewal template that resolved to one.
+  const isRenewalMode = Boolean(effectiveRenewalOf) && (renewalOf ? true : isRenewalTemplate);
+  // Hard block: renewal template selected but no predecessor pickable.
+  const renewalMissingPredecessor = isRenewalTemplate && !effectiveRenewalOf;
+
   // Legal name is now AUTO-RESOLVED at issuance from the franchisee's
   // First name + Last name. Leave this field blank — it's an optional
   // per-contract OVERRIDE for LLC / limited-company edge cases. Never
@@ -650,7 +716,7 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
   // valid date.
   // ---------------------------------------------------------------
   const suggestedCommencement = (() => {
-    const prev = renewalOf?.renewal_date;
+    const prev = effectiveRenewalOf?.renewal_date;
     if (!prev) return "";
     try {
       const d = new Date(prev);
@@ -662,6 +728,16 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
   })();
   const [commencementDate, setCommencementDate] = useState(suggestedCommencement);
   const [userEditedCommencement, setUserEditedCommencement] = useState(false);
+
+  // Seed the commencement date when the resolved predecessor changes
+  // (template select flips to a renewal, franchisee change, or the
+  // picker chooses a different predecessor). Only re-seed when the
+  // user hasn't manually edited yet — their pick always wins.
+  useEffect(() => {
+    if (userEditedCommencement) return;
+    if (!suggestedCommencement) return;
+    setCommencementDate(suggestedCommencement);
+  }, [suggestedCommencement, userEditedCommencement]);
   const [renewalDate, setRenewalDate] = useState("");
   // Renewal fee (GBP, ex-VAT). Applies to BOTH new franchise contracts
   // and renewal contracts — populates `contracts.renewal_fee` on the
@@ -689,10 +765,15 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
       setRenewalDate(iso);
     } catch { /* ignore */ }
   }, [commencementDate, contractTermYears, renewalDateManual]);
-  // "Renewal — supersedes #X" auto-links this draft to a prior CMS
-  // contract for the same franchisee. Defaults ON when the caller
-  // passes a ``renewalOf`` reference (franchisee page always does).
-  const [renewalOn, setRenewalOn] = useState(Boolean(renewalOf));
+  // Renewal mode is now derived from the resolved predecessor (see
+  // ``isRenewalMode`` above) plus an explicit toggle the user can flip
+  // OFF for the parent-injected ``renewalOf`` case (franchisee page)
+  // to allow issuing a fresh new-franchise contract instead. The
+  // template-driven renewal path (renewal template + auto-picker) is
+  // NOT user-flippable — a renewal template must be tied to a
+  // predecessor.
+  const [renewalToggleOff, setRenewalToggleOff] = useState(false);
+  const renewalOn = isRenewalMode && !renewalToggleOff;
   // Initial Franchise Fee (GBP, ex-VAT). Only surfaced when the
   // draft is NOT a renewal. Pre-populated from the franchisee's
   // canonical ``bought_for`` field when present so HQ just confirms
@@ -720,6 +801,15 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
 
   async function submit() {
     setSaving(true); setErr("");
+    // Hard gate: renewal template requires a predecessor.
+    if (renewalMissingPredecessor) {
+      setErr(
+        "This is a renewal template but no previous issued/signed contract was found for this franchisee. " +
+        "Pick a franchisee who has a previous contract, or switch to a non-renewal template.",
+      );
+      setSaving(false);
+      return;
+    }
     try {
       const body = {
         template_id: templateId,
@@ -729,7 +819,7 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
       if (franchiseeLegalName) body.franchisee_legal_name = franchiseeLegalName;
       if (hqSignatoryName) body.hq_signatory_name = hqSignatoryName;
       if (hqSignatoryTitle) body.hq_signatory_title = hqSignatoryTitle;
-      if (renewalOn && renewalOf?.id) body.supersedes_id = renewalOf.id;
+      if (renewalOn && effectiveRenewalOf?.id) body.supersedes_id = effectiveRenewalOf.id;
       // Dates & term — always pass through when set. Backend accepts
       // ISO date strings; empty strings are dropped so a partially
       // filled draft can still be saved for later completion.
@@ -744,7 +834,7 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
       if (renewalDate) body.renewal_date = renewalDate;
       // Initial Franchise Fee — only sent on non-renewal drafts, so
       // renewals never carry (or overwrite) the historic amount.
-      const isRenewal = renewalOn && renewalOf?.id;
+      const isRenewal = renewalOn && effectiveRenewalOf?.id;
       if (!isRenewal && initialFranchiseFee !== "") {
         body.initial_franchise_fee = Number(initialFranchiseFee);
       }
@@ -768,20 +858,26 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
       <div className="bg-white rounded-lg shadow-lg w-full max-w-2xl max-h-[92vh] overflow-y-auto">
         <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-white z-10">
           <h2 className="text-lg font-semibold">
-            {renewalOn && renewalOf ? "Renew contract" : "New contract"}
+            {renewalOn && effectiveRenewalOf ? "Renew contract" : "New contract"}
           </h2>
           <button onClick={onClose} className="text-stone-500 hover:text-stone-800" data-testid="new-contract-close-btn">
             <X className="h-5 w-5" />
           </button>
         </div>
         <div className="p-4 space-y-3">
+          {/* Renewal indicator/toggle:
+              * Parent-injected renewalOf (franchisee page) → user can flip
+                renewal off to issue a fresh new-franchise contract instead.
+              * Template-driven renewal (auto-picked predecessor) → shown as
+                a locked amber banner + a predecessor picker if there are
+                multiple candidates. */}
           {renewalOf && (
             <label className="flex items-start gap-2 text-xs bg-amber-50 border border-amber-200 rounded p-2 cursor-pointer"
                    data-testid="new-contract-renewal-toggle-row">
               <input
                 type="checkbox"
                 checked={renewalOn}
-                onChange={(e) => setRenewalOn(e.target.checked)}
+                onChange={(e) => setRenewalToggleOff(!e.target.checked)}
                 className="mt-0.5"
                 data-testid="new-contract-renewal-toggle" />
               <span className="text-amber-900">
@@ -792,6 +888,52 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
                 when it is issued.
               </span>
             </label>
+          )}
+          {!renewalOf && isRenewalTemplate && effectiveRenewalOf && (
+            <div className="text-xs bg-amber-50 border border-amber-300 rounded p-2.5 space-y-2"
+                 data-testid="new-contract-renewal-auto-banner">
+              <div className="flex items-start gap-2 text-amber-900">
+                <span className="mt-0.5">🔗</span>
+                <span>
+                  <strong>Renewal template detected.</strong> This draft will supersede
+                  <code className="mx-1 px-1 bg-white border border-amber-200 rounded">
+                    {effectiveRenewalOf.contract_reference || `#${effectiveRenewalOf.id.slice(0, 8)}`}
+                  </code>
+                  when it is issued.
+                </span>
+              </div>
+              {franchiseeCandidates.length > 1 && (
+                <label className="block text-xs text-amber-900">
+                  <span className="uppercase tracking-wider font-bold text-[10px] block mb-1">
+                    Superseding
+                  </span>
+                  <select
+                    value={pickedPredecessorId || ""}
+                    onChange={(e) => setPickedPredecessorId(e.target.value)}
+                    className="w-full border border-amber-300 rounded px-2 py-1.5 text-sm bg-white"
+                    data-testid="new-contract-predecessor-picker">
+                    {franchiseeCandidates.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.contract_reference || `#${r.id.slice(0, 8)}`}
+                        {r.commencement_date ? ` · commenced ${new Date(r.commencement_date).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/London" })}` : ""}
+                        {" · "}{r.status}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </div>
+          )}
+          {renewalMissingPredecessor && (
+            <div className="text-xs bg-red-50 border border-red-300 rounded p-2.5 text-red-800"
+                 data-testid="new-contract-renewal-missing-predecessor">
+              ⚠️ <strong>Renewal template selected but no supersedable predecessor found.</strong>
+              {candidatesLoading
+                ? " Looking up the franchisee's contracts…"
+                : franchiseeId
+                  ? " This franchisee has no issued or signed contract to renew against. Pick a different franchisee, or switch to a non-renewal template."
+                  : " Select a franchisee first."}
+            </div>
           )}
           <label className="block text-sm">
             <span className="text-stone-700">Template</span>
@@ -835,7 +977,7 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
           {/* Initial Franchise Fee — first-contract only, ex-VAT.
               Renewal drafts never see this field so the historic
               amount recorded on the initial contract stays frozen. */}
-          {!(renewalOn && renewalOf?.id) && (
+          {!(renewalOn && effectiveRenewalOf?.id) && (
             <label className="block text-sm" data-testid="new-contract-initial-franchise-fee-row">
               <span className="text-stone-700">Initial Franchise Fee (£)</span>
               <input
@@ -899,7 +1041,7 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
                   }}
                   className="w-full mt-1 border rounded-md px-2 py-1.5 text-sm"
                   data-testid="new-contract-commencement-date-input" />
-                {renewalOn && renewalOf?.renewal_date && !userEditedCommencement && suggestedCommencement && (
+                {renewalOn && effectiveRenewalOf?.renewal_date && !userEditedCommencement && suggestedCommencement && (
                   <button
                     type="button"
                     onClick={() => {
@@ -912,8 +1054,8 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
                   </button>
                 )}
                 <span className="block mt-1 text-[11px] text-stone-500">
-                  {renewalOn && renewalOf?.renewal_date
-                    ? `The day the renewal term begins. Previous expiry: ${new Date(renewalOf.renewal_date).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/London" })}. Retrospective dates allowed.`
+                  {renewalOn && effectiveRenewalOf?.renewal_date
+                    ? `The day the renewal term begins. Previous expiry: ${new Date(effectiveRenewalOf.renewal_date).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/London" })}. Retrospective dates allowed. The PDF's AGREEMENT DATED will match this date.`
                     : <>The date the term starts. Also used as <code className="bg-stone-100 rounded px-1">term_start_date</code>.</>}
                 </span>
               </label>
@@ -998,7 +1140,7 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
             data-testid="new-contract-cancel-btn">Cancel</button>
           <button
             onClick={submit}
-            disabled={saving || !templateId || !franchiseeId}
+            disabled={saving || !templateId || !franchiseeId || renewalMissingPredecessor}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md bg-emerald-600 border-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
             data-testid="new-contract-save-btn">
             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
