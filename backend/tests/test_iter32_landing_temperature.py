@@ -223,9 +223,12 @@ class TestLandingTokenResolution:
         src = open("/app/backend/resend_routes.py").read()
         # Resolver appends ?t=<send_id>
         assert "?t={send_id}" in src
-        # Resolver called BEFORE _inline_button_styles
-        i_land = src.index("_resolve_landing_tokens(db, rendered_html, send_id)")
+        # Resolver called BEFORE _inline_button_styles (updated to
+        # tuple-unpacking signature — see Feb 2026 landing-token
+        # hardening).
+        i_land = src.index("await _resolve_landing_tokens(")
         i_inline = src.index("_inline_button_styles(rendered_html)")
         assert i_land < i_inline, "Landing-token resolver must run before inline-style pass"
-        # Falls back (continue) when page not found
-        assert "if not page:\n            continue" in src
+        # Unresolved slugs are neutralised via the anchor-rewrite
+        # branch — the raw token is never left inside an href.
+        assert "#unresolved-landing-token-" in src

@@ -98,7 +98,9 @@ async def _resolve_file_tokens(db, body_html: str) -> str:
     return body_html
 
 
-async def _resolve_landing_tokens(db, body_html: str, send_id: str, request_base: str | None = None) -> str:
+async def _resolve_landing_tokens(
+    db, body_html: str, send_id: str | None = None, request_base: str | None = None,
+) -> tuple[str, list[str]]:
     """Replace ``{{landing:<slug>}}`` tokens with the public landing-page
     URL. Appends ``?t=<send_id>`` so the visit-tracker can attribute the
     open back to the originating ``email_sends`` row.
@@ -114,30 +116,87 @@ async def _resolve_landing_tokens(db, body_html: str, send_id: str, request_base
     preview-only and don't authenticate). ``request_base`` is accepted
     but only used if PUBLIC_BASE_URL explicitly equals "__request_host__".
 
-    Falls back to leaving the token visible if the slug doesn't match an
-    active landing page — that way the admin notices in the sent email
-    rather than the link silently going nowhere.
+    Safety net for unresolved slugs: the previous implementation left
+    the raw token in place. Because most templates embed the token
+    inside ``<a href="{{landing:slug}}">``, email clients + browsers
+    then treated the unresolved href as a relative URL and rewrote it
+    to e.g. ``hub.creativemojo.co.uk/admin/%7B%7Blanding:...%7D%7D`` —
+    the exact production bug reported by the user. To prevent silent
+    breakage we now:
+      * neutralise the ``href`` attribute of any anchor that still
+        wraps an unresolved token (points at ``#unresolved-landing-token-<slug>``
+        with a data attribute so downstream tooling can flag it), AND
+      * return the list of unresolved slugs so the send endpoint can
+        abort with 409 (see :func:`_send_reply_impl`).
+
+    Returns
+    -------
+    ``(new_html, unresolved_slugs)``. ``unresolved_slugs`` is empty
+    when every discovered token resolved to an active landing page.
     """
-    if "{{landing:" not in body_html:
-        return body_html
+    if "{{landing:" not in (body_html or ""):
+        return body_html or "", []
     slugs = set(re.findall(r"\{\{\s*landing:([a-z0-9-]+?)\s*\}\}", body_html))
     if not slugs:
-        return body_html
+        return body_html, []
     import os
     explicit = os.environ.get("PUBLIC_BASE_URL")
     if explicit == "__request_host__" and request_base:
         base = request_base.rstrip("/")
     else:
         base = (explicit or "https://hub.creativemojo.co.uk").rstrip("/")
+
+    resolved: dict[str, str] = {}
     for slug in slugs:
         page = await db.landing_pages.find_one(
             {"slug": slug, "active": True}, {"_id": 0, "slug": 1},
         )
         if not page:
             continue
-        url = f"{base}/info/{slug}?t={send_id}"
-        body_html = body_html.replace(f"{{{{landing:{slug}}}}}", url)
-    return body_html
+        url = f"{base}/info/{slug}"
+        if send_id:
+            url = f"{url}?t={send_id}"
+        resolved[slug] = url
+
+    # 1) Rewrite anchor hrefs. Both resolved and unresolved cases MUST
+    #    stop the href from being a raw ``{{landing:...}}`` — otherwise
+    #    email clients render a relative URL like ``/admin/%7B%7B…``.
+    anchor_re = re.compile(
+        r'(<a\b[^>]*\shref\s*=\s*["\'])\{\{\s*landing:([a-z0-9-]+?)\s*\}\}(["\'][^>]*>)',
+        re.IGNORECASE,
+    )
+
+    def _rewrite_anchor(m: re.Match) -> str:
+        pre, slug, post = m.group(1), m.group(2), m.group(3)
+        url = resolved.get(slug)
+        if url:
+            return f"{pre}{url}{post}"
+        # Unresolved — neutralise the href so browsers/email clients
+        # can't fall through to a relative URL, and tag the anchor so
+        # QA tooling can find it.
+        neutral = f"#unresolved-landing-token-{slug}"
+        # Inject a data attribute + a red style if the anchor doesn't
+        # already have style="…" (best-effort — email clients strip
+        # <style> tags but keep inline styles).
+        marker = f' data-cm-landing-unresolved="{slug}"'
+        # Only add the marker once (idempotent under repeated calls).
+        if 'data-cm-landing-unresolved=' not in post:
+            post = post.replace('>', f'{marker}>', 1)
+        return f"{pre}{neutral}{post}"
+
+    body_html = anchor_re.sub(_rewrite_anchor, body_html)
+
+    # 2) Substitute any bare (non-href) tokens.
+    def _sub_bare(m: re.Match) -> str:
+        slug = m.group(1)
+        return resolved.get(slug, m.group(0))
+
+    body_html = re.sub(
+        r"\{\{\s*landing:([a-z0-9-]+?)\s*\}\}", _sub_bare, body_html,
+    )
+
+    unresolved = sorted(s for s in slugs if s not in resolved)
+    return body_html, unresolved
 
 
 # Inline style snippets used by the WYSIWYG editor's "Yellow CTA" and
@@ -213,10 +272,26 @@ async def _send_reply_impl(db, body: SendReplyRequest, user: dict, request: Opti
     send_id = str(uuid.uuid4())  # our own id, surfaced in headers + landing links
     rendered_html = body.body_html.replace("{{first_name}}", first_name)
     rendered_html = await _resolve_file_tokens(db, rendered_html)
-    rendered_html = await _resolve_landing_tokens(
+    rendered_html, unresolved = await _resolve_landing_tokens(
         db, rendered_html, send_id,
         request_base=f"{request.url.scheme}://{request.url.netloc}" if request and request.url else None,
     )
+    # Abort BEFORE Resend charges us — an unresolved token would have
+    # sent a broken CTA that resolves to /admin/%7B%7B... in the
+    # recipient's browser. Fail loud so the admin fixes the slug.
+    if unresolved:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "unresolved_landing_tokens",
+                "message": (
+                    "One or more {{landing:<slug>}} tokens in this email don't "
+                    "match an active landing page. Fix or remove them before "
+                    "sending — otherwise the CTA link will be broken."
+                ),
+                "unresolved_slugs": unresolved,
+            },
+        )
     rendered_html = _inline_button_styles(rendered_html)
 
     # Reply-To plus-token so replies land back on THIS contact via the

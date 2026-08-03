@@ -75,7 +75,7 @@ class TestLandingUrlResolution:
                 cluster_base = (
                     "https://licensee-vault.cluster-7.deploy.emergentcf.cloud"
                 )
-                out = await resend_routes._resolve_landing_tokens(
+                out, _unresolved = await resend_routes._resolve_landing_tokens(
                     db, body, send_id="test-123", request_base=cluster_base,
                 )
                 return out
@@ -117,7 +117,7 @@ class TestLandingUrlResolution:
                 created = True
             try:
                 body = '<a href="{{landing:' + slug + '}}">x</a>'
-                out = await resend_routes._resolve_landing_tokens(
+                out, _unresolved = await resend_routes._resolve_landing_tokens(
                     db, body, send_id="abc",
                     request_base="https://anything.example",
                 )

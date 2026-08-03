@@ -15,6 +15,7 @@ import { X, Loader2, Send, Eye } from "lucide-react";
 import api from "@/lib/api";
 import { toast } from "sonner";
 import { CATEGORY_BUCKETS, groupTemplatesByBucket } from "@/lib/emailTemplateCategories";
+import { resolveLandingTokens } from "@/lib/landingTokens";
 
 const DEFAULT_INTRO = (name) => (
   `<p>Hi ${name},</p>
@@ -73,7 +74,7 @@ export default function DBSComposeModal({ franchisee, onClose, onSent }) {
   // Preview HTML — mirrors what the backend will build so what the
   // admin sees is what the franchisee sees. Auto-appends the yellow
   // CTA button. Uses a placeholder token URL for display only.
-  const previewHtml = useMemo(() => {
+  const rawPreviewHtml = useMemo(() => {
     const url = `${window.location.origin}/dbs/apply/…`;
     return `
 <div style="font-family:Helvetica,Arial,sans-serif;color:#1a1a1a;line-height:1.5;max-width:600px;margin:0 auto;padding:16px;">
@@ -85,6 +86,20 @@ export default function DBSComposeModal({ franchisee, onClose, onSent }) {
   <p style="font-size:12px;color:#999;margin-top:32px;">This link is unique to you — please don't forward it on. Creative Mojo</p>
 </div>`;
   }, [introHtml]);
+
+  // Async landing-token resolution. Uses the same helper (and same
+  // backend resolver) as every other admin preview surface — so raw
+  // {{landing:<slug>}} tokens can never render as clickable
+  // ``/admin/%7B%7B…`` URLs in the preview.
+  const [previewHtml, setPreviewHtml] = useState(rawPreviewHtml);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const resolved = await resolveLandingTokens(rawPreviewHtml);
+      if (!cancelled) setPreviewHtml(resolved);
+    })();
+    return () => { cancelled = true; };
+  }, [rawPreviewHtml]);
 
   const send = async () => {
     if (!to.trim()) { toast.error("Recipient email is required"); return; }

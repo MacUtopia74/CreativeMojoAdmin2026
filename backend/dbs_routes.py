@@ -278,6 +278,27 @@ def build_dbs_router(db, require_role):
             f'</div>'
         )
 
+        # Resolve any {{landing:<slug>}} tokens the admin may have
+        # left in the intro (templates commonly embed them for CTA
+        # buttons). We abort on unresolved slugs so a broken CTA can
+        # never reach the recipient — same guarantee _send_reply_impl
+        # provides. See resend_routes._resolve_landing_tokens.
+        from resend_routes import _resolve_landing_tokens
+        body_html, unresolved = await _resolve_landing_tokens(db, body_html, send_id=None)
+        if unresolved:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "unresolved_landing_tokens",
+                    "message": (
+                        "One or more {{landing:<slug>}} tokens in this email "
+                        "don't match an active landing page. Fix or remove "
+                        "them before sending."
+                    ),
+                    "unresolved_slugs": unresolved,
+                },
+            )
+
         # Send via Resend
         try:
             import resend

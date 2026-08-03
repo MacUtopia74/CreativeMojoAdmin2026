@@ -476,7 +476,12 @@ def attach(api, db, require_role):
             "body_html": body.get("body_html") or "",
         }
         html = _build_html(sample).replace("{{first_name}}", body.get("sample_first_name") or "Friend")
-        return {"html": html}
+        # Resolve landing-page tokens for the preview using the same
+        # helper the send pipeline uses — so what the admin sees in
+        # the compose modal preview is what a recipient will click.
+        from resend_routes import _resolve_landing_tokens
+        html, unresolved = await _resolve_landing_tokens(db, html, send_id=None)
+        return {"html": html, "unresolved_landing_slugs": unresolved}
 
     @api.post("/admin/announcements/test-send")
     async def test_send(body: dict, request: Request, user: dict = Depends(require_role("admin"))):
@@ -513,6 +518,25 @@ def attach(api, db, require_role):
         _resend.api_key = RESEND_API_KEY
         html = _build_html({"title": title, "intro": intro, "panels": panels}) \
             .replace("{{first_name}}", body.get("sample_first_name") or user.get("first_name") or "Paul")
+        # Resolve landing-page CTA tokens the same way the main send
+        # pipeline does — abort loud if any slug can't be matched so
+        # a broken CTA is never emailed. See
+        # resend_routes._resolve_landing_tokens for the safety net.
+        from resend_routes import _resolve_landing_tokens
+        html, unresolved = await _resolve_landing_tokens(db, html, send_id=None)
+        if unresolved:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "unresolved_landing_tokens",
+                    "message": (
+                        "One or more {{landing:<slug>}} tokens in this announcement "
+                        "don't match an active landing page. Fix or remove them "
+                        "before test-sending."
+                    ),
+                    "unresolved_slugs": unresolved,
+                },
+            )
         try:
             _resend.Emails.send({
                 "from": f"{RESEND_FROM_NAME} <{RESEND_FROM_EMAIL}>",
