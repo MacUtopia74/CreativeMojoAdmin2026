@@ -303,19 +303,30 @@ export default function CalendarPage() {
     const isMojoGrow = (e) => /mojo\s*grow/i.test(e?.title || "");
     const MOJO_GROW_BG = "#9f205b";
     const MOJO_GROW_TEXT = "#FFFFFF";
+    // Initial-franchisee-meeting palette — deliberately punchier than
+    // the HQ lime so it reads instantly on a busy month grid.
+    const INITIAL_FRAN_BG = "#F97316";
+    const INITIAL_FRAN_BORDER = "#C2410C";
 
     const out = events.filter(matchesQuery).map((e) => {
       const grow = isMojoGrow(e);
+      const initial = !!e.initial_franchisee_meeting;
+      // Precedence: Mojo Grow (mauve) → Initial franchisee (orange) →
+      // default HQ (lime). Mojo Grow keeps its brand palette because
+      // those events already have their own recognisable colour.
+      let bg = "#dddd16"; let border = "#7a7a0c"; let text = "#1c1917"; let kind = "hq";
+      if (grow) { bg = MOJO_GROW_BG; border = "#7a1844"; text = MOJO_GROW_TEXT; kind = "mojo_grow"; }
+      else if (initial) { bg = INITIAL_FRAN_BG; border = INITIAL_FRAN_BORDER; text = "#FFFFFF"; kind = "initial_franchisee_meeting"; }
       return {
         id: e.id,
         title: e.title,
         start: e.start,
         end: e.end,
         allDay: !!e.all_day,
-        extendedProps: { ...e, _kind: grow ? "mojo_grow" : "hq" },
-        backgroundColor: grow ? MOJO_GROW_BG : "#dddd16",
-        borderColor: grow ? "#7a1844" : "#7a7a0c",
-        textColor: grow ? MOJO_GROW_TEXT : "#1c1917",
+        extendedProps: { ...e, _kind: kind },
+        backgroundColor: bg,
+        borderColor: border,
+        textColor: text,
         display: "block",
       };
     });
@@ -542,8 +553,16 @@ export default function CalendarPage() {
                   Mojo Grow meetings
                 </span>
                 <span className="inline-flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-sm" style={{ background: "#F97316", border: "1px solid #C2410C" }} />
+                  Initial franchisee meeting
+                </span>
+                <span className="inline-flex items-center gap-1.5">
                   <span className="w-3 h-3 rounded-sm" style={{ background: "#3B82F6" }} />
                   Yearly events
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="inline-block w-3 h-3 rounded-sm" style={{ boxShadow: "inset 0 0 0 2px #3B82F6" }} />
+                  Today
                 </span>
               </div>
               <FullCalendar
@@ -741,6 +760,12 @@ function EventModal({ event, defaults, preset, onClose, onSaved, onDelete }) {
   const [location, setLocation] = useState(event?.location || (isMojoGrow ? "Online (Zoom)" : ""));
   const [meetingUrl, setMeetingUrl] = useState(event?.meeting_url || "");
   const [showInPortal, setShowInPortal] = useState(isMojoGrow ? true : !!event?.show_in_portal);
+  // Orange-highlighted flag for initial franchisee meetings (potential
+  // franchisees). Purely a visual cue on the admin calendar; no portal
+  // audience implications, no email side-effects.
+  const [initialFranchiseeMeeting, setInitialFranchiseeMeeting] = useState(
+    !!event?.initial_franchisee_meeting,
+  );
   // Audience scope — "all" (default, visible to every franchisee) or
   // "selected" (only the franchisees in selectedFranchiseeIds see it).
   const initialIds = Array.isArray(event?.portal_franchisee_ids)
@@ -905,6 +930,7 @@ function EventModal({ event, defaults, preset, onClose, onSaved, onDelete }) {
         location: location || null,
         meeting_url: zoomUrlForEvent ? zoomUrlForEvent.trim() : null,
         show_in_portal: showInPortal,
+        initial_franchisee_meeting: initialFranchiseeMeeting,
         portal_franchisee_ids: portalIds,
         all_day: allDay,
         start: allDay ? start.slice(0, 10) : new Date(start).toISOString(),
@@ -1019,6 +1045,29 @@ function EventModal({ event, defaults, preset, onClose, onSaved, onDelete }) {
               </div>
             )}
           </div>
+          {/* Initial franchisee meeting — orange highlight on the admin
+              calendar so early-stage prospect conversations stand out
+              from the day-to-day HQ stuff. Admin-only, no portal effect. */}
+          <label className={`flex items-start gap-3 p-3 border-2 rounded-xl cursor-pointer transition ${initialFranchiseeMeeting ? "border-orange-400 bg-orange-50/60" : "border-stone-200 hover:border-stone-300 bg-white"}`}
+            data-testid="cal-initial-fran-toggle-label">
+            <input
+              type="checkbox"
+              checked={initialFranchiseeMeeting}
+              onChange={(e) => setInitialFranchiseeMeeting(e.target.checked)}
+              data-testid="cal-initial-fran-toggle"
+              className="mt-0.5 accent-orange-600"
+            />
+            <div className="flex-1">
+              <div className="text-sm font-bold text-stone-950 flex items-center gap-2">
+                <span className="inline-block w-2.5 h-2.5 rounded-sm bg-orange-500" aria-hidden="true" />
+                Initial franchisee meeting
+              </div>
+              <div className="text-[11px] text-stone-600 mt-0.5">
+                Highlights this entry in orange on the admin calendar so meetings with potential franchisees are easy to spot at a glance.
+              </div>
+            </div>
+          </label>
+
           {/* Franchisee-portal toggle — events default to admin-only.
               Tick this to also surface the event on the franchisee
               portal's Events panel (shared join URL, time, description). */}

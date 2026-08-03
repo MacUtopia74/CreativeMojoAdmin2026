@@ -87,6 +87,11 @@ class EventIn(BaseModel):
     all_day: bool = False
     meeting_url: Optional[str] = None  # e.g. MS Teams join URL
     show_in_portal: bool = False  # surfaces event on the franchisee portal
+    # Highlights the event on the admin calendar as an initial meeting
+    # with a potential franchisee (renders in orange). Purely a visual
+    # flag today, stored as "1" in Google's extendedProperties.shared
+    # so it survives round-trips through Google Calendar directly.
+    initial_franchisee_meeting: bool = False
     # Optional audience restriction. Empty / None = visible to every
     # franchisee (matches the existing "all" behaviour). A list of
     # franchisee IDs = only those franchisees see the event on their
@@ -116,6 +121,7 @@ def _shape_event(e: dict) -> dict:
         # extended-properties (the API only accepts string values there).
         # Anything truthy except "0" / "false" / "" is treated as on.
         "show_in_portal": str(shared.get("show_in_portal") or "").lower() in ("1", "true", "yes"),
+        "initial_franchisee_meeting": str(shared.get("initial_franchisee_meeting") or "").lower() in ("1", "true", "yes"),
         "portal_franchisee_ids": franchisee_ids,
         "html_link": e.get("htmlLink"),
         "creator_email": (e.get("creator") or {}).get("email"),
@@ -374,12 +380,14 @@ def attach(api, db, require_role, get_current_user=None):
         else:
             ev["start"] = {"dateTime": body.start, "timeZone": "Europe/London"}
             ev["end"] = {"dateTime": body.end, "timeZone": "Europe/London"}
-        if body.meeting_url or body.show_in_portal or body.portal_franchisee_ids:
+        if body.meeting_url or body.show_in_portal or body.portal_franchisee_ids or body.initial_franchisee_meeting:
             shared: dict = {}
             if body.meeting_url:
                 shared["meeting_url"] = body.meeting_url
             if body.show_in_portal:
                 shared["show_in_portal"] = "1"
+            if body.initial_franchisee_meeting:
+                shared["initial_franchisee_meeting"] = "1"
             # Audience scope — comma-joined IDs into a single shared
             # string. Empty / null means "all franchisees" (no key set).
             if body.portal_franchisee_ids:
@@ -444,6 +452,17 @@ def attach(api, db, require_role, get_current_user=None):
                 shared.pop("portal_franchisee_ids", None)
                 # An empty shared dict + Google's strict schema → just
                 # remove the wrapper too if nothing's left.
+                if not shared:
+                    current["extendedProperties"].pop("shared", None)
+                if not current.get("extendedProperties"):
+                    current.pop("extendedProperties", None)
+        if body.get("initial_franchisee_meeting") is not None:
+            # Same string-only rule as show_in_portal — pop to remove.
+            shared = current.setdefault("extendedProperties", {}).setdefault("shared", {})
+            if body["initial_franchisee_meeting"]:
+                shared["initial_franchisee_meeting"] = "1"
+            else:
+                shared.pop("initial_franchisee_meeting", None)
                 if not shared:
                     current["extendedProperties"].pop("shared", None)
                 if not current.get("extendedProperties"):

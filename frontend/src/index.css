@@ -254,3 +254,20 @@ html, body {
     min-height: 42px;
   }
 }
+
+
+/* Today keyline — FullCalendar's default puts a faint yellow tint on
+   today's cell, but on a full-events day it disappears. Draw a solid
+   2px blue keyline around today's cell so it stands out even when the
+   cell is packed with events. Uses `inset` so the border sits inside
+   the cell (doesn't push neighbouring cells around) and drops the
+   default background wash so we don't stack two hints. */
+.admin-cal-wrap .fc .fc-day-today {
+  background: transparent !important;
+  box-shadow: inset 0 0 0 2px #3B82F6;
+  border-radius: 6px;
+}
+.admin-cal-wrap .fc .fc-day-today .fc-daygrid-day-number {
+  color: #1D4ED8;
+  font-weight: 700;
+}
