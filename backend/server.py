@@ -6846,6 +6846,12 @@ async def on_startup():
     await db.login_attempts.create_index("identifier")
     await db.gf_form_configs.create_index("form_id", unique=True)
 
+    # Correspondence collections + reply_token uniqueness on contacts
+    try:
+        await _correspondence_create_indexes(db)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("correspondence indexes skipped: %s", exc)
+
     # Seed the GF intake form configs from the static module on first
     # boot so the new DB-backed admin UI starts populated. Idempotent.
     try:
@@ -7200,6 +7206,13 @@ api.include_router(build_project_codes_router(db, require_role))
 api.include_router(build_help_router(db, require_role))
 api.include_router(build_email_templates_router(db, require_role))
 api.include_router(build_resend_router(db, require_role))
+
+# Correspondence — inbound webhook, per-contact history, compose.
+from correspondence_routes import (  # noqa: E402
+    build_correspondence_router,
+    create_indexes as _correspondence_create_indexes,
+)
+api.include_router(build_correspondence_router(db, require_role))
 
 # DBS Applications — franchisee onboarding form + admin dashboard.
 from dbs_routes import build_dbs_router  # noqa: E402

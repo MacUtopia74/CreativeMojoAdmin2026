@@ -64,25 +64,29 @@ def make_reply_to(token: str) -> str:
 async def ensure_reply_token(db, contact_id: str) -> str:
     """Return the contact's ``reply_token``, generating one if missing.
 
-    Uses a uniqueness check + retry loop guarded by the unique index on
-    ``contacts.reply_token`` (see startup indexer below). Cryptographic
-    randomness — never derived from the contact id, so leaking one
-    token doesn't reveal others."""
-    doc = await db.contacts.find_one({"id": contact_id}, {"_id": 0, "reply_token": 1})
-    if doc and doc.get("reply_token"):
-        return doc["reply_token"]
-    for _ in range(6):
-        token = secrets.token_urlsafe(18)
-        try:
-            await db.contacts.update_one(
-                {"id": contact_id, "$or": [{"reply_token": None}, {"reply_token": {"$exists": False}}]},
-                {"$set": {"reply_token": token}},
-            )
-            check = await db.contacts.find_one({"id": contact_id}, {"_id": 0, "reply_token": 1})
-            if check and check.get("reply_token"):
-                return check["reply_token"]
-        except Exception:  # noqa: BLE001
-            logger.exception("reply_token generation collision — retrying")
+    Handles contacts stored in either ``contacts`` or ``web_form_contacts``
+    (the pipeline aggregates both). Uses a uniqueness check + retry loop
+    guarded by the unique index on ``reply_token``. Cryptographic
+    randomness — never derived from the contact id."""
+    for coll_name in ("contacts", "web_form_contacts"):
+        doc = await db[coll_name].find_one({"id": contact_id}, {"_id": 0, "reply_token": 1})
+        if doc is None:
+            continue
+        if doc.get("reply_token"):
+            return doc["reply_token"]
+        # Contact exists in this collection without a token — allocate.
+        for _ in range(6):
+            token = secrets.token_urlsafe(18)
+            try:
+                res = await db[coll_name].update_one(
+                    {"id": contact_id},
+                    {"$set": {"reply_token": token}},
+                )
+                if res.matched_count:
+                    return token
+            except Exception:  # noqa: BLE001
+                logger.exception("reply_token generation collision — retrying")
+        break
     raise RuntimeError("Could not allocate reply_token for contact")
 
 
@@ -90,6 +94,7 @@ async def create_indexes(db):
     """Idempotent startup indexer for the correspondence collections."""
     try:
         await db.contacts.create_index("reply_token", unique=True, sparse=True)
+        await db.web_form_contacts.create_index("reply_token", unique=True, sparse=True)
         await db.email_inbounds.create_index("resend_email_id", unique=True, sparse=True)
         await db.email_inbounds.create_index("message_id")
         await db.email_inbounds.create_index("contact_id")
@@ -209,9 +214,10 @@ async def _resolve_contact(db, to_values: list, full: dict) -> dict:
         m = _TOKEN_RE.match(addr)
         if m and m.group(2).lower() == RECEIVING_DOMAIN.lower():
             token = m.group(1)
-            contact = await db.contacts.find_one({"reply_token": token}, {"_id": 0, "id": 1})
-            if contact:
-                return {"contact_id": contact["id"], "match_method": "plus_token"}
+            for coll_name in ("contacts", "web_form_contacts"):
+                contact = await db[coll_name].find_one({"reply_token": token}, {"_id": 0, "id": 1})
+                if contact:
+                    return {"contact_id": contact["id"], "match_method": "plus_token"}
 
     # 2) In-Reply-To / References — look up the outbound send we made
     hs = full.get("headers", {}) or {}
@@ -233,9 +239,10 @@ async def _resolve_contact(db, to_values: list, full: dict) -> dict:
     # 3) sender email exact match (last resort — spoofable, but useful)
     sender = _extract_email(full.get("from") or "")
     if sender:
-        contact = await db.contacts.find_one({"email": sender}, {"_id": 0, "id": 1})
-        if contact:
-            return {"contact_id": contact["id"], "match_method": "sender"}
+        for coll_name in ("contacts", "web_form_contacts"):
+            contact = await db[coll_name].find_one({"email": sender}, {"_id": 0, "id": 1})
+            if contact:
+                return {"contact_id": contact["id"], "match_method": "sender"}
 
     return {"contact_id": None, "match_method": "unmatched"}
 
@@ -333,6 +340,8 @@ def build_correspondence_router(db, require_role):
     ):
         """Return outbound + inbound merged chronologically (newest first)."""
         contact = await db.contacts.find_one({"id": contact_id}, {"_id": 0})
+        if not contact:
+            contact = await db.web_form_contacts.find_one({"id": contact_id}, {"_id": 0})
         if not contact:
             raise HTTPException(404, "contact not found")
 

@@ -21,6 +21,7 @@ import {
   ArrowDownCircle, ArrowRightLeft,
 } from "lucide-react";
 import { AdminNotesEditor, InterestedChecklist, TemperaturePicker } from "@/pages/ContactsPage";
+import CorrespondenceModal from "@/components/pipeline/CorrespondenceModal";
 
 const TABS = [
   { key: "qualified",     label: "Interested",     dot: "bg-emerald-500", bg: "bg-emerald-600", fg: "text-white" },
@@ -197,8 +198,10 @@ export default function SalesPipelineTabsView({
 
       {correspondenceContact && (
         <CorrespondenceModal
+          open={true}
           contact={correspondenceContact}
           onClose={() => setCorrespondenceContact(null)}
+          onOpenPostcodeMap={onOpenPostcodeMap}
         />
       )}
     </div>
@@ -1014,51 +1017,5 @@ function NotesPanel({ contact, onChanged }) {
 }
 
 // ---------------------------------------------------------------------
-// View-Correspondence full-screen modal (empty layout placeholder).
-function CorrespondenceModal({ contact, onClose }) {
-  const displayName = displayNameFor(contact);
-  React.useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prev;
-    };
-  }, [onClose]);
-  return (
-    <div
-      className="fixed inset-0 z-50 bg-black/40 flex items-stretch justify-center"
-      onClick={onClose}
-      data-testid="correspondence-modal-backdrop"
-    >
-      <div
-        className="bg-white w-full h-full flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        data-testid="correspondence-modal"
-      >
-        <header className="flex items-center justify-between gap-3 px-6 py-3 border-b border-stone-200 bg-stone-50">
-          <div className="min-w-0">
-            <div className="text-xs uppercase tracking-[0.2em] font-bold text-stone-500">Correspondence</div>
-            <div className="text-lg font-bold text-stone-950 truncate">{displayName}</div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wider border border-stone-300 bg-white text-stone-700 hover:bg-stone-100 rounded-md"
-            data-testid="correspondence-modal-close"
-          ><XIcon className="w-3 h-3" /> Close</button>
-        </header>
-        <div className="flex-1 min-h-0 overflow-auto bg-stone-50/50">
-          <div className="w-full h-full flex items-center justify-center text-sm text-stone-500 italic px-6 text-center">
-            Email correspondence layout coming next — the modal is
-            wired and ready.
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+// View-Correspondence full-screen modal — the real implementation lives
+// in its own file. Imported at the top of this module.
