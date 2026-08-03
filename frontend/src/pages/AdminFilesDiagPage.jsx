@@ -15,6 +15,22 @@ export default function AdminFilesDiagPage() {
   const [report, setReport] = useState(null);
   const [error, setError] = useState("");
   const [rebinding, setRebinding] = useState(false);
+  const [bulkHealing, setBulkHealing] = useState(false);
+  const [bulkHealSummary, setBulkHealSummary] = useState(null);
+
+  const bulkHeal = async () => {
+    if (!window.confirm(
+      "Bootstrap standard folders for every active franchisee?\n\n" +
+      "This canonicalises each franchisee's R2 root prefix and creates any of the three standard sub-folders that are missing (Artwork, Franchise Documents, Other Files). It's idempotent — franchisees already set up will be skipped."
+    )) return;
+    setBulkHealing(true); setError(""); setBulkHealSummary(null);
+    try {
+      const { data } = await api.post("/franchisees/bootstrap-folders/all");
+      setBulkHealSummary(data);
+    } catch (e) {
+      setError(e?.response?.data?.detail || "Bulk-heal request failed.");
+    } finally { setBulkHealing(false); }
+  };
 
   const run = async (opts = {}) => {
     const term = q.trim();
@@ -81,6 +97,54 @@ export default function AdminFilesDiagPage() {
       {error && (
         <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
           {error}
+        </div>
+      )}
+
+      {/* Bulk-heal button — runs POST /franchisees/bootstrap-folders/all
+          which canonicalises every active franchisee's r2_root_prefix
+          AND creates the three standard folders where missing. Safe to
+          re-run — the endpoint is idempotent. Use this to fix the
+          "franchise-level panel shows 3 folders but main Files admin
+          is empty" divergence for legacy franchisees. */}
+      <div className="mt-3 rounded-lg border border-stone-200 bg-stone-50 p-3 flex items-center justify-between gap-3">
+        <div className="text-xs text-stone-600">
+          <span className="font-semibold text-stone-800">Bulk heal:</span>{" "}
+          canonicalise every active franchisee&apos;s R2 root and ensure the three standard folders exist. Idempotent — skips franchisees already set up.
+        </div>
+        <button
+          type="button"
+          onClick={bulkHeal}
+          disabled={bulkHealing}
+          className="shrink-0 inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-700 text-white rounded-md text-xs font-bold hover:bg-emerald-800 disabled:opacity-50"
+          data-testid="diag-bulk-heal"
+        >
+          {bulkHealing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "🩹"}
+          Bootstrap all franchisees
+        </button>
+      </div>
+      {bulkHealSummary && (
+        <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900"
+             data-testid="diag-bulk-heal-summary">
+          <div className="font-bold">✅ Bulk heal complete.</div>
+          <div className="mt-1">
+            Processed {bulkHealSummary.processed} franchisee{bulkHealSummary.processed === 1 ? "" : "s"} ·
+            created {bulkHealSummary.created_total} standard folder{bulkHealSummary.created_total === 1 ? "" : "s"} ·
+            skipped {bulkHealSummary.skipped_total} already-present ·
+            {bulkHealSummary.without_prefix} franchisee{bulkHealSummary.without_prefix === 1 ? "" : "s"} missing name/number.
+          </div>
+          {Array.isArray(bulkHealSummary.results) && bulkHealSummary.results.length > 0 && (
+            <details className="mt-2">
+              <summary className="cursor-pointer text-[11px] font-semibold">Show franchisees that received new folders</summary>
+              <ul className="mt-2 space-y-0.5 max-h-40 overflow-auto text-[11px]">
+                {bulkHealSummary.results.map((r) => (
+                  <li key={r.franchisee_id}>
+                    <code className="bg-white/60 px-1 rounded">{r.franchise_number}</code>{" "}
+                    {r.organisation} — added: {r.created.join(", ")}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
         </div>
       )}
 

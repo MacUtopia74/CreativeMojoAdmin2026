@@ -140,19 +140,27 @@ def build_router(db, require_role) -> APIRouter:
              "first_name": 1, "last_name": 1, "photos": 1},
         ).to_list(1000)}
 
+        # Enumerate every franchisee whose files_index rows carry
+        # their franchisee_id. For each, resolve the canonical R2
+        # prefix (backfilling the persisted ``r2_root_prefix`` on the
+        # franchisee doc if it hasn't been set yet). This heals legacy
+        # franchisees whose canonical prefix was never persisted — the
+        # sidebar now always navigates to where their files actually
+        # live, matching the FranchiseeFilesPanel's own discovery.
+        from franchisee_folders import resolve_and_persist_canonical_prefix
         franchisees_view = []
         for r in f_rows:
             f = f_lookup.get(r["_id"])
             if not f:
                 continue
-            base_prefix = derive_franchisee_prefix(f)
+            canonical = await resolve_and_persist_canonical_prefix(db, f)
             franchisees_view.append({
                 "franchisee_id": r["_id"],
                 "franchise_number": f.get("franchise_number"),
                 "organisation": f.get("organisation"),
                 "name": f"{f.get('first_name','')} {f.get('last_name','')}".strip(),
                 "photo": (f.get("photos") or [{}])[0].get("url"),
-                "prefix": base_prefix,
+                "prefix": canonical,
                 "files": r["files"],
                 "bytes": r["bytes"],
             })
