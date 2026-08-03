@@ -278,6 +278,69 @@ function PipelineRow({
 // Left cluster: avatar + name + days-in-stage + email.
 // Right cluster: Reply-with-Template + View-Correspondence buttons,
 // postcode + MAP, heat, emailed chip, chevron.
+// ---------------------------------------------------------------------
+// QUICK NOTE — single-line free-text visual reference. Persists via
+// PATCH /contacts/{id}/details (whitelisted field on the backend). Not
+// surfaced anywhere else in the app; not linked to templates, pipeline
+// state, exports, or search. Uncontrolled input so it never re-renders
+// while typing; saves on blur or Enter. Escape reverts.
+function QuickNoteInput({ contact }) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(false);
+  const ref = React.useRef(null);
+  const initial = contact.quick_note || "";
+
+  React.useEffect(() => {
+    // Sync when the underlying contact swaps (parent re-fetches, etc.)
+    if (ref.current && ref.current.value !== (contact.quick_note || "")) {
+      ref.current.value = contact.quick_note || "";
+    }
+  }, [contact.id, contact.quick_note]);
+
+  const commit = async () => {
+    const next = (ref.current?.value || "").trim();
+    if (next === (contact.quick_note || "")) return;
+    setError(false);
+    setSaving(true);
+    try {
+      await api.patch(`/contacts/${contact.id}/details`, { quick_note: next || null });
+      // Reflect the saved value back onto the contact object so the
+      // useEffect above doesn't overwrite it on the next render.
+      contact.quick_note = next || null;
+    } catch (e) {
+      setError(true);
+      // Revert visible input so the admin can retry
+      if (ref.current) ref.current.value = contact.quick_note || "";
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <input
+      ref={ref}
+      type="text"
+      defaultValue={initial}
+      placeholder="Quick note…"
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); }
+        if (e.key === "Escape") {
+          if (ref.current) ref.current.value = contact.quick_note || "";
+          e.currentTarget.blur();
+        }
+      }}
+      onClick={(e) => e.stopPropagation()}
+      disabled={saving}
+      title={error ? "Save failed — try again" : "Free-text visual reference"}
+      className={`w-full text-xs bg-white/70 border rounded-md px-2 py-1 placeholder:text-stone-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-stone-900 transition-colors ${
+        error ? "border-red-300" : "border-stone-200 hover:border-stone-300"
+      }`}
+      data-testid={`pipeline-row-quicknote-${contact.id}`}
+    />
+  );
+}
+
 function TopBar({
   contact, emailed, daysInStage,
   isExpanded, onToggle, onOpenPostcodeMap, onReplyContact, onViewCorrespondence,
@@ -303,8 +366,9 @@ function TopBar({
         </div>
       )}
 
-      {/* Left cluster — name + email */}
-      <div className="flex-1 min-w-0">
+      {/* Left cluster — name + email. Fixed width so the middle
+          quick-note area always starts at the same column. */}
+      <div className="w-[240px] shrink-0 min-w-0">
         <div className="flex items-center gap-2">
           <span className={`truncate font-bold text-stone-950 ${isExpanded ? "text-base" : "text-sm"}`}>
             {displayNameFor(c)}
@@ -318,6 +382,16 @@ function TopBar({
         <div className="text-[11px] text-stone-600 truncate mt-0.5">
           {c.email || <span className="italic text-stone-400">no email</span>}
         </div>
+      </div>
+
+      {/* Middle cluster — free-text quick note. Single line, saved
+          on blur. Purely a visual reference for the admin; not
+          linked to templates, pipeline logic, or exports. */}
+      <div
+        className="flex-1 min-w-0 px-2"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <QuickNoteInput contact={c} />
       </div>
 
       {/* Right cluster — persistent email actions + info chips.

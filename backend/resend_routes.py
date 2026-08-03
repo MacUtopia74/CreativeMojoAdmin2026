@@ -183,207 +183,183 @@ def _inline_button_styles(body_html: str) -> str:
 
 
 # --------------------------------------------------------------- router
+async def _send_reply_impl(db, body: SendReplyRequest, user: dict, request: Optional[Request] = None):
+    """Actual outbound send + tracking pipeline, callable from any router.
+
+    Extracted from the old inline ``send_reply`` handler in Feb 2026 so
+    the Correspondence "New Email / Templates" compose modal can reuse
+    the exact same code path — one source of truth for follow-up
+    detection, pipeline auto-advance, Reply-To plus-token, and Resend
+    header stamping. See ``correspondence_routes.build_correspondence_router``
+    for the second call site."""
+    if not RESEND_API_KEY:
+        raise HTTPException(503, detail="Resend not configured — missing RESEND_API_KEY.")
+    if not body.to:
+        raise HTTPException(400, detail="At least one recipient is required.")
+    if not body.subject.strip():
+        raise HTTPException(400, detail="Subject is required.")
+    if not body.body_html.strip():
+        raise HTTPException(400, detail="Body is required.")
+
+    contact = await db.contacts.find_one({"id": body.contact_id}, {"_id": 0})
+    contact_coll = "contacts"
+    if not contact:
+        contact = await db.web_form_contacts.find_one({"id": body.contact_id}, {"_id": 0})
+        contact_coll = "web_form_contacts"
+    if not contact:
+        raise HTTPException(404, detail="Contact not found")
+
+    first_name = contact.get("first_name") or (contact.get("name") or "").split(" ", 1)[0] or "there"
+    send_id = str(uuid.uuid4())  # our own id, surfaced in headers + landing links
+    rendered_html = body.body_html.replace("{{first_name}}", first_name)
+    rendered_html = await _resolve_file_tokens(db, rendered_html)
+    rendered_html = await _resolve_landing_tokens(
+        db, rendered_html, send_id,
+        request_base=f"{request.url.scheme}://{request.url.netloc}" if request and request.url else None,
+    )
+    rendered_html = _inline_button_styles(rendered_html)
+
+    # Reply-To plus-token so replies land back on THIS contact via the
+    # Resend Receiving webhook. Generated lazily — legacy contacts that
+    # pre-date the correspondence feature get a token on their first
+    # outbound send. Backfilled contacts already have one.
+    reply_token = contact.get("reply_token")
+    if not reply_token:
+        try:
+            from correspondence_routes import ensure_reply_token, make_reply_to
+            reply_token = await ensure_reply_token(db, body.contact_id)
+        except Exception:  # noqa: BLE001
+            logger.exception("reply_token allocation failed — falling back to shared inbox")
+            reply_token = None
+    if reply_token:
+        from correspondence_routes import make_reply_to
+        reply_to = make_reply_to(reply_token)
+    else:
+        reply_to = RESEND_FROM_EMAIL
+
+    custom_message_id = f"<{send_id}@creativemojo.co.uk>"
+
+    params = {
+        "from": f"{RESEND_FROM_NAME} <{RESEND_FROM_EMAIL}>",
+        "to": [str(e) for e in body.to],
+        "subject": body.subject.strip(),
+        "html": rendered_html,
+        "reply_to": reply_to,
+        "headers": {
+            "X-CM-Send-Id": send_id,
+            "Message-ID": custom_message_id,
+        },
+    }
+    if body.cc:
+        params["cc"] = [str(e) for e in body.cc]
+    bcc_set = {str(e).strip().lower() for e in (body.bcc or [])}
+    params["bcc"] = sorted(bcc_set)
+
+    try:
+        resp = await asyncio.to_thread(resend.Emails.send, params)
+    except Exception as e:  # noqa: BLE001
+        logger.exception("Resend send failed")
+        raise HTTPException(502, detail=f"Resend error: {e}") from e
+
+    resend_id = resp.get("id") if isinstance(resp, dict) else None
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "id": send_id,
+        "resend_id": resend_id,
+        "message_id": custom_message_id,
+        "contact_id": body.contact_id,
+        "template_id": body.template_id,
+        "sent_by": user.get("email"),
+        "sent_at": now,
+        "to": params["to"],
+        "cc": params.get("cc", []),
+        "bcc": params.get("bcc", []),
+        "subject": params["subject"],
+        "from": params["from"],
+        "reply_to": reply_to,
+        # Persist the rendered body so the Correspondence timeline can
+        # display the exact message the recipient received (previously
+        # we only kept metadata).
+        "html": rendered_html,
+        "events": [{"type": "sent", "at": now}],
+        "last_event": "sent",
+        "last_event_at": now,
+    }
+    await db.email_sends.insert_one(doc)
+    doc.pop("_id", None)
+
+    is_follow_up_template = False
+    if body.template_id:
+        tpl = await db.email_templates.find_one(
+            {"id": body.template_id},
+            {"_id": 0, "display_name": 1},
+        )
+        from follow_up_workflow import is_follow_up_template as _is_fu
+        is_follow_up_template = _is_fu(tpl)
+
+    follow_up_index = 0
+    if is_follow_up_template:
+        prior_fu_count = await db.email_sends.count_documents({
+            "contact_id": body.contact_id,
+            "follow_up_index": {"$exists": True, "$ne": None},
+            "id": {"$ne": send_id},
+        })
+        follow_up_index = prior_fu_count + 1
+        await db.email_sends.update_one(
+            {"id": send_id},
+            {"$set": {"follow_up_index": follow_up_index}},
+        )
+        doc["follow_up_index"] = follow_up_index
+        fu_now = datetime.now(timezone.utc).isoformat()
+        for coll_name in ("web_form_contacts", "contacts"):
+            bump_res = await db[coll_name].update_one(
+                {"id": body.contact_id},
+                {
+                    "$inc": {"follow_up_sent_count": 1},
+                    "$set": {
+                        "last_follow_up_sent_at": fu_now,
+                        "updated_at": fu_now,
+                    },
+                },
+            )
+            if bump_res.matched_count:
+                await db[coll_name].update_one(
+                    {"id": body.contact_id, "pipeline_status": "follow_up_due"},
+                    {"$set": {
+                        "pipeline_status": "contacted",
+                        "pipeline_status_updated_at": fu_now,
+                    }},
+                )
+                break
+
+    auto_advanced = False
+    if body.template_id and (contact.get("pipeline_status") == "new"):
+        now_iso = datetime.now(timezone.utc).isoformat()
+        patch = {
+            "pipeline_status": "contacted",
+            "updated_at": now_iso,
+            "pipeline_status_updated_at": now_iso,
+        }
+        r = await db.web_form_contacts.update_one(
+            {"id": body.contact_id},
+            {"$set": {**patch, "in_pipeline": True}},
+        )
+        if r.matched_count == 0:
+            r = await db.contacts.update_one(
+                {"id": body.contact_id}, {"$set": patch},
+            )
+        auto_advanced = r.matched_count > 0
+
+    return {"ok": True, "send": doc, "auto_advanced_to_contacted": auto_advanced}
+
+
 def build_resend_router(db, require_role):
     router = APIRouter()
 
     # -------------------------------------------------------- send
     @router.post("/email/send-reply")
     async def send_reply(body: SendReplyRequest, request: Request, user: dict = Depends(require_role("admin"))):
-        if not RESEND_API_KEY:
-            raise HTTPException(503, detail="Resend not configured — missing RESEND_API_KEY.")
-        if not body.to:
-            raise HTTPException(400, detail="At least one recipient is required.")
-        if not body.subject.strip():
-            raise HTTPException(400, detail="Subject is required.")
-        if not body.body_html.strip():
-            raise HTTPException(400, detail="Body is required.")
-
-        contact = await db.contacts.find_one({"id": body.contact_id}, {"_id": 0})
-        if not contact:
-            contact = await db.web_form_contacts.find_one({"id": body.contact_id}, {"_id": 0})
-        if not contact:
-            raise HTTPException(404, detail="Contact not found")
-
-        first_name = contact.get("first_name") or (contact.get("name") or "").split(" ", 1)[0] or "there"
-        send_id = str(uuid.uuid4())  # our own id, surfaced in headers + landing links
-        rendered_html = body.body_html.replace("{{first_name}}", first_name)
-        rendered_html = await _resolve_file_tokens(db, rendered_html)
-        rendered_html = await _resolve_landing_tokens(
-            db, rendered_html, send_id,
-            request_base=f"{request.url.scheme}://{request.url.netloc}" if request and request.url else None,
-        )
-        # Convert WYSIWYG button classes → inline styles so email clients
-        # that strip <style> tags still render the yellow CTA / outline
-        # buttons exactly as the admin saw them in the editor.
-        rendered_html = _inline_button_styles(rendered_html)
-
-        # Reply-to: per user requirement, ALL outbound emails go from and
-        # reply to ``paul@creativemojo.co.uk`` so replies land in a single
-        # monitored mailbox. Outlook's server-side forwarding rule on that
-        # mailbox then copies each reply to the Resend Inbound receiving
-        # address so Phase 5b can attach the reply back onto the contact's
-        # timeline automatically. (Previously this was per-template
-        # ``default_from`` + a per-admin fallback — we've collapsed that
-        # to a single source of truth here.)
-        reply_to = RESEND_FROM_EMAIL
-
-        # Custom Message-ID — Resend would assign one of its own, but we
-        # set our own so Phase 5b can deterministically match the
-        # ``In-Reply-To`` / ``References`` headers in the inbound webhook
-        # back to THIS send record. Format is RFC 5322-compliant
-        # (``<local@domain>``) with our send_id as the local part so
-        # reverse lookups are O(1) without a separate index.
-        custom_message_id = f"<{send_id}@creativemojo.co.uk>"
-
-        params = {
-            "from": f"{RESEND_FROM_NAME} <{RESEND_FROM_EMAIL}>",
-            "to": [str(e) for e in body.to],
-            "subject": body.subject.strip(),
-            "html": rendered_html,
-            "reply_to": reply_to,
-            "headers": {
-                # Lets us correlate webhook events back to this send when
-                # Resend echoes the X-CM-Send-Id header on bounce/open/click.
-                "X-CM-Send-Id": send_id,
-                # Deterministic thread anchor for Phase 5b inbound matching.
-                "Message-ID": custom_message_id,
-            },
-        }
-        if body.cc:
-            params["cc"] = [str(e) for e in body.cc]
-        # BCC: previously we always BCC'd franchises@creativemojo.co.uk
-        # for HQ audit. Now that all sends go from/reply-to paul@, that
-        # BCC is no longer required (the audit copy lands in the
-        # ``email_sends`` collection + Outlook Sent Items on paul@).
-        # Honour any explicit BCC the admin set, but drop the implicit
-        # franchises@ one to avoid clutter.
-        bcc_set = {str(e).strip().lower() for e in (body.bcc or [])}
-        params["bcc"] = sorted(bcc_set)
-
-        try:
-            resp = await asyncio.to_thread(resend.Emails.send, params)
-        except Exception as e:  # noqa: BLE001
-            logger.exception("Resend send failed")
-            raise HTTPException(502, detail=f"Resend error: {e}") from e
-
-        resend_id = resp.get("id") if isinstance(resp, dict) else None
-        now = datetime.now(timezone.utc).isoformat()
-        doc = {
-            "id": send_id,
-            "resend_id": resend_id,
-            # RFC 5322 Message-ID we stamped on the outbound headers —
-            # the Phase 5b inbound webhook matches replies' ``In-Reply-To``
-            # / ``References`` headers against this exact string.
-            "message_id": custom_message_id,
-            "contact_id": body.contact_id,
-            "template_id": body.template_id,
-            "sent_by": user.get("email"),
-            "sent_at": now,
-            "to": params["to"],
-            "cc": params.get("cc", []),
-            "bcc": params.get("bcc", []),
-            "subject": params["subject"],
-            "from": params["from"],
-            "reply_to": reply_to,
-            "events": [{"type": "sent", "at": now}],
-            "last_event": "sent",
-            "last_event_at": now,
-        }
-        await db.email_sends.insert_one(doc)
-        doc.pop("_id", None)
-
-        # ----------------------------- Follow-up workflow (Feb 2026)
-        # A "follow-up email" is defined narrowly: the template MUST be
-        # tagged with the Display Name ``FOLLOW UP`` (case-insensitive,
-        # whitespace-trimmed). This means HQ can send unrelated templated
-        # emails (e.g. ``AREA TAKEN``, ``BLANK INTRO``, ``SETUP``,
-        # ``OVERSEAS``) without accidentally marking Follow-up Email 1
-        # as sent and pulling the contact out of the Follow-up Due column.
-        #
-        # Only when a FOLLOW-UP-tagged template is sent do we:
-        #   * stamp the send with ``follow_up_index`` (1-based),
-        #   * bump the contact's ``follow_up_sent_count`` counter,
-        #   * flip the card back from ``follow_up_due`` → ``contacted``.
-        # Manual stages (``qualified`` / ``dormant`` / ``lost`` / ...)
-        # are NEVER overwritten by this path.
-        is_follow_up_template = False
-        if body.template_id:
-            tpl = await db.email_templates.find_one(
-                {"id": body.template_id},
-                {"_id": 0, "display_name": 1},
-            )
-            from follow_up_workflow import is_follow_up_template as _is_fu
-            is_follow_up_template = _is_fu(tpl)
-
-        follow_up_index = 0
-        if is_follow_up_template:
-            # Count how many prior FOLLOW-UP sends this contact has —
-            # not raw templated sends. ``follow_up_index`` is 1 for the
-            # first follow-up, 2 for the next, etc.
-            prior_fu_count = await db.email_sends.count_documents({
-                "contact_id": body.contact_id,
-                "follow_up_index": {"$exists": True, "$ne": None},
-                "id": {"$ne": send_id},
-            })
-            follow_up_index = prior_fu_count + 1
-            await db.email_sends.update_one(
-                {"id": send_id},
-                {"$set": {"follow_up_index": follow_up_index}},
-            )
-            doc["follow_up_index"] = follow_up_index
-            # Bump the contact-level counter + flip pipeline back to
-            # ``contacted`` (only if it was in ``follow_up_due``). Try
-            # both collections; whichever matches wins.
-            fu_now = datetime.now(timezone.utc).isoformat()
-            for coll_name in ("web_form_contacts", "contacts"):
-                bump_res = await db[coll_name].update_one(
-                    {"id": body.contact_id},
-                    {
-                        "$inc": {"follow_up_sent_count": 1},
-                        "$set": {
-                            "last_follow_up_sent_at": fu_now,
-                            "updated_at": fu_now,
-                        },
-                    },
-                )
-                if bump_res.matched_count:
-                    # Only flip if currently in follow_up_due — never
-                    # tramp on Interested / Dormant / Lost.
-                    await db[coll_name].update_one(
-                        {"id": body.contact_id, "pipeline_status": "follow_up_due"},
-                        {"$set": {
-                            "pipeline_status": "contacted",
-                            "pipeline_status_updated_at": fu_now,
-                        }},
-                    )
-                    break
-
-        # Auto-advance a "new" pipeline contact to "contacted" as soon
-        # as a templated email is sent — we've now made contact, so
-        # leaving it in NEW is misleading and inflates the sidebar
-        # badge. Only fires for template sends (template_id present)
-        # and only when the current stage is "new". Free-text replies
-        # don't auto-advance (the user is presumably already past NEW
-        # anyway).
-        auto_advanced = False
-        if body.template_id and (contact.get("pipeline_status") == "new"):
-            now_iso = datetime.now(timezone.utc).isoformat()
-            patch = {
-                "pipeline_status": "contacted",
-                "updated_at": now_iso,
-                "pipeline_status_updated_at": now_iso,
-            }
-            r = await db.web_form_contacts.update_one(
-                {"id": body.contact_id},
-                {"$set": {**patch, "in_pipeline": True}},
-            )
-            if r.matched_count == 0:
-                r = await db.contacts.update_one(
-                    {"id": body.contact_id}, {"$set": patch},
-                )
-            auto_advanced = r.matched_count > 0
-
-        return {"ok": True, "send": doc, "auto_advanced_to_contacted": auto_advanced}
+        return await _send_reply_impl(db, body, user, request)
 
     # -------------------------------------------------------- list per-contact
     @router.get("/email/sends")

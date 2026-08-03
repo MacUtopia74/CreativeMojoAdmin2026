@@ -5684,6 +5684,10 @@ async def update_contact_details(
     EDITABLE = {
         "first_name", "last_name", "email", "telephone", "mobile_phone",
         "address_line_1", "address_line_2", "city", "county", "postcode", "country",
+        # Free-text visual reference the admin scribbles on each pipeline
+        # row. Deliberately not surfaced anywhere else in the app and not
+        # linked to any other data — pure at-a-glance note.
+        "quick_note",
     }
     update: dict = {}
     for key, raw in (body or {}).items():
