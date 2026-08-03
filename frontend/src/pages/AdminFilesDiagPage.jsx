@@ -142,6 +142,46 @@ export default function AdminFilesDiagPage() {
             </div>
           )}
 
+          {report.tree_simulation && Array.isArray(report.tree_simulation.sub_folders) && (
+            <div className="mt-5 rounded-lg border border-stone-200 bg-white p-4">
+              <div className="text-[11px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-2">
+                What the franchise-level page will render
+              </div>
+              <div className="text-xs text-stone-600 mb-3">
+                Simulating <code className="bg-stone-100 px-1.5 py-0.5 rounded">GET /files/tree?prefix={report.tree_simulation.prefix_queried}</code> exactly
+                as the panel would call it.
+              </div>
+              {report.tree_simulation.sub_folders.length === 0 && report.tree_simulation.root_level_files_count === 0 ? (
+                <div className="text-sm text-amber-700">Backend returns 0 folders and 0 root-level files under this prefix.</div>
+              ) : (
+                <>
+                  {report.tree_simulation.sub_folders.length > 0 && (
+                    <table className="w-full text-xs">
+                      <thead className="text-stone-500 uppercase tracking-wider text-[10px]">
+                        <tr><th className="text-left py-1">Folder</th><th className="text-right py-1">Visible</th><th className="text-right py-1">Hidden</th><th className="text-right py-1">Wrong fid</th></tr>
+                      </thead>
+                      <tbody>
+                        {report.tree_simulation.sub_folders.map((s) => (
+                          <tr key={s.name} className="border-t border-stone-100">
+                            <td className="py-1.5 font-semibold">{s.name}</td>
+                            <td className="py-1.5 text-right tabular-nums">{s.visible_files}</td>
+                            <td className="py-1.5 text-right tabular-nums text-stone-400">{s.hidden_files}</td>
+                            <td className="py-1.5 text-right tabular-nums text-amber-700">{s.wrong_fid}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                  {report.tree_simulation.root_level_files_count > 0 && (
+                    <div className="mt-3 text-xs text-stone-700">
+                      + <b>{report.tree_simulation.root_level_files_count}</b> file{report.tree_simulation.root_level_files_count === 1 ? "" : "s"} directly at the root (not inside a sub-folder).
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
           {report.verdict && (
             <div className="mt-5 rounded-lg border border-stone-200 bg-stone-50 p-4 text-sm text-stone-800">
               <div className="text-[11px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-1">Verdict</div>

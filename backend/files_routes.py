@@ -364,6 +364,58 @@ def build_router(db, require_role) -> APIRouter:
                 r2_view["error"] = f"{type(exc).__name__}: {exc}"
         report["r2"] = r2_view
 
+        # ---- Simulate what /files/tree returns for this franchisee ----
+        # Mirrors the exact backend code path the FranchiseeFilesPanel's
+        # second call uses, so we can see per-sub-folder why counts are
+        # 0 in the portal even when rows are bound correctly.
+        tree_view: dict = {}
+        try:
+            cur = db.files_index.find(
+                {"key": prefix_rx},
+                {"_id": 0, "key": 1, "hidden": 1, "size": 1, "franchisee_id": 1},
+            ).limit(5000)
+            rows = await cur.to_list(5000)
+            plen = len(prefix)
+            subs: dict[str, dict] = {}
+            root_files: list[dict] = []
+            for row in rows:
+                rel = row["key"][plen:]
+                if "/" in rel:
+                    top = rel.split("/", 1)[0]
+                    if top not in subs:
+                        subs[top] = {
+                            "name": top,
+                            "visible_files": 0,
+                            "hidden_files": 0,
+                            "wrong_fid": 0,
+                            "sample_keys": [],
+                        }
+                    if row.get("hidden"):
+                        subs[top]["hidden_files"] += 1
+                    else:
+                        subs[top]["visible_files"] += 1
+                    if row.get("franchisee_id") != fid:
+                        subs[top]["wrong_fid"] += 1
+                    if len(subs[top]["sample_keys"]) < 3:
+                        subs[top]["sample_keys"].append(row["key"])
+                else:
+                    if row.get("hidden"):
+                        continue
+                    root_files.append({
+                        "key": row["key"],
+                        "hidden": row.get("hidden", False),
+                        "fid": row.get("franchisee_id"),
+                    })
+            tree_view = {
+                "prefix_queried": prefix,
+                "sub_folders": sorted(subs.values(), key=lambda x: x["name"].lower()),
+                "root_level_files_count": len(root_files),
+                "sample_root_level_files": root_files[:10],
+            }
+        except Exception as exc:  # noqa: BLE001
+            tree_view = {"error": f"{type(exc).__name__}: {exc}"}
+        report["tree_simulation"] = tree_view
+
         # ---- Optional rebind of orphaned / mis-bound rows --------
         if rebind_orphans and prefix:
             targets = await db.files_index.find(
