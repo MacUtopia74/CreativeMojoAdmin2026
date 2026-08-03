@@ -327,12 +327,18 @@ function QuickNoteInput({ contact }) {
       placeholder="Quick note…"
       onBlur={commit}
       onKeyDown={(e) => {
+        // Stop keydown bubbling so Space/Enter/Arrow keys stay inside
+        // the input instead of triggering the row's toggle button or
+        // any parent handlers (Space was collapsing/expanding the row).
+        e.stopPropagation();
         if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); }
         if (e.key === "Escape") {
           if (ref.current) ref.current.value = contact.quick_note || "";
           e.currentTarget.blur();
         }
       }}
+      onKeyUp={(e) => e.stopPropagation()}
+      onKeyPress={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
       disabled={saving}
       title={error ? "Save failed — try again" : "Free-text visual reference"}
