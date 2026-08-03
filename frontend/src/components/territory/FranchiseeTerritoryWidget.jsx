@@ -176,7 +176,8 @@ export default function FranchiseeTerritoryWidget({
 
   const reloadClients = async () => {
     try {
-      const { data } = await api.get("/portal/territory-plus/clients");
+      const params = adminMode && franchiseeId ? { franchisee_id: franchiseeId } : {};
+      const { data } = await api.get("/portal/territory-plus/clients", { params });
       setMyClients(data.items || []);
     } catch (e) { /* noop */ }
   };
@@ -301,42 +302,41 @@ export default function FranchiseeTerritoryWidget({
     const client = clientByHomeKey.get(`cqc:${key}`) || clientByHomeKey.get(`scotland:${key}`);
     if (client) {
       // Already a saved client — open its existing record for editing.
+      // The HQ Note is passed as a separate ``hqNote`` prop so it renders
+      // in its own amber panel WITHOUT touching franchisee-owned fields
+      // (notes textarea, marketing status, contacts). Nothing in the
+      // "Save" pipeline sees the HQ note; the amber panel has its own
+      // save button hitting /admin/franchisees/{id}/hq-home-notes.
       setEditingClient(client);
       return;
     }
-    // Not yet a client. In admin mode we open a lightweight "HQ note
-    // only" modal — HQ is annotating the CQC entry, NOT promoting it
-    // to a franchisee_clients doc. In franchisee/Plus mode we open the
-    // existing seeded modal so they can commit to marking the home.
-    if (adminMode) {
-      const source = String(home.country || "").toLowerCase().includes("scot") ? "scotland" : "cqc";
-      setHqNoteOnly({
-        source,
-        home_id: key,
-        home, // full home doc for the details panel
-        name: home.name || "",
-        postcode: home.postalCode || home.postcode || "",
-        address: home.fullAddress || "",
-        provider: home.providerName || "",
-      });
-      return;
-    }
-    // Franchisee/Plus path — seeded modal (unchanged).
+    // Seed the full client modal from the CQC snapshot so both admin AND
+    // franchisee land on the same UX. In admin mode we ALSO expose the
+    // editable HQ Note panel (Feb 2026 spec — HQ wants Marketing controls
+    // alongside their note without overwriting the franchisee's own
+    // pipeline data). Saving marketing status auto-creates the client
+    // doc — HQ Note stays in ``hq_home_notes`` and is never merged into
+    // the franchisee_clients row.
     const fullAddress = home.fullAddress
       || [home.postalAddressLine1, home.postalAddressLine2, home.postalAddressTownCity, home.postalAddressCounty, home.postalCode]
           .filter(Boolean).join(", ");
+    const source = String(home.country || "").toLowerCase().includes("scot") ? "scotland" : "cqc";
     setEditingClient({
       __seededFromHome: true,
+      __hq_source: source,
+      __hq_home_id: key,
       name: home.name || "",
       address: fullAddress,
       postcode: home.postalCode || home.postcode || "",
       phone: home.mainPhoneNumber || "",
       email: home.email || "",
       website: home.website || "",
-      provider: home.providerName || "",
       manager: home.registrationManagerName || "",
-      latest_inspection: home.lastInspection?.date || home.currentRatings?.overall?.reportDate || "",
+      provider: home.providerName || "",
       cqc_rating: home.currentRatings?.overall?.rating || "",
+      latest_inspection: home.lastInspection?.date || home.currentRatings?.overall?.reportDate || "",
+      source,
+      home_id: key,
       lat: home.latitude || null,
       lng: home.longitude || null,
       contacts: [],
@@ -740,6 +740,7 @@ export default function FranchiseeTerritoryWidget({
             onHqNoteSave={saveHqNote}
             hqSource={editingClient.source}
             hqHomeId={editingClient.home_id}
+            adminFranchiseeId={adminMode ? franchiseeId : null}
             onClose={() => setEditingClient(null)}
             onSaved={() => { reloadClients(); }}
             onDeleted={() => { reloadClients(); }}

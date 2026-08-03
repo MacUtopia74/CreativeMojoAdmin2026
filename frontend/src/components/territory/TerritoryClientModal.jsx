@@ -49,6 +49,12 @@ export default function TerritoryClientModal({
   onHqNoteSave = null,    // async (source, home_id, note) => void
   hqSource = null,        // "cqc" | "scotland" | "wales" | "ni" (admin only)
   hqHomeId = null,        // required with hqSource when adding a fresh note
+  // Admin impersonation — when set, save calls include
+  // ``?franchisee_id=`` so the /portal/territory-plus/clients endpoints
+  // know which franchisee's My Clients list to write to. Franchisee
+  // callers leave this null; their franchisee_id is inferred from
+  // their JWT server-side.
+  adminFranchiseeId = null,
 }) {
   const navigate = useNavigate();
   const [form, setForm] = useState(() => {
@@ -170,11 +176,12 @@ export default function TerritoryClientModal({
         include_for_marketing: c.include_for_marketing !== false,
       }));
       const body = cleaned;
+      const params = adminFranchiseeId ? { franchisee_id: adminFranchiseeId } : undefined;
       let res;
       if (editing) {
-        res = await api.patch(`/portal/territory-plus/clients/${initial.id}`, body);
+        res = await api.patch(`/portal/territory-plus/clients/${initial.id}`, body, { params });
       } else {
-        res = await api.post("/portal/territory-plus/clients", body);
+        res = await api.post("/portal/territory-plus/clients", body, { params });
       }
       onSaved?.(res.data);
       onClose?.();

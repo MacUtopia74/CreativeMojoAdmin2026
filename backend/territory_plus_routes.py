@@ -150,19 +150,26 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-async def _has_access(db, user: dict) -> tuple[bool, dict]:
+async def _has_access(db, user: dict, franchisee_id_override: Optional[str] = None) -> tuple[bool, dict]:
     """Returns (allowed, franchisee_doc).
 
-    Allowed iff the franchisee has territory_plus enabled OR carries
-    the Demo tag (so we can show off the feature on the demo account).
+    Admins may pass ``franchisee_id_override`` to act on behalf of a
+    specific franchisee — this powers the admin HQ view of a franchisee's
+    My Territory+ (Feb 2026). Non-admins ignore the override and get
+    scoped to their own franchisee_id.
     """
-    fid = (user or {}).get("franchisee_id")
+    is_admin = (user or {}).get("role") == "admin"
+    fid = franchisee_id_override if (is_admin and franchisee_id_override) else (user or {}).get("franchisee_id")
     if not fid:
         return False, {}
     fr = await db.franchisees.find_one(
         {"id": fid},
         {"_id": 0, "id": 1, "tags": 1, "portal_modules": 1},
     ) or {}
+    if is_admin and franchisee_id_override:
+        # Admins bypass module + demo gating — they can always operate
+        # on any franchisee they choose.
+        return True, fr
     modules = (fr.get("portal_modules") or {})
     tags = fr.get("tags") or []
     is_demo = any(str(t).strip().lower() == "demo" for t in tags)
@@ -215,8 +222,11 @@ def attach(api: APIRouter, db, require_role):
         }
 
     @api.get("/portal/territory-plus/clients")
-    async def list_clients(user: dict = Depends(require_role("franchisee"))):
-        allowed, fr = await _has_access(db, user)
+    async def list_clients(
+        franchisee_id: Optional[str] = None,
+        user: dict = Depends(require_role("franchisee", "admin")),
+    ):
+        allowed, fr = await _has_access(db, user, franchisee_id)
         _gate(user, allowed)
         out: list = []
         async for doc in db.franchisee_clients.find(
@@ -228,9 +238,10 @@ def attach(api: APIRouter, db, require_role):
     @api.post("/portal/territory-plus/clients")
     async def create_client(
         body: ClientIn,
-        user: dict = Depends(require_role("franchisee")),
+        franchisee_id: Optional[str] = None,
+        user: dict = Depends(require_role("franchisee", "admin")),
     ):
-        allowed, fr = await _has_access(db, user)
+        allowed, fr = await _has_access(db, user, franchisee_id)
         _gate(user, allowed)
         now = _now()
         # Geocode the postcode if the user only supplied that (UX win:
@@ -339,9 +350,10 @@ def attach(api: APIRouter, db, require_role):
     async def update_client(
         client_id: str,
         body: dict,
-        user: dict = Depends(require_role("franchisee")),
+        franchisee_id: Optional[str] = None,
+        user: dict = Depends(require_role("franchisee", "admin")),
     ):
-        allowed, fr = await _has_access(db, user)
+        allowed, fr = await _has_access(db, user, franchisee_id)
         _gate(user, allowed)
         patch = {k: body[k] for k in PERMITTED_FIELDS if k in body}
         # If they updated the postcode and didn't pass new lat/lng,
@@ -372,9 +384,10 @@ def attach(api: APIRouter, db, require_role):
     @api.delete("/portal/territory-plus/clients/{client_id}")
     async def delete_client(
         client_id: str,
-        user: dict = Depends(require_role("franchisee")),
+        franchisee_id: Optional[str] = None,
+        user: dict = Depends(require_role("franchisee", "admin")),
     ):
-        allowed, fr = await _has_access(db, user)
+        allowed, fr = await _has_access(db, user, franchisee_id)
         _gate(user, allowed)
         r = await db.franchisee_clients.delete_one(
             {"id": client_id, "franchisee_id": fr["id"]},
