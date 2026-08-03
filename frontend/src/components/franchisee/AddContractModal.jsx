@@ -15,9 +15,22 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function dayAfter(iso) {
+  if (!iso) return null;
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return null;
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  } catch { return null; }
+}
+
 export default function AddContractModal({ franchisee, previous = null, onClose, onSaved }) {
   const [term, setTerm] = useState(previous?.contract_term_years || 3);
-  const [start, setStart] = useState(previous?.renewal_date || todayISO());
+  // Renewal start = day AFTER previous expiry, so the new term
+  // seamlessly follows on without a one-day gap or one-day overlap.
+  // Only falls back to today for a brand-new (no-previous) contract.
+  const [start, setStart] = useState(dayAfter(previous?.renewal_date) || todayISO());
   const [startingFee, setStartingFee] = useState("");
   const [monthlyFee, setMonthlyFee] = useState(previous?.monthly_fee ? String(previous.monthly_fee) : "");
   const [notes, setNotes] = useState("");
@@ -101,7 +114,13 @@ export default function AddContractModal({ franchisee, previous = null, onClose,
               </label>
               <div className="relative">
                 <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-400" />
-                <input type="date" value={start} onChange={(e) => setStart(e.target.value)}
+                <input type="date" value={start}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    // Guard against transient invalid states so a
+                    // mid-edit doesn't silently reset the date.
+                    if (v === "" || /^\d{4}-\d{2}-\d{2}$/.test(v)) setStart(v);
+                  }}
                   data-testid="contract-start"
                   className="w-full pl-9 pr-3 py-2 text-sm border border-stone-300 rounded-lg" />
               </div>

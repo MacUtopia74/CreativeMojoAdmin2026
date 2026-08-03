@@ -635,7 +635,33 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
   // initial_franchise_fee. All optional at draft time; issuance
   // validates whichever markers the template embeds.
   const [contractTermYears, setContractTermYears] = useState("");
-  const [commencementDate, setCommencementDate] = useState("");
+  // ---------------------------------------------------------------
+  // Commencement date is FULLY controlled by state and — critically —
+  // is NEVER reset by any downstream effect (template change, term
+  // change, renewal toggle, save & reopen, etc.). The initial
+  // suggestion is:
+  //   * For a renewal   → the day AFTER the predecessor's renewal_date
+  //                       (i.e. the day after the previous expiry).
+  //   * For a new draft → left blank so HQ picks explicitly.
+  // A ``userEditedCommencement`` flag guards against re-suggesting
+  // once the user has typed anything (or hit the quick-fill button).
+  // The onChange guard also refuses to blank the state on a transient
+  // invalid input so a mid-edit doesn't silently wipe a previously
+  // valid date.
+  // ---------------------------------------------------------------
+  const suggestedCommencement = (() => {
+    const prev = renewalOf?.renewal_date;
+    if (!prev) return "";
+    try {
+      const d = new Date(prev);
+      if (isNaN(d.getTime())) return "";
+      // Renewal starts the DAY AFTER previous expiry.
+      d.setDate(d.getDate() + 1);
+      return d.toISOString().slice(0, 10);
+    } catch { return ""; }
+  })();
+  const [commencementDate, setCommencementDate] = useState(suggestedCommencement);
+  const [userEditedCommencement, setUserEditedCommencement] = useState(false);
   const [renewalDate, setRenewalDate] = useState("");
   // Renewal fee (GBP, ex-VAT). Applies to BOTH new franchise contracts
   // and renewal contracts — populates `contracts.renewal_fee` on the
@@ -859,11 +885,36 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
                 <input
                   type="date"
                   value={commencementDate}
-                  onChange={(e) => setCommencementDate(e.target.value)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    // Only accept the change if it's a valid YYYY-MM-DD
+                    // string or an intentional clear. This prevents a
+                    // transient mid-edit blank in some browsers from
+                    // silently wiping a previously-good date and letting
+                    // the calendar picker roll back to today.
+                    if (v === "" || /^\d{4}-\d{2}-\d{2}$/.test(v)) {
+                      setCommencementDate(v);
+                      setUserEditedCommencement(true);
+                    }
+                  }}
                   className="w-full mt-1 border rounded-md px-2 py-1.5 text-sm"
                   data-testid="new-contract-commencement-date-input" />
+                {renewalOn && renewalOf?.renewal_date && !userEditedCommencement && suggestedCommencement && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCommencementDate(suggestedCommencement);
+                      setUserEditedCommencement(true);
+                    }}
+                    className="mt-1 inline-flex items-center gap-1 text-[11px] text-amber-800 hover:text-amber-900 underline"
+                    data-testid="new-contract-commencement-suggestion">
+                    Use day after previous expiry ({new Date(suggestedCommencement).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/London" })})
+                  </button>
+                )}
                 <span className="block mt-1 text-[11px] text-stone-500">
-                  The date the term starts. Also used as <code className="bg-stone-100 rounded px-1">term_start_date</code>.
+                  {renewalOn && renewalOf?.renewal_date
+                    ? `The day the renewal term begins. Previous expiry: ${new Date(renewalOf.renewal_date).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/London" })}. Retrospective dates allowed.`
+                    : <>The date the term starts. Also used as <code className="bg-stone-100 rounded px-1">term_start_date</code>.</>}
                 </span>
               </label>
               <label className="block text-sm">
