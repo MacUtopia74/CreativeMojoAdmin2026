@@ -143,3 +143,86 @@ class TestRenewalPredecessorValidation:
         finally:
             admin.delete(f"{BASE_URL}/api/admin/contracts/{draft_id}", timeout=30)
             admin.delete(f"{BASE_URL}/api/admin/contracts/{target_id}", timeout=30)
+
+
+class TestLegacyRenewalOrigin:
+    """Every franchisee onboarded pre-Hub gets their FIRST Hub-generated
+    renewal through the legacy path (no Hub predecessor exists). Locks
+    the invariants around ``renewal_origin`` so the two routes never
+    contradict each other."""
+
+    def test_legacy_renewal_saves_without_supersedes_id(self, admin):
+        franchisee_id, template_id = _pick_franchisee_and_template(admin)
+        r = _create_draft(admin, franchisee_id, template_id,
+                          renewal_origin="legacy",
+                          legacy_predecessor_reference="Paper-2019-Paloma",
+                          legacy_predecessor_expiry_date="2026-07-22",
+                          legacy_predecessor_notes="Old paper agreement, no Hub row.",
+                          commencement_date="2026-07-23",
+                          contract_term_years=2,
+                          monthly_fee=160)
+        assert r.status_code in (200, 201), r.text[:300]
+        cid = r.json()["id"]
+        try:
+            got = admin.get(f"{BASE_URL}/api/admin/contracts/{cid}", timeout=20).json()
+            assert got["renewal_origin"] == "legacy"
+            assert got.get("supersedes_id") in (None, "")
+            assert got["legacy_predecessor_reference"] == "Paper-2019-Paloma"
+            assert got["legacy_predecessor_expiry_date"] == "2026-07-22"
+            assert got["commencement_date"] == "2026-07-23"
+        finally:
+            admin.delete(f"{BASE_URL}/api/admin/contracts/{cid}", timeout=30)
+
+    def test_legacy_renewal_with_supersedes_id_is_rejected(self, admin):
+        """Cross-invariant: renewal_origin='legacy' + supersedes_id set
+        is a contradictory state (paper predecessor AND Hub predecessor
+        at the same time). Must 400."""
+        franchisee_id, template_id = _pick_franchisee_and_template(admin)
+        r = admin.get(f"{BASE_URL}/api/admin/contracts", params={"limit": 200}, timeout=30)
+        rows = r.json().get("items") or r.json()
+        supersedable = [c for c in rows if c.get("status") in ("issued", "signed")]
+        if not supersedable:
+            pytest.skip("no issued/signed contracts to reference")
+        r = _create_draft(admin, franchisee_id, template_id,
+                          renewal_origin="legacy",
+                          supersedes_id=supersedable[0]["id"])
+        assert r.status_code == 400
+        assert "legacy" in r.text.lower()
+
+    def test_hub_origin_without_supersedes_id_is_rejected(self, admin):
+        franchisee_id, template_id = _pick_franchisee_and_template(admin)
+        r = _create_draft(admin, franchisee_id, template_id,
+                          renewal_origin="hub")
+        assert r.status_code == 400
+        assert "supersedes_id" in r.text.lower()
+
+    def test_invalid_renewal_origin_rejected(self, admin):
+        franchisee_id, template_id = _pick_franchisee_and_template(admin)
+        r = _create_draft(admin, franchisee_id, template_id,
+                          renewal_origin="hybrid")
+        assert r.status_code == 400
+        assert "renewal_origin" in r.text.lower()
+
+    def test_patch_cannot_set_legacy_while_supersedes_id_present(self, admin):
+        """Guards the merged-state check in the PATCH handler — a user
+        can't sneak into a contradictory state by setting the two
+        fields in separate calls."""
+        franchisee_id, template_id = _pick_franchisee_and_template(admin)
+        r = admin.get(f"{BASE_URL}/api/admin/contracts", params={"limit": 200}, timeout=30)
+        rows = r.json().get("items") or r.json()
+        supersedable = [c for c in rows if c.get("status") in ("issued", "signed")]
+        if not supersedable:
+            pytest.skip("no issued/signed contracts to reference")
+        # Start with a valid hub renewal.
+        r = _create_draft(admin, franchisee_id, template_id,
+                          renewal_origin="hub", supersedes_id=supersedable[0]["id"])
+        cid = r.json()["id"]
+        try:
+            # Try to flip to legacy while supersedes_id is still present.
+            r = admin.patch(
+                f"{BASE_URL}/api/admin/contracts/{cid}",
+                json={"renewal_origin": "legacy"}, timeout=30,
+            )
+            assert r.status_code == 400, r.text[:300]
+        finally:
+            admin.delete(f"{BASE_URL}/api/admin/contracts/{cid}", timeout=30)

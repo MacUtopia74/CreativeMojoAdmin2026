@@ -98,6 +98,16 @@ DRAFT_EDITABLE_FIELDS = {
     "frozen_territory_map_url_display_text",
     # Free-text notes
     "notes",
+    # Renewal origin — "hub" when superseding a Hub contract via
+    # ``supersedes_id``; "legacy" when the previous agreement predates
+    # the Hub CMS (paper / old system). Legacy renewals carry no
+    # supersedes_id but still render as renewals on the PDF and in the
+    # franchisee's contract history. Optional audit fields let HQ
+    # record the previous paper contract's reference and expiry.
+    "renewal_origin",
+    "legacy_predecessor_reference",
+    "legacy_predecessor_expiry_date",
+    "legacy_predecessor_notes",
 }
 
 
@@ -172,6 +182,54 @@ async def _validate_supersedes_ref(db, supersedes_id: str) -> Dict[str, Any]:
     return prior
 
 
+VALID_RENEWAL_ORIGINS = {"hub", "legacy"}
+
+
+def _validate_renewal_origin(payload: Dict[str, Any]) -> None:
+    """Cross-check ``renewal_origin`` against ``supersedes_id`` so we
+    never end up with a contradictory state:
+
+      * ``renewal_origin == "hub"`` REQUIRES a ``supersedes_id`` that
+        resolves to a supersedable predecessor (checked separately by
+        :func:`_validate_supersedes_ref`).
+      * ``renewal_origin == "legacy"`` FORBIDS ``supersedes_id`` — a
+        legacy renewal by definition has no Hub predecessor.
+
+    Both directions of the invariant are enforced so a UI bug can't
+    quietly produce a "legacy renewal that also supersedes X" hybrid.
+    """
+    origin = payload.get("renewal_origin")
+    if origin is None:
+        return  # not a renewal draft — nothing to check
+    if origin not in VALID_RENEWAL_ORIGINS:
+        raise HTTPException(
+            400,
+            detail=(
+                f"renewal_origin must be one of {sorted(VALID_RENEWAL_ORIGINS)}, "
+                f"got '{origin}'."
+            ),
+        )
+    supersedes = payload.get("supersedes_id")
+    if origin == "hub" and not supersedes:
+        raise HTTPException(
+            400,
+            detail=(
+                "renewal_origin='hub' requires a supersedes_id pointing at "
+                "the previous Hub contract."
+            ),
+        )
+    if origin == "legacy" and supersedes:
+        raise HTTPException(
+            400,
+            detail=(
+                "renewal_origin='legacy' means the previous agreement "
+                "predates the Hub — supersedes_id must be omitted. Set "
+                "renewal_origin='hub' instead if you're linking a Hub "
+                "predecessor."
+            ),
+        )
+
+
 def attach(api, db, require_role):
 
     @api.post("/admin/contracts")
@@ -197,6 +255,8 @@ def attach(api, db, require_role):
         # revoked/superseded/cancelled/expired predecessors are rejected.
         if payload.get("supersedes_id"):
             await _validate_supersedes_ref(db, payload["supersedes_id"])
+        # renewal_origin invariants (see _validate_renewal_origin).
+        _validate_renewal_origin(payload)
 
         now = _now_iso()
         contract_id = _new_id()
@@ -323,6 +383,16 @@ def attach(api, db, require_role):
         # retired predecessor.
         if "supersedes_id" in update and update["supersedes_id"]:
             await _validate_supersedes_ref(db, update["supersedes_id"])
+        # If either renewal_origin or supersedes_id is being touched,
+        # re-run the cross-check against the MERGED (existing + update)
+        # payload so we catch invariant breaks like "set legacy origin
+        # while an existing supersedes_id is still on the doc".
+        if "renewal_origin" in update or "supersedes_id" in update:
+            merged = {
+                "renewal_origin": update.get("renewal_origin", existing.get("renewal_origin")),
+                "supersedes_id": update.get("supersedes_id", existing.get("supersedes_id")),
+            }
+            _validate_renewal_origin(merged)
         now = _now_iso()
         update["updated_at"] = now
         update["updated_by"] = user.get("email")

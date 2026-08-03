@@ -678,11 +678,43 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
   const effectiveRenewalOf = renewalOf
     || franchiseeCandidates.find((r) => r.id === pickedPredecessorId)
     || null;
-  // Renewal mode is ON when either the parent handed us a predecessor
-  // OR the user selected a renewal template that resolved to one.
-  const isRenewalMode = Boolean(effectiveRenewalOf) && (renewalOf ? true : isRenewalTemplate);
-  // Hard block: renewal template selected but no predecessor pickable.
-  const renewalMissingPredecessor = isRenewalTemplate && !effectiveRenewalOf;
+
+  // Legacy-renewal path. When a renewal template is selected but no
+  // supersedable Hub predecessor exists (the common case for
+  // franchisees who signed under the old paper system), we still let
+  // HQ save the draft as a renewal — it's just tagged with
+  // ``renewal_origin: "legacy"`` and no ``supersedes_id`` is sent.
+  // ``legacyAcknowledged`` auto-enables once we've confirmed there's
+  // no Hub predecessor; HQ can also toggle it manually on the parent-
+  // injected renewalOf path when they know the linked contract isn't
+  // actually the one being renewed (e.g. a stale draft they want to
+  // ignore).
+  const hubPredecessorAvailable = Boolean(effectiveRenewalOf);
+  const legacyAvailable = isRenewalTemplate && !hubPredecessorAvailable && !candidatesLoading;
+  const [legacyAcknowledged, setLegacyAcknowledged] = useState(false);
+  useEffect(() => {
+    if (legacyAvailable) setLegacyAcknowledged(true);
+    else if (!isRenewalTemplate) setLegacyAcknowledged(false);
+  }, [legacyAvailable, isRenewalTemplate]);
+  // Optional audit fields captured on legacy renewals so HQ retains a
+  // paper trail without having to re-upload the old PDF.
+  const [legacyPredecessorExpiry, setLegacyPredecessorExpiry] = useState("");
+  const [legacyPredecessorReference, setLegacyPredecessorReference] = useState("");
+  const [legacyPredecessorNotes, setLegacyPredecessorNotes] = useState("");
+  const isLegacyRenewal = isRenewalTemplate && !hubPredecessorAvailable && legacyAcknowledged;
+
+  // Renewal mode is ON when the template is a renewal type AND we
+  // either have a Hub predecessor OR the user has acknowledged the
+  // legacy-renewal path.
+  const isRenewalMode = Boolean(effectiveRenewalOf)
+    || isLegacyRenewal
+    || Boolean(renewalOf);
+  // Hard block ONLY when the user is claiming a Hub renewal (renewal
+  // template + explicit predecessor selection would be required) but
+  // the selected predecessor is invalid. A "template picked, no
+  // predecessor" state is now a legitimate legacy-renewal path (see
+  // ``isLegacyRenewal``) not a block condition.
+  const renewalMissingPredecessor = false;
 
   // Legal name is now AUTO-RESOLVED at issuance from the franchisee's
   // First name + Last name. Leave this field blank — it's an optional
@@ -716,7 +748,10 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
   // valid date.
   // ---------------------------------------------------------------
   const suggestedCommencement = (() => {
-    const prev = effectiveRenewalOf?.renewal_date;
+    // For a Hub renewal, use the linked Hub predecessor's renewal_date.
+    // For a legacy renewal, fall back to any legacy expiry date HQ has
+    // entered as an audit field. Otherwise no suggestion (HQ types it).
+    const prev = effectiveRenewalOf?.renewal_date || legacyPredecessorExpiry;
     if (!prev) return "";
     try {
       const d = new Date(prev);
@@ -819,7 +854,18 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
       if (franchiseeLegalName) body.franchisee_legal_name = franchiseeLegalName;
       if (hqSignatoryName) body.hq_signatory_name = hqSignatoryName;
       if (hqSignatoryTitle) body.hq_signatory_title = hqSignatoryTitle;
-      if (renewalOn && effectiveRenewalOf?.id) body.supersedes_id = effectiveRenewalOf.id;
+      if (renewalOn && effectiveRenewalOf?.id) {
+        body.supersedes_id = effectiveRenewalOf.id;
+        body.renewal_origin = "hub";
+      } else if (isLegacyRenewal) {
+        // Renewal against a paper/pre-Hub agreement — no supersedes_id
+        // gets set (there's no Hub row to link) but the draft is
+        // clearly labelled as a renewal, not a new franchise contract.
+        body.renewal_origin = "legacy";
+        if (legacyPredecessorExpiry) body.legacy_predecessor_expiry_date = legacyPredecessorExpiry;
+        if (legacyPredecessorReference) body.legacy_predecessor_reference = legacyPredecessorReference;
+        if (legacyPredecessorNotes) body.legacy_predecessor_notes = legacyPredecessorNotes;
+      }
       // Dates & term — always pass through when set. Backend accepts
       // ISO date strings; empty strings are dropped so a partially
       // filled draft can still be saved for later completion.
@@ -834,7 +880,7 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
       if (renewalDate) body.renewal_date = renewalDate;
       // Initial Franchise Fee — only sent on non-renewal drafts, so
       // renewals never carry (or overwrite) the historic amount.
-      const isRenewal = renewalOn && effectiveRenewalOf?.id;
+      const isRenewal = (renewalOn && effectiveRenewalOf?.id) || isLegacyRenewal;
       if (!isRenewal && initialFranchiseFee !== "") {
         body.initial_franchise_fee = Number(initialFranchiseFee);
       }
@@ -858,7 +904,7 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
       <div className="bg-white rounded-lg shadow-lg w-full max-w-2xl max-h-[92vh] overflow-y-auto">
         <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-white z-10">
           <h2 className="text-lg font-semibold">
-            {renewalOn && effectiveRenewalOf ? "Renew contract" : "New contract"}
+            {(renewalOn && effectiveRenewalOf) || isLegacyRenewal ? "Renew contract" : "New contract"}
           </h2>
           <button onClick={onClose} className="text-stone-500 hover:text-stone-800" data-testid="new-contract-close-btn">
             <X className="h-5 w-5" />
@@ -924,6 +970,68 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
               )}
             </div>
           )}
+          {legacyAvailable && (
+            <div className="text-xs bg-amber-50 border border-amber-300 rounded p-2.5 space-y-2.5"
+                 data-testid="new-contract-legacy-renewal-panel">
+              <div className="flex items-start gap-2 text-amber-900">
+                <span className="mt-0.5">📜</span>
+                <span>
+                  <strong>Legacy renewal.</strong> No previous Hub contract was found for this franchisee. This renewal will be recorded as following a legacy agreement from the previous contract system — no Hub contract will be marked superseded.
+                </span>
+              </div>
+              <label className="flex items-start gap-2 text-[11px] text-amber-900 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={legacyAcknowledged}
+                  onChange={(e) => setLegacyAcknowledged(e.target.checked)}
+                  className="mt-0.5"
+                  data-testid="new-contract-legacy-acknowledged" />
+                <span>Previous agreement predates the Hub contract system.</span>
+              </label>
+              {isLegacyRenewal && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 border-t border-amber-200 pt-2.5">
+                  <label className="block text-xs">
+                    <span className="uppercase tracking-wider font-bold text-[10px] text-amber-900 block mb-1">
+                      Legacy predecessor expiry (optional)
+                    </span>
+                    <input
+                      type="date"
+                      value={legacyPredecessorExpiry}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === "" || /^\d{4}-\d{2}-\d{2}$/.test(v)) setLegacyPredecessorExpiry(v);
+                      }}
+                      className="w-full border border-amber-300 rounded px-2 py-1.5 text-xs bg-white"
+                      data-testid="new-contract-legacy-expiry" />
+                  </label>
+                  <label className="block text-xs">
+                    <span className="uppercase tracking-wider font-bold text-[10px] text-amber-900 block mb-1">
+                      Legacy contract reference (optional)
+                    </span>
+                    <input
+                      type="text"
+                      value={legacyPredecessorReference}
+                      onChange={(e) => setLegacyPredecessorReference(e.target.value)}
+                      placeholder="e.g. Paper-2019-Paloma"
+                      className="w-full border border-amber-300 rounded px-2 py-1.5 text-xs bg-white"
+                      data-testid="new-contract-legacy-reference" />
+                  </label>
+                  <label className="block text-xs sm:col-span-2">
+                    <span className="uppercase tracking-wider font-bold text-[10px] text-amber-900 block mb-1">
+                      Legacy notes (optional — audit only)
+                    </span>
+                    <textarea
+                      value={legacyPredecessorNotes}
+                      onChange={(e) => setLegacyPredecessorNotes(e.target.value)}
+                      rows={2}
+                      placeholder="Any context about the previous paper agreement — HQ audit only."
+                      className="w-full border border-amber-300 rounded px-2 py-1.5 text-xs bg-white"
+                      data-testid="new-contract-legacy-notes" />
+                  </label>
+                </div>
+              )}
+            </div>
+          )}
           {renewalMissingPredecessor && (
             <div className="text-xs bg-red-50 border border-red-300 rounded p-2.5 text-red-800"
                  data-testid="new-contract-renewal-missing-predecessor">
@@ -977,7 +1085,7 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
           {/* Initial Franchise Fee — first-contract only, ex-VAT.
               Renewal drafts never see this field so the historic
               amount recorded on the initial contract stays frozen. */}
-          {!(renewalOn && effectiveRenewalOf?.id) && (
+          {!((renewalOn && effectiveRenewalOf?.id) || isLegacyRenewal) && (
             <label className="block text-sm" data-testid="new-contract-initial-franchise-fee-row">
               <span className="text-stone-700">Initial Franchise Fee (£)</span>
               <input
@@ -1041,7 +1149,7 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
                   }}
                   className="w-full mt-1 border rounded-md px-2 py-1.5 text-sm"
                   data-testid="new-contract-commencement-date-input" />
-                {renewalOn && effectiveRenewalOf?.renewal_date && !userEditedCommencement && suggestedCommencement && (
+                {(renewalOn && effectiveRenewalOf?.renewal_date || (isLegacyRenewal && legacyPredecessorExpiry)) && !userEditedCommencement && suggestedCommencement && (
                   <button
                     type="button"
                     onClick={() => {
@@ -1056,7 +1164,9 @@ export function NewContractModal({ templates, franchisees, onClose, onCreated, l
                 <span className="block mt-1 text-[11px] text-stone-500">
                   {renewalOn && effectiveRenewalOf?.renewal_date
                     ? `The day the renewal term begins. Previous expiry: ${new Date(effectiveRenewalOf.renewal_date).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/London" })}. Retrospective dates allowed. The PDF's AGREEMENT DATED will match this date.`
-                    : <>The date the term starts. Also used as <code className="bg-stone-100 rounded px-1">term_start_date</code>.</>}
+                    : isLegacyRenewal
+                      ? "The day this renewal term begins. Retrospective dates allowed. The PDF's AGREEMENT DATED will match this date."
+                      : <>The date the term starts. Also used as <code className="bg-stone-100 rounded px-1">term_start_date</code>.</>}
                 </span>
               </label>
               <label className="block text-sm">
