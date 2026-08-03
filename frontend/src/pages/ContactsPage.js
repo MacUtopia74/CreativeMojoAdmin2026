@@ -1952,15 +1952,21 @@ export default function ContactsPage() {
     setLastSelectedId(id);
   };
 
-  const load = async () => {
+  const load = async (signal) => {
     setLoading(true);
     try {
       const params = { tab, search: search || undefined, limit: 10000 };
       if (tab === "pipeline" && stageFilter) params.pipeline_status = stageFilter;
-      const { data } = await api.get("/contacts", { params });
-      setData(data);
-    } catch (e) { setError("Could not load contacts."); }
-    finally { setLoading(false); }
+      const { data } = await api.get("/contacts", { params, signal });
+      if (!signal || !signal.aborted) setData(data);
+    } catch (e) {
+      // Ignore Axios cancellation errors — they're expected when the
+      // user re-triggers a load before the previous one finished.
+      if (e?.name === "CanceledError" || e?.code === "ERR_CANCELED" || e?.name === "AbortError") return;
+      setError("Could not load contacts.");
+    } finally {
+      if (!signal || !signal.aborted) setLoading(false);
+    }
   };
 
   // Open a contact drawer AND mark it as seen so its row un-bolds and the
@@ -1997,17 +2003,22 @@ export default function ContactsPage() {
   };
 
   useEffect(() => {
+    // AbortController prevents stale in-flight loads (from an earlier tab
+    // / search / stageFilter) from clobbering fresher state — the exact
+    // race that intermittently blanked the page (Feb 2026 RCA).
+    const controller = new AbortController();
     const t = setTimeout(() => {
-      load();
-      // Push the applied search into the Recent Searches cache. Only
-      // strings ≥ 2 chars get recorded — single-letter typing is noise.
+      load(controller.signal);
       const q = (search || "").trim();
       if (q.length >= 2) {
         saveRecentSearch(q);
         setRecentSearches(loadRecentSearches());
       }
     }, search ? 350 : 0);
-    return () => clearTimeout(t);
+    return () => {
+      clearTimeout(t);
+      controller.abort();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, stageFilter, search]);
 

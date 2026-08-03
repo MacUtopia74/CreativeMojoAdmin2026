@@ -262,31 +262,46 @@ async def _send_reply_impl(db, body: SendReplyRequest, user: dict, request: Opti
         raise HTTPException(502, detail=f"Resend error: {e}") from e
 
     resend_id = resp.get("id") if isinstance(resp, dict) else None
+    # Categorise this send so the Correspondence timeline can filter
+    # by kind later on. Reply-with-Template → "reply"; contract emails
+    # opt-in via the template's ``category`` metadata. Renewal notices
+    # are just replies with a specific template tag — no special
+    # handling needed here.
+    category = "reply"
+    if body.template_id:
+        tpl_row = await db.email_templates.find_one({"id": body.template_id}, {"_id": 0, "kind": 1, "category": 1})
+        raw = ((tpl_row or {}).get("category") or (tpl_row or {}).get("kind") or "").lower()
+        if raw in ("contract", "contract_issuance"):
+            category = "contract"
+        elif raw in ("renewal", "renewal_notice"):
+            category = "renewal"
+        elif raw in ("eshot", "e-shot", "marketing"):
+            category = "eshot"
+
+    from correspondence_logger import log_outbound
+    await log_outbound(
+        db,
+        contact_id=body.contact_id,
+        resend_id=resend_id,
+        message_id=custom_message_id,
+        send_id=send_id,
+        subject=params["subject"],
+        html=rendered_html,
+        text=None,
+        from_addr=params["from"],
+        to=params["to"],
+        cc=params.get("cc") or [],
+        bcc=params.get("bcc") or [],
+        reply_to=reply_to,
+        attachments=[],
+        category=category,
+        template_id=body.template_id,
+        sent_by=user.get("email"),
+    )
     now = datetime.now(timezone.utc).isoformat()
-    doc = {
-        "id": send_id,
-        "resend_id": resend_id,
-        "message_id": custom_message_id,
-        "contact_id": body.contact_id,
-        "template_id": body.template_id,
-        "sent_by": user.get("email"),
-        "sent_at": now,
-        "to": params["to"],
-        "cc": params.get("cc", []),
-        "bcc": params.get("bcc", []),
-        "subject": params["subject"],
-        "from": params["from"],
-        "reply_to": reply_to,
-        # Persist the rendered body so the Correspondence timeline can
-        # display the exact message the recipient received (previously
-        # we only kept metadata).
-        "html": rendered_html,
-        "events": [{"type": "sent", "at": now}],
-        "last_event": "sent",
-        "last_event_at": now,
-    }
-    await db.email_sends.insert_one(doc)
-    doc.pop("_id", None)
+    # We still need the doc for downstream follow-up + auto-advance
+    # logic below; fetch it back rather than re-composing.
+    doc = await db.email_sends.find_one({"id": send_id}, {"_id": 0}) or {}
 
     is_follow_up_template = False
     if body.template_id:
@@ -599,14 +614,14 @@ def build_resend_router(db, require_role):
     # -------------------------------------------------------- webhook
     @router.post("/email/resend-webhook")
     async def resend_webhook(request: Request):
-        """Receive delivery / open / click events.
+        """Receive delivery / open / click / bounce / complaint events.
 
-        Svix signature verification is kept optional — until the admin
-        sets ``RESEND_WEBHOOK_SECRET`` in env we accept events on trust
-        (they're idempotent and rate-limited by Resend). Once the secret
-        is configured we verify every request and reject 401 on mismatch.
-        """
+        Svix signature verification is required when
+        ``RESEND_WEBHOOK_SECRET`` is set; otherwise events are trusted.
+        Idempotent by ``svix-id`` — a retried delivery from Resend can
+        never append a duplicate row to ``email_sends.events[]``."""
         raw_body = await request.body()
+        svix_id = request.headers.get("svix-id") or None
         if RESEND_WEBHOOK_SECRET:
             try:
                 from svix.webhooks import Webhook, WebhookVerificationError  # type: ignore
@@ -617,6 +632,17 @@ def build_resend_router(db, require_role):
             except WebhookVerificationError as e:
                 logger.warning("Resend webhook signature mismatch: %s", e)
                 raise HTTPException(401, detail="Invalid signature") from e
+
+        # Cheap ledger to reject Svix retries before we do any work.
+        if svix_id:
+            try:
+                await db.svix_events.insert_one({
+                    "svix_id": svix_id,
+                    "channel": "delivery",
+                    "at": datetime.now(timezone.utc).isoformat(),
+                })
+            except Exception:  # noqa: BLE001
+                return {"ok": True, "duplicate_svix": True}
 
         try:
             payload = await request.json()
@@ -676,12 +702,25 @@ def build_resend_router(db, require_role):
 
         match: Optional[dict] = None
         if send_id:
-            match = await db.email_sends.find_one({"id": send_id}, {"_id": 0, "id": 1})
+            match = await db.email_sends.find_one({"id": send_id}, {"_id": 0, "id": 1, "events": 1})
         if not match and resend_id:
-            match = await db.email_sends.find_one({"resend_id": resend_id}, {"_id": 0, "id": 1})
+            match = await db.email_sends.find_one({"resend_id": resend_id}, {"_id": 0, "id": 1, "events": 1})
         if not match:
             # Not one of ours — ack quickly so Resend doesn't retry.
             return {"ok": True, "matched": False}
+
+        # Idempotency: dedupe by svix-id first, then by exact (type, at)
+        # tuple as a fallback. Resend retries on 5xx and network hiccups
+        # so this MUST be safe against replays.
+        prior_events = match.get("events") or []
+        for ev in prior_events:
+            if svix_id and ev.get("svix_id") == svix_id:
+                return {"ok": True, "matched": True, "duplicate": True, "event": short_type}
+            if not svix_id and ev.get("type") == short_type and ev.get("at") == now:
+                return {"ok": True, "matched": True, "duplicate": True, "event": short_type}
+
+        if svix_id:
+            event["svix_id"] = svix_id
 
         await db.email_sends.update_one(
             {"id": match["id"]},

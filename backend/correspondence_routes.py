@@ -99,6 +99,7 @@ async def create_indexes(db):
         await db.email_inbounds.create_index("message_id")
         await db.email_inbounds.create_index("contact_id")
         await db.email_inbounds.create_index("received_at")
+        await db.svix_events.create_index("svix_id", unique=True)
     except Exception:  # noqa: BLE001
         logger.exception("correspondence index creation failed")
 
@@ -126,6 +127,52 @@ async def _fetch_attachments(email_id: str) -> list[dict]:
         return r.json().get("data", [])
 
 
+# Attachment safety caps. Anything larger than these limits is stored
+# as metadata only — the download link stays unavailable. Prevents
+# malicious inbounds from ballooning R2 storage or exposing exotic
+# executables via a friendly-looking filename.
+MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024  # 25MB per file
+MAX_ATTACHMENTS_PER_MESSAGE = 20
+_ALLOWED_ATTACHMENT_MIME_PREFIXES = (
+    "image/", "video/", "audio/", "text/", "application/pdf",
+    "application/msword", "application/vnd.openxmlformats-officedocument",
+    "application/vnd.ms-excel", "application/vnd.ms-powerpoint",
+    "application/zip", "application/x-zip", "application/vnd.rar",
+    "application/octet-stream",  # fallback for well-behaved unknowns
+)
+_BLOCKED_EXTS = {".exe", ".bat", ".cmd", ".scr", ".msi", ".vbs", ".js", ".jar", ".ps1", ".sh"}
+
+
+def _attachment_is_safe(filename: str, content_type: str, size: Optional[int]) -> tuple[bool, str]:
+    """Return (safe, reason) — reason set only when unsafe."""
+    if size is not None and size > MAX_ATTACHMENT_BYTES:
+        return False, f"exceeds {MAX_ATTACHMENT_BYTES} byte limit"
+    ext = "." + (filename.rsplit(".", 1)[-1].lower()) if "." in filename else ""
+    if ext in _BLOCKED_EXTS:
+        return False, f"blocked extension {ext}"
+    ct = (content_type or "").lower()
+    if ct and not any(ct.startswith(p) for p in _ALLOWED_ATTACHMENT_MIME_PREFIXES):
+        return False, f"disallowed content-type {ct}"
+    return True, ""
+
+
+def _sanitize_html_server(html: Optional[str]) -> Optional[str]:
+    """Server-side HTML sanitisation for inbound bodies before storage.
+
+    Strips ``<script>``, inline event handlers, and ``javascript:``
+    URIs so a malicious sender cannot smuggle JS into an admin's browser
+    even if the client-side sanitiser regresses."""
+    if not html:
+        return html
+    s = str(html)
+    s = re.sub(r"<script[\s\S]*?</script>", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"<style[\s\S]*?</style>", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"on[a-z]+\s*=\s*\"[^\"]*\"", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"on[a-z]+\s*=\s*'[^']*'", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"javascript\s*:", "", s, flags=re.IGNORECASE)
+    return s
+
+
 async def _download_attachment_to_r2(att: dict, contact_id: str, message_id: str) -> Optional[dict]:
     """Stream one attachment into R2 and return the persistent record.
 
@@ -138,6 +185,19 @@ async def _download_attachment_to_r2(att: dict, contact_id: str, message_id: str
         return None
     filename = att.get("filename") or "attachment"
     content_type = att.get("content_type") or "application/octet-stream"
+    size = att.get("size")
+    safe, reason = _attachment_is_safe(filename, content_type, size)
+    if not safe:
+        logger.warning("Rejecting inbound attachment %s (%s) — %s", filename, content_type, reason)
+        return {
+            "id": att.get("id"),
+            "filename": filename,
+            "content_type": content_type,
+            "size": size,
+            "r2_key": None,
+            "blocked": True,
+            "block_reason": reason,
+        }
     if not r2_configured():
         return {
             "id": att.get("id"),
@@ -154,6 +214,19 @@ async def _download_attachment_to_r2(att: dict, contact_id: str, message_id: str
             r = await client.get(download_url)
             r.raise_for_status()
             payload = r.content
+        # Enforce byte cap even when Resend didn't declare a size —
+        # defence in depth against manipulated size headers.
+        if len(payload) > MAX_ATTACHMENT_BYTES:
+            logger.warning("Rejecting oversized inbound attachment %s (%s bytes)", filename, len(payload))
+            return {
+                "id": att.get("id"),
+                "filename": filename,
+                "content_type": content_type,
+                "size": len(payload),
+                "r2_key": None,
+                "blocked": True,
+                "block_reason": "oversized",
+            }
     except Exception:  # noqa: BLE001
         logger.exception("attachment download failed for %s", att.get("id"))
         return None
@@ -236,13 +309,25 @@ async def _resolve_contact(db, to_values: list, full: dict) -> dict:
         if prior and prior.get("contact_id"):
             return {"contact_id": prior["contact_id"], "match_method": "thread_header"}
 
-    # 3) sender email exact match (last resort — spoofable, but useful)
+    # 3) sender email exact match — only if there is EXACTLY ONE contact
+    # with that email across BOTH collections combined. If two different
+    # contacts share an email we refuse to guess and leave the row
+    # unmatched so an admin can link it manually. Prevents silently
+    # attaching a reply to the wrong pipeline card.
     sender = _extract_email(full.get("from") or "")
     if sender:
+        hits: list[str] = []
         for coll_name in ("contacts", "web_form_contacts"):
-            contact = await db[coll_name].find_one({"email": sender}, {"_id": 0, "id": 1})
-            if contact:
-                return {"contact_id": contact["id"], "match_method": "sender"}
+            async for row in db[coll_name].find({"email": sender}, {"_id": 0, "id": 1}):
+                hits.append(row["id"])
+                if len(hits) > 1:
+                    break
+            if len(hits) > 1:
+                break
+        if len(hits) == 1:
+            return {"contact_id": hits[0], "match_method": "sender"}
+        if len(hits) > 1:
+            return {"contact_id": None, "match_method": "ambiguous_sender"}
 
     return {"contact_id": None, "match_method": "unmatched"}
 
@@ -274,6 +359,21 @@ def build_correspondence_router(db, require_role):
             logger.warning("inbound webhook signature invalid: %s", exc)
             raise HTTPException(400, "invalid signature") from exc
 
+        # Idempotency by Svix message id — dedupes any retry from
+        # Resend or our own edge before we do any downstream work.
+        # ``svix_events`` is a tiny ledger; TTL isn't strictly required
+        # (millions of entries take up trivial space) but we could add
+        # one via ``created_at`` if noise becomes a problem.
+        try:
+            await db.svix_events.insert_one({
+                "svix_id": headers["svix-id"],
+                "channel": "inbound",
+                "at": datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception:  # noqa: BLE001
+            # DuplicateKeyError from the unique index → already processed.
+            return {"ok": True, "duplicate_svix": True}
+
         if event.get("type") != "email.received":
             return {"ignored": True, "type": event.get("type")}
 
@@ -299,9 +399,12 @@ def build_correspondence_router(db, require_role):
         message_id = full.get("message_id") or data.get("message_id") or email_id
         received_at = full.get("created_at") or datetime.now(timezone.utc).isoformat()
 
-        # Attachments — download to R2 immediately (Resend URLs expire in 1h)
+        # Attachments — download to R2 immediately (Resend URLs expire in 1h).
+        # Hard-cap the count so a malicious inbound can't queue up 500
+        # downloads and thrash the worker.
+        raw_attachments = list((full.get("attachments") or data.get("attachments") or []))[:MAX_ATTACHMENTS_PER_MESSAGE]
         att_records: list[dict] = []
-        for att in (full.get("attachments") or data.get("attachments") or []):
+        for att in raw_attachments:
             rec = await _download_attachment_to_r2(att, str(thread["contact_id"] or "unmatched"), email_id)
             if rec:
                 att_records.append(rec)
@@ -319,7 +422,7 @@ def build_correspondence_router(db, require_role):
             "bcc": full.get("bcc") or [],
             "subject": full.get("subject") or "(no subject)",
             "text": full.get("text"),
-            "html": full.get("html"),
+            "html": _sanitize_html_server(full.get("html")),
             "headers": full.get("headers") or {},
             "in_reply_to": _headers_lookup(full.get("headers") or {}, "In-Reply-To"),
             "references": _headers_lookup(full.get("headers") or {}, "References"),
