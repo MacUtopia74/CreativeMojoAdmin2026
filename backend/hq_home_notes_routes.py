@@ -1,13 +1,19 @@
-"""HQ note **history** attached to CQC / regulator entries per franchisee.
+"""HQ note history attached to CQC / regulator entries per franchisee.
 
 Purpose
 -------
 HQ often makes initial client calls on behalf of a franchisee before
 their territory has fully bedded in. Every one of those touch-points
-needs an audit trail — not a single free-form text field that can be
-silently overwritten. Each save appends a new entry against the same
-``(franchisee_id, source, home_id)`` triple; entries are read back
-newest-first on both the admin panel and the franchisee portal.
+needs to be surfaced back to the franchisee — not stashed in a single
+free-form text field that can be silently overwritten. Each save
+appends a new entry against the same ``(franchisee_id, source, home_id)``
+triple; entries are read back newest-first on both the admin panel and
+the franchisee portal.
+
+This is an **append-only HQ note history with controlled admin
+deletion** — admins can remove a specific entry (e.g. for a typo) and
+those deletions are separately logged to ``hq_home_note_deletions`` so
+the removal itself is traceable. Franchisees have read-only access.
 
 Model
 -----
@@ -181,15 +187,50 @@ def attach(app, db, require_role):
     @api.delete("/admin/franchisees/{franchisee_id}/hq-home-notes/entry/{entry_id}")
     async def delete_entry(
         franchisee_id: str, entry_id: str,
-        _: dict = Depends(require_role("admin")),
+        user: dict = Depends(require_role("admin")),
     ):
         """Admin-only. Removes a specific entry from the history — used
-        when an HQ user made a typo. Not exposed on the portal side."""
+        when an HQ user made a typo. Not exposed on the portal side.
+
+        Every deletion is recorded to ``hq_home_note_deletions`` so
+        removals are traceable (who deleted what, when, and the exact
+        text that was removed). This is deliberately NOT a soft-delete
+        on the main collection so ``GET /hq-home-notes`` remains a
+        clean append-only history for the franchisee — the deletion
+        log is admin-only audit exhaust."""
+        row = await db[COLLECTION].find_one(
+            {"franchisee_id": franchisee_id, "id": entry_id}, {"_id": 0},
+        )
+        if not row:
+            raise HTTPException(404, detail="Entry not found for this franchisee.")
         res = await db[COLLECTION].delete_one({
             "franchisee_id": franchisee_id, "id": entry_id,
         })
         if res.deleted_count == 0:
             raise HTTPException(404, detail="Entry not found for this franchisee.")
+        actor = user.get("id") or user.get("email") or "admin"
+        actor_name = (
+            (f"{user.get('first_name','')} {user.get('last_name','')}".strip())
+            or user.get("name")
+            or user.get("email")
+            or "HQ"
+        )
+        try:
+            await db["hq_home_note_deletions"].insert_one({
+                "id": str(uuid.uuid4()),
+                "entry_id": entry_id,
+                "franchisee_id": franchisee_id,
+                "source": row.get("source"),
+                "home_id": row.get("home_id"),
+                "note_snapshot": row.get("note"),
+                "original_updated_at": row.get("updated_at"),
+                "original_updated_by": row.get("updated_by"),
+                "deleted_by": actor,
+                "deleted_by_name": actor_name,
+                "deleted_at": _iso_now(),
+            })
+        except Exception:  # noqa: BLE001
+            _logger.exception("failed to log hq-home-note deletion")
         return {"deleted": True}
 
     @api.get("/portal/hq-home-notes")

@@ -898,7 +898,7 @@ function HqNoteSection({ hqEntries = [], editable, onSave, onEntryDelete, source
                     {e.updated_by_name || e.updated_by || "HQ"}
                   </div>
                   <div className="text-[10px] text-amber-700 tabular-nums shrink-0">
-                    {e.updated_at ? new Date(e.updated_at).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short" }) : ""}
+                    {e.updated_at ? new Date(e.updated_at).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/London" }) : ""}
                   </div>
                 </div>
                 <div className="text-sm text-stone-950 whitespace-pre-wrap mt-1 leading-relaxed">{e.note}</div>
@@ -973,7 +973,7 @@ function HqNoteSection({ hqEntries = [], editable, onSave, onEntryDelete, source
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <div className="text-[10px] text-amber-700 tabular-nums">
-                  {e.updated_at ? new Date(e.updated_at).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short" }) : ""}
+                  {e.updated_at ? new Date(e.updated_at).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/London" }) : ""}
                 </div>
                 {onEntryDelete && (
                   <button

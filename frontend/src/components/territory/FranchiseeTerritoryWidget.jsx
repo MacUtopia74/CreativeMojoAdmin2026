@@ -1022,7 +1022,7 @@ function HqNoteOnlyModal({ entry, hqEntries = [], onSave, onDelete, onClose }) {
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="text-[10px] text-amber-700 tabular-nums">
-                        {e.updated_at ? new Date(e.updated_at).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short" }) : ""}
+                        {e.updated_at ? new Date(e.updated_at).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/London" }) : ""}
                       </div>
                       {onDelete && (
                         <button
