@@ -39,16 +39,17 @@ const CONTACT_METHOD_OPTIONS = [
 export default function TerritoryClientModal({
   initial, onClose, onSaved, onDeleted,
   cqcSnapshot = null, marketingEnabled = false,
-  // HQ notes (Feb 2026). When ``hqNoteEditable`` is true we render an
-  // editable amber section — used on the admin franchisee page so HQ
-  // can annotate any care home in the territory. When false the same
-  // note renders read-only for the franchisee (Plus portal). Passing
-  // ``null`` for both suppresses the section entirely.
-  hqNote = null,          // { note, updated_at, updated_by } | string | null
+  // HQ notes (Feb 2026 → history refactor). Append-only audit trail
+  // scoped to (franchisee_id, source, home_id). Passed in as an array
+  // of entries (newest-first); each entry carries {id, note, updated_at,
+  // updated_by, updated_by_name}. Admins get an editor + delete controls;
+  // franchisees see the same list rendered read-only.
+  hqEntries = [],
   hqNoteEditable = false,
-  onHqNoteSave = null,    // async (source, home_id, note) => void
-  hqSource = null,        // "cqc" | "scotland" | "wales" | "ni" (admin only)
-  hqHomeId = null,        // required with hqSource when adding a fresh note
+  onHqNoteSave = null,      // async (source, home_id, note) => void
+  onHqEntryDelete = null,   // async (entry_id) => void  (admin only)
+  hqSource = null,          // "cqc" | "scotland" | "wales" | "ni"
+  hqHomeId = null,          // required with hqSource
   // Admin impersonation — when set, save calls include
   // ``?franchisee_id=`` so the /portal/territory-plus/clients endpoints
   // know which franchisee's My Clients list to write to. Franchisee
@@ -319,16 +320,18 @@ export default function TerritoryClientModal({
                 />
               </div>
 
-              {/* HQ note — amber panel. Editable on the admin franchisee
-                  page; read-only on the franchisee portal. Rendered
-                  even for basic-MyTerritory (no franchisee_clients doc)
-                  because the note lives against the CQC entry itself
-                  via /admin/franchisees/{id}/hq-home-notes. */}
-              {(hqNoteEditable || (hqNote && (typeof hqNote === "string" ? hqNote : hqNote.note))) && (
+              {/* HQ notes — append-only history. Editable on the admin
+                  franchisee page; the same list renders read-only on
+                  the franchisee portal. Rendered even for basic
+                  MyTerritory franchisees because notes live against
+                  the CQC entry itself (no franchisee_clients doc
+                  required). */}
+              {(hqNoteEditable || (hqEntries && hqEntries.length > 0)) && (
                 <HqNoteSection
-                  hqNote={hqNote}
+                  hqEntries={hqEntries}
                   editable={hqNoteEditable}
                   onSave={onHqNoteSave}
+                  onEntryDelete={onHqEntryDelete}
                   source={hqSource || initial?.source}
                   homeId={hqHomeId || initial?.home_id}
                 />
@@ -814,36 +817,100 @@ function MarketingCrmPanel({ form, set, marketingEnabled, onOpenMarketingPlus, c
 
 
 // ---------------------------------------------------------------------------
-// HqNoteSection — amber panel showing HQ's note on this care home.
-// Editable on the admin franchisee page, read-only on the portal.
-// Uses the ``/admin/franchisees/{id}/hq-home-notes`` PUT route via the
-// ``onSave`` callback provided by the parent widget.
+// HqNoteSection — HQ notes history against a CQC entry.
+// * Admin view: textarea + "Save HQ note" button that APPENDS a new
+//   entry every time (never overwrites). Success clears the input,
+//   flashes a green confirmation and inserts the new entry at the top
+//   of the visible history. Errors surface in a red banner. Each entry
+//   in the history gets a small "Delete" button so typos can be
+//   cleaned up.
+// * Franchisee view: same list rendered read-only, headed
+//   "Notes from Creative Mojo HQ", with an empty-state message when
+//   there are none.
 // ---------------------------------------------------------------------------
-function HqNoteSection({ hqNote, editable, onSave, source, homeId }) {
-  const initialNote = typeof hqNote === "string"
-    ? hqNote
-    : (hqNote?.note || "");
-  const meta = typeof hqNote === "object" && hqNote ? hqNote : null;
-  const [draft, setDraft] = useState(initialNote);
+function HqNoteSection({ hqEntries = [], editable, onSave, onEntryDelete, source, homeId }) {
+  const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
-  const [dirty, setDirty] = useState(false);
-  const [savedAt, setSavedAt] = useState(null);
-
-  useEffect(() => {
-    setDraft(initialNote);
-    setDirty(false);
-  }, [initialNote]);
+  const [err, setErr] = useState("");
+  const [flash, setFlash] = useState("");
 
   const save = async () => {
-    if (!onSave || !source || !homeId) return;
-    setSaving(true);
+    if (!onSave || !source || !homeId) {
+      setErr("Missing home reference — reopen the modal and try again.");
+      return;
+    }
+    const trimmed = draft.trim();
+    if (!trimmed) {
+      setErr("Type a note before saving.");
+      return;
+    }
+    setSaving(true); setErr(""); setFlash("");
     try {
-      await onSave(source, homeId, draft);
-      setDirty(false);
-      setSavedAt(new Date().toISOString());
+      await onSave(source, homeId, trimmed);
+      setDraft("");
+      setFlash("HQ note saved.");
+      window.setTimeout(() => setFlash(""), 2500);
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e?.message || "Could not save HQ note.");
     } finally { setSaving(false); }
   };
 
+  const deleteEntry = async (id) => {
+    if (!onEntryDelete) return;
+    if (!window.confirm("Delete this HQ note entry? This can't be undone.")) return;
+    try { await onEntryDelete(id); } catch (e) {
+      setErr(e?.response?.data?.detail || e?.message || "Could not delete entry.");
+    }
+  };
+
+  const entries = Array.isArray(hqEntries) ? hqEntries : [];
+
+  // Read-only view (franchisee portal) — no textarea, no editing.
+  if (!editable) {
+    return (
+      <div
+        className="border border-amber-300 bg-amber-50 rounded-lg p-3"
+        data-testid="hq-note-section-readonly"
+      >
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-amber-900 flex items-center gap-1.5">
+            Notes from Creative Mojo HQ
+            <span className="px-1.5 py-0.5 text-[9px] bg-amber-200 text-amber-900 rounded uppercase tracking-wider">Read-only</span>
+          </div>
+          {entries.length > 0 && (
+            <span className="text-[10px] text-amber-800 tabular-nums">
+              {entries.length} entr{entries.length === 1 ? "y" : "ies"}
+            </span>
+          )}
+        </div>
+        {entries.length === 0 ? (
+          <div className="text-xs italic text-amber-800/80 text-center py-3">
+            No notes from Creative Mojo HQ.
+          </div>
+        ) : (
+          <ul className="space-y-2">
+            {entries.map((e) => (
+              <li key={e.id}
+                  data-testid={`hq-note-entry-${e.id}`}
+                  className="bg-white/70 border border-amber-200 rounded-md px-3 py-2.5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="text-[11px] font-bold text-amber-900">
+                    {e.updated_by_name || e.updated_by || "HQ"}
+                  </div>
+                  <div className="text-[10px] text-amber-700 tabular-nums shrink-0">
+                    {e.updated_at ? new Date(e.updated_at).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short" }) : ""}
+                  </div>
+                </div>
+                <div className="text-sm text-stone-950 whitespace-pre-wrap mt-1 leading-relaxed">{e.note}</div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  }
+
+  // Editable view (admin franchisee page).
   return (
     <div
       className="border border-amber-300 bg-amber-50 rounded-lg p-3"
@@ -852,47 +919,76 @@ function HqNoteSection({ hqNote, editable, onSave, source, homeId }) {
       <div className="flex items-center justify-between mb-1.5">
         <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-amber-900 flex items-center gap-1.5">
           HQ Note
-          {!editable && (
-            <span className="px-1.5 py-0.5 text-[9px] bg-amber-200 text-amber-900 rounded uppercase tracking-wider">Read-only</span>
-          )}
+          <span className="text-amber-700 normal-case tracking-normal font-normal">· appended to a history</span>
         </div>
-        {meta?.updated_at && (
-          <div className="text-[10px] text-amber-800">
-            Updated {new Date(meta.updated_at).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short" })}
-          </div>
-        )}
+        <span className="text-[10px] text-amber-800 tabular-nums">
+          {entries.length} entr{entries.length === 1 ? "y" : "ies"}
+        </span>
       </div>
-      {editable ? (
-        <>
-          <textarea
-            value={draft}
-            onChange={(e) => { setDraft(e.target.value); setDirty(true); }}
-            rows={3}
-            placeholder="Notes from HQ about this care home — visible to the franchisee if they have MyTerritory+."
-            data-testid="hq-note-textarea"
-            className="w-full px-3 py-2 text-sm bg-white border border-amber-300 rounded-md focus:outline-none focus:border-amber-500"
-          />
-          <div className="mt-2 flex items-center justify-between gap-2">
-            <div className="text-[10px] text-amber-800">
-              {savedAt && !dirty && <span>Saved.</span>}
-              {dirty && <span>Unsaved changes.</span>}
-            </div>
-            <button
-              type="button"
-              onClick={save}
-              disabled={!dirty || saving}
-              data-testid="hq-note-save"
-              className="px-3 py-1.5 text-[10px] uppercase tracking-wider font-bold rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40"
-            >
-              {saving ? "Saving…" : draft.trim() ? "Save HQ note" : "Clear HQ note"}
-            </button>
-          </div>
-        </>
-      ) : (
-        <div className="text-sm text-amber-950 whitespace-pre-wrap leading-relaxed">
-          {initialNote || <span className="text-amber-700 italic">No HQ note.</span>}
+      <textarea
+        value={draft}
+        onChange={(e) => { setDraft(e.target.value); setErr(""); }}
+        rows={3}
+        placeholder="Add a new HQ note — the franchisee will see the running history on their MyTerritory+ portal."
+        data-testid="hq-note-textarea"
+        className="w-full px-3 py-2 text-sm bg-white border border-amber-300 rounded-md focus:outline-none focus:border-amber-500"
+      />
+      {err && (
+        <div data-testid="hq-note-error" className="mt-2 text-xs bg-red-50 border border-red-200 text-red-700 rounded-md px-3 py-2">
+          {err}
         </div>
       )}
+      {flash && !err && (
+        <div data-testid="hq-note-flash" className="mt-2 text-xs bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-md px-3 py-2">
+          {flash}
+        </div>
+      )}
+      <div className="mt-2 flex items-center justify-end">
+        <button
+          type="button"
+          onClick={save}
+          disabled={saving || !draft.trim()}
+          data-testid="hq-note-save"
+          className="px-3 py-1.5 text-[10px] uppercase tracking-wider font-bold rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40"
+        >
+          {saving ? "Saving…" : "Save HQ note"}
+        </button>
+      </div>
+
+      {/* History — newest first. Each entry shows who added it and when.
+          Admins can delete individual entries; franchisees never see
+          this widget (they get the read-only variant above). */}
+      <div className="mt-3 space-y-2" data-testid="hq-note-history">
+        {entries.length === 0 ? (
+          <div className="text-[11px] italic text-amber-800/80 border border-dashed border-amber-200 rounded-md px-3 py-3 text-center">
+            No HQ notes on file yet — the first save above will land here.
+          </div>
+        ) : entries.map((e) => (
+          <div key={e.id}
+               data-testid={`hq-note-entry-${e.id}`}
+               className="bg-white/70 border border-amber-200 rounded-md px-3 py-2.5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="text-[11px] font-bold text-amber-900">
+                {e.updated_by_name || e.updated_by || "HQ"}
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="text-[10px] text-amber-700 tabular-nums">
+                  {e.updated_at ? new Date(e.updated_at).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short" }) : ""}
+                </div>
+                {onEntryDelete && (
+                  <button
+                    type="button"
+                    onClick={() => deleteEntry(e.id)}
+                    className="text-[10px] uppercase tracking-wider text-red-600 hover:text-red-800"
+                    data-testid={`hq-note-entry-delete-${e.id}`}
+                  >Delete</button>
+                )}
+              </div>
+            </div>
+            <div className="text-sm text-stone-950 whitespace-pre-wrap mt-1 leading-relaxed">{e.note}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

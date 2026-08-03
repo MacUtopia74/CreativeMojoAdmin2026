@@ -158,20 +158,45 @@ export default function FranchiseeTerritoryWidget({
     })();
   }, [forceBasic, adminMode, franchiseeId]);
 
-  // Persist an HQ note on a CQC entry via the admin endpoint. Empty
-  // strings delete the row backend-side.
+  // Append a new HQ note entry to the audit trail for this
+  // (franchisee, home) pair. Never overwrites — the backend inserts a
+  // fresh row every time. Returns the new entry so the caller can
+  // slot it into local state immediately (avoiding a full reload).
+  // Errors bubble up so the modal can surface them.
   const saveHqNote = async (source, homeId, note) => {
-    if (!adminMode || !franchiseeId) return;
+    if (!adminMode || !franchiseeId) {
+      throw new Error("Admin session required to save HQ notes.");
+    }
+    const { data } = await api.post(
+      `/admin/franchisees/${franchiseeId}/hq-home-notes/${source}/${homeId}`,
+      { note },
+    );
+    // Refresh the local map so both the modal (that just saved) and
+    // any other visible chrome (row badges, counters) update
+    // immediately without waiting for a full remount.
     try {
-      await api.put(
-        `/admin/franchisees/${franchiseeId}/hq-home-notes/${source}/${homeId}`,
-        { note },
+      const { data: refreshed } = await api.get(
+        `/admin/franchisees/${franchiseeId}/hq-home-notes`,
       );
-      // Refresh the local map so the amber badge/panel updates
-      // immediately without waiting for a full remount.
-      const { data } = await api.get(`/admin/franchisees/${franchiseeId}/hq-home-notes`);
-      setHqNotesMap(data?.map || {});
-    } catch (e) { /* noop */ }
+      setHqNotesMap(refreshed?.map || {});
+    } catch {
+      /* silent — the modal will keep the entry it received from the POST */
+    }
+    return data?.entry || null;
+  };
+
+  // Admin-only: remove a specific entry from the history (typo fix).
+  const deleteHqEntry = async (entryId) => {
+    if (!adminMode || !franchiseeId) return;
+    await api.delete(
+      `/admin/franchisees/${franchiseeId}/hq-home-notes/entry/${entryId}`,
+    );
+    try {
+      const { data: refreshed } = await api.get(
+        `/admin/franchisees/${franchiseeId}/hq-home-notes`,
+      );
+      setHqNotesMap(refreshed?.map || {});
+    } catch { /* silent */ }
   };
 
   const reloadClients = async () => {
@@ -733,11 +758,12 @@ export default function FranchiseeTerritoryWidget({
               ? homeById.get(editingClient.home_id) || null
               : null}
             marketingEnabled={marketingEnabled}
-            hqNote={editingClient.source && editingClient.home_id
-              ? hqNotesMap[`${editingClient.source}:${editingClient.home_id}`] || null
-              : null}
+            hqEntries={editingClient.source && editingClient.home_id
+              ? hqNotesMap[`${editingClient.source}:${editingClient.home_id}`] || []
+              : []}
             hqNoteEditable={adminMode}
             onHqNoteSave={saveHqNote}
+            onHqEntryDelete={adminMode ? deleteHqEntry : null}
             hqSource={editingClient.source}
             hqHomeId={editingClient.home_id}
             adminFranchiseeId={adminMode ? franchiseeId : null}
@@ -753,8 +779,9 @@ export default function FranchiseeTerritoryWidget({
         {hqNoteOnly && (
           <HqNoteOnlyModal
             entry={hqNoteOnly}
-            hqNote={hqNotesMap[`${hqNoteOnly.source}:${hqNoteOnly.home_id}`] || null}
+            hqEntries={hqNotesMap[`${hqNoteOnly.source}:${hqNoteOnly.home_id}`] || []}
             onSave={saveHqNote}
+            onDelete={deleteHqEntry}
             onClose={() => setHqNoteOnly(null)}
           />
         )}
@@ -809,12 +836,11 @@ export default function FranchiseeTerritoryWidget({
 // spec). Lightweight modal — no client fields, just the amber HQ Note
 // panel + home context header.
 // ---------------------------------------------------------------------------
-function HqNoteOnlyModal({ entry, hqNote, onSave, onClose }) {
-  const initialNote = (typeof hqNote === "string" ? hqNote : hqNote?.note) || "";
-  const meta = typeof hqNote === "object" && hqNote ? hqNote : null;
-  const [draft, setDraft] = useState(initialNote);
+function HqNoteOnlyModal({ entry, hqEntries = [], onSave, onDelete, onClose }) {
+  const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
-  const [dirty, setDirty] = useState(false);
+  const [err, setErr] = useState("");
+  const [flash, setFlash] = useState("");
 
   const home = entry.home || {};
   const address = home.fullAddress
@@ -833,12 +859,28 @@ function HqNoteOnlyModal({ entry, hqNote, onSave, onClose }) {
   };
 
   const save = async () => {
-    setSaving(true);
+    const trimmed = draft.trim();
+    if (!trimmed) {
+      setErr("Type a note before saving.");
+      return;
+    }
+    setSaving(true); setErr(""); setFlash("");
     try {
-      await onSave(entry.source, entry.home_id, draft);
-      setDirty(false);
-      onClose?.();
+      await onSave(entry.source, entry.home_id, trimmed);
+      setDraft("");
+      setFlash("HQ note saved.");
+      window.setTimeout(() => setFlash(""), 2500);
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e?.message || "Could not save HQ note.");
     } finally { setSaving(false); }
+  };
+
+  const deleteEntry = async (id) => {
+    if (!onDelete) return;
+    if (!window.confirm("Delete this HQ note entry? This can't be undone.")) return;
+    try { await onDelete(id); } catch (e) {
+      setErr(e?.response?.data?.detail || e?.message || "Could not delete entry.");
+    }
   };
 
   return (
@@ -921,28 +963,81 @@ function HqNoteOnlyModal({ entry, hqNote, onSave, onClose }) {
             )}
           </div>
 
-          {/* HQ Note editor */}
+          {/* HQ Note editor + history */}
           <div className="p-5 space-y-3">
             <div className="flex items-center justify-between gap-2">
-              <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-amber-700">HQ Note</div>
-              {meta?.updated_at && (
-                <div className="text-[10px] text-stone-500">
-                  Last updated {new Date(meta.updated_at).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short" })}
-                </div>
-              )}
+              <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-amber-700">
+                HQ Note history
+                <span className="ml-1.5 text-stone-500">({hqEntries.length})</span>
+              </div>
             </div>
             <div className="text-xs text-stone-600 bg-stone-50 border border-stone-200 rounded-md p-2.5 leading-relaxed">
-              This note is attached to the CQC entry — the franchisee&apos;s pipeline is
-              unaffected. Plus franchisees will see this as a read-only amber panel.
+              Each save appends a new entry to the audit trail — the franchisee sees the same history as a read-only panel on their MyTerritory+ client card.
             </div>
             <textarea
               value={draft}
-              onChange={(e) => { setDraft(e.target.value); setDirty(true); }}
-              rows={5}
+              onChange={(e) => { setDraft(e.target.value); setErr(""); }}
+              rows={4}
               placeholder="e.g. Spoke to Kate, revisit April. Manager currently away."
               data-testid="hq-note-only-textarea"
               className="w-full px-3 py-2 text-sm bg-amber-50 border border-amber-300 rounded-lg focus:outline-none focus:border-amber-500 text-stone-950"
             />
+            {err && (
+              <div data-testid="hq-note-only-error" className="text-xs bg-red-50 border border-red-200 text-red-700 rounded-md px-3 py-2">
+                {err}
+              </div>
+            )}
+            {flash && !err && (
+              <div data-testid="hq-note-only-flash" className="text-xs bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-md px-3 py-2">
+                {flash}
+              </div>
+            )}
+            <div className="flex items-center justify-end">
+              <button
+                type="button"
+                onClick={save}
+                disabled={saving || !draft.trim()}
+                data-testid="hq-note-only-save"
+                className="px-3 py-2 text-xs uppercase tracking-wider font-bold rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40"
+              >
+                {saving ? "Saving…" : "Save HQ note"}
+              </button>
+            </div>
+
+            {/* Persistent history — newest first. Each entry shows who
+                added it and when. Admin gets a small delete button per
+                entry for typo cleanup; not exposed to franchisees. */}
+            <div className="mt-3 space-y-2" data-testid="hq-note-only-history">
+              {hqEntries.length === 0 ? (
+                <div className="text-xs italic text-stone-500 border border-dashed border-stone-200 rounded-md px-3 py-4 text-center">
+                  No HQ notes on file yet.
+                </div>
+              ) : hqEntries.map((e) => (
+                <div key={e.id}
+                     data-testid={`hq-note-only-entry-${e.id}`}
+                     className="border border-amber-200 bg-amber-50/60 rounded-md px-3 py-2.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="text-[11px] font-bold text-amber-900">
+                      {e.updated_by_name || e.updated_by || "HQ"}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="text-[10px] text-amber-700 tabular-nums">
+                        {e.updated_at ? new Date(e.updated_at).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short" }) : ""}
+                      </div>
+                      {onDelete && (
+                        <button
+                          type="button"
+                          onClick={() => deleteEntry(e.id)}
+                          className="text-[10px] uppercase tracking-wider text-red-600 hover:text-red-800"
+                          data-testid={`hq-note-only-entry-delete-${e.id}`}
+                        >Delete</button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-sm text-stone-950 whitespace-pre-wrap mt-1 leading-relaxed">{e.note}</div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -951,16 +1046,7 @@ function HqNoteOnlyModal({ entry, hqNote, onSave, onClose }) {
             type="button"
             onClick={onClose}
             className="px-3 py-2 text-xs uppercase tracking-wider font-bold rounded bg-white border border-stone-300 text-stone-700 hover:bg-stone-50"
-          >Cancel</button>
-          <button
-            type="button"
-            onClick={save}
-            disabled={saving || (!dirty && !initialNote && !draft)}
-            data-testid="hq-note-only-save"
-            className="px-3 py-2 text-xs uppercase tracking-wider font-bold rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40"
-          >
-            {saving ? "Saving…" : draft.trim() ? "Save HQ note" : "Clear HQ note"}
-          </button>
+          >Close</button>
         </div>
       </div>
     </div>
