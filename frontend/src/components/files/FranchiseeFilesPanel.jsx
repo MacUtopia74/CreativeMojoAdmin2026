@@ -91,10 +91,25 @@ export default function FranchiseeFilesPanel({ franchisee, canUpload = true, loc
   const fetchOwnRoot = useCallback(async () => {
     // Cancel any in-flight root discovery for the previous franchisee.
     if (rootAbortRef.current) rootAbortRef.current.abort();
+
+    // Fast path: the franchisee doc carries a persisted canonical R2
+    // prefix (``r2_root_prefix``), which is now the source of truth
+    // for the panel's root. Use it directly and skip the discovery
+    // call — this is what prevents a rename from silently re-pointing
+    // the panel at a freshly-derived (and empty) second root.
+    const canonical = franchisee?.r2_root_prefix;
+    if (canonical) {
+      const withSlash = canonical.endsWith("/") ? canonical : `${canonical}/`;
+      flog("fetchOwnRoot: using persisted canonical prefix", { canonical: withSlash });
+      setOwnRootPrefix(withSlash);
+      setLoading(false);
+      return;
+    }
+
     const ac = new AbortController();
     rootAbortRef.current = ac;
     setLoading(true); setErr("");
-    flog("fetchOwnRoot() start", { franchisee_id: franchisee?.id });
+    flog("fetchOwnRoot() start (no persisted canonical — discovering)", { franchisee_id: franchisee?.id });
     try {
       const { data } = await api.get("/files/tree", {
         params: { prefix: "franchisees/", franchisee_id: franchisee.id },
@@ -147,7 +162,7 @@ export default function FranchiseeFilesPanel({ franchisee, canUpload = true, loc
     } finally {
       if (rootAbortRef.current === ac) setLoading(false);
     }
-  }, [franchisee.id]);
+  }, [franchisee.id, franchisee.r2_root_prefix]);
 
   const fetchRoot = fetchOwnRoot;
 

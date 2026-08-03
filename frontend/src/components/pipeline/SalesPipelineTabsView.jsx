@@ -178,6 +178,11 @@ export default function SalesPipelineTabsView({
               key={c.id}
               contact={c}
               isExpanded={expandedId === c.id}
+              // When any row is expanded, dim every OTHER row so the
+              // eye stays on the focused entry. The expanded row keeps
+              // full opacity + gets the tint/keyline treatment; the
+              // rest fade to ~35% until the user collapses.
+              isDimmed={expandedId !== null && expandedId !== c.id}
               onToggle={() => setExpandedId(expandedId === c.id ? null : c.id)}
               onOpenContact={onOpenContact}
               onReplyContact={onReplyContact}
@@ -214,7 +219,7 @@ export default function SalesPipelineTabsView({
 // Expanded content sits directly below the top bar inside the same
 // tinted outer container so the keyline wraps them as one unit.
 function PipelineRow({
-  contact, isExpanded, onToggle,
+  contact, isExpanded, isDimmed, onToggle,
   onOpenContact, onReplyContact, onContactUpdated, onOpenPostcodeMap,
   onStageChange, onDemote, onConvert, onLinkExisting, onMarkFollowUpSent,
   onChangeSource, onTemperatureChange,
@@ -231,7 +236,10 @@ function PipelineRow({
   return (
     <li
       data-testid={`pipeline-row-${c.id}`}
-      className={`${rowTint} border ${borderTint} rounded-xl overflow-hidden`}
+      data-dimmed={isDimmed ? "true" : undefined}
+      className={`${rowTint} border ${borderTint} rounded-xl overflow-hidden transition-opacity duration-200 ${
+        isDimmed ? "opacity-35 hover:opacity-70" : "opacity-100"
+      }`}
     >
       {/* Single outer container. When expanded we thicken the keyline
           so the whole unit reads as one, but the fill stays the same

@@ -195,6 +195,7 @@ def build_router(db, require_role) -> APIRouter:
     async def files_vault_diag(
         q: str = Query(..., description="franchisee_id, franchise_number, organisation, or name substring"),
         rebind_orphans: bool = Query(False, description="If true, also bind any orphan/mismatched rows under the R2 prefix to this franchisee_id."),
+        canonicalise: bool = Query(False, description="If true, resolve & persist the canonical r2_root_prefix on the franchisee doc (idempotent — never overwrites an existing value)."),
         _user: dict = Depends(require_role("admin")),
     ):
         raw = (q or "").strip()
@@ -252,7 +253,30 @@ def build_router(db, require_role) -> APIRouter:
 
         f = candidates[0]
         fid = f["id"]
-        prefix = derive_franchisee_prefix(f)
+        # Split the diagnostic view of the prefix into two:
+        #   * canonical  — what the panel + all writes will use. Comes
+        #     from the persisted ``r2_root_prefix`` on the franchisee
+        #     doc when set; otherwise falls back to the freshly-computed
+        #     slug.
+        #   * fresh      — what ``compute_fresh_franchisee_prefix``
+        #     WOULD generate today from the franchisee's current
+        #     organisation / franchise_number / name fields.
+        # A gap between the two ("canonical_matches_fresh: false")
+        # means the franchisee has been renamed at least once since
+        # their files were first bootstrapped — expected and safe now
+        # that the canonical prefix is immutable.
+        from franchisee_folders import (
+            canonical_franchisee_prefix,
+            compute_fresh_franchisee_prefix,
+            resolve_and_persist_canonical_prefix,
+        )
+        canonicalise_applied = False
+        if canonicalise:
+            await resolve_and_persist_canonical_prefix(db, f)
+            canonicalise_applied = True
+        canonical = canonical_franchisee_prefix(f)
+        fresh = compute_fresh_franchisee_prefix(f)
+        prefix = canonical  # what the panel actually uses
 
         report: dict = {
             "query": raw,
@@ -262,8 +286,14 @@ def build_router(db, require_role) -> APIRouter:
                 "organisation": f.get("organisation"),
                 "name": f"{f.get('first_name','')} {f.get('last_name','')}".strip(),
                 "email": f.get("email"),
+                "r2_root_prefix_persisted": bool(f.get("r2_root_prefix")),
+                "r2_root_prefix_set_at": f.get("r2_root_prefix_set_at"),
             },
             "expected_r2_prefix": prefix,
+            "canonical_r2_prefix": canonical,
+            "fresh_r2_prefix_from_current_fields": fresh,
+            "canonical_matches_fresh": bool(canonical and fresh and canonical == fresh),
+            "canonicalise_applied": canonicalise_applied,
             "r2_configured": r2_configured(),
         }
 
@@ -513,6 +543,18 @@ def build_router(db, require_role) -> APIRouter:
         except Exception as exc:  # noqa: BLE001
             root_discovery = {"error": f"{type(exc).__name__}: {exc}"}
         report["root_discovery_simulation"] = root_discovery
+
+        # Top-level red flag: more than one root folder → panel had to
+        # disambiguate. Now that r2_root_prefix is persisted, this can
+        # only happen for franchisees whose files were split across
+        # legacy slugs BEFORE canonicalisation. Surface it so an admin
+        # can decide whether to migrate the legacy rows onto the
+        # canonical root.
+        report["multiple_roots_detected"] = bool(
+            root_discovery
+            and isinstance(root_discovery.get("returned_folder_count"), int)
+            and root_discovery["returned_folder_count"] > 1
+        )
 
         # ---- Optional rebind of orphaned / mis-bound rows --------
         if rebind_orphans and prefix:

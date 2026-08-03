@@ -125,12 +125,14 @@ export default function TerritoryBuilderPage() {
   useEffect(() => {
     if (!contactId) return;
     (async () => {
+      let loaded = null;
       try {
         const c = await api.get(`/contacts/${contactId}`);
         // Endpoint returns {contact: {...}, _source_collection: "..."} so
         // unwrap the nested object (falling back to the raw data for any
         // older code-paths that already returned a flat contact).
-        setContact(c.data?.contact || c.data);
+        loaded = c.data?.contact || c.data;
+        setContact(loaded);
       } catch (e) {
         console.error("[TerritoryBuilder] Failed to load contact", contactId, e);
       }
@@ -140,8 +142,36 @@ export default function TerritoryBuilderPage() {
       } catch (e) {
         console.error("[TerritoryBuilder] Failed to load existing plans for contact", contactId, e);
       }
+      // Auto-prefill the postcode search from the contact's own postcode
+      // so the map centres on them straight away. We only do this when:
+      //   * a specific plan hasn't been requested (plan_id wins),
+      //   * the postcode input is still empty (user hasn't typed yet),
+      //   * the contact actually has a postcode on file.
+      // The postcode-lookup call is fire-and-forget — a failure just
+      // leaves the field pre-populated so the admin can hit Search.
+      const contactPostcode = (loaded?.postcode || "").trim();
+      if (!planId && contactPostcode && !postcode) {
+        setPostcode(contactPostcode);
+        try {
+          const r = await api.get("/territory/postcode-lookup", {
+            params: { postcode: contactPostcode },
+          });
+          if (r.data?.latitude != null) {
+            setCentre({ lat: r.data.latitude, lng: r.data.longitude });
+            const placeBit = r.data.matched_place ? `${r.data.matched_place} · ` : "";
+            setCentreLabel(
+              `${placeBit}${r.data.postcode} · ${r.data.admin_district || r.data.region || ""}`,
+            );
+            setPostcode(r.data.postcode);
+          }
+        } catch (e) {
+          // Silent — the postcode may be malformed on the contact, in
+          // which case we simply leave the raw value in the input.
+          console.warn("[TerritoryBuilder] contact postcode prefill lookup failed", e);
+        }
+      }
     })();
-  }, [contactId]);
+  }, [contactId, planId]);
 
   // Hydrate existing franchisee territory
   useEffect(() => {

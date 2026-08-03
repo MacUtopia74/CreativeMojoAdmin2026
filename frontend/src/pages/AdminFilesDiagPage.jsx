@@ -16,14 +16,19 @@ export default function AdminFilesDiagPage() {
   const [error, setError] = useState("");
   const [rebinding, setRebinding] = useState(false);
 
-  const run = async (rebind = false) => {
+  const run = async (opts = {}) => {
     const term = q.trim();
     if (!term) { setError("Enter a franchise number, name, or organisation"); return; }
+    const { rebind = false, canonicalise = false } = opts;
     if (rebind) setRebinding(true); else setLoading(true);
     setError(""); setReport(null);
     try {
       const { data } = await api.get(`/admin/files/diag`, {
-        params: { q: term, rebind_orphans: rebind || undefined },
+        params: {
+          q: term,
+          rebind_orphans: rebind || undefined,
+          canonicalise: canonicalise || undefined,
+        },
       });
       setReport(data);
     } catch (e) {
@@ -55,7 +60,7 @@ export default function AdminFilesDiagPage() {
             type="text"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") run(false); }}
+            onKeyDown={(e) => { if (e.key === "Enter") run({}); }}
             placeholder="0095   or   Samantha Whiteman   or   Bexhill"
             className="w-full border border-stone-300 rounded-lg pl-9 pr-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-stone-900"
             data-testid="diag-input"
@@ -63,7 +68,7 @@ export default function AdminFilesDiagPage() {
         </div>
         <button
           type="button"
-          onClick={() => run(false)}
+          onClick={() => run({})}
           disabled={loading || !q.trim()}
           className="inline-flex items-center gap-2 px-4 py-2.5 bg-stone-900 text-white rounded-lg text-sm font-semibold hover:bg-stone-800 disabled:opacity-50"
           data-testid="diag-run"
@@ -93,7 +98,7 @@ export default function AdminFilesDiagPage() {
               <li key={c.id}>
                 <button
                   type="button"
-                  onClick={() => { setQ(c.franchise_number || c.id); run(false); }}
+                  onClick={() => { setQ(c.franchise_number || c.id); run({}); }}
                   className="underline"
                 >
                   {c.franchise_number} · {c.organisation || c.name}
@@ -122,6 +127,79 @@ export default function AdminFilesDiagPage() {
             <Stat label="Bound to WRONG franchisee" value={idx.under_expected_prefix_wrong_id} tone={idx.under_expected_prefix_wrong_id > 0 ? "warn" : "ok"} />
             <Stat label="Files visible to franchisee (portal)" value={idx.matching_franchisee_id_visible} tone={idx.matching_franchisee_id_visible === 0 ? "warn" : "ok"} />
           </div>
+
+          {/* Canonical vs Fresh prefix — surfaces whether the panel's
+              root has been "locked" (persisted r2_root_prefix) and
+              flags mismatches between the persisted root and the slug
+              you'd derive from the current fields (which is a rename
+              indicator, not a bug). */}
+          <div className="mt-5 rounded-lg border border-stone-200 bg-stone-50 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1">
+                <div className="text-[11px] uppercase tracking-[0.2em] font-bold text-stone-500 mb-2">
+                  Canonical R2 root
+                </div>
+                <dl className="text-xs text-stone-700 space-y-1.5">
+                  <div className="flex gap-3">
+                    <dt className="w-40 text-stone-500">Panel uses (canonical):</dt>
+                    <dd>
+                      <code className="bg-white px-1.5 py-0.5 rounded border border-stone-200 text-[11px]">
+                        {report.canonical_r2_prefix || "— none —"}
+                      </code>
+                      {report.franchisee.r2_root_prefix_persisted ? (
+                        <span className="ml-2 text-emerald-700 text-[11px] font-semibold">🔒 persisted</span>
+                      ) : (
+                        <span className="ml-2 text-amber-700 text-[11px] font-semibold">⚠ not yet persisted</span>
+                      )}
+                      {report.franchisee.r2_root_prefix_set_at && (
+                        <span className="ml-2 text-stone-500 text-[11px]">
+                          set {new Date(report.franchisee.r2_root_prefix_set_at).toLocaleString()}
+                        </span>
+                      )}
+                    </dd>
+                  </div>
+                  <div className="flex gap-3">
+                    <dt className="w-40 text-stone-500">Fresh from fields:</dt>
+                    <dd>
+                      <code className="bg-white px-1.5 py-0.5 rounded border border-stone-200 text-[11px]">
+                        {report.fresh_r2_prefix_from_current_fields || "— unresolvable —"}
+                      </code>
+                      {report.canonical_matches_fresh === false && (
+                        <span className="ml-2 text-amber-700 text-[11px] font-semibold">
+                          ⚠ differs — franchisee was renamed after bootstrap
+                        </span>
+                      )}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+              {!report.franchisee.r2_root_prefix_persisted && (
+                <button
+                  type="button"
+                  onClick={() => run({ canonicalise: true })}
+                  disabled={loading || rebinding}
+                  className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-stone-900 text-white text-xs font-semibold hover:bg-stone-800 disabled:opacity-50"
+                  data-testid="diag-canonicalise"
+                >
+                  🔒 Persist canonical root
+                </button>
+              )}
+            </div>
+            {report.canonicalise_applied && (
+              <div className="mt-3 text-xs text-emerald-700">✅ Canonical R2 root was resolved and persisted. Future renames won&apos;t create a second root.</div>
+            )}
+          </div>
+
+          {report.multiple_roots_detected && (
+            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              <div className="flex items-center gap-2 font-bold uppercase tracking-wider text-[11px] mb-2">
+                <AlertTriangle className="w-3.5 h-3.5" /> Multiple R2 roots detected
+              </div>
+              This franchisee has files across more than one <code className="bg-white/60 px-1 py-0.5 rounded">franchisees/&lt;slug&gt;/</code> prefix.
+              The panel will consistently pick the one flagged &quot;canonical&quot; above (either the persisted root, or the one with the most files if not yet persisted). Legacy roots remain browsable via
+              <code className="bg-white/60 px-1 py-0.5 rounded mx-1">/files</code> but should eventually be migrated onto the canonical prefix so all uploads live together.
+            </div>
+          )}
 
           {nearbyPrefixesExist && (
             <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
@@ -290,7 +368,7 @@ export default function AdminFilesDiagPage() {
               </div>
               <button
                 type="button"
-                onClick={() => run(true)}
+                onClick={() => run({ rebind: true })}
                 disabled={rebinding}
                 className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-amber-500 text-stone-950 rounded-lg text-sm font-bold hover:bg-amber-400 disabled:opacity-50"
                 data-testid="diag-rebind"
