@@ -71,9 +71,19 @@ def test_convert_and_bootstrap_gives_matching_views(s):
     cid, fid = _make_and_convert(s, suffix)
     try:
         # Give the franchise a number so its slug is stable & predictable.
+        # Pick a free number dynamically so runs don't collide (PATCH now
+        # hard-blocks duplicate franchise_numbers — see
+        # franchisee_duplicate_guard.py).
+        fn = None
+        for i in range(99400, 99500):
+            candidate = str(i).zfill(4)
+            chk = s.get(f"{BASE}/api/admin/franchisees/by-number/{candidate}", timeout=15)
+            if chk.status_code == 200 and chk.json().get("count", 0) == 0:
+                fn = candidate; break
+        assert fn, "no free franchise_number available for sidebar-parity test"
         r = s.patch(f"{BASE}/api/franchisees/{fid}",
-                    json={"franchise_number": "9993"}, timeout=20)
-        assert r.status_code == 200
+                    json={"franchise_number": fn}, timeout=20)
+        assert r.status_code == 200, r.text[:200]
 
         # Explicit bootstrap so we don't race with the convert-flow's
         # side-effect bootstrap.

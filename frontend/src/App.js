@@ -45,6 +45,7 @@ import InfoLandingPage from "@/pages/InfoLandingPage";
 import AdminLandingPagesPage from "@/pages/AdminLandingPagesPage";
 import AdminInboundUnmatchedPage from "@/pages/AdminInboundUnmatchedPage";
 import AdminFilesDiagPage from "@/pages/AdminFilesDiagPage";
+import AdminFranchiseeDuplicatesPage from "@/pages/AdminFranchiseeDuplicatesPage";
 // Invoices module (merged from Pay-Paperwork)
 import InvoiceList from "@/pages/invoices/InvoiceList";
 import CreateInvoice from "@/pages/invoices/CreateInvoice";
@@ -179,6 +180,7 @@ export default function App() {
               <Route path="/admin/landing-pages" element={<AdminLandingPagesPage />} />
               <Route path="/admin/inbound-unmatched" element={<AdminInboundUnmatchedPage />} />
               <Route path="/admin/files-diag" element={<AdminFilesDiagPage />} />
+              <Route path="/admin/franchisee-duplicates" element={<AdminFranchiseeDuplicatesPage />} />
               <Route path="/admin/announcements" element={<AnnouncementsPage />} />
               <Route path="/admin/logs" element={<LogsPage />} />
               <Route path="/admin/youtube" element={<AdminYouTubePage />} />

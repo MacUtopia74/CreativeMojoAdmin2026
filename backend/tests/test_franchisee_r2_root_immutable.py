@@ -82,7 +82,16 @@ def test_rename_does_not_create_second_root(s, scratch):
     scratch["franchisee_ids"].append(fid)
 
     # PATCH-assign a franchise number so the derived slug is predictable.
-    r = s.patch(f"{BASE}/api/franchisees/{fid}", json={"franchise_number": "9997"}, timeout=20)
+    # Dynamically pick a free number so re-runs don't collide with a
+    # previous run's un-cleaned franchisee (post-PATCH-uniqueness-guard).
+    fn = None
+    for i in range(99700, 99800):
+        candidate = str(i).zfill(4)
+        chk = s.get(f"{BASE}/api/admin/franchisees/by-number/{candidate}", timeout=15)
+        if chk.status_code == 200 and chk.json().get("count", 0) == 0:
+            fn = candidate; break
+    assert fn, "no free franchise_number available for rename-guard test"
+    r = s.patch(f"{BASE}/api/franchisees/{fid}", json={"franchise_number": fn}, timeout=20)
     assert r.status_code == 200, r.text[:200]
 
     # Explicit bootstrap so the r2_root_prefix gets persisted (the

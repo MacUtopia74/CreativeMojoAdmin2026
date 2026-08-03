@@ -216,14 +216,28 @@ def build_router(db, require_role) -> APIRouter:
         by_id = await db.franchisees.find_one({"id": raw})
         if by_id:
             candidates.append(by_id)
-        # Franchise number (accepts "46", "0046", 46)
+        # Franchise number (accepts "46", "0046", 46) — return ALL
+        # matches so callers can never silently commit to the first
+        # record when a franchise_number is duplicated (see the 0001
+        # TEMP / Ipswich & Colchester incident).
         if not candidates and re.fullmatch(r"\d{1,6}", raw):
             padded = raw.zfill(4)
-            for fn in (raw, padded, int(raw)):
-                by_fn = await db.franchisees.find_one({"franchise_number": fn})
-                if by_fn:
-                    candidates.append(by_fn)
-                    break
+            variants: list = [raw, padded]
+            try:
+                variants.append(int(raw))
+            except ValueError:
+                pass
+            # Dedupe while preserving order.
+            seen: set = set()
+            unique_variants: list = []
+            for v in variants:
+                if v in seen:
+                    continue
+                seen.add(v)
+                unique_variants.append(v)
+            candidates = await db.franchisees.find(
+                {"franchise_number": {"$in": unique_variants}}, {"_id": 0},
+            ).to_list(20)
         # Free-text on organisation / first / last name
         if not candidates:
             rex = re.compile(re.escape(raw), re.IGNORECASE)
@@ -244,19 +258,21 @@ def build_router(db, require_role) -> APIRouter:
                 "hint": "No franchisee matched — try franchise number, organisation, or full name.",
             }
         if len(candidates) > 1:
+            # Never silently collapse — surface every candidate with
+            # enough context to disambiguate (files count, portal
+            # user, canonical prefix).
+            from franchisee_admin_routes import _hydrate_franchisee_report
+            hydrated = [await _hydrate_franchisee_report(db, c) for c in candidates]
             return {
                 "query": raw,
                 "matched_franchisees": len(candidates),
-                "hint": "Ambiguous — pass an exact franchisee_id or franchise number to narrow.",
-                "candidates": [
-                    {
-                        "id": c["id"],
-                        "franchise_number": c.get("franchise_number"),
-                        "organisation": c.get("organisation"),
-                        "name": f"{c.get('first_name','')} {c.get('last_name','')}".strip(),
-                    }
-                    for c in candidates
-                ],
+                "ambiguous": True,
+                "hint": (
+                    "Multiple franchisees match this query — likely a duplicated "
+                    "franchise number. Pass an exact franchisee_id (?q=<uuid>) "
+                    "to diagnose one specifically."
+                ),
+                "candidates": hydrated,
             }
 
         f = candidates[0]
@@ -1251,6 +1267,51 @@ def build_router(db, require_role) -> APIRouter:
         info = presigned_put_url(key, content_type=ct, expires_in=600)
         return {**info, "prefix": prefix, "filename": safe}
 
+    # -----------------------------------------------------------------
+    # Shared helper: resolve a franchise-number → franchisee_id
+    # deterministically, refusing on ambiguity. Historical file upload
+    # code silently picked the first Mongo match, which mis-bound files
+    # when two records shared a franchise_number (the 0001 TEMP /
+    # Ipswich & Colchester incident). This helper is the single choke
+    # point; it never returns a value if the number resolves to more
+    # than one franchisee — the caller is expected to 409.
+    async def _resolve_franchisee_from_prefix_number(
+        key: str,
+    ) -> tuple[Optional[str], Optional[dict]]:
+        """Return ``(franchisee_id, ambiguity_info)``.
+
+        * ``franchisee_id`` is set only when a single franchisee is
+          unambiguously matched. On zero or many matches it is None.
+        * ``ambiguity_info`` is populated ONLY when >1 franchisees
+          share the deduced number, and holds the details a 409
+          response and the server log both need.
+        """
+        slug_match = re.match(r"^franchisees/([^/]+)/", key or "")
+        if not slug_match:
+            return None, None
+        num_match = re.match(r"^(\d{1,5})", slug_match.group(1))
+        if not num_match:
+            return None, None
+        num = num_match.group(1).zfill(4)
+        # Look up ALL matches — never use find_one here. See
+        # franchisee_duplicate_guard for the rationale.
+        matches = await db.franchisees.find(
+            {"franchise_number": {"$in": [num, int(num)]}},
+            {"_id": 0, "id": 1, "franchise_number": 1, "organisation": 1,
+             "first_name": 1, "last_name": 1},
+        ).to_list(10)
+        if len(matches) == 1:
+            return matches[0]["id"], None
+        if len(matches) == 0:
+            return None, None
+        # Ambiguous — refuse.
+        return None, {
+            "franchise_number": num,
+            "target_r2_prefix": slug_match.group(0),
+            "candidate_franchisee_ids": [m["id"] for m in matches],
+            "candidates": matches,
+        }
+
     @router.post("/files/upload-complete")
     async def files_upload_complete(
         body: dict,
@@ -1266,20 +1327,40 @@ def build_router(db, require_role) -> APIRouter:
             raise HTTPException(404, detail="Object not found in R2 (upload may have failed)")
         scope_info = _classify_uploaded_key(key)
         franchisee_id = body.get("franchisee_id")
-        # If the key starts with franchisees/{slug}/, try to deduce franchisee_id
+        # If the key lives under a franchisee root and the caller
+        # didn't supply an exact franchisee_id, deduce from the
+        # leading number in the slug — but ONLY when the number
+        # resolves unambiguously. Duplicate franchise_numbers (which
+        # historically silently mis-bound files) now hard-block the
+        # upload: no orphan/wrongly-bound files_index row is created.
         if scope_info["scope"] == SCOPE_FRANCHISEE and not franchisee_id:
-            slug_match = re.match(r"^franchisees/([^/]+)/", key)
-            if slug_match:
-                # Try to find by the leading 4-digit prefix
-                num_match = re.match(r"^(\d{1,5})", slug_match.group(1))
-                if num_match:
-                    num = num_match.group(1).zfill(4)
-                    f = await db.franchisees.find_one(
-                        {"franchise_number": {"$in": [num, int(num)]}},
-                        {"_id": 0, "id": 1},
-                    )
-                    if f:
-                        franchisee_id = f["id"]
+            deduced_fid, ambiguity = await _resolve_franchisee_from_prefix_number(key)
+            if ambiguity:
+                logger.warning(
+                    "files.upload-complete rejected — ambiguous franchise_number %s "
+                    "(candidates=%s, key=%s, admin=%s)",
+                    ambiguity["franchise_number"],
+                    ambiguity["candidate_franchisee_ids"],
+                    key, user.get("email"),
+                )
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "error": "ambiguous_franchise_number",
+                        "message": (
+                            f"More than one franchisee uses number "
+                            f"{ambiguity['franchise_number']}. The upload could "
+                            f"not be assigned safely. Reconcile the duplicate "
+                            f"or resubmit with an explicit franchisee_id."
+                        ),
+                        "franchise_number": ambiguity["franchise_number"],
+                        "target_r2_prefix": ambiguity["target_r2_prefix"],
+                        "candidate_franchisee_ids": ambiguity["candidate_franchisee_ids"],
+                        "attempted_filename": key.rsplit("/", 1)[-1],
+                        "attempted_by": user.get("email"),
+                    },
+                )
+            franchisee_id = deduced_fid
         name = key.rsplit("/", 1)[-1]
         parent_prefix = key[: -len(name)] if name else key
         doc = {
@@ -1326,6 +1407,42 @@ def build_router(db, require_role) -> APIRouter:
             suffix += 1
             stem, _, ext = safe.rpartition(".")
             key = f"{clean_prefix}{stem}_v{suffix}.{ext}" if stem else f"{clean_prefix}{safe}_v{suffix}"
+
+        # Deduce franchisee_id BEFORE writing to R2 so an ambiguous
+        # franchise_number cannot leave an orphan R2 object behind. If
+        # the caller passed an explicit franchisee_id we skip the
+        # deduction entirely; that is the preferred path for admin
+        # uploads happening inside a franchisee scope.
+        scope_info = _classify_uploaded_key(key)
+        if scope_info["scope"] == SCOPE_FRANCHISEE and not franchisee_id:
+            deduced_fid, ambiguity = await _resolve_franchisee_from_prefix_number(key)
+            if ambiguity:
+                logger.warning(
+                    "files.upload rejected — ambiguous franchise_number %s "
+                    "(candidates=%s, key=%s, admin=%s)",
+                    ambiguity["franchise_number"],
+                    ambiguity["candidate_franchisee_ids"],
+                    key, user.get("email"),
+                )
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "error": "ambiguous_franchise_number",
+                        "message": (
+                            f"More than one franchisee uses number "
+                            f"{ambiguity['franchise_number']}. The upload could "
+                            f"not be assigned safely. Reconcile the duplicate "
+                            f"or resubmit with an explicit franchisee_id."
+                        ),
+                        "franchise_number": ambiguity["franchise_number"],
+                        "target_r2_prefix": ambiguity["target_r2_prefix"],
+                        "candidate_franchisee_ids": ambiguity["candidate_franchisee_ids"],
+                        "attempted_filename": safe,
+                        "attempted_by": user.get("email"),
+                    },
+                )
+            franchisee_id = deduced_fid
+
         # Read into memory then push to R2. For phase 3 file sizes
         # (PDFs/photos/audio, typically <50 MB) this is fine.
         data = await file.read()
@@ -1334,20 +1451,6 @@ def build_router(db, require_role) -> APIRouter:
             get_client().put_object(Bucket=R2_BUCKET, Key=key, Body=data, ContentType=ct)
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(502, detail=f"R2 put_object failed: {exc}") from exc
-        scope_info = _classify_uploaded_key(key)
-        # Auto-deduce franchisee_id from key if scoped that way
-        if scope_info["scope"] == SCOPE_FRANCHISEE and not franchisee_id:
-            slug_match = re.match(r"^franchisees/([^/]+)/", key)
-            if slug_match:
-                num_match = re.match(r"^(\d{1,5})", slug_match.group(1))
-                if num_match:
-                    num = num_match.group(1).zfill(4)
-                    f = await db.franchisees.find_one(
-                        {"franchise_number": {"$in": [num, int(num)]}},
-                        {"_id": 0, "id": 1},
-                    )
-                    if f:
-                        franchisee_id = f["id"]
         name = key.rsplit("/", 1)[-1]
         parent_prefix = key[: -len(name)] if name else key
         doc = {

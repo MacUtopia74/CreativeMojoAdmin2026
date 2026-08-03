@@ -67,6 +67,12 @@ export default function AdminFilesDiagPage() {
           shows their folder full. Enter their franchise number (e.g. <code className="px-1.5 py-0.5 bg-stone-100 rounded text-xs">0095</code>)
           or a name/organisation, then click <b>Diagnose</b>. If orphans are found, click <b>Auto-fix</b>.
         </p>
+        <p className="text-xs text-stone-500 mt-2">
+          Suspect a duplicate franchise number? See the{" "}
+          <a href="/admin/franchisee-duplicates" className="underline font-semibold text-red-700 hover:text-red-900"
+             data-testid="link-duplicates-report">Franchise number duplicates report</a>{" "}
+          — every number used by ≥2 records is listed there.
+        </p>
       </div>
 
       <div className="flex gap-2 items-center">
@@ -155,21 +161,68 @@ export default function AdminFilesDiagPage() {
       )}
 
       {Array.isArray(report?.candidates) && report.candidates.length > 1 && (
-        <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          Multiple matches — narrow with an exact franchise number:
-          <ul className="mt-2 space-y-1">
-            {report.candidates.map((c) => (
-              <li key={c.id}>
-                <button
-                  type="button"
-                  onClick={() => { setQ(c.franchise_number || c.id); run({}); }}
-                  className="underline"
-                >
-                  {c.franchise_number} · {c.organisation || c.name}
-                </button>
-              </li>
-            ))}
-          </ul>
+        <div className="mt-4 rounded-xl border-2 border-red-300 bg-red-50 p-4"
+             data-testid="diag-ambiguous-candidates">
+          <div className="flex items-center gap-2 font-bold uppercase tracking-wider text-[11px] text-red-800 mb-2">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            {report.matched_franchisees} franchisees share this number
+          </div>
+          <div className="text-xs text-red-900 mb-3">
+            {report.hint || "Diagnostic refuses to pick one silently — click a candidate to diagnose it specifically."}
+          </div>
+          <table className="w-full text-xs">
+            <thead className="text-red-900 uppercase tracking-wider text-[10px]">
+              <tr>
+                <th className="text-left py-1">Franchise #</th>
+                <th className="text-left py-1">Organisation</th>
+                <th className="text-left py-1">Name</th>
+                <th className="text-left py-1">Email</th>
+                <th className="text-left py-1">Status</th>
+                <th className="text-left py-1">Created</th>
+                <th className="text-left py-1">Portal user</th>
+                <th className="text-right py-1">Files</th>
+                <th className="text-left py-1">Canonical R2 root</th>
+                <th className="text-left py-1">R2 prefixes seen</th>
+                <th className="text-left py-1">Contact origin</th>
+                <th className="py-1"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {report.candidates.map((c) => (
+                <tr key={c.id} className="border-t border-red-200 align-top">
+                  <td className="py-1.5 font-mono">{c.franchise_number}</td>
+                  <td className="py-1.5">{c.organisation}</td>
+                  <td className="py-1.5">{[c.first_name, c.last_name].filter(Boolean).join(" ")}</td>
+                  <td className="py-1.5">{c.email || c.mojo_email || "—"}</td>
+                  <td className="py-1.5">{c.status || "—"}</td>
+                  <td className="py-1.5">{c.created_at ? new Date(c.created_at).toLocaleDateString() : "—"}</td>
+                  <td className="py-1.5">
+                    {Array.isArray(c.linked_portal_users) && c.linked_portal_users.length > 0
+                      ? c.linked_portal_users.map((u) => u.email).join(", ")
+                      : <span className="text-red-500">— none —</span>}
+                  </td>
+                  <td className="py-1.5 text-right tabular-nums">{c.files_index?.visible ?? 0}</td>
+                  <td className="py-1.5 font-mono text-[10px]">{c.canonical_r2_prefix || "—"}</td>
+                  <td className="py-1.5 font-mono text-[10px]">
+                    {(c.files_index?.top_level_r2_prefixes || []).length === 0
+                      ? "—"
+                      : (c.files_index.top_level_r2_prefixes.map((p) => `${p.prefix} (${p.files})`).join(", "))}
+                  </td>
+                  <td className="py-1.5 font-mono text-[10px]">{c.converted_from_contact_id || "—"}</td>
+                  <td className="py-1.5 text-right">
+                    <button
+                      type="button"
+                      onClick={() => { setQ(c.id); run({}); }}
+                      className="px-2 py-1 bg-stone-900 text-white rounded text-[10px] font-semibold hover:bg-stone-800"
+                      data-testid={`diag-candidate-${c.id}`}
+                    >
+                      Diagnose by ID
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 

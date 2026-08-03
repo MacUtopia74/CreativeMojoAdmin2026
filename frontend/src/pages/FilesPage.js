@@ -407,7 +407,7 @@ function ShareModal({ file, onClose }) {
 // the file is POSTed to /api/files/upload which streams the body to R2 and
 // indexes it. This bypasses the need for R2 bucket CORS (our API token
 // scope doesn't permit setting CORS).
-const UploadButton = forwardRef(function UploadButton({ prefix, onUploaded }, externalRef) {
+const UploadButton = forwardRef(function UploadButton({ prefix, franchiseeId, onUploaded }, externalRef) {
   const inputRef = useRef(null);
   const [progress, setProgress] = useState(null); // { current, total, name, pct }
 
@@ -416,6 +416,11 @@ const UploadButton = forwardRef(function UploadButton({ prefix, onUploaded }, ex
     const form = new FormData();
     form.append("file", file);
     form.append("prefix", prefix || "admin/uploads/");
+    // Pass the exact franchisee_id whenever we're uploading inside a
+    // franchisee folder. This bypasses the server's franchise-number
+    // deduction (which is hard-blocked when the number is ambiguous)
+    // and guarantees the files_index row is bound to the right record.
+    if (franchiseeId) form.append("franchisee_id", franchiseeId);
     const backendBase = process.env.REACT_APP_BACKEND_URL || "";
     await new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
@@ -438,7 +443,7 @@ const UploadButton = forwardRef(function UploadButton({ prefix, onUploaded }, ex
       xhr.onerror = () => reject(new Error("Network error during upload"));
       xhr.send(form);
     });
-  }, [prefix]);
+  }, [prefix, franchiseeId]);
 
   const handleFiles = async (fileList) => {
     const files = Array.from(fileList || []);
@@ -460,7 +465,7 @@ const UploadButton = forwardRef(function UploadButton({ prefix, onUploaded }, ex
   // handler can route dropped files through the same upload pipeline
   // (progress UI, error handling, onUploaded callback) without duplicating
   // any logic.
-  useImperativeHandle(externalRef, () => ({ handleFiles, isUploading: () => !!progress }), [progress, uploadFile]);
+  useImperativeHandle(externalRef, () => ({ handleFiles, isUploading: () => !!progress }), [progress, uploadFile, franchiseeId]);
 
   return (
     <>
@@ -578,6 +583,19 @@ export default function FilesPage() {
   const [scopeTree, setScopeTree] = useState(null);
   const [tree, setTree] = useState(null);
   const [prefix, setPrefix] = useState(initialPrefix);
+  // Derive the active franchisee_id whenever the user is browsing a
+  // franchisees/<slug>/ scope. Passed to UploadButton so uploads inside
+  // a franchisee folder carry the exact immutable franchisee_id and
+  // never rely on server-side franchise-number deduction (which is now
+  // hard-blocked for duplicated numbers — see franchisee_duplicate_guard).
+  const activeFranchiseeId = (() => {
+    if (!prefix || !prefix.startsWith("franchisees/") || !scopeTree?.franchisees) return null;
+    // Match the longest prefix — the user may be deep inside a
+    // sub-folder like franchisees/0095-.../Artwork/. We compare on the
+    // sidebar franchisee's canonical prefix.
+    const hit = scopeTree.franchisees.find((f) => f.prefix && prefix.startsWith(f.prefix));
+    return hit?.franchisee_id || null;
+  })();
   const [search, setSearch] = useState("");
   const [results, setResults] = useState(null);
   // Folder-scoped search — independent of the top-bar global search.
@@ -946,7 +964,12 @@ export default function FilesPage() {
                       </button>
                     </div>
                     <NewFolderButton prefix={prefix} onCreated={() => { reloadTree(prefix); reloadScopes(); }} />
-                    <UploadButton ref={uploadRef} prefix={prefix} onUploaded={() => { reloadTree(prefix); reloadScopes(); }} />
+                    <UploadButton
+                      ref={uploadRef}
+                      prefix={prefix}
+                      franchiseeId={activeFranchiseeId}
+                      onUploaded={() => { reloadTree(prefix); reloadScopes(); }}
+                    />
                     {/* Folder-scoped search — only renders when the user has
                         drilled into a sub-folder. Saves them sifting through
                         the 1.7k-file global search when they know roughly where

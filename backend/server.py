@@ -2144,6 +2144,42 @@ async def update_franchisee(franchisee_id: str, body: dict, user: dict = Depends
         updates[k] = v if v != "" else None
     if not updates:
         raise HTTPException(status_code=400, detail="No editable fields provided")
+    # ------------------------------------------------------------------
+    # Duplicate franchise_number guard. Franchise numbers must be unique
+    # across active franchisees (see franchisee_duplicate_guard.py). If
+    # the PATCH would land this record on a number that another
+    # franchisee already holds, hard-block with 409. There is deliberately
+    # NO force-override on the everyday PATCH endpoint — exceptional
+    # data corrections must go through a dedicated admin repair flow so
+    # duplicates can never be re-introduced by accident.
+    # ------------------------------------------------------------------
+    if "franchise_number" in updates and updates["franchise_number"] is not None:
+        from franchisee_duplicate_guard import (
+            has_duplicate_franchise_number,
+            summarise_franchisee_for_conflict,
+        )
+        clash = await has_duplicate_franchise_number(
+            db, updates["franchise_number"], exclude_franchisee_id=franchisee_id,
+        )
+        if clash:
+            logger.warning(
+                "franchise_number PATCH blocked: %s already used by %s (attempted by %s on %s)",
+                updates["franchise_number"], clash.get("id"), user.get("email"), franchisee_id,
+            )
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "duplicate_franchise_number",
+                    "message": (
+                        f"Franchise number {updates['franchise_number']!r} is already "
+                        f"assigned to another franchisee. Reconcile that record before "
+                        f"reusing the number."
+                    ),
+                    "attempted_franchise_number": updates["franchise_number"],
+                    "attempted_on_franchisee_id": franchisee_id,
+                    "conflicting_franchisee": summarise_franchisee_for_conflict(clash),
+                },
+            )
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
     updates["updated_by"] = user.get("email")
     await db.franchisees.update_one({"id": franchisee_id}, {"$set": updates})
@@ -7149,6 +7185,12 @@ portal_marketing_routes.attach(api, db, require_role)
 
 import shape_orders_routes  # noqa: E402
 shape_orders_routes.attach(api, db, require_role)
+
+# Franchisee admin routes — duplicate franchise-number reconciliation,
+# controlled per-file rebind. See franchisee_admin_routes.py for the
+# rationale (never silently pick a franchisee by number).
+from franchisee_admin_routes import build_router as build_franchisee_admin_router  # noqa: E402
+api.include_router(build_franchisee_admin_router(db, require_role))
 
 
 @app.on_event("startup")
