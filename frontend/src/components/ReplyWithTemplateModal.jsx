@@ -12,6 +12,7 @@ import DOMPurify from "dompurify";
 import { toast } from "sonner";
 import { CATEGORY_BUCKETS, groupTemplatesByBucket } from "@/lib/emailTemplateCategories";
 import { DisplayNamePill } from "@/lib/emailTemplateColors";
+import { resolveLandingTokens } from "@/lib/landingTokens";
 import {
   Loader2, Send, X, AlertTriangle, FileText, Mail, ChevronDown, Check,
 } from "lucide-react";
@@ -135,7 +136,7 @@ export default function ReplyWithTemplateModal({ open, contact, onClose, onSent 
   // Use the rendered_html (editable body + locked signature) for both
   // the preview and the send. The signature lives outside body_html so
   // Tiptap can't mangle it.
-  const rendered = useMemo(() => {
+  const baseRendered = useMemo(() => {
     if (!selected) return "";
     let h = selected.rendered_html || selected.body_html || "";
     // Inject BEFORE the first_name substitution so the intro sits
@@ -145,6 +146,22 @@ export default function ReplyWithTemplateModal({ open, contact, onClose, onSent 
     h = h.replace(/\{\{\s*file:([^}]+)\s*\}\}/g, "#preview");
     return h;
   }, [selected, firstName, intro]);
+
+  // Resolve {{landing:*}} tokens using the SAME backend resolver the
+  // Resend send pipeline uses at send time (see resend_routes.py
+  // _resolve_landing_tokens). Without this the preview anchor's
+  // href stayed as the raw token, which browsers then treated as a
+  // relative URL and rewrote to /admin/%7B%7B... — exactly the bug
+  // the user reported on the info-pack CTA.
+  const [rendered, setRendered] = useState("");
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const out = await resolveLandingTokens(baseRendered);
+      if (!cancelled) setRendered(out);
+    })();
+    return () => { cancelled = true; };
+  }, [baseRendered]);
 
   // What we POST is the *unrendered* body — the backend re-runs the
   // first_name + file token substitution server-side so we keep the

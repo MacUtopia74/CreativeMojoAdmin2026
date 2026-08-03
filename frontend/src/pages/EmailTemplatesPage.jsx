@@ -8,6 +8,7 @@ import api from "@/lib/api";
 import DOMPurify from "dompurify";
 import RichTextEditor from "@/components/RichTextEditor";
 import { CATEGORY_BUCKETS, groupTemplatesByBucket } from "@/lib/emailTemplateCategories";
+import { resolveLandingTokens } from "@/lib/landingTokens";
 import { DISPLAY_COLOR_OPTIONS, DisplayNamePill, displayColorClasses } from "@/lib/emailTemplateColors";
 import {
   Loader2, Plus, Copy, Trash2, Save, X, Mail,
@@ -673,13 +674,30 @@ function CtaComposerModal({ style, onClose, onInsert }) {
 // flush against the next, which doesn't reflect the actual email.
 // ---------------------------------------------------------------------------
 function PreviewHtml({ html, sampleFirstName }) {
-  const rendered = useMemo(() => {
+  const [landingResolvedHtml, setLandingResolvedHtml] = useState(null);
+  const baseRendered = useMemo(() => {
     let h = html || "";
     h = h.replace(/\{\{\s*first_name\s*\}\}/g, sampleFirstName);
     // {{file:*}} placeholders → fake share URL so the styled button renders.
     h = h.replace(/\{\{\s*file:([^}]+)\s*\}\}/g, (_, slug) => `#preview-${slug}`);
     return h;
   }, [html, sampleFirstName]);
+
+  // Resolve {{landing:*}} tokens asynchronously — SAME resolver the
+  // Resend send pipeline uses at send time. Ensures the admin preview
+  // shows the real destination URL (or a red warning if the slug
+  // doesn't resolve) instead of the raw token, which the browser
+  // otherwise treats as a relative URL and rewrites to /admin/%7B%7B...
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const out = await resolveLandingTokens(baseRendered);
+      if (!cancelled) setLandingResolvedHtml(out);
+    })();
+    return () => { cancelled = true; };
+  }, [baseRendered]);
+
+  const rendered = landingResolvedHtml ?? baseRendered;
   // eslint-disable-next-line react/no-danger
   return (
     <div
@@ -697,7 +715,7 @@ function PreviewHtml({ html, sampleFirstName }) {
         .email-preview-body li { margin: 4px 0; }
         .email-preview-body a { color: #1a1a1a; text-decoration: underline; }
       `}</style>
-      <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(rendered) }} />
+      <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(rendered, { ADD_ATTR: ["target"] }) }} />
     </div>
   );
 }

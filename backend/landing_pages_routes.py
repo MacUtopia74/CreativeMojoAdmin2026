@@ -106,6 +106,39 @@ def build_router(*, db, require_role, sanitize_html):
         if await db.landing_pages.find_one(q, {"_id": 1}):
             raise HTTPException(409, f"Slug '{slug}' is already in use")
 
+    @router.get("/admin/landing-pages/resolve")
+    async def resolve_slugs_for_preview(
+        slugs: str = Query(..., description="Comma-separated landing-page slugs to resolve"),
+        user: dict = Depends(require_role("admin")),
+    ):
+        """Preview-time resolver used by the email compose modal, the
+        Reply-With-Template preview, and any other admin surface that
+        renders an email body BEFORE it goes through the Resend send
+        pipeline. Returns a map of ``slug -> public URL`` (or ``None``
+        when the slug doesn't match an active landing page), so
+        preview HTML matches what the recipient will actually click on.
+
+        Uses the SAME base-URL resolution rules as
+        :func:`resend_routes._resolve_landing_tokens` (PUBLIC_BASE_URL
+        env override → https://hub.creativemojo.co.uk) so previews and
+        sends never disagree on the destination.
+        """
+        import os
+        wanted = [s.strip() for s in (slugs or "").split(",") if s.strip()]
+        if not wanted:
+            return {"resolved": {}}
+        base = (os.environ.get("PUBLIC_BASE_URL")
+                or "https://hub.creativemojo.co.uk").rstrip("/")
+        if base == "__request_host__":
+            base = "https://hub.creativemojo.co.uk"
+        out: dict[str, str | None] = {}
+        for slug in wanted:
+            page = await db.landing_pages.find_one(
+                {"slug": slug, "active": True}, {"_id": 0, "slug": 1},
+            )
+            out[slug] = f"{base}/info/{slug}" if page else None
+        return {"resolved": out}
+
     @router.post("/admin/landing-pages")
     async def create_page(body: LandingPageIn, user: dict = Depends(require_role("admin"))):
         slug = _slugify(body.slug or body.title)
