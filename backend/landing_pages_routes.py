@@ -281,6 +281,58 @@ def build_router(*, db, require_role, sanitize_html):
             "file_name": page.get("file_name"),
         }
 
+    def _looks_like_uuid_or_key(name: str) -> bool:
+        """True when the filename is clearly an internal identifier
+        rather than something a recipient should ever see.
+
+        * Bare UUID (with or without a .pdf extension)
+        * The full R2 object key (e.g. ``admin/uploads/…/xyz.pdf``)
+        """
+        if not name:
+            return True
+        # A raw key with slashes — never present it to the user.
+        if "/" in name:
+            return True
+        stem = name.rsplit(".", 1)[0]
+        return bool(re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", stem))
+
+    def _download_filename_for(page: dict, key: str, *, indexed_name: Optional[str]) -> str:
+        """Resolve the customer-facing PDF filename using the priority
+        the user specified:
+          1. ``page.file_name`` if it isn't a UUID / R2 key
+          2. ``files_index.name`` (original upload filename) if present
+             and not a UUID / R2 key
+          3. Sanitised ``page.title`` (fallback: sanitised slug)
+        Never returns the raw R2 UUID.
+        The result always has a ``.pdf`` extension when the source key
+        is a PDF (which every landing-page attachment currently is).
+        """
+        candidates: list[Optional[str]] = [
+            (page.get("file_name") or "").strip() or None,
+            indexed_name,
+            (page.get("title") or "").strip() or None,
+            (page.get("slug") or "").strip() or None,
+        ]
+        for c in candidates:
+            if not c or _looks_like_uuid_or_key(c):
+                continue
+            base = c
+            break
+        else:
+            # Absolute worst case — never happens because slug is
+            # non-empty and non-UUID by construction.
+            base = "download"
+
+        # Ensure a .pdf extension when the underlying object is a PDF.
+        key_lower = (key or "").lower()
+        base_lower = base.lower()
+        if key_lower.endswith(".pdf") and not base_lower.endswith(".pdf"):
+            base = f"{base}.pdf"
+        # Strip characters that ASCII Content-Disposition can't carry;
+        # RFC 5987 filename* handles the UTF-8 case below.
+        ascii_safe = re.sub(r"[^\w.\- ()]", "", base) or "download.pdf"
+        return ascii_safe.strip()
+
     @router.get("/public/landing/{slug}/download")
     async def public_download(
         slug: str,
@@ -299,10 +351,36 @@ def build_router(*, db, require_role, sanitize_html):
             from file_storage import presigned_get_url  # type: ignore
         except Exception:  # noqa: BLE001
             raise HTTPException(500, "File storage not configured")
+
+        # Resolve a customer-safe filename BEFORE minting the URL so
+        # the presigned URL bakes in the correct Content-Disposition.
+        indexed = await db.files_index.find_one(
+            {"key": page["file_key"]}, {"_id": 0, "name": 1, "original_name": 1},
+        )
+        indexed_name = None
+        if indexed:
+            indexed_name = (indexed.get("original_name")
+                            or indexed.get("name")
+                            or None)
+        filename = _download_filename_for(
+            page, page["file_key"], indexed_name=indexed_name,
+        )
+        # RFC 6266 / 5987 — send both the ASCII fallback and the UTF-8
+        # extended form so old browsers and modern ones both get a
+        # readable name. Quote-doubling handles filenames with spaces.
+        from urllib.parse import quote as urlquote
+        ascii_fallback = filename.replace('"', "").replace("\\", "")
+        content_disposition = (
+            f'attachment; filename="{ascii_fallback}"; '
+            f"filename*=UTF-8''{urlquote(filename, safe='')}"
+        )
         try:
             # Short-lived URL — the recipient is redirected straight
             # into the download, so 5 minutes is plenty.
-            url = presigned_get_url(page["file_key"], expires_in=300)
+            url = presigned_get_url(
+                page["file_key"], expires_in=300,
+                content_disposition=content_disposition,
+            )
         except Exception as e:  # noqa: BLE001
             logger.exception("presigned_get_url failed for %s: %s", page["file_key"], e)
             raise HTTPException(500, "Could not generate download URL")
