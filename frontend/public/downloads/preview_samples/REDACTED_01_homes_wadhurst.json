@@ -1,0 +1,135 @@
+{
+  "write_performed": false,
+  "environment": "preview",
+  "generated_at": "2026-08-04T10:59:30.908566+00:00",
+  "query": {
+    "home_name": "Wadhurst",
+    "postcode": null,
+    "location_id": null,
+    "limit": 25
+  },
+  "diagnostic_version": "phase-a+c-2026-08-04",
+  "build_commit": "748be8d147464a1688722d0463a80bb78097e791",
+  "capabilities": {
+    "bookings": {
+      "status": "no_internal_bookings_collection_in_codebase",
+      "explanation": "The ``bookings`` string in the codebase refers to a subscription module/add-on flag (``Bookings+``), NOT an implemented internal booking record system. ``bookings_url`` on marketing campaigns is a free-text external URL and is NOT counted as a booking record.",
+      "code_paths_searched": [
+        "server.py",
+        "portal_marketing_routes.py",
+        "territory_plus_routes.py"
+      ],
+      "database_references_searched": [
+        "db.bookings",
+        "db.franchisee_bookings",
+        "db.calendar_bookings"
+      ]
+    },
+    "correspondence": {
+      "outbound_collection": "email_sends",
+      "inbound_matched_collection": "email_inbounds",
+      "inbound_unmatched_collection": "email_inbound_unmatched",
+      "linkage_field": "contact_id \u2192 contacts OR web_form_contacts",
+      "franchisee_client_direct_link": "NONE \u2014 franchisee_clients has no contact_id / reply_token relationship to the correspondence CRM. Any linkage from a franchisee_clients row to correspondence is heuristic (email-address match) and must be flagged as inferred, requires_human_verification=true, safe_for_automatic_merge=false."
+    },
+    "hq_notes_collection": "hq_home_notes"
+  },
+  "group_count": 2,
+  "groups": [
+    {
+      "canonical_site_id": "sitehash-320d24582bb7acc7",
+      "member_count": 1,
+      "group_confidence": "n/a",
+      "classification": "duplicated_cqc_import",
+      "requires_human_review": true,
+      "members": [
+        {
+          "cqc_location_id": "1-12382873174",
+          "provider_id": "1-6475914402",
+          "name": "Wadhurst Medical Group",
+          "address": "Belmont Surgery,St. James Square,Wadhurst",
+          "postcode": "TN5 6BJ",
+          "postcode_sector": "TN5 6",
+          "coordinates": {
+            "lat": null,
+            "lng": null
+          },
+          "registration_status": null,
+          "service_types": [
+            "Doctors/GPs",
+            "Doctors/GPs"
+          ],
+          "specialisms": [
+            "Services for everyone"
+          ],
+          "bed_count": null,
+          "provider_name": "Sussex Primary Care Ltd",
+          "evidence_vs_anchor": {
+            "anchor": true
+          },
+          "franchisees_with_territory": [],
+          "my_client_records": [],
+          "hq_notes": [],
+          "hq_note_count": 0,
+          "hq_note_identity_key": {
+            "tuple": [
+              "franchisee_id",
+              "source",
+              "home_id"
+            ],
+            "note": "[REDACTED, 50 chars]"
+          },
+          "bookings": []
+        }
+      ]
+    },
+    {
+      "canonical_site_id": "sitehash-4e4dfde8a7bf0a3d",
+      "member_count": 1,
+      "group_confidence": "n/a",
+      "classification": "duplicated_cqc_import",
+      "requires_human_review": true,
+      "members": [
+        {
+          "cqc_location_id": "1-288891070",
+          "provider_id": "1-102642955",
+          "name": "Wadhurst Manor",
+          "address": "Station Road,Wadhurst",
+          "postcode": "TN5 6RY",
+          "postcode_sector": "TN5 6",
+          "coordinates": {
+            "lat": null,
+            "lng": null
+          },
+          "registration_status": null,
+          "service_types": [
+            "Nursing homes"
+          ],
+          "specialisms": [
+            "Caring for adults under 65 yrs",
+            "Dementia",
+            "Caring for adults over 65 yrs"
+          ],
+          "bed_count": null,
+          "provider_name": "Barchester Healthcare Homes Limited",
+          "evidence_vs_anchor": {
+            "anchor": true
+          },
+          "franchisees_with_territory": [],
+          "my_client_records": [],
+          "hq_notes": [],
+          "hq_note_count": 0,
+          "hq_note_identity_key": {
+            "tuple": [
+              "franchisee_id",
+              "source",
+              "home_id"
+            ],
+            "note": "[REDACTED, 50 chars]"
+          },
+          "bookings": []
+        }
+      ]
+    }
+  ]
+}
