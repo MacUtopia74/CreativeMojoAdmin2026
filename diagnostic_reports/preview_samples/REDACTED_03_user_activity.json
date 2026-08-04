@@ -1,0 +1,55 @@
+{
+  "write_performed": false,
+  "environment": "preview",
+  "generated_at": "2026-08-04T10:59:32.528431+00:00",
+  "query": {
+    "email": "[REDACTED_EMAIL]",
+    "franchisee_id": null,
+    "days": 7
+  },
+  "diagnostic_version": "phase-a+c-2026-08-04",
+  "build_commit": "748be8d147464a1688722d0463a80bb78097e791",
+  "capabilities": {
+    "bookings": {
+      "status": "no_internal_bookings_collection_in_codebase",
+      "explanation": "The ``bookings`` string in the codebase refers to a subscription module/add-on flag (``Bookings+``), NOT an implemented internal booking record system. ``bookings_url`` on marketing campaigns is a free-text external URL and is NOT counted as a booking record.",
+      "code_paths_searched": [
+        "server.py",
+        "portal_marketing_routes.py",
+        "territory_plus_routes.py"
+      ],
+      "database_references_searched": [
+        "db.bookings",
+        "db.franchisee_bookings",
+        "db.calendar_bookings"
+      ]
+    },
+    "correspondence": {
+      "outbound_collection": "email_sends",
+      "inbound_matched_collection": "email_inbounds",
+      "inbound_unmatched_collection": "email_inbound_unmatched",
+      "linkage_field": "contact_id \u2192 contacts OR web_form_contacts",
+      "franchisee_client_direct_link": "NONE \u2014 franchisee_clients has no contact_id / reply_token relationship to the correspondence CRM. Any linkage from a franchisee_clients row to correspondence is heuristic (email-address match) and must be flagged as inferred, requires_human_verification=true, safe_for_automatic_merge=false."
+    },
+    "hq_notes_collection": "hq_home_notes"
+  },
+  "user": {
+    "id": "10bde4e1-675c-4e38-8698-c6cdd674facb",
+    "email": "[REDACTED_EMAIL]",
+    "name": "Paul Dunkerley"
+  },
+  "franchisee": null,
+  "cutoff": "2026-07-28T10:59:32.525748+00:00",
+  "field_level_audit_available": false,
+  "clients_touched": [],
+  "hq_notes": [],
+  "correspondence": [],
+  "attribution_definitions": {
+    "direct_by_sam": "email_sends.sent_by exactly matches Sam's verified account email.",
+    "admin_on_sams_records": "outbound email whose contact_id belongs to a web_form_contacts row with franchisee_id == Sam's franchisee \u2014 action performed by a different authenticated user.",
+    "inferred_via_client_link": "correspondence recipient email matches an email stored on one of Sam's franchisee_clients rows; no contact_id relationship. Requires human verification.",
+    "inbound_matched_to_sams_contact": "email_inbounds.contact_id resolves to a contacts/web_form_contacts record directly associated with Sam's franchisee_id.",
+    "inferred_inbound_email_match": "inbound sender (structured ``from`` header) matches an email on one of Sam's franchisee_clients rows; no contact_id relationship. Requires human verification."
+  },
+  "notes": "[REDACTED, 305 chars]"
+}

@@ -1,0 +1,293 @@
+{
+  "write_performed": false,
+  "environment": "preview",
+  "generated_at": "2026-08-04T10:59:32.384246+00:00",
+  "query": {
+    "franchisee_id": null,
+    "client_name": null,
+    "limit": 100
+  },
+  "diagnostic_version": "phase-a+c-2026-08-04",
+  "build_commit": "748be8d147464a1688722d0463a80bb78097e791",
+  "capabilities": {
+    "bookings": {
+      "status": "no_internal_bookings_collection_in_codebase",
+      "explanation": "The ``bookings`` string in the codebase refers to a subscription module/add-on flag (``Bookings+``), NOT an implemented internal booking record system. ``bookings_url`` on marketing campaigns is a free-text external URL and is NOT counted as a booking record.",
+      "code_paths_searched": [
+        "server.py",
+        "portal_marketing_routes.py",
+        "territory_plus_routes.py"
+      ],
+      "database_references_searched": [
+        "db.bookings",
+        "db.franchisee_bookings",
+        "db.calendar_bookings"
+      ]
+    },
+    "correspondence": {
+      "outbound_collection": "email_sends",
+      "inbound_matched_collection": "email_inbounds",
+      "inbound_unmatched_collection": "email_inbound_unmatched",
+      "linkage_field": "contact_id \u2192 contacts OR web_form_contacts",
+      "franchisee_client_direct_link": "NONE \u2014 franchisee_clients has no contact_id / reply_token relationship to the correspondence CRM. Any linkage from a franchisee_clients row to correspondence is heuristic (email-address match) and must be flagged as inferred, requires_human_verification=true, safe_for_automatic_merge=false."
+    },
+    "hq_notes_collection": "hq_home_notes"
+  },
+  "group_count": 7,
+  "groups": [
+    {
+      "grouping_rule": "franchisee_id + normalised_name + normalised_postcode (no home_id)",
+      "canonical_source": {
+        "franchisee_id": "b2ca2c54-7101-4524-926a-b36ac0e2a70a",
+        "normalised_name": "heanton nursing home",
+        "normalised_postcode": "EX31 4DJ"
+      },
+      "record_count": 2,
+      "records": [
+        {
+          "client_record_id": "b243aa8c-45d5-43ac-9899-f2236d940603",
+          "franchisee_id": "b2ca2c54-7101-4524-926a-b36ac0e2a70a",
+          "source_collection": "franchisee_clients",
+          "source_home_id": null,
+          "source_home_id_resolves_to": null,
+          "name": "Heanton Nursing Home",
+          "address": "Heanton, Barnstaple, Devon, EX31 4DJ",
+          "postcode": "EX31 4DJ",
+          "normalised_name": "heanton nursing home",
+          "normalised_address": "heanton barnstaple devon ex31 4dj",
+          "normalised_postcode": "EX31 4DJ",
+          "created_at": "2026-06-12T16:03:43.467369+00:00",
+          "updated_at": "2026-06-12T16:04:10.443820+00:00",
+          "created_by": null,
+          "last_edited_by": null,
+          "client_status": null,
+          "archive_status": null,
+          "notes": null,
+          "contacts": [],
+          "hq_notes": [],
+          "hq_note_entry_ids": [],
+          "hq_note_identity_key": {
+            "tuple": [
+              "franchisee_id",
+              "source",
+              "home_id"
+            ],
+            "values": [
+              "b2ca2c54-7101-4524-926a-b36ac0e2a70a",
+              "custom",
+              null
+            ],
+            "note": "[REDACTED, 88 chars]"
+          },
+          "correspondence_linkage": {
+            "direct_link": {
+              "status": "none",
+              "reason": "franchisee_clients has no contact_id or reply_token relationship to the correspondence CRM"
+            },
+            "inferred_matches": [],
+            "inferred_matches_count": 0,
+            "unmatched_inbound_note": "email_inbound_unmatched is NOT scanned per-client \u2014 body-text email hits are not evidence. Sam's user_activity endpoint reports structured-header matches only, flagged inferred."
+          },
+          "bookings": []
+        },
+        {
+          "client_record_id": "aa018dd6-90de-4862-96a2-699705c4b447",
+          "franchisee_id": "b2ca2c54-7101-4524-926a-b36ac0e2a70a",
+          "source_collection": "franchisee_clients",
+          "source_home_id": null,
+          "source_home_id_resolves_to": null,
+          "name": "Heanton Nursing Home",
+          "address": "Heanton, Barnstaple, Devon, EX31 4DJ",
+          "postcode": "EX31 4DJ",
+          "normalised_name": "heanton nursing home",
+          "normalised_address": "heanton barnstaple devon ex31 4dj",
+          "normalised_postcode": "EX31 4DJ",
+          "created_at": "2026-06-12T16:50:32.655129+00:00",
+          "updated_at": "2026-06-12T16:50:32.655129+00:00",
+          "created_by": null,
+          "last_edited_by": null,
+          "client_status": null,
+          "archive_status": null,
+          "notes": null,
+          "contacts": [],
+          "hq_notes": [],
+          "hq_note_entry_ids": [],
+          "hq_note_identity_key": {
+            "tuple": [
+              "franchisee_id",
+              "source",
+              "home_id"
+            ],
+            "values": [
+              "b2ca2c54-7101-4524-926a-b36ac0e2a70a",
+              "custom",
+              null
+            ],
+            "note": "[REDACTED, 88 chars]"
+          },
+          "correspondence_linkage": {
+            "direct_link": {
+              "status": "none",
+              "reason": "franchisee_clients has no contact_id or reply_token relationship to the correspondence CRM"
+            },
+            "inferred_matches": [],
+            "inferred_matches_count": 0,
+            "unmatched_inbound_note": "email_inbound_unmatched is NOT scanned per-client \u2014 body-text email hits are not evidence. Sam's user_activity endpoint reports structured-header matches only, flagged inferred."
+          },
+          "bookings": []
+        }
+      ],
+      "conflicts_across_records": {}
+    },
+    {
+      "grouping_rule": "franchisee_id + normalised_name + normalised_postcode (no home_id)",
+      "canonical_source": {
+        "franchisee_id": "b2ca2c54-7101-4524-926a-b36ac0e2a70a",
+        "normalised_name": "north devon hospice",
+        "normalised_postcode": "EX32 0HU"
+      },
+      "record_count": 4,
+      "records": [
+        {
+          "client_record_id": "9a950d72-7008-4399-b60f-8c97e169a567",
+          "franchisee_id": "b2ca2c54-7101-4524-926a-b36ac0e2a70a",
+          "source_collection": "franchisee_clients",
+          "source_home_id": null,
+          "source_home_id_resolves_to": null,
+          "name": "North Devon Hospice",
+          "address": "Deer Park, Newport, Barnstaple, Devon, EX32 0HU",
+          "postcode": "EX32 0HU",
+          "normalised_name": "north devon hospice",
+          "normalised_address": "deer park newport barnstaple devon ex32 0hu",
+          "normalised_postcode": "EX32 0HU",
+          "created_at": "2026-06-12T16:24:55.246962+00:00",
+          "updated_at": "2026-06-12T16:24:55.246962+00:00",
+          "created_by": null,
+          "last_edited_by": null,
+          "client_status": null,
+          "archive_status": null,
+          "notes": null,
+          "contacts": [],
+          "hq_notes": [],
+          "hq_note_entry_ids": [],
+          "hq_note_identity_key": {
+            "tuple": [
+              "franchisee_id",
+              "source",
+              "home_id"
+            ],
+            "values": [
+              "b2ca2c54-7101-4524-926a-b36ac0e2a70a",
+              "custom",
+              null
+            ],
+            "note": "[REDACTED, 88 chars]"
+          },
+          "correspondence_linkage": {
+            "direct_link": {
+              "status": "none",
+              "reason": "franchisee_clients has no contact_id or reply_token relationship to the correspondence CRM"
+            },
+            "inferred_matches": [],
+            "inferred_matches_count": 0,
+            "unmatched_inbound_note": "email_inbound_unmatched is NOT scanned per-client \u2014 body-text email hits are not evidence. Sam's user_activity endpoint reports structured-header matches only, flagged inferred."
+          },
+          "bookings": []
+        },
+        {
+          "client_record_id": "023802c3-1f1b-4ba9-92cf-390414f0b9c8",
+          "franchisee_id": "b2ca2c54-7101-4524-926a-b36ac0e2a70a",
+          "source_collection": "franchisee_clients",
+          "source_home_id": null,
+          "source_home_id_resolves_to": null,
+          "name": "North Devon Hospice",
+          "address": "Deer Park, Newport, Barnstaple, Devon, EX32 0HU",
+          "postcode": "EX32 0HU",
+          "normalised_name": "north devon hospice",
+          "normalised_address": "deer park newport barnstaple devon ex32 0hu",
+          "normalised_postcode": "EX32 0HU",
+          "created_at": "2026-06-12T16:36:00.377423+00:00",
+          "updated_at": "2026-06-12T16:36:00.377423+00:00",
+          "created_by": null,
+          "last_edited_by": null,
+          "client_status": null,
+          "archive_status": null,
+          "notes": null,
+          "contacts": [],
+          "hq_notes": [],
+          "hq_note_entry_ids": [],
+          "hq_note_identity_key": {
+            "tuple": [
+              "franchisee_id",
+              "source",
+              "home_id"
+            ],
+            "values": [
+              "b2ca2c54-7101-4524-926a-b36ac0e2a70a",
+              "custom",
+              null
+            ],
+            "note": "[REDACTED, 88 chars]"
+          },
+          "correspondence_linkage": {
+            "direct_link": {
+              "status": "none",
+              "reason": "franchisee_clients has no contact_id or reply_token relationship to the correspondence CRM"
+            },
+            "inferred_matches": [],
+            "inferred_matches_count": 0,
+            "unmatched_inbound_note": "email_inbound_unmatched is NOT scanned per-client \u2014 body-text email hits are not evidence. Sam's user_activity endpoint reports structured-header matches only, flagged inferred."
+          },
+          "bookings": []
+        },
+        {
+          "client_record_id": "b289a21c-194f-40e6-ae41-76b153ab1dc9",
+          "franchisee_id": "b2ca2c54-7101-4524-926a-b36ac0e2a70a",
+          "source_collection": "franchisee_clients",
+          "source_home_id": null,
+          "source_home_id_resolves_to": null,
+          "name": "North Devon Hospice",
+          "address": "Deer Park, Newport, Barnstaple, Devon, EX32 0HU",
+          "postcode": "EX32 0HU",
+          "normalised_name": "north devon hospice",
+          "normalised_address": "deer park newport barnstaple devon ex32 0hu",
+          "normalised_postcode": "EX32 0HU",
+          "created_at": "2026-06-12T16:36:07.699897+00:00",
+          "updated_at": "2026-06-12T16:36:07.699897+00:00",
+          "created_by": null,
+          "last_edited_by": null,
+          "client_status": null,
+          "archive_status": null,
+          "notes": null,
+          "contacts": [],
+          "hq_notes": [],
+          "hq_note_entry_ids": [],
+          "hq_note_identity_key": {
+            "tuple": [
+              "franchisee_id",
+              "source",
+              "home_id"
+            ],
+            "values": [
+              "b2ca2c54-7101-4524-926a-b36ac0e2a70a",
+              "custom",
+              null
+            ],
+            "note": "[REDACTED, 88 chars]"
+          },
+          "correspondence_linkage": {
+            "direct_link": {
+              "status": "none",
+              "reason": "franchisee_clients has no contact_id or reply_token relationship to the correspondence CRM"
+            },
+            "inferred_matches": [],
+            "inferred_matches_count": 0,
+            "unmatched_inbound_note": "email_inbound_unmatched is NOT scanned per-client \u2014 body-text email hits are not evidence. Sam's user_activity endpoint reports structured-header matches only, flagged inferred."
+          },
+          "bookings": []
+        }
+      ],
+      "conflicts_across_records": {}
+    }
+  ]
+}

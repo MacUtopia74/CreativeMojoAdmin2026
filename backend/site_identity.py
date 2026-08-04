@@ -18,12 +18,54 @@ sites stay ungrouped and are flagged for human review.
 from __future__ import annotations
 
 import hashlib
+import logging
 import math
+import os
 import re
+import subprocess
 from typing import Any, Iterable, Optional
 
 
-DIAGNOSTIC_VERSION = "phase-a+c-2026-02-03"
+DIAGNOSTIC_VERSION = "phase-a+c-2026-08-04"
+
+_logger = logging.getLogger("creative-mojo-admin.site_identity")
+
+
+def _resolve_build_commit() -> str:
+    """Resolve the current build commit hash for diagnostic responses.
+
+    Resolution order (safe fallbacks — must never break app startup):
+      1. Explicit deployment env vars: ``BUILD_COMMIT``, ``COMMIT_SHA``,
+         ``GIT_COMMIT``, ``RENDER_GIT_COMMIT``, ``VERCEL_GIT_COMMIT_SHA``
+      2. Guarded ``git rev-parse HEAD`` with a 2-second timeout,
+         suppressing every possible failure (missing .git, missing git
+         binary, non-zero exit, timeout)
+      3. Literal ``"unknown"`` — the app remains fully functional and
+         the diagnostic response is honest about the gap.
+    """
+    for env_key in ("BUILD_COMMIT", "COMMIT_SHA", "GIT_COMMIT",
+                    "RENDER_GIT_COMMIT", "VERCEL_GIT_COMMIT_SHA"):
+        val = os.environ.get(env_key)
+        if val:
+            return val.strip()[:40]
+    try:
+        out = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            stderr=subprocess.DEVNULL,
+            timeout=2,
+        )
+        return out.decode("utf-8", "replace").strip()[:40] or "unknown"
+    except Exception:  # noqa: BLE001 — any failure → "unknown"
+        return "unknown"
+
+
+# Resolve once at import; never re-runs on request.
+try:
+    BUILD_COMMIT = _resolve_build_commit()
+except Exception:  # noqa: BLE001 — belt & braces so a resolver bug can't crash startup
+    _logger.exception("build_commit resolver crashed — falling back to 'unknown'")
+    BUILD_COMMIT = "unknown"
 
 
 def _norm(value: Any) -> str:
