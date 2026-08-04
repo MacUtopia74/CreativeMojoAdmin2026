@@ -7192,6 +7192,13 @@ shape_orders_routes.attach(api, db, require_role)
 from franchisee_admin_routes import build_router as build_franchisee_admin_router  # noqa: E402
 api.include_router(build_franchisee_admin_router(db, require_role))
 
+# Duplicate diagnostics (Phase A + C) — read-only + dry-run only,
+# lives in a dedicated module so its zero-write guarantee is
+# trivially auditable. Any future write path MUST be in a separate
+# router — do not co-locate with these routes.
+from duplicate_diagnostics_routes import build_router as build_diag_router  # noqa: E402
+api.include_router(build_diag_router(db, require_role))
+
 
 @app.on_event("startup")
 async def _heal_legacy_shape_statuses():
