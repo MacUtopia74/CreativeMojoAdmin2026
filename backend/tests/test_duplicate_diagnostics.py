@@ -239,6 +239,16 @@ def _fake_require_role(_role):
     return _dep
 
 
+class _FakeRequest:
+    """Minimal FastAPI-Request stand-in used only in unit tests. The
+    diagnostic endpoints read a small set of headers plus url.hostname."""
+    def __init__(self, host="test.internal", x_forwarded_host=""):
+        self.headers = {"host": host, "x-forwarded-host": x_forwarded_host}
+        class _U:
+            hostname = host
+        self.url = _U()
+
+
 def _router(db):
     from duplicate_diagnostics_routes import build_router
     return build_router(db, _fake_require_role)
@@ -259,6 +269,14 @@ def _assert_envelope(result):
     assert result["capabilities"]["bookings"]["status"] == "no_internal_bookings_collection_in_codebase"
     assert result["capabilities"]["hq_notes_collection"] == "hq_home_notes"
     assert result["capabilities"]["correspondence"]["outbound_collection"] == "email_sends"
+    # New in v4: environment must be derived from the request headers and
+    # every response must carry direct db_name evidence.
+    assert "environment" in result
+    ee = result["environment_evidence"]
+    assert ee["detected_from"] == "request_headers"
+    assert ee["resolved_host"]
+    assert ee["db_name"]
+    assert "host" in ee["headers_considered"]
 
 
 # ------------------------------------------------------------------
@@ -266,7 +284,7 @@ def test_diagnostic_version_and_build_commit_present(db_pair):
     db_name, snap = db_pair
     async def _act(db):
         fn = _find_ep(_router(db), "/admin/diagnostics/homes-list-duplicates", "GET")
-        return await fn(home_name="Tunbridge Wells", postcode=None, location_id=None,
+        return await fn(request=_FakeRequest(), home_name="Tunbridge Wells", postcode=None, location_id=None,
                         limit=50, _user={"email": "x"})
     result = _with_fresh_db(db_name, snap, _act)
     _assert_envelope(result)
@@ -276,7 +294,7 @@ def test_homes_list_returns_hq_notes_with_identity_tuple(db_pair):
     db_name, snap = db_pair
     async def _act(db):
         fn = _find_ep(_router(db), "/admin/diagnostics/homes-list-duplicates", "GET")
-        return await fn(home_name="Tunbridge Wells", postcode=None, location_id=None,
+        return await fn(request=_FakeRequest(), home_name="Tunbridge Wells", postcode=None, location_id=None,
                         limit=50, _user={"email": "x"}), await _all_counts(db)
     result, after = _with_fresh_db(db_name, snap, _act)
     _assert_envelope(result)
@@ -304,7 +322,7 @@ def test_homes_list_returns_no_bookings_because_collection_absent(db_pair):
     db_name, snap = db_pair
     async def _act(db):
         fn = _find_ep(_router(db), "/admin/diagnostics/homes-list-duplicates", "GET")
-        return await fn(home_name="Tunbridge Wells", postcode=None, location_id=None,
+        return await fn(request=_FakeRequest(), home_name="Tunbridge Wells", postcode=None, location_id=None,
                         limit=50, _user={"email": "x"})
     result = _with_fresh_db(db_name, snap, _act)
     cap = result["capabilities"]["bookings"]
@@ -319,7 +337,7 @@ def test_client_duplicates_reports_correspondence_linkage_no_direct_link(db_pair
     db_name, snap = db_pair
     async def _act(db):
         fn = _find_ep(_router(db), "/admin/diagnostics/clients/duplicates", "GET")
-        return await fn(franchisee_id="franchisee-sam-0095", client_name=None,
+        return await fn(request=_FakeRequest(), franchisee_id="franchisee-sam-0095", client_name=None,
                         limit=200, _user={"email": "x"}), await _all_counts(db)
     result, after = _with_fresh_db(db_name, snap, _act)
     _assert_envelope(result)
@@ -356,7 +374,7 @@ def test_client_duplicates_flags_shared_email_ambiguity(db_pair):
     db_name, snap = db_pair
     async def _act(db):
         fn = _find_ep(_router(db), "/admin/diagnostics/clients/duplicates", "GET")
-        return await fn(franchisee_id="franchisee-sam-0095", client_name=None,
+        return await fn(request=_FakeRequest(), franchisee_id="franchisee-sam-0095", client_name=None,
                         limit=200, _user={"email": "x"})
     result = _with_fresh_db(db_name, snap, _act)
     # both cli-1 and cli-2 share hello@parkgate.example so every inferred
@@ -387,7 +405,7 @@ def test_user_activity_classifies_correspondence_correctly(db_pair):
     db_name, snap = db_pair
     async def _act(db):
         fn = _find_ep(_router(db), "/admin/diagnostics/user-activity", "GET")
-        return await fn(email="sam@example.com", franchisee_id="franchisee-sam-0095",
+        return await fn(request=_FakeRequest(), email="sam@example.com", franchisee_id="franchisee-sam-0095",
                         days=7, _user={"email": "x"}), await _all_counts(db)
     result, after = _with_fresh_db(db_name, snap, _act)
     _assert_envelope(result)
@@ -415,7 +433,7 @@ def test_user_activity_inferred_never_marked_direct(db_pair):
     db_name, snap = db_pair
     async def _act(db):
         fn = _find_ep(_router(db), "/admin/diagnostics/user-activity", "GET")
-        return await fn(email="sam@example.com", franchisee_id="franchisee-sam-0095",
+        return await fn(request=_FakeRequest(), email="sam@example.com", franchisee_id="franchisee-sam-0095",
                         days=7, _user={"email": "x"})
     result = _with_fresh_db(db_name, snap, _act)
     for c in result["correspondence"]:
@@ -428,8 +446,8 @@ def test_resolve_identity_returns_matched_ambiguous_or_unmatched(db_pair):
     db_name, snap = db_pair
     async def _act(db):
         fn = _find_ep(_router(db), "/admin/diagnostics/clients/{client_id}/resolve-identity", "GET")
-        r1 = await fn(client_id="cli-1", _user={"email": "x"})
-        r3 = await fn(client_id="cli-3", _user={"email": "x"})
+        r1 = await fn(request=_FakeRequest(), client_id="cli-1", _user={"email": "x"})
+        r3 = await fn(request=_FakeRequest(), client_id="cli-3", _user={"email": "x"})
         return r1, r3, await _all_counts(db)
     r1, r3, after = _with_fresh_db(db_name, snap, _act)
     assert r1["status"] == "matched"
@@ -444,7 +462,7 @@ def test_dry_run_client_merge_reports_conflicts_and_writes_nothing(db_pair):
     db_name, snap = db_pair
     async def _act(db):
         fn = _find_ep(_router(db), "/admin/diagnostics/dry-run/client-merge", "POST")
-        return await fn(body={"record_ids": ["cli-1", "cli-2"]}, _user={"email": "x"}), await _all_counts(db)
+        return await fn(request=_FakeRequest(), body={"record_ids": ["cli-1", "cli-2"]}, _user={"email": "x"}), await _all_counts(db)
     result, after = _with_fresh_db(db_name, snap, _act)
     _assert_envelope(result)
     assert result["proposed_survivor_id"] in ("cli-1", "cli-2")
@@ -462,7 +480,7 @@ def test_dry_run_site_group_visual_only(db_pair):
     db_name, snap = db_pair
     async def _act(db):
         fn = _find_ep(_router(db), "/admin/diagnostics/dry-run/site-group", "POST")
-        return await fn(body={"cqc_location_ids": ["loc-A1", "loc-A2"]}, _user={"email": "x"}), await _all_counts(db)
+        return await fn(request=_FakeRequest(), body={"cqc_location_ids": ["loc-A1", "loc-A2"]}, _user={"email": "x"}), await _all_counts(db)
     result, after = _with_fresh_db(db_name, snap, _act)
     _assert_envelope(result)
     assert result["action"] == "visual_grouping_only"
@@ -495,11 +513,11 @@ def test_deprecated_hq_note_collection_is_not_queried(db_pair):
         h = _find_ep(r, "/admin/diagnostics/homes-list-duplicates", "GET")
         c = _find_ep(r, "/admin/diagnostics/clients/duplicates", "GET")
         u = _find_ep(r, "/admin/diagnostics/user-activity", "GET")
-        await h(home_name="Tunbridge Wells", postcode=None, location_id=None,
+        await h(request=_FakeRequest(), home_name="Tunbridge Wells", postcode=None, location_id=None,
                 limit=50, _user={"email": "x"})
-        await c(franchisee_id="franchisee-sam-0095", client_name=None, limit=200,
+        await c(request=_FakeRequest(), franchisee_id="franchisee-sam-0095", client_name=None, limit=200,
                 _user={"email": "x"})
-        await u(email="sam@example.com", franchisee_id="franchisee-sam-0095", days=7,
+        await u(request=_FakeRequest(), email="sam@example.com", franchisee_id="franchisee-sam-0095", days=7,
                 _user={"email": "x"})
         # Explicit collection listing
         return await db.list_collection_names()
@@ -509,6 +527,53 @@ def test_deprecated_hq_note_collection_is_not_queried(db_pair):
         "something is still querying it as the source of truth."
     )
     assert "hq_home_notes" in names
+
+
+def test_environment_detection_from_request_host(db_pair):
+    """Environment must be derived from the request headers (Host,
+    X-Forwarded-Host, X-Original-Host), not from an env-var that may not
+    be set on the deployed environment.
+
+    Regression: the Aug-04 production run reported environment=preview
+    because the previous fallback tried $PUBLIC_BASE_URL which Emergent
+    deployments do not set. Additionally, on Cloudflare + Kubernetes
+    ingress the ``Host`` header can be rewritten to an internal cluster
+    name — so the resolver must also honour ``X-Forwarded-Host``."""
+    db_name, snap = db_pair
+
+    # Direct Host header
+    async def _prod_direct(db):
+        fn = _find_ep(_router(db), "/admin/diagnostics/homes-list-duplicates", "GET")
+        return await fn(request=_FakeRequest("hub.creativemojo.co.uk"),
+                        home_name="Tunbridge Wells", postcode=None, location_id=None,
+                        limit=50, _user={"email": "x"})
+    prod = _with_fresh_db(db_name, snap, _prod_direct)
+    assert prod["environment"] == "production"
+    assert prod["environment_evidence"]["resolved_host"] == "hub.creativemojo.co.uk"
+    assert prod["environment_evidence"]["db_name"]
+
+    # X-Forwarded-Host set to hub.creativemojo.co.uk (CDN-rewritten scenario)
+    async def _prod_xfh(db):
+        fn = _find_ep(_router(db), "/admin/diagnostics/homes-list-duplicates", "GET")
+        return await fn(request=_FakeRequest(
+                            host="cluster-internal.local",
+                            x_forwarded_host="hub.creativemojo.co.uk"),
+                        home_name="Tunbridge Wells", postcode=None, location_id=None,
+                        limit=50, _user={"email": "x"})
+    prod_via_xfh = _with_fresh_db(db_name, snap, _prod_xfh)
+    assert prod_via_xfh["environment"] == "production"
+    assert "hub.creativemojo.co.uk" in prod_via_xfh["environment_evidence"]["resolved_host"]
+
+    # Preview cluster-internal name
+    async def _prev(db):
+        fn = _find_ep(_router(db), "/admin/diagnostics/homes-list-duplicates", "GET")
+        return await fn(request=_FakeRequest("licensee-vault.cluster-5.preview.emergentcf.cloud"),
+                        home_name="Tunbridge Wells", postcode=None, location_id=None,
+                        limit=50, _user={"email": "x"})
+    preview = _with_fresh_db(db_name, snap, _prev)
+    assert preview["environment"] == "preview"
+    assert "preview" in preview["environment_evidence"]["resolved_host"] or \
+           preview["environment_evidence"]["resolved_host"] == "licensee-vault.cluster-5.preview.emergentcf.cloud"
 
 
 def test_build_commit_falls_back_safely(monkeypatch):

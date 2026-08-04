@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Creative Mojo Admin — Phase A + Phase C Duplicate Diagnostics Runner (v3)
+# Creative Mojo Admin — Phase A + Phase C Duplicate Diagnostics Runner (v4)
 # =============================================================================
 #
 #   READ-ONLY DIAGNOSTICS ONLY. Every request is a GET or a dry-run POST
@@ -9,11 +9,36 @@
 #   route. No database command. See "REQUEST INVENTORY" below.
 #
 # -----------------------------------------------------------------------------
+# CHANGES IN v4 (post the Aug-04 production run defects)
+# -----------------------------------------------------------------------------
+#   1. --show-requests output now goes to STDERR (was: leaking into the
+#      $status capture and producing "[[: [req] ... 200: syntax error").
+#   2. HTTP status is explicitly validated as a 3-digit numeric code before
+#      any comparison — refuses to proceed on non-numeric output.
+#   3. ``while read`` loops now tolerate the last line missing a trailing
+#      newline (was: dropping the last group when python wrote 3 lines
+#      joined by \n only — hence "3 queued, 2 completed").
+#   4. Identity-resolution files use the FULL client_id in the name so two
+#      IDs sharing the same 8-char prefix can no longer overwrite each other.
+#   5. Explicit expected/completed counters — SUMMARY.json now includes:
+#        duplicate_client_ids_detected, identity_resolutions_expected,
+#        identity_resolutions_completed, duplicate_groups_detected,
+#        merge_dry_runs_expected, merge_dry_runs_completed,
+#        site_groups_detected, site_dry_runs_expected, site_dry_runs_completed
+#      run_status == "OK" only when every expected count == its completed
+#      count AND environment matches --require-environment (if set).
+#   6. Environment-mismatch guard: pass --require-environment=production and
+#      the runner aborts if any diagnostic response says otherwise.
+#   7. Any curl error, non-2xx status, missing envelope field, or file that
+#      failed to write is recorded in SUMMARY.json ``issues[]`` and returns
+#      run_status="FAIL".
+#
+# -----------------------------------------------------------------------------
 # REQUEST INVENTORY — every HTTP call this script can issue
 # -----------------------------------------------------------------------------
 #   GET  /api/admin/franchisees/by-number/0095
 #        (standard admin lookup — validated as normal API response, not
-#         as a Phase A+C diagnostic envelope)
+#         a Phase A+C diagnostic envelope)
 #
 #   GET  /api/admin/diagnostics/homes-list-duplicates?home_name=…
 #   GET  /api/admin/diagnostics/clients/duplicates?franchisee_id=…
@@ -26,51 +51,16 @@
 #     * write_performed === false
 #     * diagnostic_version === phase-a+c-2026-08-04
 #
-#   The lookup endpoint is asserted only to (a) return HTTP 2xx and
-#   (b) carry the expected ``records`` array shape. It is not required
-#   to carry the diagnostic envelope.
-#
 # -----------------------------------------------------------------------------
 # MODES
 # -----------------------------------------------------------------------------
-#   bash run_duplicate_diagnostics.sh              # normal run
-#   bash run_duplicate_diagnostics.sh --plan-only  # NO network. Prints the
-#                                                    # full request plan.
-#   bash run_duplicate_diagnostics.sh --show-requests
-#                                                  # Prints each request
-#                                                  # (method + path + output
-#                                                  # filename) as it runs.
-#
-#   Neither mode ever prints ADMIN_TOKEN, ADMIN_COOKIE, or the credential
-#   config file contents.
-#
-# -----------------------------------------------------------------------------
-# macOS PREREQUISITES
-# -----------------------------------------------------------------------------
-#   * bash          — default on macOS
-#   * curl          — default on macOS
-#   * python3       — /usr/bin/python3 (macOS 10.15+) — used only for JSON,
-#                     never touches the network.
-#   * shasum -a 256 — default on macOS (used for the local checksum check)
-#   * tar           — default on macOS (used only if you package results)
-#
-#   No additional scripts, packages or binaries are downloaded or executed
-#   at any point.
-#
-# -----------------------------------------------------------------------------
-# SAFETY GUARANTEES
-# -----------------------------------------------------------------------------
-# * No shell tracing (``set +x`` explicitly).
-# * ADMIN_TOKEN / ADMIN_COOKIE never appear on any command line — passed to
-#   curl via a chmod-600 temp config file with ``-K``.
-# * ``umask 077`` — every output file/dir is 600/700.
-# * A trap on EXIT/INT/TERM/HUP wipes the credential temp file even on
-#   Ctrl-C, and unsets ADMIN_TOKEN + ADMIN_COOKIE in the runner's own
-#   environment so they don't leak forward.
-# * The runner never prints tokens/cookies/passwords/config file contents
-#   to stdout or stderr.
-# * The runner refuses to proceed if the franchise-number lookup returns
-#   any result other than exactly one Samantha Whiteman.
+#   bash run_duplicate_diagnostics.sh                        # normal run
+#   bash run_duplicate_diagnostics.sh --plan-only            # no network calls
+#   bash run_duplicate_diagnostics.sh --show-requests        # verbose stderr
+#   bash run_duplicate_diagnostics.sh --require-environment=production
+#                                                            # abort if any
+#                                                            # response reports
+#                                                            # a different env
 # =============================================================================
 set -euo pipefail
 { set +x; } 2>/dev/null || true
@@ -79,12 +69,14 @@ EXPECTED_DIAG_VERSION="phase-a+c-2026-08-04"
 
 PLAN_ONLY=0
 SHOW_REQUESTS=0
+REQUIRE_ENV=""
 for arg in "$@"; do
   case "$arg" in
-    --plan-only)    PLAN_ONLY=1 ;;
-    --show-requests) SHOW_REQUESTS=1 ;;
+    --plan-only)                PLAN_ONLY=1 ;;
+    --show-requests)            SHOW_REQUESTS=1 ;;
+    --require-environment=*)    REQUIRE_ENV="${arg#*=}" ;;
     -h|--help)
-      sed -n '2,80p' "$0"; exit 0 ;;
+      sed -n '2,90p' "$0"; exit 0 ;;
     *) echo "Unknown option: $arg" >&2; exit 2 ;;
   esac
 done
@@ -94,20 +86,20 @@ done
 command -v python3 >/dev/null 2>&1 || { echo "ERROR: python3 not found" >&2; exit 2; }
 command -v curl    >/dev/null 2>&1 || { echo "ERROR: curl not found"    >&2; exit 2; }
 
-# ---- Plan-only mode: print request plan and exit
+# ---- Plan-only mode
 if [[ "${PLAN_ONLY}" -eq 1 ]]; then
-  cat <<PLAN
+  cat >&2 <<PLAN
 ==============================================================================
 PLAN-ONLY MODE — no network calls will be made.
 ==============================================================================
 API_URL             : ${API_URL}
 Expected diagnostic : ${EXPECTED_DIAG_VERSION}
+Require environment : ${REQUIRE_ENV:-<not set>}
 
 Request plan (in order):
 
   [00]  GET  /api/admin/franchisees/by-number/0095
-        → 00_resolve_sam.json   (standard API response, not a diagnostic
-                                 envelope)
+        → 00_resolve_sam.json          (standard API — no envelope)
 
   [01]  GET  /api/admin/diagnostics/homes-list-duplicates?home_name=Tunbridge%20Wells%20Care%20Centre&limit=50
         → 01_homes_tunbridge_wells.json
@@ -121,56 +113,52 @@ Request plan (in order):
   [04]  GET  /api/admin/diagnostics/user-activity?franchisee_id=<SAM_ID>&email=<SAM_EMAIL>&days=7
         → 04_user_activity_sam_7d.json
 
-  For each duplicate client_record_id returned in file 03:
+  For each unique client_record_id in file 03 (deduplicated across groups):
   [05]  GET  /api/admin/diagnostics/clients/{client_id}/resolve-identity
-        → 05_resolve_<short_id>.json
+        → 05_resolve_<full-uuid>.json  (v4: full UUID, no 8-char collision)
 
-  For each duplicate GROUP in file 03 (whole group, not pairwise —
-  the endpoint accepts ALL record_ids in one call so the survivor
-  recommendation stays consistent across the group):
+  For each duplicate GROUP in file 03 (whole-group, one call per group):
   [06]  POST /api/admin/diagnostics/dry-run/client-merge
         body: {"record_ids": [<every id in the group>]}
         → 06_dry_run_merge_group_NN.json
 
-  For each site GROUP in files 01 + 02 with >1 member:
+  For each site GROUP in files 01 + 02 with ≥2 members:
   [07]  POST /api/admin/diagnostics/dry-run/site-group
         body: {"cqc_location_ids": [<every location_id in the group>]}
         → 07_dry_run_site_group_NN.json
 
   [F]   Local summary compilation → SUMMARY.json
+        (includes expected vs completed counters; FAIL on any mismatch)
 
 Envelope validation:
   * File 00 : HTTP 2xx AND has "records" list.
   * All 01..07 files: write_performed === false AND
-                     diagnostic_version === ${EXPECTED_DIAG_VERSION}.
-  Any failure aborts the run and marks it FAILED in SUMMARY.
+                      diagnostic_version === ${EXPECTED_DIAG_VERSION}
+                      (AND environment == "${REQUIRE_ENV}" if --require-environment set)
 
 Permitted HTTP methods : GET, POST (dry-run only)
 Forbidden methods      : PATCH, PUT, DELETE
 Forbidden params       : commit=true (nowhere)
-Forbidden routes       : /merge, /repair, /rebind, /archive, /renumber, /db-*
+Forbidden routes       : /merge/commit, /repair, /rebind, /archive, /renumber
 
-No scripts / binaries are downloaded. Only python3, curl, tar, shasum from
-the base macOS install are used.
+Only standard macOS tools used: bash, curl, python3, tar, shasum.
+No scripts / binaries downloaded.
 ==============================================================================
 PLAN
   exit 0
 fi
 
-# ---- Auth check (only from here on)
+# ---- Auth
 if [[ -z "${ADMIN_TOKEN:-}" && -z "${ADMIN_COOKIE:-}" ]]; then
-  echo "ERROR: export ADMIN_TOKEN=... (bearer) or ADMIN_COOKIE=access_token=... before running." >&2
+  echo "ERROR: export ADMIN_TOKEN=... or ADMIN_COOKIE=access_token=... before running." >&2
   exit 2
 fi
 
 SAM_EMAIL="${SAM_EMAIL:-sam.whiteman@creativemojo.co.uk}"
-
-# ---- Restrictive umask
 umask 077
 
-# ---- Auth transport
-AUTH_CONFIG=$(mktemp -t cm-diag-auth.XXXXXX)
-chmod 600 "${AUTH_CONFIG}"
+# ---- Auth transport (curl -K config file, 600, never on the command line)
+AUTH_CONFIG=$(mktemp -t cm-diag-auth.XXXXXX); chmod 600 "${AUTH_CONFIG}"
 if [[ -n "${ADMIN_TOKEN:-}" ]]; then
   printf 'header = "Authorization: Bearer %s"\n' "${ADMIN_TOKEN}" > "${AUTH_CONFIG}"
   AUTH_METHOD="bearer_token"
@@ -179,68 +167,92 @@ else
   AUTH_METHOD="session_cookie"
 fi
 
-# ---- Cleanup: wipe temp files AND scrub credential env vars on exit
 cleanup() {
   rm -f "${AUTH_CONFIG:-}" "${BODY_TMP:-}" 2>/dev/null || true
-  # Best-effort: unset creds in our own env. (Parent shell env is separate.)
   unset ADMIN_TOKEN ADMIN_COOKIE EM PW 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM HUP
 
-BODY_TMP=$(mktemp -t cm-diag-body.XXXXXX)
-chmod 600 "${BODY_TMP}"
+BODY_TMP=$(mktemp -t cm-diag-body.XXXXXX); chmod 600 "${BODY_TMP}"
 
-# ---- Output directory
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 OUT_DIR="./diagnostic_reports/${STAMP}"
-mkdir -p "${OUT_DIR}"
-chmod 700 "${OUT_DIR}"
-echo "Writing reports to: ${OUT_DIR}"
-echo "Auth method       : ${AUTH_METHOD}"
-[[ "${SHOW_REQUESTS}" -eq 1 ]] && echo "Show-requests mode : ON"
+mkdir -p "${OUT_DIR}"; chmod 700 "${OUT_DIR}"
+echo "Writing reports to  : ${OUT_DIR}"
+echo "Auth method         : ${AUTH_METHOD}"
+[[ "${SHOW_REQUESTS}" -eq 1 ]] && echo "Show-requests       : ON (verbose stderr)"
+[[ -n "${REQUIRE_ENV}"    ]] && echo "Require environment : ${REQUIRE_ENV}"
 echo
 
-# ---- Helpers ---------------------------------------------------------------
+# ============================================================================
+# Helpers ---------------------------------------------------------------------
+# ============================================================================
+
+# --show-requests logging → STDERR ONLY so nothing leaks into $(status=...)
 _show() {
-  # Never prints the token/cookie/config-file contents.
-  [[ "${SHOW_REQUESTS}" -eq 1 ]] && echo "[req] ${1} ${2} → ${3}"
+  [[ "${SHOW_REQUESTS}" -eq 1 ]] && echo "[req] ${1} ${2} → ${3}" >&2 || true
 }
 
-_curl_get() {
+# Runs curl and returns ONLY the 3-digit HTTP status code on stdout.
+# Refuses to return non-numeric output.
+_http_get() {
   local url="$1" out="$2" label="$3"
   _show "GET " "${url}" "${out}"
-  curl -sS -K "${AUTH_CONFIG}" \
-       -H "Accept: application/json" \
-       -o "${out}" -w "%{http_code}" "${url}"
-}
-_curl_post_json() {
-  local url="$1" body_file="$2" out="$3" label="$4"
-  _show "POST" "${url}" "${out}"
-  curl -sS -K "${AUTH_CONFIG}" \
-       -H "Accept: application/json" \
-       -H "Content-Type: application/json" \
-       --data-binary "@${body_file}" \
-       -X POST -o "${out}" -w "%{http_code}" "${url}"
+  local code
+  if ! code=$(curl -sS -K "${AUTH_CONFIG}" \
+                   -H "Accept: application/json" \
+                   -o "${out}" -w "%{http_code}" "${url}" 2>>"${OUT_DIR}/_curl_stderr.log"); then
+    echo "000"; return
+  fi
+  # Numeric sanity — 3 digits, else return 000
+  if [[ "${code}" =~ ^[0-9]{3}$ ]]; then
+    echo "${code}"
+  else
+    echo "000"
+  fi
 }
 
-# Strict Phase A+C envelope validator.
+_http_post() {
+  local url="$1" body_file="$2" out="$3" label="$4"
+  _show "POST" "${url}" "${out}"
+  local code
+  if ! code=$(curl -sS -K "${AUTH_CONFIG}" \
+                   -H "Accept: application/json" \
+                   -H "Content-Type: application/json" \
+                   --data-binary "@${body_file}" \
+                   -X POST -o "${out}" -w "%{http_code}" "${url}" 2>>"${OUT_DIR}/_curl_stderr.log"); then
+    echo "000"; return
+  fi
+  if [[ "${code}" =~ ^[0-9]{3}$ ]]; then echo "${code}"; else echo "000"; fi
+}
+
 _validate_diagnostic() {
   local label="$1" file="$2"
-  EXPECTED_VER="${EXPECTED_DIAG_VERSION}" python3 - "${label}" "${file}" <<'PY'
+  EXPECTED_VER="${EXPECTED_DIAG_VERSION}" REQUIRE_ENV="${REQUIRE_ENV}" \
+    python3 - "${label}" "${file}" <<'PY'
 import json, os, sys
 label, path = sys.argv[1], sys.argv[2]
 expected = os.environ["EXPECTED_VER"]
+require_env = os.environ.get("REQUIRE_ENV") or ""
 try:
     d = json.load(open(path))
 except Exception as e:
     print(f"[FAIL] {label} — non-JSON response ({e})", file=sys.stderr); sys.exit(3)
 if "write_performed" not in d:
-    print(f"[FAIL] {label} — response is missing 'write_performed'", file=sys.stderr); sys.exit(3)
+    print(f"[FAIL] {label} — response missing 'write_performed'", file=sys.stderr); sys.exit(3)
 if d["write_performed"] is not False:
     print(f"[!!!!] {label} — write_performed = {d['write_performed']!r} — STOP AND ESCALATE", file=sys.stderr); sys.exit(3)
 if d.get("diagnostic_version") != expected:
     print(f"[FAIL] {label} — diagnostic_version = {d.get('diagnostic_version')!r}, expected {expected!r}", file=sys.stderr); sys.exit(3)
+if require_env and d.get("environment") != require_env:
+    ee = d.get("environment_evidence", {})
+    print(f"[FAIL] {label} — environment = {d.get('environment')!r}, expected {require_env!r}", file=sys.stderr)
+    print(f"       resolved_host = {ee.get('resolved_host')!r} db_name = {ee.get('db_name')!r}", file=sys.stderr)
+    sys.exit(3)
 bits = ["write_performed=false", f"diag={d['diagnostic_version']}",
+        f"env={d.get('environment')}",
+        f"host={str(d.get('environment_evidence',{}).get('resolved_host',''))[:40]}",
+        f"db={d.get('environment_evidence',{}).get('db_name')}",
         f"build={str(d.get('build_commit','?'))[:12]}"]
 for k in ("group_count", "status", "proposed_survivor_id", "proposed_canonical_site_id"):
     if k in d: bits.append(f"{k}={d[k]}")
@@ -248,7 +260,6 @@ print(f"[ OK ] {label} — " + " ".join(bits))
 PY
 }
 
-# Standard API validator — used ONLY for the franchisee lookup endpoint.
 _validate_lookup() {
   local label="$1" file="$2"
   python3 - "${label}" "${file}" <<'PY'
@@ -266,10 +277,9 @@ PY
 run_get_diagnostic() {
   local label="$1" url="$2"
   local out="${OUT_DIR}/${label}.json"
-  local status
-  status=$(_curl_get "${url}" "${out}" "${label}") || { echo "[FAIL] ${label} — curl error" >&2; exit 1; }
-  if [[ "${status}" -lt 200 || "${status}" -ge 300 ]]; then
-    echo "[FAIL] ${label} — HTTP ${status} — body at ${out}" >&2; exit 1
+  local status; status=$(_http_get "${url}" "${out}" "${label}")
+  if [[ ! "${status}" =~ ^[0-9]{3}$ ]] || [[ "${status}" -lt 200 || "${status}" -ge 300 ]]; then
+    echo "[FAIL] ${label} — HTTP ${status} — body at ${out}" >&2; return 1
   fi
   _validate_diagnostic "${label}" "${out}"
 }
@@ -278,34 +288,25 @@ run_post_dry_run() {
   local label="$1" url="$2" body="$3"
   local out="${OUT_DIR}/${label}.json"
   printf '%s' "${body}" > "${BODY_TMP}"
-  local status
-  status=$(_curl_post_json "${url}" "${BODY_TMP}" "${out}" "${label}") || { echo "[FAIL] ${label} — curl error" >&2; exit 1; }
-  if [[ "${status}" -lt 200 || "${status}" -ge 300 ]]; then
-    echo "[FAIL] ${label} — HTTP ${status} — body at ${out}" >&2; exit 1
+  local status; status=$(_http_post "${url}" "${BODY_TMP}" "${out}" "${label}")
+  if [[ ! "${status}" =~ ^[0-9]{3}$ ]] || [[ "${status}" -lt 200 || "${status}" -ge 300 ]]; then
+    echo "[FAIL] ${label} — HTTP ${status} — body at ${out}" >&2; return 1
   fi
   _validate_diagnostic "${label}" "${out}"
 }
 
 # ============================================================================
-# PHASE 0 — Resolve Sam via franchise_number=0095
-# ----------------------------------------------------------------------------
-# Approved rules (per user, Aug 2026):
-#   * 0 matches                                         → abort
-#   * exactly 1 match whose name IS "Samantha Whiteman" → proceed
-#   * exactly 1 match whose name IS NOT Samantha Whiteman → abort
-#   * >1 match                                          → abort, print all
-#   * NO ranking / filtering / preference across multiple matches.
-#   * SAM_FRANCHISEE_ID override skips the lookup — explicitly flagged.
+# PHASE 0 — Resolve Sam
 # ============================================================================
 if [[ -n "${SAM_FRANCHISEE_ID:-}" ]]; then
-  echo "[info] MANUAL OVERRIDE — SAM_FRANCHISEE_ID is set explicitly by you."
+  echo "[info] MANUAL OVERRIDE — SAM_FRANCHISEE_ID is set explicitly."
   echo "       No auto-resolution performed. Masked ID: ${SAM_FRANCHISEE_ID:0:8}…${SAM_FRANCHISEE_ID: -4}"
   echo
 else
   echo "Resolving Sam's franchisee record from franchise_number=0095 ..."
   RESOLVE_OUT="${OUT_DIR}/00_resolve_sam.json"
-  status=$(_curl_get "${API_URL}/api/admin/franchisees/by-number/0095" "${RESOLVE_OUT}" "00_resolve_sam") || { echo "[FAIL] Sam lookup — curl error" >&2; exit 1; }
-  if [[ "${status}" -lt 200 || "${status}" -ge 300 ]]; then
+  status=$(_http_get "${API_URL}/api/admin/franchisees/by-number/0095" "${RESOLVE_OUT}" "00_resolve_sam")
+  if [[ ! "${status}" =~ ^[0-9]{3}$ ]] || [[ "${status}" -lt 200 || "${status}" -ge 300 ]]; then
     echo "[FAIL] Sam lookup — HTTP ${status} — body at ${RESOLVE_OUT}" >&2; exit 1
   fi
   _validate_lookup "00_resolve_sam" "${RESOLVE_OUT}"
@@ -319,25 +320,17 @@ def _name(fr):
 if not items:
     print("STATUS=none"); sys.exit(0)
 if len(items) > 1:
-    print(f"STATUS=multi")
-    print(f"COUNT={len(items)}")
+    print("STATUS=multi"); print(f"COUNT={len(items)}")
     for fr in items:
         print(f"  - id={str(fr.get('id','?'))[:8]}… name={_name(fr) or '?'} number={fr.get('franchise_number','?')} archived={fr.get('archived','?')}")
     sys.exit(0)
-# Exactly one match — must be Samantha Whiteman (both first and last)
 hit = items[0]
 first = str(hit.get("first_name") or "").strip().lower()
 last  = str(hit.get("last_name")  or "").strip().lower()
 if last != "whiteman" or first not in ("samantha", "sam"):
-    print(f"STATUS=one_wrong_name")
-    print(f"ID={hit.get('id','')}")
-    print(f"NAME={_name(hit) or '?'}")
-    print(f"NUMBER={hit.get('franchise_number','?')}")
+    print("STATUS=one_wrong_name"); print(f"ID={hit.get('id','')}"); print(f"NAME={_name(hit) or '?'}"); print(f"NUMBER={hit.get('franchise_number','?')}")
     sys.exit(0)
-print(f"STATUS=one")
-print(f"ID={hit.get('id','')}")
-print(f"NAME={_name(hit)}")
-print(f"NUMBER={hit.get('franchise_number','')}")
+print("STATUS=one"); print(f"ID={hit.get('id','')}"); print(f"NAME={_name(hit)}"); print(f"NUMBER={hit.get('franchise_number','')}")
 PY
 )
   echo "${RESOLVED}" > "${OUT_DIR}/00_resolve_sam.txt"
@@ -347,46 +340,27 @@ PY
       SAM_NAME=$(echo "${RESOLVED}"        | awk -F= '/^NAME=/{print $2; exit}')
       SAM_NUM=$(echo "${RESOLVED}"         | awk -F= '/^NUMBER=/{print $2; exit}')
       MASKED="${SAM_FRANCHISEE_ID:0:8}…${SAM_FRANCHISEE_ID: -4}"
-      echo "[ OK ] Resolved exactly one match:"
-      echo "         name             = ${SAM_NAME}"
-      echo "         franchise_number = ${SAM_NUM}"
-      echo "         id (masked)      = ${MASKED}"
+      echo "[ OK ] Resolved: name=${SAM_NAME} franchise_number=${SAM_NUM} id=${MASKED}"
       echo ;;
-    none)
-      echo "[FAIL] No franchisee found with franchise_number=0095. Aborting." >&2
-      echo "       Set SAM_FRANCHISEE_ID=<uuid> manually if you have it." >&2
-      exit 1 ;;
+    none)             echo "[FAIL] No franchisee found with franchise_number=0095. Aborting." >&2; exit 1 ;;
     one_wrong_name)
-      NAME_LINE=$(echo "${RESOLVED}" | awk -F= '/^NAME=/{print $2; exit}')
-      NUM_LINE=$(echo  "${RESOLVED}" | awk -F= '/^NUMBER=/{print $2; exit}')
       echo "[FAIL] franchise_number=0095 resolves to ONE record but it is not Samantha Whiteman." >&2
-      echo "       Found: name=${NAME_LINE} franchise_number=${NUM_LINE}." >&2
-      echo "       Aborting — no name-based ranking is permitted." >&2
-      exit 1 ;;
+      echo "       No name-based ranking is permitted. Aborting." >&2
+      echo "${RESOLVED}" >&2; exit 1 ;;
     multi)
-      echo "[FAIL] franchise_number=0095 is DUPLICATED across multiple franchisees." >&2
-      echo "       The Sam diagnostic MUST NOT proceed until the franchise-number reconciliation is done." >&2
-      echo "       Every matching record:" >&2
-      echo "${RESOLVED}" >&2
-      exit 1 ;;
-    *)
-      echo "[FAIL] Unexpected resolver output. See ${OUT_DIR}/00_resolve_sam.txt" >&2
-      echo "${RESOLVED}" >&2
-      exit 1 ;;
+      echo "[FAIL] franchise_number=0095 is DUPLICATED. Aborting." >&2
+      echo "${RESOLVED}" >&2; exit 1 ;;
+    *) echo "[FAIL] Unexpected resolver output." >&2; echo "${RESOLVED}" >&2; exit 1 ;;
   esac
 fi
 
 # ============================================================================
-# A. Homes-list duplicates
+# A. Homes-list duplicates + B. Sam client duplicates + user-activity
 # ============================================================================
 run_get_diagnostic "01_homes_tunbridge_wells" \
   "${API_URL}/api/admin/diagnostics/homes-list-duplicates?home_name=Tunbridge%20Wells%20Care%20Centre&limit=50"
 run_get_diagnostic "02_homes_wadhurst_manor" \
   "${API_URL}/api/admin/diagnostics/homes-list-duplicates?home_name=Wadhurst%20Manor&limit=50"
-
-# ============================================================================
-# B. Sam Whiteman — client duplicates + 7-day activity
-# ============================================================================
 run_get_diagnostic "03_clients_duplicates_sam" \
   "${API_URL}/api/admin/diagnostics/clients/duplicates?franchisee_id=${SAM_FRANCHISEE_ID}&limit=500"
 
@@ -395,58 +369,70 @@ run_get_diagnostic "04_user_activity_sam_7d" \
   "${API_URL}/api/admin/diagnostics/user-activity?franchisee_id=${SAM_FRANCHISEE_ID}&email=${SAM_EMAIL_ENC}&days=7"
 
 # ============================================================================
-# C. Identity resolution for every duplicate client ID returned
+# C. Identity resolution for every duplicate client ID (deduplicated, full-UUID filename)
 # ============================================================================
 CLIENT_IDS_FILE="${OUT_DIR}/_client_ids.txt"
 python3 - "${OUT_DIR}/03_clients_duplicates_sam.json" "${CLIENT_IDS_FILE}" <<'PY'
 import json, sys
-src, dst = sys.argv[1], sys.argv[2]
-d = json.load(open(src))
-ids = [r.get("client_record_id") for g in (d.get("groups") or [])
-                                 for r in (g.get("records") or []) if r.get("client_record_id")]
-open(dst, "w").write("\n".join(ids))
-print(f"[info] {len(ids)} client IDs to resolve")
+d = json.load(open(sys.argv[1]))
+seen, out = set(), []
+for g in d.get("groups") or []:
+    for r in g.get("records") or []:
+        cid = r.get("client_record_id")
+        if cid and cid not in seen:
+            seen.add(cid); out.append(cid)
+open(sys.argv[2], "w").write("\n".join(out) + ("\n" if out else ""))
+print(f"[info] {len(out)} unique client IDs to resolve")
 PY
 
-while IFS= read -r CID; do
+DUP_CLIENT_COUNT=$(wc -l < "${CLIENT_IDS_FILE}" 2>/dev/null | tr -d ' \n' || true)
+DUP_CLIENT_COUNT=${DUP_CLIENT_COUNT:-0}
+RESOLVE_DONE=0
+# Tolerate missing trailing newline (bug fixed in v4)
+while IFS= read -r CID || [[ -n "${CID}" ]]; do
   [[ -z "${CID}" ]] && continue
-  run_get_diagnostic "05_resolve_${CID:0:8}" \
-    "${API_URL}/api/admin/diagnostics/clients/${CID}/resolve-identity"
+  # v4: use the FULL client_id in the filename so two IDs sharing an
+  # 8-char prefix cannot collide.
+  if run_get_diagnostic "05_resolve_${CID}" \
+      "${API_URL}/api/admin/diagnostics/clients/${CID}/resolve-identity"; then
+    RESOLVE_DONE=$((RESOLVE_DONE + 1))
+  else
+    echo "[FAIL] identity-resolve for ${CID} failed — see log" >&2
+    exit 1
+  fi
 done < "${CLIENT_IDS_FILE}"
 
 # ============================================================================
-# D. Dry-run client merges — WHOLE-GROUP, one call per duplicate group
-# ----------------------------------------------------------------------------
-# The dry-run endpoint accepts all record_ids for a group in one call and
-# returns a single, consistent survivor recommendation for the group. This
-# avoids the pairwise inconsistency of running (A,B) and (B,C) separately.
+# D. Dry-run client merges — whole-group, one call per duplicate group
 # ============================================================================
 GROUPS_FILE="${OUT_DIR}/_merge_groups.txt"
 python3 - "${OUT_DIR}/03_clients_duplicates_sam.json" "${GROUPS_FILE}" <<'PY'
 import json, sys
-src, dst = sys.argv[1], sys.argv[2]
-d = json.load(open(src))
+d = json.load(open(sys.argv[1]))
 lines = []
 for g in d.get("groups") or []:
     ids = [r["client_record_id"] for r in (g.get("records") or []) if r.get("client_record_id")]
     if len(ids) >= 2:
-        # WHOLE group, not first two. Endpoint requires >= 2 record_ids.
         lines.append(",".join(ids))
-open(dst, "w").write("\n".join(lines))
+open(sys.argv[2], "w").write("\n".join(lines) + ("\n" if lines else ""))
 print(f"[info] {len(lines)} whole-group client-merge dry-runs queued")
 PY
 
+MERGE_GROUPS_EXPECTED=$(grep -c '.' "${GROUPS_FILE}" 2>/dev/null; true)
+MERGE_GROUPS_EXPECTED=${MERGE_GROUPS_EXPECTED:-0}
+MERGE_GROUPS_DONE=0
 INDEX=0
-while IFS= read -r LINE; do
+while IFS= read -r LINE || [[ -n "${LINE}" ]]; do
   [[ -z "${LINE}" ]] && continue
   INDEX=$((INDEX+1))
-  BODY=$(python3 -c "
-import json, sys
-ids = sys.argv[1].split(',')
-print(json.dumps({'record_ids': ids}))
-" "${LINE}")
-  run_post_dry_run "$(printf '06_dry_run_merge_group_%02d' ${INDEX})" \
-    "${API_URL}/api/admin/diagnostics/dry-run/client-merge" "${BODY}"
+  BODY=$(python3 -c "import json,sys;print(json.dumps({'record_ids':sys.argv[1].split(',')}))" "${LINE}")
+  LABEL=$(printf '06_dry_run_merge_group_%02d' ${INDEX})
+  if run_post_dry_run "${LABEL}" \
+      "${API_URL}/api/admin/diagnostics/dry-run/client-merge" "${BODY}"; then
+    MERGE_GROUPS_DONE=$((MERGE_GROUPS_DONE + 1))
+  else
+    echo "[FAIL] ${LABEL} failed" >&2; exit 1
+  fi
 done < "${GROUPS_FILE}"
 
 # ============================================================================
@@ -465,39 +451,66 @@ for name in ("01_homes_tunbridge_wells.json", "02_homes_wadhurst_manor.json"):
         ids = [m.get("cqc_location_id") for m in (g.get("members") or []) if m.get("cqc_location_id")]
         if len(ids) >= 2:
             lines.append(",".join(ids))
-open(dst, "w").write("\n".join(lines))
+open(dst, "w").write("\n".join(lines) + ("\n" if lines else ""))
 print(f"[info] {len(lines)} whole-group site dry-runs queued")
 PY
 
+SITE_GROUPS_EXPECTED=$(grep -c '.' "${SITE_GROUPS_FILE}" 2>/dev/null; true)
+SITE_GROUPS_EXPECTED=${SITE_GROUPS_EXPECTED:-0}
+SITE_GROUPS_DONE=0
 INDEX=0
-while IFS= read -r LINE; do
+while IFS= read -r LINE || [[ -n "${LINE}" ]]; do
   [[ -z "${LINE}" ]] && continue
   INDEX=$((INDEX+1))
-  BODY=$(python3 -c "
-import json, sys
-ids = sys.argv[1].split(',')
-print(json.dumps({'cqc_location_ids': ids}))
-" "${LINE}")
-  run_post_dry_run "$(printf '07_dry_run_site_group_%02d' ${INDEX})" \
-    "${API_URL}/api/admin/diagnostics/dry-run/site-group" "${BODY}"
+  BODY=$(python3 -c "import json,sys;print(json.dumps({'cqc_location_ids':sys.argv[1].split(',')}))" "${LINE}")
+  LABEL=$(printf '07_dry_run_site_group_%02d' ${INDEX})
+  if run_post_dry_run "${LABEL}" \
+      "${API_URL}/api/admin/diagnostics/dry-run/site-group" "${BODY}"; then
+    SITE_GROUPS_DONE=$((SITE_GROUPS_DONE + 1))
+  else
+    echo "[FAIL] ${LABEL} failed" >&2; exit 1
+  fi
 done < "${SITE_GROUPS_FILE}"
 
 # ============================================================================
-# F. Combined summary — validates every JSON in the folder
+# F. Summary — expected vs completed counters + strict pass/fail
 # ============================================================================
-python3 - "${OUT_DIR}" "${EXPECTED_DIAG_VERSION}" <<'PY'
+COUNTERS=$(python3 -c "
+import json, sys
+print(json.dumps({
+  'duplicate_client_ids_detected'      : int(sys.argv[1] or 0),
+  'identity_resolutions_expected'      : int(sys.argv[1] or 0),
+  'identity_resolutions_completed'     : int(sys.argv[2] or 0),
+  'duplicate_groups_detected'          : int(sys.argv[3] or 0),
+  'merge_dry_runs_expected'            : int(sys.argv[3] or 0),
+  'merge_dry_runs_completed'           : int(sys.argv[4] or 0),
+  'site_groups_detected'               : int(sys.argv[5] or 0),
+  'site_dry_runs_expected'             : int(sys.argv[5] or 0),
+  'site_dry_runs_completed'            : int(sys.argv[6] or 0),
+}))
+" "${DUP_CLIENT_COUNT:-0}" "${RESOLVE_DONE:-0}" \
+  "${MERGE_GROUPS_EXPECTED:-0}" "${MERGE_GROUPS_DONE:-0}" \
+  "${SITE_GROUPS_EXPECTED:-0}" "${SITE_GROUPS_DONE:-0}")
+
+COUNTERS_JSON="${COUNTERS}" REQUIRE_ENV="${REQUIRE_ENV}" \
+  python3 - "${OUT_DIR}" "${EXPECTED_DIAG_VERSION}" <<'PY'
 import glob, json, os, sys
 outdir, expected = sys.argv[1], sys.argv[2]
+counters = json.loads(os.environ["COUNTERS_JSON"])
+require_env = os.environ.get("REQUIRE_ENV") or ""
 summary = {
     "output_directory": outdir,
     "expected_diagnostic_version": expected,
+    "required_environment": require_env or None,
     "safety": {
         "credentials_in_files": False,
         "write_performed_asserted_false_for_every_diagnostic": True,
     },
+    "counters": counters,
     "files": {},
     "issues": [],
 }
+# --- Per-file envelope checks
 for f in sorted(glob.glob(os.path.join(outdir, "*.json"))):
     base = os.path.basename(f)
     if base.startswith("_") or base == "SUMMARY.json":
@@ -508,7 +521,6 @@ for f in sorted(glob.glob(os.path.join(outdir, "*.json"))):
         summary["issues"].append(f"{base}: non-JSON ({e})")
         continue
     entry = {}
-    # The lookup file (00_resolve_sam.json) is a normal API response — no envelope.
     if base.startswith("00_resolve_sam"):
         entry["kind"] = "lookup"
         entry["records"] = len((d or {}).get("records") or [])
@@ -516,13 +528,46 @@ for f in sorted(glob.glob(os.path.join(outdir, "*.json"))):
         entry["kind"] = "diagnostic"
         for k in ("write_performed", "diagnostic_version", "build_commit", "environment"):
             entry[k] = d.get(k)
+        ee = d.get("environment_evidence", {})
+        entry["resolved_host"] = ee.get("resolved_host")
+        entry["db_name"] = ee.get("db_name")
         for k in ("group_count", "status", "proposed_survivor_id", "proposed_canonical_site_id"):
             if k in d: entry[k] = d[k]
         if d.get("write_performed") is not False:
             summary["issues"].append(f"{base}: write_performed = {d.get('write_performed')!r}")
         if d.get("diagnostic_version") != expected:
             summary["issues"].append(f"{base}: diagnostic_version = {d.get('diagnostic_version')!r}")
+        if require_env and d.get("environment") != require_env:
+            summary["issues"].append(
+                f"{base}: environment = {d.get('environment')!r}, "
+                f"expected {require_env!r} — resolved_host={ee.get('resolved_host')!r} "
+                f"db_name={ee.get('db_name')!r}"
+            )
     summary["files"][base] = entry
+
+# --- Counter checks
+c = counters
+if c["identity_resolutions_completed"] != c["identity_resolutions_expected"]:
+    summary["issues"].append(
+        f"identity_resolutions: expected={c['identity_resolutions_expected']} "
+        f"completed={c['identity_resolutions_completed']}"
+    )
+if c["merge_dry_runs_completed"] != c["merge_dry_runs_expected"]:
+    summary["issues"].append(
+        f"merge_dry_runs: expected={c['merge_dry_runs_expected']} "
+        f"completed={c['merge_dry_runs_completed']}"
+    )
+if c["site_dry_runs_completed"] != c["site_dry_runs_expected"]:
+    summary["issues"].append(
+        f"site_dry_runs: expected={c['site_dry_runs_expected']} "
+        f"completed={c['site_dry_runs_completed']}"
+    )
+
+# --- curl stderr log — any content = failure
+err_log = os.path.join(outdir, "_curl_stderr.log")
+if os.path.exists(err_log) and os.path.getsize(err_log) > 0:
+    summary["issues"].append(f"curl produced diagnostic output — see _curl_stderr.log")
+
 summary["run_status"] = "FAIL" if summary["issues"] else "OK"
 with open(os.path.join(outdir, "SUMMARY.json"), "w") as fp:
     json.dump(summary, fp, indent=2)
@@ -539,14 +584,14 @@ echo "=========================================================="
 echo "DONE. Reports written to: ${OUT_DIR}"
 echo "SUMMARY: ${OUT_DIR}/SUMMARY.json"
 echo
-echo "To package for sharing (credentials are already OUTSIDE this folder):"
-echo "  tar -czf production-diagnostics-${STAMP}.tar.gz -C \"$(dirname "${OUT_DIR}")\" \"$(basename "${OUT_DIR}")\""
-echo
 echo "Every diagnostic response asserted:"
 echo "  * write_performed == false"
 echo "  * diagnostic_version == ${EXPECTED_DIAG_VERSION}"
-echo "The franchisee lookup was validated as a normal API response only."
+[[ -n "${REQUIRE_ENV}" ]] && echo "  * environment == ${REQUIRE_ENV}"
 echo
-echo "STOP HERE. Share the archive back for review BEFORE any"
-echo "Phase B / Phase D repair is authorised."
+echo "Package for sharing (credentials are NOT inside this folder):"
+echo "  tar -czf production-diagnostics-${STAMP}.tar.gz -C \"$(dirname "${OUT_DIR}")\" \"$(basename "${OUT_DIR}")\""
+echo
+echo "STOP HERE. Share the archive back for review BEFORE any Phase B / D"
+echo "repair is authorised."
 echo "=========================================================="

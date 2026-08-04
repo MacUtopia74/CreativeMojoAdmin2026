@@ -32,7 +32,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 
 from site_identity import (
     BUILD_COMMIT, DIAGNOSTIC_VERSION, derived_site_key, evidence_between,
@@ -74,10 +74,26 @@ CORRESPONDENCE_CAPABILITY = {
 }
 
 
-def _envelope(query: dict, *, environment: str) -> dict:
+def _envelope(query: dict, *, environment: str, db_name: str, request_host: str,
+              request_headers_seen: dict) -> dict:
     return {
         "write_performed": False,
         "environment": environment,
+        "environment_evidence": {
+            "detected_from": "request_headers",
+            "resolved_host": request_host,
+            "headers_considered": request_headers_seen,
+            "db_name": db_name,
+            "note": (
+                "``environment`` is derived from the incoming request headers "
+                "(Host, X-Forwarded-Host, X-Original-Host, url.hostname — in "
+                "that priority) — any value containing 'hub.creativemojo.co.uk' "
+                "→ production, otherwise → preview. ``db_name`` is the actual "
+                "MongoDB database being queried right now; compare it to preview "
+                "vs production to confirm the deployment is bound to the correct "
+                "data store."
+            ),
+        },
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "query": query,
         "diagnostic_version": DIAGNOSTIC_VERSION,
@@ -90,12 +106,67 @@ def _envelope(query: dict, *, environment: str) -> dict:
     }
 
 
-def _env_name() -> str:
-    return (
-        os.environ.get("EMERGENT_ENVIRONMENT")
-        or os.environ.get("APP_ENV")
-        or ("production" if "hub.creativemojo.co.uk" in (os.environ.get("PUBLIC_BASE_URL") or "") else "preview")
-    )
+def _request_headers_seen(request) -> dict:
+    """Return a redacted snapshot of the host-related headers the resolver
+    inspected, for audit evidence in the response envelope."""
+    try:
+        h = request.headers
+        return {
+            "host": (h.get("host") or ""),
+            "x_forwarded_host": (h.get("x-forwarded-host") or ""),
+            "x_original_host": (h.get("x-original-host") or ""),
+        }
+    except Exception:  # noqa: BLE001
+        return {"host": "", "x_forwarded_host": "", "x_original_host": ""}
+
+
+def _env_name(request) -> str:
+    """Derive environment from the incoming request headers — the only
+    reliable signal on Emergent-managed deployments (env vars are not
+    set on production). Checks Host + X-Forwarded-Host + X-Original-Host.
+
+    Falls back to ``EMERGENT_ENVIRONMENT`` / ``APP_ENV`` env vars if the
+    caller can't provide a request object.
+    """
+    host = _request_host(request)
+    if "hub.creativemojo.co.uk" in host:
+        return "production"
+    if os.environ.get("EMERGENT_ENVIRONMENT"):
+        return os.environ["EMERGENT_ENVIRONMENT"]
+    if os.environ.get("APP_ENV"):
+        return os.environ["APP_ENV"]
+    return "preview"
+
+
+def _request_host(request) -> str:
+    """Return the best-available host string for environment attribution.
+
+    Checks (in priority order) Host, X-Forwarded-Host, X-Original-Host,
+    then ``request.url.hostname``. Every value is lowercased. Returns
+    the FIRST value that contains ``hub.creativemojo.co.uk`` when one
+    exists (so a CDN-rewritten Host header can't hide the public domain);
+    otherwise falls back to ``Host`` or ``"unknown"``.
+    """
+    try:
+        headers = request.headers
+        candidates = [
+            (headers.get("x-forwarded-host") or ""),
+            (headers.get("x-original-host") or ""),
+            (headers.get("host") or ""),
+        ]
+        candidates = [c.lower().split(",")[0].strip() for c in candidates if c]
+        try:
+            url_host = (request.url.hostname or "").lower()
+            if url_host:
+                candidates.append(url_host)
+        except Exception:  # noqa: BLE001
+            pass
+        for c in candidates:
+            if "hub.creativemojo.co.uk" in c:
+                return c
+        return candidates[0] if candidates else "unknown"
+    except Exception:  # noqa: BLE001
+        return "unknown"
 
 
 def _norm_email(v) -> str:
@@ -335,6 +406,7 @@ def build_router(db, require_role) -> APIRouter:
     # A1. Homes-list duplicates.
     @router.get("/admin/diagnostics/homes-list-duplicates")
     async def homes_list_duplicates(
+        request: Request,
         home_name: Optional[str] = Query(None),
         postcode: Optional[str] = Query(None),
         location_id: Optional[str] = Query(None),
@@ -437,7 +509,7 @@ def build_router(db, require_role) -> APIRouter:
         return {
             **_envelope(
                 {"home_name": home_name, "postcode": postcode, "location_id": location_id, "limit": limit},
-                environment=_env_name(),
+                environment=_env_name(request), db_name=db.name, request_host=_request_host(request), request_headers_seen=_request_headers_seen(request),
             ),
             "group_count": len(out_groups),
             "groups": out_groups,
@@ -447,6 +519,7 @@ def build_router(db, require_role) -> APIRouter:
     # A2. My Client duplicate groups.
     @router.get("/admin/diagnostics/clients/duplicates")
     async def client_duplicates(
+        request: Request,
         franchisee_id: Optional[str] = Query(None),
         client_name: Optional[str] = Query(None),
         limit: int = Query(200, ge=1, le=500),
@@ -496,7 +569,7 @@ def build_router(db, require_role) -> APIRouter:
         return {
             **_envelope(
                 {"franchisee_id": franchisee_id, "client_name": client_name, "limit": limit},
-                environment=_env_name(),
+                environment=_env_name(request), db_name=db.name, request_host=_request_host(request), request_headers_seen=_request_headers_seen(request),
             ),
             "group_count": len(groups),
             "groups": groups,
@@ -506,12 +579,13 @@ def build_router(db, require_role) -> APIRouter:
     # A3. Identity resolution for a single My Client record.
     @router.get("/admin/diagnostics/clients/{client_id}/resolve-identity")
     async def resolve_client_identity(
+        request: Request,
         client_id: str,
         _user: dict = Depends(require_role("admin")),
     ):
         client = await db.franchisee_clients.find_one({"id": client_id}, {"_id": 0})
         if not client:
-            return {**_envelope({"client_id": client_id}, environment=_env_name()),
+            return {**_envelope({"client_id": client_id}, environment=_env_name(request), db_name=db.name, request_host=_request_host(request), request_headers_seen=_request_headers_seen(request)),
                     "status": "unmatched", "reason": "client record not found"}
         direct = None
         if client.get("home_id") and client.get("source") == "cqc":
@@ -546,7 +620,7 @@ def build_router(db, require_role) -> APIRouter:
         else:
             status = "unmatched"
         return {
-            **_envelope({"client_id": client_id}, environment=_env_name()),
+            **_envelope({"client_id": client_id}, environment=_env_name(request), db_name=db.name, request_host=_request_host(request), request_headers_seen=_request_headers_seen(request)),
             "status": status,
             "client_record_id": client_id,
             "franchisee_id": client.get("franchisee_id"),
@@ -565,6 +639,7 @@ def build_router(db, require_role) -> APIRouter:
     # A4. Recent activity for a specific user (Sam).
     @router.get("/admin/diagnostics/user-activity")
     async def user_activity(
+        request: Request,
         email: Optional[str] = Query(None),
         franchisee_id: Optional[str] = Query(None),
         days: int = Query(7, ge=1, le=30),
@@ -743,7 +818,7 @@ def build_router(db, require_role) -> APIRouter:
         return {
             **_envelope(
                 {"email": email, "franchisee_id": franchisee_id, "days": days},
-                environment=_env_name(),
+                environment=_env_name(request), db_name=db.name, request_host=_request_host(request), request_headers_seen=_request_headers_seen(request),
             ),
             "user": user_row,
             "franchisee": fr,
@@ -771,6 +846,7 @@ def build_router(db, require_role) -> APIRouter:
     # C1. Dry-run merge plan for a My Client duplicate group.
     @router.post("/admin/diagnostics/dry-run/client-merge")
     async def dry_run_client_merge(
+        request: Request,
         body: dict,
         _user: dict = Depends(require_role("admin")),
     ):
@@ -828,7 +904,7 @@ def build_router(db, require_role) -> APIRouter:
                 retained[key] = s_val
 
         return {
-            **_envelope({"record_ids": record_ids}, environment=_env_name()),
+            **_envelope({"record_ids": record_ids}, environment=_env_name(request), db_name=db.name, request_host=_request_host(request), request_headers_seen=_request_headers_seen(request)),
             "proposed_survivor_id": survivor["id"],
             "reason_for_selection": [
                 "record has direct source relationship (source=cqc + home_id)" if (survivor.get("source") == "cqc" and survivor.get("home_id")) else None,
@@ -869,6 +945,7 @@ def build_router(db, require_role) -> APIRouter:
     # C2. Dry-run site grouping for the Homes list (visual only).
     @router.post("/admin/diagnostics/dry-run/site-group")
     async def dry_run_site_group(
+        request: Request,
         body: dict,
         _user: dict = Depends(require_role("admin")),
     ):
@@ -884,7 +961,7 @@ def build_router(db, require_role) -> APIRouter:
             if len(distinct) > 1:
                 conflicts[key] = sorted(str(v) for v in distinct)
         return {
-            **_envelope({"cqc_location_ids": loc_ids}, environment=_env_name()),
+            **_envelope({"cqc_location_ids": loc_ids}, environment=_env_name(request), db_name=db.name, request_host=_request_host(request), request_headers_seen=_request_headers_seen(request)),
             "proposed_canonical_site_id": derived_site_key(
                 name=anchor.get("name"), address=anchor.get("address"), postcode=anchor.get("postcode"),
             ),
